@@ -29,6 +29,8 @@ type SPSCQueue[T any] struct {
 
 	capacity uint64
 	mask     uint64
+
+	pushLock *SpinLock
 }
 
 func NewSPSCQueue[T any](capacity uint64) *SPSCQueue[T] {
@@ -49,10 +51,14 @@ func NewSPSCQueue[T any](capacity uint64) *SPSCQueue[T] {
 		readNode:  node,
 		capacity:  capacity,
 		mask:      capacity - 1,
+		pushLock:  NewSpinLock(),
 	}
 }
 
 func (q *SPSCQueue[T]) Push(v T) {
+	q.pushLock.Lock()
+	defer q.pushLock.Unlock()
+
 	node := q.writeNode
 	pos := q.writePos
 

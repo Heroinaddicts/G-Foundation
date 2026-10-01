@@ -201,8 +201,5 @@ func (r *SPSCBuffer) Read(callback ReadCallback) bool {
 }
 
 func (r *SPSCBuffer) Size() int {
-	read := r.readPos.Load()
-	write := r.writePos.Load()
-
-	return int(write - read)
+	return int(r.writePos.Load() - r.readPos.Load())
 }

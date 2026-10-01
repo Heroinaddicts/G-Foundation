@@ -2,7 +2,7 @@ package Api
 
 type ITcpSession interface {
 	SetConnectedCallback(callback func(success bool, session ITcpSession))
-	SetReceivedCallback(callback func(data []byte, session ITcpSession) uint32)
+	SetReceivedCallback(callback func(data []byte, offset int, len int, session ITcpSession) int)
 	SetDisconnectedCallback(callback func(session ITcpSession))
 
 	Send(data []byte, immediate bool)
@@ -10,10 +10,10 @@ type ITcpSession interface {
 }
 
 type ITcpServer interface {
-	MallocSession() ITcpSession
+	Close()
 }
 
 type INetApi interface {
-	LaunchTcpServer(server *ITcpServer, ip string, port uint16) bool
-	LaunchTcpClient(session *ITcpSession, ip string, port uint16) bool
+	LaunchTcpServer(ip string, port uint16, accepted func(session ITcpSession), err func(err error)) ITcpServer
+	LaunchTcpClient(ip string, port uint16) ITcpSession
 }
