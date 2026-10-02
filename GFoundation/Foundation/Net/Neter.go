@@ -1,8 +1,8 @@
 package Net
 
 import (
-	"G-Foundation/Api"
-	"G-Foundation/Utils"
+	"GFoundation/Api"
+	"GFoundation/Utils"
 	"fmt"
 	"time"
 )
@@ -79,13 +79,12 @@ func (r *Neter) Update() {
 	}
 
 }
-
-func (r *Neter) LaunchTcpServer(ip string, port uint16, connected func(session Api.ITcpSession), err func(err error)) Api.ITcpServer {
-	s := NewTcpServer(ip, port, connected, err, r)
+func (r *Neter) LaunchTcpServer(ip string, port uint16, accepted func(session Api.ITcpSession), err func(err error)) Api.ITcpServer {
+	s := NewTcpServer(ip, port, accepted, err, r)
 	return s
 }
 
-func (r *Neter) LaunchTcpClient(ip string, port uint16) *Api.ITcpSession {
+func (r *Neter) LaunchTcpClient(ip string, port uint16) Api.ITcpSession {
 	// Implementation for launching TCP client
 	return nil
 }

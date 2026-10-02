@@ -1,7 +1,7 @@
 package Net
 
 import (
-	"G-Foundation/Api"
+	"GFoundation/Api"
 	"fmt"
 	"net"
 )

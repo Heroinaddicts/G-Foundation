@@ -1,8 +1,8 @@
 package Net
 
 import (
-	"G-Foundation/Api"
-	"G-Foundation/Utils"
+	"GFoundation/Api"
+	"GFoundation/Utils"
 	"fmt"
 	"net"
 	"sync/atomic"
