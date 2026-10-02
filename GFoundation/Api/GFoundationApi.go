@@ -3,6 +3,7 @@ package Api
 type GFoundationApi interface {
 	GetNetApi() INetApi
 	GetTimerApi() ITimerApi
+	GetTaskApi() ITaskApi
 }
 
 type IModule interface {

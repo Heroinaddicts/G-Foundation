@@ -10,6 +10,7 @@ type GFoundation struct {
 	neter *Net.Neter
 	logic *GLogic
 	timer *GTimer
+	task  *GTask
 }
 
 var (
@@ -23,6 +24,7 @@ func GFoundationInstance() *GFoundation {
 			neter: Net.NewNeter(),
 			logic: GLogicInstance(),
 			timer: NewGTimer(),
+			task:  NewGTask(),
 		}
 	})
 
@@ -37,6 +39,10 @@ func (f *GFoundation) GetTimerApi() Api.ITimerApi {
 	return f.timer
 }
 
+func (f *GFoundation) GetTaskApi() Api.ITaskApi {
+	return f.task
+}
+
 func (f *GFoundation) Launch() {
 	f.logic.Launch()
 }
@@ -44,5 +50,6 @@ func (f *GFoundation) Launch() {
 func (f *GFoundation) Update() {
 	f.neter.Update()
 	f.timer.Update()
+	f.task.Update()
 	f.logic.Update()
 }

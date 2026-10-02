@@ -2,6 +2,7 @@ package main
 
 import (
 	"GFoundation/Api"
+	"GFoundation/Utils"
 	"fmt"
 	"strconv"
 	"time"
@@ -13,6 +14,40 @@ type GTests struct {
 
 func (m *GTests) Initialize(api Api.GFoundationApi) bool {
 	m.api = api
+
+	fmt.Printf("Initialize Thread ID %d\n", Utils.GetThreadID())
+
+	api.GetTaskApi().PushTask(
+		func() (bool, any) {
+			fmt.Printf("Task Thread ID %d\n", Utils.GetThreadID())
+			return true, m
+		},
+		func(success bool, context any) {
+			fmt.Printf("TaskCompleted Thread ID %d\n", Utils.GetThreadID())
+		},
+	)
+
+	group := api.GetTaskApi().CreateTaskGroup()
+	for i := 0; i < 100; i++ {
+		group.AddTask(
+			func() (bool, any) {
+				fmt.Printf("Group Task Thread ID %d\n", Utils.GetThreadID())
+				return i%2 == 0, m
+			},
+			func(success bool, context any) {
+				fmt.Printf("Group TaskCompleted Thread ID %d\n", Utils.GetThreadID())
+			},
+		)
+	}
+
+	group.SetAllCompletedCallback(
+		func(success int, faild int) {
+			fmt.Printf("TaskGroup AllCompletedCallback Thread ID %d success %d faild %d\n", Utils.GetThreadID(), success, faild)
+		},
+	)
+
+	group.Start()
+
 	return true
 }
 
