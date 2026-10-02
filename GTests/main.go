@@ -2,10 +2,13 @@ package main
 
 import (
 	"GFoundation/Api"
+	"runtime"
 	"time"
 )
 
 func main() {
+	runtime.LockOSThread()
+
 	api := Api.CreateApi("/Users/max/Documents/GitHub/G-Foundation/GFoundation/GFoundation.so")
 
 	api.GetNetApi().LaunchTcpServer("0.0.0.0", 8888,

@@ -5,6 +5,6 @@ import (
 	"GFoundation/Foundation"
 )
 
-func GetGFoundationApi() Api.GFoundationApi {
+func CreateGFoundationApi() Api.GFoundationApi {
 	return Foundation.NewGFoundation()
 }
