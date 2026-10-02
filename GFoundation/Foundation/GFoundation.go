@@ -9,6 +9,7 @@ import (
 type GFoundation struct {
 	neter *Net.Neter
 	logic *GLogic
+	timer *GTimer
 }
 
 var (
@@ -21,6 +22,7 @@ func GFoundationInstance() *GFoundation {
 		gfinstance = &GFoundation{
 			neter: Net.NewNeter(),
 			logic: GLogicInstance(),
+			timer: NewGTimer(),
 		}
 	})
 
@@ -31,11 +33,16 @@ func (f *GFoundation) GetNetApi() Api.INetApi {
 	return f.neter
 }
 
+func (f *GFoundation) GetTimerApi() Api.ITimerApi {
+	return f.timer
+}
+
 func (f *GFoundation) Launch() {
 	f.logic.Launch()
 }
 
 func (f *GFoundation) Update() {
 	f.neter.Update()
+	f.timer.Update()
 	f.logic.Update()
 }

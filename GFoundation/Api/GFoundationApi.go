@@ -2,8 +2,7 @@ package Api
 
 type GFoundationApi interface {
 	GetNetApi() INetApi
-
-	Update()
+	GetTimerApi() ITimerApi
 }
 
 type IModule interface {
