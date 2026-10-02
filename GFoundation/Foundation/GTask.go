@@ -54,15 +54,15 @@ func (g *TaskGroup) Start() {
 	for elem := g.tasks.Front(); elem != nil; elem = elem.Next() {
 		taskInfo := elem.Value.(*TaskInfo)
 
-		go func() {
-			ret, context := taskInfo.task()
+		go func(info *TaskInfo) {
+			ret, context := info.task()
 			g.gtask.resultQueue.Push(&Result{
 				success:  ret,
 				context:  context,
-				taskInfo: taskInfo,
+				taskInfo: info,
 				group:    g,
 			})
-		}()
+		}(taskInfo)
 	}
 }
 

@@ -77,7 +77,7 @@ func (s *TcpSession) sendAsync() {
 			if s.sender.Size() <= 0 {
 				break
 			}
-			s.sender.Read(
+			if s.sender.Read(
 				func(data []byte, offset int, length int) int {
 					n, err := s.con.Write(data[offset : offset+length])
 					if err != nil {
@@ -87,7 +87,9 @@ func (s *TcpSession) sendAsync() {
 
 					return n
 				},
-			)
+			) == false {
+				return
+			}
 		}
 
 		if !s.isSending.CompareAndSwap(true, false) {

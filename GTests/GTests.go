@@ -14,45 +14,11 @@ type GTests struct {
 
 func (m *GTests) Initialize(api Api.GFoundationApi) bool {
 	m.api = api
-
-	fmt.Printf("Initialize Thread ID %d\n", Utils.GetThreadID())
-
-	api.GetTaskApi().PushTask(
-		func() (bool, any) {
-			fmt.Printf("Task Thread ID %d\n", Utils.GetThreadID())
-			return true, m
-		},
-		func(success bool, context any) {
-			fmt.Printf("TaskCompleted Thread ID %d\n", Utils.GetThreadID())
-		},
-	)
-
-	group := api.GetTaskApi().CreateTaskGroup()
-	for i := 0; i < 100; i++ {
-		group.AddTask(
-			func() (bool, any) {
-				fmt.Printf("Group Task Thread ID %d\n", Utils.GetThreadID())
-				return i%2 == 0, m
-			},
-			func(success bool, context any) {
-				fmt.Printf("Group TaskCompleted Thread ID %d\n", Utils.GetThreadID())
-			},
-		)
-	}
-
-	group.SetAllCompletedCallback(
-		func(success int, faild int) {
-			fmt.Printf("TaskGroup AllCompletedCallback Thread ID %d success %d faild %d\n", Utils.GetThreadID(), success, faild)
-		},
-	)
-
-	group.Start()
-
 	return true
 }
 
 func (m *GTests) OnTimer(state uint8, count int, data any, context any, murder bool) {
-	fmt.Printf("Current tick %lld, count %d\n", time.Now().UnixMilli(), count)
+	fmt.Printf("Current tick %d, count %d\n", time.Now().UnixMilli(), count)
 	if count == 8 {
 		m.api.GetTimerApi().StopTimer(m.OnTimer, m)
 	}
@@ -85,6 +51,58 @@ func (m *GTests) Update(api Api.GFoundationApi) {
 
 }
 
+func (m *GTests) OnTimer2(state uint8, count int, data any, context any, murder bool) {
+	s, ok := data.(Api.ITcpSession)
+	if !ok || s == nil {
+		return
+	}
+
+	if state == Api.TimerStateBeat {
+		msg := []byte(strconv.Itoa(count) + "\n")
+		for i := 0; i < 100; i++ {
+			s.Send(msg, true)
+		}
+
+		fmt.Printf("Initialize Thread ID %d\n", Utils.GetThreadID())
+
+		m.api.GetTaskApi().PushTask(
+			func() (bool, any) {
+				fmt.Printf("Task Thread ID %d\n", Utils.GetThreadID())
+				return true, m
+			},
+			func(success bool, context any) {
+				fmt.Printf("TaskCompleted Thread ID %d\n", Utils.GetThreadID())
+			},
+		)
+
+		group := m.api.GetTaskApi().CreateTaskGroup()
+		for i := 0; i < 100; i++ {
+			taskIndex := i
+			group.AddTask(
+				func() (bool, any) {
+					fmt.Printf("Group Task Thread ID %d\n", Utils.GetThreadID())
+					return taskIndex%2 == 0, m
+				},
+				func(success bool, context any) {
+					fmt.Printf("Group TaskCompleted Thread ID %d\n", Utils.GetThreadID())
+				},
+			)
+		}
+
+		group.SetAllCompletedCallback(
+			func(success int, faild int) {
+				fmt.Printf("TaskGroup AllCompletedCallback Thread ID %d success %d faild %d\n", Utils.GetThreadID(), success, faild)
+			},
+		)
+
+		group.Start()
+	}
+
+	if state == Api.TimerStateEnd {
+		s.Close()
+	}
+}
+
 func (m *GTests) onTcpSessionConnected(session Api.ITcpSession) {
 	session.SetReceivedCallback(m.onTcpRecive)
 	session.SetConnectedCallback(
@@ -95,29 +113,14 @@ func (m *GTests) onTcpSessionConnected(session Api.ITcpSession) {
 	session.SetDisconnectedCallback(
 		func(session Api.ITcpSession) {
 			fmt.Printf("session disconnected\n")
+			m.api.GetTimerApi().StopTimer(m.OnTimer2, session)
 		},
 	)
 
 	fmt.Printf("onTcpSessionConnected\n")
 
 	m.api.GetTimerApi().StartTimer(
-		func(state uint8, count int, data any, context any, murder bool) {
-			s, ok := data.(Api.ITcpSession)
-			if !ok || s == nil {
-				return
-			}
-
-			if state == Api.TimerStateBeat {
-				msg := []byte(strconv.Itoa(count) + "\n")
-				for i := 0; i < 100; i++ {
-					s.Send(msg, true)
-				}
-			}
-
-			if state == Api.TimerStateEnd {
-				s.Close()
-			}
-		},
+		m.OnTimer2,
 		session,
 		session,
 		1000,
