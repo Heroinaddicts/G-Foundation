@@ -74,7 +74,9 @@ func (m *GTests) onTcpSessionConnected(session Api.ITcpSession) {
 
 			if state == Api.TimerStateBeat {
 				msg := []byte(strconv.Itoa(count) + "\n")
-				s.Send(msg, true)
+				for i := 0; i < 100; i++ {
+					s.Send(msg, true)
+				}
 			}
 
 			if state == Api.TimerStateEnd {
