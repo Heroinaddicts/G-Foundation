@@ -10,7 +10,11 @@ type ITaskGroup interface {
 	Start()
 }
 
+const (
+	Unorder int64 = -1
+)
+
 type ITaskApi interface {
-	PushTask(task TaskFunction, taskCompletedCallback TaskCompletedCallback)
+	PushTask(mask int64, task TaskFunction, taskCompletedCallback TaskCompletedCallback)
 	CreateTaskGroup() ITaskGroup
 }

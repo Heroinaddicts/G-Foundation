@@ -41,6 +41,7 @@ func (m *GTests) Launch(api Api.GFoundationApi) bool {
 }
 
 func (m *GTests) LaunchFinished(api Api.GFoundationApi) {
+
 }
 
 func (m *GTests) Release(api Api.GFoundationApi) {
@@ -64,16 +65,18 @@ func (m *GTests) OnTimer2(state uint8, count int, data any, context any, murder 
 		}
 
 		fmt.Printf("Initialize Thread ID %d\n", Utils.GetThreadID())
-
-		m.api.GetTaskApi().PushTask(
-			func() (bool, any) {
-				fmt.Printf("Task Thread ID %d\n", Utils.GetThreadID())
-				return true, m
-			},
-			func(success bool, context any) {
-				fmt.Printf("TaskCompleted Thread ID %d\n", Utils.GetThreadID())
-			},
-		)
+		for i := 0; i < 1000; i++ {
+			m.api.GetTaskApi().PushTask(
+				int64(i),
+				func() (bool, any) {
+					fmt.Printf("Task Thread ID %d\n", Utils.GetThreadID())
+					return true, m
+				},
+				func(success bool, context any) {
+					fmt.Printf("TaskCompleted Thread ID %d\n", Utils.GetThreadID())
+				},
+			)
+		}
 
 		group := m.api.GetTaskApi().CreateTaskGroup()
 		for i := 0; i < 100; i++ {

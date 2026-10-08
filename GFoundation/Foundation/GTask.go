@@ -4,6 +4,8 @@ import (
 	"GFoundation/Api"
 	"GFoundation/Utils"
 	"container/list"
+	"fmt"
+	"runtime"
 )
 
 type Result struct {
@@ -68,28 +70,67 @@ func (g *TaskGroup) Start() {
 
 type GTask struct {
 	resultQueue *Utils.SPSCQueue[*Result]
+	orderQueue  []chan *TaskInfo
+	procCount   int64
 }
 
 func NewGTask() *GTask {
-	return &GTask{
+	n := runtime.GOMAXPROCS(0)
+	fmt.Printf("get proc count %d\n", n)
+
+	t := &GTask{
 		resultQueue: Utils.NewSPSCQueue[*Result](1024),
+		orderQueue:  make([]chan *TaskInfo, n),
+		procCount:   int64(n),
 	}
+
+	for i := range t.orderQueue {
+		t.orderQueue[i] = make(chan *TaskInfo, 1024)
+
+		go func() {
+			for {
+				p := <-t.orderQueue[i]
+				ret, context := p.task()
+				t.resultQueue.Push(&Result{
+					success: ret,
+					context: context,
+					taskInfo: &TaskInfo{
+						task:          p.task,
+						taskCompleted: p.taskCompleted,
+						group:         nil,
+					},
+					group: nil,
+				})
+			}
+		}()
+	}
+
+	return t
 }
 
-func (t *GTask) PushTask(task Api.TaskFunction, taskCompletedCallback Api.TaskCompletedCallback) {
-	go func() {
-		ret, context := task()
-		t.resultQueue.Push(&Result{
-			success: ret,
-			context: context,
-			taskInfo: &TaskInfo{
-				task:          task,
-				taskCompleted: taskCompletedCallback,
-				group:         nil,
-			},
-			group: nil,
-		})
-	}()
+func (t *GTask) PushTask(mask int64, task Api.TaskFunction, taskCompletedCallback Api.TaskCompletedCallback) {
+	if Api.Unorder == mask {
+		go func() {
+			ret, context := task()
+			t.resultQueue.Push(&Result{
+				success: ret,
+				context: context,
+				taskInfo: &TaskInfo{
+					task:          task,
+					taskCompleted: taskCompletedCallback,
+					group:         nil,
+				},
+				group: nil,
+			})
+		}()
+	} else {
+		t.orderQueue[mask%t.procCount] <- &TaskInfo{
+			task:          task,
+			taskCompleted: taskCompletedCallback,
+			group:         nil,
+		}
+	}
+
 }
 
 func (t *GTask) CreateTaskGroup() Api.ITaskGroup {
