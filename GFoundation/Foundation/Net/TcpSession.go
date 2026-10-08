@@ -5,12 +5,12 @@ import (
 	"GFoundation/Utils"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
 const (
 	NeedSend uint8 = 0
-	OutSend  uint8 = 1
 )
 
 type TcpSession struct {
@@ -25,6 +25,8 @@ type TcpSession struct {
 	disconCallback  func(session Api.ITcpSession)
 
 	sendChannel chan uint8
+	closed      chan struct{}
+	closeOnce   sync.Once
 }
 
 func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
@@ -37,7 +39,8 @@ func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
 		connectCallback: nil,
 		recvCallback:    nil,
 		disconCallback:  nil,
-		sendChannel:     make(chan uint8),
+		sendChannel:     make(chan uint8, 1),
+		closed:          make(chan struct{}),
 	}
 
 	return s
@@ -74,8 +77,10 @@ func (s *TcpSession) ConnectAsync(ip string, port uint16) {
 
 func (s *TcpSession) sendLoop() {
 	for {
-		sending := <-s.sendChannel
-		if sending == 0 {
+		select {
+		case <-s.closed:
+			return
+		case <-s.sendChannel:
 			for {
 				if s.sender.Size() <= 0 {
 					break
@@ -94,8 +99,6 @@ func (s *TcpSession) sendLoop() {
 					break
 				}
 			}
-		} else {
-			return
 		}
 	}
 }
@@ -139,8 +142,9 @@ func (s *TcpSession) OnConnected(sucess bool) {
 }
 
 func (s *TcpSession) OnDisconnected() {
+	fmt.Print("TcpSession OnDisconnected\n")
+	s.Close()
 	if s.disconCallback != nil {
-		s.sendChannel <- OutSend
 		s.disconCallback(s)
 	}
 }
@@ -187,11 +191,18 @@ func (s *TcpSession) SetDisconnectedCallback(callback func(session Api.ITcpSessi
 func (s *TcpSession) Send(data []byte, immediate bool) {
 	s.sender.Write(data, 0, len(data))
 	if immediate {
-		s.sendChannel <- NeedSend
+		select {
+		case s.sendChannel <- NeedSend:
+		default: // A pending notification already covers the queued data.
+		}
 	}
 }
 
 func (s *TcpSession) Close() {
-	s.sendChannel <- OutSend
-	s.con.Close()
+	s.closeOnce.Do(func() {
+		close(s.closed)
+		if s.con != nil {
+			_ = s.con.Close()
+		}
+	})
 }

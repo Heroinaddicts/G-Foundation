@@ -47,13 +47,12 @@ func (r *Neter) Update() {
 		switch v.EventType {
 		case NeterEventAccept:
 			if v.Code == nil {
+				session := v.Session
 				if v.Server.connected != nil {
-					session := v.Session
 					v.Server.connected(session)
-					if session.connectCallback != nil {
-						session.connectCallback(true, session)
-					}
 				}
+				// Accepted sessions need the same read/send loops as connected clients.
+				session.OnConnected(true)
 			} else {
 				if v.Server != nil && v.Server.err != nil {
 					v.Server.err(v.Code)
