@@ -79,13 +79,13 @@ func NewGTask() *GTask {
 	fmt.Printf("get proc count %d\n", n)
 
 	t := &GTask{
-		resultQueue: Utils.NewSPSCQueue[*Result](1024),
+		resultQueue: Utils.NewSPSCQueue[*Result](16384),
 		orderQueue:  make([]chan *TaskInfo, n),
 		procCount:   int64(n),
 	}
 
 	for i := range t.orderQueue {
-		t.orderQueue[i] = make(chan *TaskInfo, 1024)
+		t.orderQueue[i] = make(chan *TaskInfo, 16384)
 
 		go func() {
 			for {

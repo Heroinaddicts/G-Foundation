@@ -5,8 +5,12 @@ import (
 	"GFoundation/Utils"
 	"fmt"
 	"net"
-	"sync/atomic"
 	"time"
+)
+
+const (
+	NeedSend uint8 = 0
+	OutSend  uint8 = 1
 )
 
 type TcpSession struct {
@@ -20,23 +24,20 @@ type TcpSession struct {
 	recvCallback    func(data []byte, offset int, len int, session Api.ITcpSession) int
 	disconCallback  func(session Api.ITcpSession)
 
-	isSending atomic.Bool
+	sendChannel chan uint8
 }
 
 func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
 	s := &TcpSession{
-		recver:          Utils.NewSPSCBuffer(1024, 1024),
-		sender:          Utils.NewSPSCBuffer(1024, 1024),
+		recver:          Utils.NewSPSCBuffer(16384, 16384),
+		sender:          Utils.NewSPSCBuffer(16384, 16384),
 		con:             con,
 		neter:           neter,
 		server:          server,
 		connectCallback: nil,
 		recvCallback:    nil,
 		disconCallback:  nil,
-	}
-
-	if con != nil {
-		go s.readLoop()
+		sendChannel:     make(chan uint8),
 	}
 
 	return s
@@ -71,38 +72,31 @@ func (s *TcpSession) ConnectAsync(ip string, port uint16) {
 	}()
 }
 
-func (s *TcpSession) sendAsync() {
+func (s *TcpSession) sendLoop() {
 	for {
-		for {
-			if s.sender.Size() <= 0 {
-				break
+		sending := <-s.sendChannel
+		if sending == 0 {
+			for {
+				if s.sender.Size() <= 0 {
+					break
+				}
+				if s.sender.Read(
+					func(data []byte, offset int, length int) int {
+						n, err := s.con.Write(data[offset : offset+length])
+						if err != nil {
+							s.con.Close()
+							return 0
+						}
+
+						return n
+					},
+				) == false {
+					break
+				}
 			}
-			if s.sender.Read(
-				func(data []byte, offset int, length int) int {
-					n, err := s.con.Write(data[offset : offset+length])
-					if err != nil {
-						s.con.Close()
-						return 0
-					}
-
-					return n
-				},
-			) == false {
-				return
-			}
+		} else {
+			return
 		}
-
-		if !s.isSending.CompareAndSwap(true, false) {
-			panic("TcpSession: isSending state corrupted")
-		}
-
-		if s.sender.Size() > 0 {
-			if s.isSending.CompareAndSwap(false, true) {
-				continue
-			}
-		}
-
-		return
 	}
 }
 
@@ -139,10 +133,14 @@ func (s *TcpSession) OnConnected(sucess bool) {
 	if s.connectCallback != nil {
 		s.connectCallback(sucess, s)
 	}
+
+	go s.readLoop()
+	go s.sendLoop()
 }
 
 func (s *TcpSession) OnDisconnected() {
 	if s.disconCallback != nil {
+		s.sendChannel <- OutSend
 		s.disconCallback(s)
 	}
 }
@@ -189,12 +187,11 @@ func (s *TcpSession) SetDisconnectedCallback(callback func(session Api.ITcpSessi
 func (s *TcpSession) Send(data []byte, immediate bool) {
 	s.sender.Write(data, 0, len(data))
 	if immediate {
-		if s.isSending.CompareAndSwap(false, true) {
-			go s.sendAsync()
-		}
+		s.sendChannel <- NeedSend
 	}
 }
 
 func (s *TcpSession) Close() {
+	s.sendChannel <- OutSend
 	s.con.Close()
 }

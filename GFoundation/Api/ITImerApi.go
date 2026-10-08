@@ -10,7 +10,7 @@ const (
 	Unlimited int = -1
 )
 
-type TimerCallback func(state uint8, count int, data any, context any, murder bool)
+type TimerCallback func(state uint8, count int, data any, context any, notmurder bool)
 
 type ITimerApi interface {
 	StartTimer(fun TimerCallback, target any, context any, delay int, count int, interval int)

@@ -27,7 +27,7 @@ type Neter struct {
 
 func NewNeter() *Neter {
 	return &Neter{
-		events: Utils.NewSPSCQueue[NeterEvent](1024),
+		events: Utils.NewSPSCQueue[NeterEvent](16384),
 	}
 }
 

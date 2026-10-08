@@ -3,3 +3,4 @@
 Bin/GFoundation
 Bin/GTests.so
 .DS_Store
+*.pprof
