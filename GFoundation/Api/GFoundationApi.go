@@ -4,6 +4,9 @@ type GFoundationApi interface {
 	GetNetApi() INetApi
 	GetTimerApi() ITimerApi
 	GetTaskApi() ITaskApi
+	GetDbProxyApi() IDbProxyApi
+
+	GetLaunchArgument(name string) string
 }
 
 type IModule interface {

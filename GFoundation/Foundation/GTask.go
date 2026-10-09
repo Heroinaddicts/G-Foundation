@@ -72,6 +72,7 @@ type GTask struct {
 	resultQueue *Utils.SPSCQueue[*Result]
 	orderQueue  []chan *TaskInfo
 	procCount   int64
+	funcs       []func()
 }
 
 func NewGTask() *GTask {
@@ -82,27 +83,30 @@ func NewGTask() *GTask {
 		resultQueue: Utils.NewSPSCQueue[*Result](16384),
 		orderQueue:  make([]chan *TaskInfo, n),
 		procCount:   int64(n),
+		funcs:       make([]func(), n),
 	}
 
 	for i := range t.orderQueue {
 		t.orderQueue[i] = make(chan *TaskInfo, 16384)
 
-		go func() {
-			for {
-				p := <-t.orderQueue[i]
-				ret, context := p.task()
-				t.resultQueue.Push(&Result{
-					success: ret,
-					context: context,
-					taskInfo: &TaskInfo{
-						task:          p.task,
-						taskCompleted: p.taskCompleted,
-						group:         nil,
-					},
-					group: nil,
-				})
-			}
-		}()
+		t.funcs[i] = func() {
+			p := <-t.orderQueue[i]
+			ret, context := p.task()
+			t.resultQueue.Push(&Result{
+				success: ret,
+				context: context,
+				taskInfo: &TaskInfo{
+					task:          p.task,
+					taskCompleted: p.taskCompleted,
+					group:         nil,
+				},
+				group: nil,
+			})
+
+			go t.funcs[i]()
+		}
+
+		go t.funcs[i]()
 	}
 
 	return t

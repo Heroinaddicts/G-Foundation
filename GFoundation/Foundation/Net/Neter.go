@@ -84,6 +84,7 @@ func (r *Neter) LaunchTcpServer(ip string, port uint16, accepted func(session Ap
 }
 
 func (r *Neter) LaunchTcpClient(ip string, port uint16) Api.ITcpSession {
-	// Implementation for launching TCP client
-	return nil
+	c := NewTcpSession(nil, nil, r)
+	c.ConnectAsync(ip, port)
+	return c
 }

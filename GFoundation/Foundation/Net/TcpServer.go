@@ -35,6 +35,7 @@ func NewTcpServer(ip string, port uint16, connected func(session Api.ITcpSession
 
 func (s *TcpServer) Close() {
 	s.closed = true
+	s.listen.Close()
 }
 
 func (s *TcpServer) IsClosed() bool {
@@ -42,7 +43,7 @@ func (s *TcpServer) IsClosed() bool {
 }
 
 func (s *TcpServer) AcceptLoop(ip string, port uint16) {
-	for {
+	for false == s.closed {
 		conn, err := s.listen.Accept()
 		if err != nil {
 			s.neter.PushEvent(NeterEvent{

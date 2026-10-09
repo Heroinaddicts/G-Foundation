@@ -27,6 +27,8 @@ type TcpSession struct {
 	sendChannel chan uint8
 	closed      chan struct{}
 	closeOnce   sync.Once
+
+	context any
 }
 
 func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
@@ -41,6 +43,7 @@ func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
 		disconCallback:  nil,
 		sendChannel:     make(chan uint8, 1),
 		closed:          make(chan struct{}),
+		context:         nil,
 	}
 
 	return s
@@ -49,7 +52,6 @@ func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
 func (s *TcpSession) ConnectAsync(ip string, port uint16) {
 	if s.con != nil {
 		panic("TcpSession already connected")
-		return
 	}
 
 	go func() {
@@ -71,7 +73,6 @@ func (s *TcpSession) ConnectAsync(ip string, port uint16) {
 			Session:   s,
 			Code:      nil,
 		})
-		go s.readLoop()
 	}()
 }
 
@@ -137,8 +138,10 @@ func (s *TcpSession) OnConnected(sucess bool) {
 		s.connectCallback(sucess, s)
 	}
 
-	go s.readLoop()
-	go s.sendLoop()
+	if sucess {
+		go s.readLoop()
+		go s.sendLoop()
+	}
 }
 
 func (s *TcpSession) OnDisconnected() {
@@ -201,8 +204,17 @@ func (s *TcpSession) Send(data []byte, immediate bool) {
 func (s *TcpSession) Close() {
 	s.closeOnce.Do(func() {
 		close(s.closed)
+		close(s.sendChannel)
 		if s.con != nil {
 			_ = s.con.Close()
 		}
 	})
+}
+
+func (s *TcpSession) SetContext(context any) {
+	s.context = context
+}
+
+func (s *TcpSession) GetContext() any {
+	return s.context
 }

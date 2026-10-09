@@ -7,6 +7,9 @@ type ITcpSession interface {
 
 	Send(data []byte, immediate bool)
 	Close()
+
+	SetContext(data any)
+	GetContext() any
 }
 
 type ITcpServer interface {
