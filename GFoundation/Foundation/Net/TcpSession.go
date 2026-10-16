@@ -1,8 +1,8 @@
 package Net
 
 import (
-	"GFoundation/Api"
-	"GFoundation/Utils"
+	"GFoundationApi"
+	"GFoundationUtils"
 	"fmt"
 	"net"
 	"sync"
@@ -14,15 +14,15 @@ const (
 )
 
 type TcpSession struct {
-	recver *Utils.SPSCBuffer
-	sender *Utils.SPSCBuffer
+	recver *GFoundationUtils.SPSCBuffer
+	sender *GFoundationUtils.SPSCBuffer
 	con    net.Conn
 	neter  *Neter
 	server *TcpServer
 
-	connectCallback func(success bool, session Api.ITcpSession)
-	recvCallback    func(data []byte, offset int, len int, session Api.ITcpSession) int
-	disconCallback  func(session Api.ITcpSession)
+	connectCallback func(success bool, session GFoundationApi.ITcpSession)
+	recvCallback    func(data []byte, offset int, len int, session GFoundationApi.ITcpSession) int
+	disconCallback  func(session GFoundationApi.ITcpSession)
 
 	sendChannel chan uint8
 	closed      chan struct{}
@@ -33,8 +33,8 @@ type TcpSession struct {
 
 func NewTcpSession(con net.Conn, server *TcpServer, neter *Neter) *TcpSession {
 	s := &TcpSession{
-		recver:          Utils.NewSPSCBuffer(16384, 16384),
-		sender:          Utils.NewSPSCBuffer(16384, 16384),
+		recver:          GFoundationUtils.NewSPSCBuffer(16384, 16384),
+		sender:          GFoundationUtils.NewSPSCBuffer(16384, 16384),
 		con:             con,
 		neter:           neter,
 		server:          server,
@@ -76,12 +76,12 @@ func (s *TcpSession) ConnectAsync(ip string, port uint16) {
 	}()
 }
 
-func (s *TcpSession) sendLoop() {
+func (s *TcpSession) sendLoop(sendChan chan uint8) {
 	for {
 		select {
 		case <-s.closed:
 			return
-		case <-s.sendChannel:
+		case <-sendChan:
 			for {
 				if s.sender.Size() <= 0 {
 					break
@@ -136,11 +136,12 @@ func (s *TcpSession) readLoop() {
 func (s *TcpSession) OnConnected(sucess bool) {
 	if s.connectCallback != nil {
 		s.connectCallback(sucess, s)
-	}
+		s.connectCallback = nil
 
-	if sucess {
-		go s.readLoop()
-		go s.sendLoop()
+		if sucess {
+			go s.readLoop()
+			go s.sendLoop(s.sendChannel)
+		}
 	}
 }
 
@@ -149,6 +150,7 @@ func (s *TcpSession) OnDisconnected() {
 	s.Close()
 	if s.disconCallback != nil {
 		s.disconCallback(s)
+		s.disconCallback = nil
 	}
 }
 
@@ -179,19 +181,23 @@ func (s *TcpSession) OnRecive() {
 	}
 }
 
-func (s *TcpSession) SetConnectedCallback(callback func(success bool, session Api.ITcpSession)) {
+func (s *TcpSession) SetConnectedCallback(callback func(success bool, session GFoundationApi.ITcpSession)) {
 	s.connectCallback = callback
 }
 
-func (s *TcpSession) SetReceivedCallback(callback func(data []byte, offset int, len int, session Api.ITcpSession) int) {
+func (s *TcpSession) SetReceivedCallback(callback func(data []byte, offset int, len int, session GFoundationApi.ITcpSession) int) {
 	s.recvCallback = callback
 }
 
-func (s *TcpSession) SetDisconnectedCallback(callback func(session Api.ITcpSession)) {
+func (s *TcpSession) SetDisconnectedCallback(callback func(session GFoundationApi.ITcpSession)) {
 	s.disconCallback = callback
 }
 
 func (s *TcpSession) Send(data []byte, immediate bool) {
+	if nil == s.sendChannel {
+		return
+	}
+
 	s.sender.Write(data, 0, len(data))
 	if immediate {
 		select {
@@ -205,6 +211,7 @@ func (s *TcpSession) Close() {
 	s.closeOnce.Do(func() {
 		close(s.closed)
 		close(s.sendChannel)
+		s.sendChannel = nil
 		if s.con != nil {
 			_ = s.con.Close()
 		}

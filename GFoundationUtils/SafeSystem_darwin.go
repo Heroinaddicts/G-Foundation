@@ -1,4 +1,4 @@
-package Utils
+package GFoundationUtils
 
 /*
 #cgo LDFLAGS: -lpthread
@@ -13,20 +13,7 @@ uint64_t XGetThreadID(void)
 }
 */
 import "C"
-import (
-	"os"
-	"path/filepath"
-)
 
 func GetThreadID() uint64 {
 	return uint64(C.XGetThreadID())
-}
-
-func GetCurrentExeDir() string {
-	exe, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-
-	return filepath.Dir(exe)
 }

@@ -1,4 +1,4 @@
-package Api
+package GFoundationApi
 
 type IDbRows interface {
 	Scan(dest ...any) error

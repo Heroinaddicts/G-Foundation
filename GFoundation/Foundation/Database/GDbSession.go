@@ -1,7 +1,7 @@
 package Database
 
 import (
-	"GFoundation/Api"
+	"GFoundationApi"
 	"database/sql"
 	"fmt"
 
@@ -20,8 +20,8 @@ type GDbSession struct {
 	gdbproxy *GDbProxy
 }
 
-func (s *GDbSession) Query(mask int64, callback Api.OnQueryCallback, query string, args ...any) {
-	if Api.UnorderQuery == mask {
+func (s *GDbSession) Query(mask int64, callback GFoundationApi.OnQueryCallback, query string, args ...any) {
+	if GFoundationApi.UnorderQuery == mask {
 		go func() {
 			rows, err := s.handle.Query(query, args...)
 
@@ -57,7 +57,7 @@ func NewGDbSession(proxy *GDbProxy, dbtype uint8, host string, port uint16, user
 	)
 
 	str := "unknown"
-	if dbtype == Api.DatabaseTypeMysql {
+	if dbtype == GFoundationApi.DatabaseTypeMysql {
 		str = "mysql"
 	} else {
 		fmt.Printf("Unkown database %d\n", dbtype)
@@ -65,7 +65,7 @@ func NewGDbSession(proxy *GDbProxy, dbtype uint8, host string, port uint16, user
 
 	db, err := sql.Open(str, dsn)
 	if err != nil {
-		fmt.Printf("sql.Open error %d\n", err)
+		fmt.Printf("sql.Open error %v\n", err)
 		return nil, err
 	}
 

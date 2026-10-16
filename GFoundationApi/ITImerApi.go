@@ -1,4 +1,4 @@
-package Api
+package GFoundationApi
 
 const (
 	TimerStateStart  uint8 = 0

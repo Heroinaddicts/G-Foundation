@@ -1,7 +1,7 @@
 package Net
 
 import (
-	"GFoundation/Api"
+	"GFoundationApi"
 	"fmt"
 	"net"
 )
@@ -9,13 +9,13 @@ import (
 type TcpServer struct {
 	neter *Neter
 
-	connected func(session Api.ITcpSession)
+	connected func(session GFoundationApi.ITcpSession)
 	err       func(err error)
 	closed    bool
 	listen    net.Listener
 }
 
-func NewTcpServer(ip string, port uint16, connected func(session Api.ITcpSession), err func(err error), neter *Neter) *TcpServer {
+func NewTcpServer(ip string, port uint16, connected func(session GFoundationApi.ITcpSession), err func(err error), neter *Neter) *TcpServer {
 	s := &TcpServer{
 		connected: connected,
 		err:       err,

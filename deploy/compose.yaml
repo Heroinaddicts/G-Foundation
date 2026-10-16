@@ -1,0 +1,7 @@
+services:
+  gfoundation:
+    image: gfoundation:${IMAGE_TAG}
+    container_name: gfoundation-main
+    restart: unless-stopped
+    ports:
+      - "8888:8888"

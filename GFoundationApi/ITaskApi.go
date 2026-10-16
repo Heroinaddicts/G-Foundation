@@ -1,4 +1,4 @@
-package Api
+package GFoundationApi
 
 type TaskFunction func() (bool, any)
 type TaskCompletedCallback func(success bool, context any)

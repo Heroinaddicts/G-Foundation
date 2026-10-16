@@ -1,8 +1,8 @@
 package Foundation
 
 import (
-	"GFoundation/Api"
-	"GFoundation/Utils"
+	"GFoundationApi"
+	"GFoundationUtils"
 	"container/list"
 	"fmt"
 	"runtime"
@@ -16,8 +16,8 @@ type Result struct {
 }
 
 type TaskInfo struct {
-	task          Api.TaskFunction
-	taskCompleted Api.TaskCompletedCallback
+	task          GFoundationApi.TaskFunction
+	taskCompleted GFoundationApi.TaskCompletedCallback
 	group         *TaskGroup
 }
 
@@ -25,7 +25,7 @@ type TaskGroup struct {
 	taskCount    int
 	successCount int
 	faildCount   int
-	allCompleted Api.TaskGroupAllCompletedCallback
+	allCompleted GFoundationApi.TaskGroupAllCompletedCallback
 
 	tasks list.List
 
@@ -43,12 +43,12 @@ func NewTaskGroup(gtask *GTask) *TaskGroup {
 	}
 }
 
-func (g *TaskGroup) AddTask(task Api.TaskFunction, completed Api.TaskCompletedCallback) {
+func (g *TaskGroup) AddTask(task GFoundationApi.TaskFunction, completed GFoundationApi.TaskCompletedCallback) {
 	g.taskCount++
 	g.tasks.PushBack(&TaskInfo{task, completed, g})
 }
 
-func (g *TaskGroup) SetAllCompletedCallback(allCompleted Api.TaskGroupAllCompletedCallback) {
+func (g *TaskGroup) SetAllCompletedCallback(allCompleted GFoundationApi.TaskGroupAllCompletedCallback) {
 	g.allCompleted = allCompleted
 }
 
@@ -69,10 +69,10 @@ func (g *TaskGroup) Start() {
 }
 
 type GTask struct {
-	resultQueue *Utils.SPSCQueue[*Result]
+	resultQueue *GFoundationUtils.SPSCQueue[*Result]
 	orderQueue  []chan *TaskInfo
 	procCount   int64
-	funcs       []func()
+	funcs       []func(index int)
 }
 
 func NewGTask() *GTask {
@@ -80,17 +80,17 @@ func NewGTask() *GTask {
 	fmt.Printf("get proc count %d\n", n)
 
 	t := &GTask{
-		resultQueue: Utils.NewSPSCQueue[*Result](16384),
+		resultQueue: GFoundationUtils.NewSPSCQueue[*Result](16384),
 		orderQueue:  make([]chan *TaskInfo, n),
 		procCount:   int64(n),
-		funcs:       make([]func(), n),
+		funcs:       make([]func(index int), n),
 	}
 
 	for i := range t.orderQueue {
 		t.orderQueue[i] = make(chan *TaskInfo, 16384)
 
-		t.funcs[i] = func() {
-			p := <-t.orderQueue[i]
+		t.funcs[i] = func(index int) {
+			p := <-t.orderQueue[index]
 			ret, context := p.task()
 			t.resultQueue.Push(&Result{
 				success: ret,
@@ -103,17 +103,17 @@ func NewGTask() *GTask {
 				group: nil,
 			})
 
-			go t.funcs[i]()
+			go t.funcs[index](index)
 		}
 
-		go t.funcs[i]()
+		go t.funcs[i](i)
 	}
 
 	return t
 }
 
-func (t *GTask) PushTask(mask int64, task Api.TaskFunction, taskCompletedCallback Api.TaskCompletedCallback) {
-	if Api.Unorder == mask {
+func (t *GTask) PushTask(mask int64, task GFoundationApi.TaskFunction, taskCompletedCallback GFoundationApi.TaskCompletedCallback) {
+	if GFoundationApi.Unorder == mask {
 		go func() {
 			ret, context := task()
 			t.resultQueue.Push(&Result{
@@ -137,7 +137,7 @@ func (t *GTask) PushTask(mask int64, task Api.TaskFunction, taskCompletedCallbac
 
 }
 
-func (t *GTask) CreateTaskGroup() Api.ITaskGroup {
+func (t *GTask) CreateTaskGroup() GFoundationApi.ITaskGroup {
 	return NewTaskGroup(t)
 }
 

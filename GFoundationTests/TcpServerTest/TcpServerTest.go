@@ -1,13 +1,13 @@
 package main
 
 import (
-	"GFoundation/Api"
+	"GFoundationApi"
 	"fmt"
 )
 
 type TcpServerTest struct {
-	api       Api.GFoundationApi
-	tcpServer Api.ITcpServer
+	api       GFoundationApi.GFoundationApi
+	tcpServer GFoundationApi.ITcpServer
 }
 
 type SessionData struct {
@@ -19,32 +19,31 @@ var (
 	totalSessionCount int
 )
 
-func (m *TcpServerTest) Initialize(api Api.GFoundationApi) bool {
+func (m *TcpServerTest) Initialize(api GFoundationApi.GFoundationApi) bool {
 	m.api = api
 	return true
 }
 
-func (m *TcpServerTest) Launch(api Api.GFoundationApi) bool {
+func (m *TcpServerTest) Launch(api GFoundationApi.GFoundationApi) bool {
 	return true
 }
 
 func (m *TcpServerTest) OnTimer(state uint8, count int, data any, context any, notmurder bool) {
-	session, ok := data.(Api.ITcpSession)
-	if Api.TimerStateBeat == state {
+	session, ok := data.(GFoundationApi.ITcpSession)
+	if GFoundationApi.TimerStateBeat == state {
 		if ok {
 			session.Send([]byte("hello worldhello worldhello worldhello worldhello worldhello worldhello world"), true)
 		} else {
 			panic("error")
-			m.api.GetTimerApi().StopTimer(m.OnTimer, data)
 		}
 	}
 
-	if Api.TimerStateEnd == state && notmurder {
+	if GFoundationApi.TimerStateEnd == state && notmurder {
 		session.Close()
 	}
 }
 
-func (m *TcpServerTest) OnTcpSessionReciver(data []byte, offset int, len int, session Api.ITcpSession) int {
+func (m *TcpServerTest) OnTcpSessionReciver(data []byte, offset int, len int, session GFoundationApi.ITcpSession) int {
 	sd, ok := session.GetContext().(*SessionData)
 	if ok {
 		sd.recivesize += int64(len)
@@ -60,14 +59,14 @@ func (m *TcpServerTest) OnTcpSessionReciver(data []byte, offset int, len int, se
 	return len
 }
 
-func (m *TcpServerTest) OnTcpSessionConnected(session Api.ITcpSession) {
-	session.SetConnectedCallback(func(success bool, session Api.ITcpSession) {
+func (m *TcpServerTest) OnTcpSessionConnected(session GFoundationApi.ITcpSession) {
+	session.SetConnectedCallback(func(success bool, session GFoundationApi.ITcpSession) {
 		m.api.GetTimerApi().StartTimer(m.OnTimer, session, nil, 100, 1000, 100)
 		totalSessionCount++
 		fmt.Printf("total session count %d\n", totalSessionCount)
 	})
 
-	session.SetDisconnectedCallback(func(session Api.ITcpSession) {
+	session.SetDisconnectedCallback(func(session GFoundationApi.ITcpSession) {
 		m.api.GetTimerApi().StopTimer(m.OnTimer, session)
 		totalSessionCount--
 		fmt.Printf("total session count %d\n", totalSessionCount)
@@ -81,7 +80,7 @@ func (m *TcpServerTest) OnTcpSessionConnected(session Api.ITcpSession) {
 	})
 }
 
-func (m *TcpServerTest) LaunchFinished(api Api.GFoundationApi) {
+func (m *TcpServerTest) LaunchFinished(api GFoundationApi.GFoundationApi) {
 	m.tcpServer = api.GetNetApi().LaunchTcpServer(
 		"0.0.0.0",
 		8888,
@@ -92,14 +91,14 @@ func (m *TcpServerTest) LaunchFinished(api Api.GFoundationApi) {
 	)
 }
 
-func (m *TcpServerTest) Release(api Api.GFoundationApi) {
+func (m *TcpServerTest) Release(api GFoundationApi.GFoundationApi) {
 
 }
 
-func (m *TcpServerTest) Update(api Api.GFoundationApi) {
+func (m *TcpServerTest) Update(api GFoundationApi.GFoundationApi) {
 
 }
 
-func GetModule() Api.IModule {
+func GetModule() GFoundationApi.IModule {
 	return &TcpServerTest{}
 }

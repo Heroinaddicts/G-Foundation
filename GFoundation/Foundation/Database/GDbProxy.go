@@ -1,8 +1,8 @@
 package Database
 
 import (
-	"GFoundation/Api"
-	"GFoundation/Utils"
+	"GFoundationApi"
+	"GFoundationUtils"
 	"database/sql"
 )
 
@@ -16,17 +16,17 @@ type dbevent struct {
 	err                   error
 	session               *GDbSession
 	rows                  *dbRows
-	queryCallback         Api.OnQueryCallback
-	createSessionCallback Api.OnCreateDatabaseSessionCallback
+	queryCallback         GFoundationApi.OnQueryCallback
+	createSessionCallback GFoundationApi.OnCreateDatabaseSessionCallback
 }
 
 type GDbProxy struct {
-	queue *Utils.SPSCQueue[*dbevent]
+	queue *GFoundationUtils.SPSCQueue[*dbevent]
 }
 
 func NewGDbProxy() *GDbProxy {
 	return &GDbProxy{
-		queue: Utils.NewSPSCQueue[*dbevent](16384),
+		queue: GFoundationUtils.NewSPSCQueue[*dbevent](16384),
 	}
 }
 
@@ -68,7 +68,7 @@ func (g *GDbProxy) CreateDatabaseSession(
 	username string,
 	password string,
 	dbname string,
-	createCallback Api.OnCreateDatabaseSessionCallback,
+	createCallback GFoundationApi.OnCreateDatabaseSessionCallback,
 ) {
 	go func() {
 		session, err := NewGDbSession(g, dbtype, host, port, username, password, dbname)

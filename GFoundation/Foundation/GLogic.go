@@ -1,21 +1,16 @@
 package Foundation
 
 import (
-	"GFoundation/Api"
-	"GFoundation/Utils"
+	"GFoundationApi"
+	"GFoundationUtils"
 	"fmt"
 	"plugin"
 	"strings"
 	"sync"
 )
 
-type moduleinfo struct {
-	module Api.IModule
-	name   string
-}
-
 type GLogic struct {
-	modules []moduleinfo
+	modules map[string]GFoundationApi.IModule
 }
 
 var (
@@ -26,7 +21,7 @@ var (
 func GLogicInstance() *GLogic {
 	glonce.Do(func() {
 		glinstance = &GLogic{
-			modules: make([]moduleinfo, 0),
+			modules: make(map[string]GFoundationApi.IModule),
 		}
 	})
 
@@ -38,7 +33,7 @@ func (l *GLogic) Launch() {
 	p := lp.GetString("modules")
 	names := strings.Split(p, ",")
 
-	dir := Utils.GetCurrentExeDir()
+	dir := GFoundationUtils.GetCurrentExeDir()
 	if lp.Has("modules_dir") {
 		dir = lp.GetString("module_dir")
 	}
@@ -55,32 +50,36 @@ func (l *GLogic) Launch() {
 			panic(err)
 		}
 
-		getModule := symbol.(func() Api.IModule)
+		getModule := symbol.(func() GFoundationApi.IModule)
 		module := getModule()
 		if module.Initialize(GFoundationInstance()) == false {
 			fmt.Printf("module %s Initialize faild\n", item)
 			return
 		}
 		fmt.Printf("module %s Initialize succeed\n", item)
-		l.modules = append(l.modules, moduleinfo{module, item})
+		l.modules[item] = module
 	}
 
-	for _, module := range l.modules {
-		if module.module.Launch(GFoundationInstance()) == false {
-			fmt.Printf("module %s Launch faild\n", module.name)
+	for name, module := range l.modules {
+		if module.Launch(GFoundationInstance()) == false {
+			fmt.Printf("module %s Launch faild\n", name)
 			return
 		}
-		fmt.Printf("module %s Launch succeed\n", module.name)
+		fmt.Printf("module %s Launch succeed\n", name)
 	}
 
-	for _, module := range l.modules {
-		module.module.LaunchFinished(GFoundationInstance())
-		fmt.Printf("module %s LaunchFinished\n", module.name)
+	for name, module := range l.modules {
+		module.LaunchFinished(GFoundationInstance())
+		fmt.Printf("module %s LaunchFinished\n", name)
 	}
 }
 
 func (l *GLogic) Update() {
 	for _, module := range l.modules {
-		module.module.Update(GFoundationInstance())
+		module.Update(GFoundationInstance())
 	}
+}
+
+func (l *GLogic) GetModule(name string) GFoundationApi.IModule {
+	return l.modules[name]
 }

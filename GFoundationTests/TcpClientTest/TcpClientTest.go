@@ -1,7 +1,7 @@
 package main
 
 import (
-	"GFoundation/Api"
+	"GFoundationApi"
 	"fmt"
 	"strconv"
 )
@@ -12,7 +12,7 @@ type SessionData struct {
 }
 
 type TcpClientTest struct {
-	api  Api.GFoundationApi
+	api  GFoundationApi.GFoundationApi
 	port uint16
 }
 
@@ -21,25 +21,24 @@ var (
 )
 
 func (m *TcpClientTest) OnTimerTcpSessionSend(state uint8, count int, data any, context any, notmurder bool) {
-	session, ok := data.(Api.ITcpSession)
-	if Api.TimerStateBeat == state {
+	session, ok := data.(GFoundationApi.ITcpSession)
+	if GFoundationApi.TimerStateBeat == state {
 		if ok {
 			session.Send([]byte("hello worldhello worldhello worldhello worldhello worldhello worldhello worldhello worldhello worldhello world"), true)
 		} else {
 			panic("error")
-			m.api.GetTimerApi().StopTimer(m.OnTimerTcpSessionSend, data)
 		}
 	}
 
-	if Api.TimerStateEnd == state && notmurder {
+	if GFoundationApi.TimerStateEnd == state && notmurder {
 		session.Close()
 	}
 }
 
 func (m *TcpClientTest) OnTimerCreateTcpSession(state uint8, count int, data any, context any, notmurder bool) {
-	if Api.TimerStateBeat == state {
+	if GFoundationApi.TimerStateBeat == state {
 		session := m.api.GetNetApi().LaunchTcpClient("127.0.0.1", m.port)
-		session.SetConnectedCallback(func(success bool, session Api.ITcpSession) {
+		session.SetConnectedCallback(func(success bool, session GFoundationApi.ITcpSession) {
 			if success {
 				m.api.GetTimerApi().StartTimer(m.OnTimerTcpSessionSend, session, nil, 100, 1000, 100)
 				session.SetContext(&SessionData{
@@ -52,13 +51,13 @@ func (m *TcpClientTest) OnTimerCreateTcpSession(state uint8, count int, data any
 			}
 		})
 
-		session.SetDisconnectedCallback(func(session Api.ITcpSession) {
+		session.SetDisconnectedCallback(func(session GFoundationApi.ITcpSession) {
 			m.api.GetTimerApi().StopTimer(m.OnTimerTcpSessionSend, session)
 			totalSessionCount--
 			fmt.Printf("total session count %d\n", totalSessionCount)
 		})
 
-		session.SetReceivedCallback(func(data []byte, offset, len int, session Api.ITcpSession) int {
+		session.SetReceivedCallback(func(data []byte, offset, len int, session GFoundationApi.ITcpSession) int {
 			d, ok := session.GetContext().(*SessionData)
 			if !ok {
 				panic("error")
@@ -75,7 +74,7 @@ func (m *TcpClientTest) OnTimerCreateTcpSession(state uint8, count int, data any
 	}
 }
 
-func (m *TcpClientTest) Initialize(api Api.GFoundationApi) bool {
+func (m *TcpClientTest) Initialize(api GFoundationApi.GFoundationApi) bool {
 	m.api = api
 
 	port, err := strconv.ParseUint(api.GetLaunchArgument("port"), 10, 16)
@@ -88,22 +87,22 @@ func (m *TcpClientTest) Initialize(api Api.GFoundationApi) bool {
 	return true
 }
 
-func (m *TcpClientTest) Launch(api Api.GFoundationApi) bool {
+func (m *TcpClientTest) Launch(api GFoundationApi.GFoundationApi) bool {
 	return true
 }
 
-func (m *TcpClientTest) LaunchFinished(api Api.GFoundationApi) {
+func (m *TcpClientTest) LaunchFinished(api GFoundationApi.GFoundationApi) {
 
 }
 
-func (m *TcpClientTest) Release(api Api.GFoundationApi) {
+func (m *TcpClientTest) Release(api GFoundationApi.GFoundationApi) {
 
 }
 
-func (m *TcpClientTest) Update(api Api.GFoundationApi) {
+func (m *TcpClientTest) Update(api GFoundationApi.GFoundationApi) {
 
 }
 
-func GetModule() Api.IModule {
+func GetModule() GFoundationApi.IModule {
 	return &TcpClientTest{}
 }

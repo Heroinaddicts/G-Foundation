@@ -1,4 +1,4 @@
-package Utils
+package GFoundationUtils
 
 import (
 	"runtime"

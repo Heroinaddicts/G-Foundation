@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 set -e
 
@@ -7,7 +7,9 @@ BIN_DIR="$ROOT_DIR/../Bin"
 
 echo "================================"
 echo " Building GFoundation"
-go build -o $BIN_DIR/GFoundation .
+cd "$ROOT_DIR"
+mkdir -p "$BIN_DIR"
+go build -o "$BIN_DIR/GFoundation" .
 
 echo " Building GFoundation Success"
 echo "================================"

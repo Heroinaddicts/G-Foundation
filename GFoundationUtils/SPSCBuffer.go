@@ -1,4 +1,4 @@
-package Utils
+package GFoundationUtils
 
 import (
 	"fmt"
@@ -202,4 +202,30 @@ func (r *SPSCBuffer) Read(callback ReadCallback) bool {
 
 func (r *SPSCBuffer) Size() int {
 	return int(r.writePos.Load() - r.readPos.Load())
+}
+
+func (r *SPSCBuffer) GetData() []byte {
+	var result []byte
+
+	r.Read(func(data []byte, offset int, length int) int {
+		result = make([]byte, length)
+		copy(result, data[offset:offset+length])
+
+		// 返回 0，只读取数据，不消费数据。
+		return 0
+	})
+
+	return result
+}
+
+// GetDataSlice 返回当前所有未读取数据的切片，不复制数据。
+func (r *SPSCBuffer) GetDataSlice() []byte {
+	var result []byte
+
+	r.Read(func(data []byte, offset int, length int) int {
+		result = data[offset : offset+length]
+		return 0
+	})
+
+	return result
 }

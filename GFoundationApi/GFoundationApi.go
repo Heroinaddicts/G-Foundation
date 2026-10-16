@@ -1,12 +1,15 @@
-package Api
+package GFoundationApi
 
 type GFoundationApi interface {
 	GetNetApi() INetApi
 	GetTimerApi() ITimerApi
 	GetTaskApi() ITaskApi
 	GetDbProxyApi() IDbProxyApi
+	GetHttpApi() IHttpApi
 
 	GetLaunchArgument(name string) string
+
+	GetModule(name string) IModule
 }
 
 type IModule interface {

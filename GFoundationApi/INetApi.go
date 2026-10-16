@@ -1,4 +1,4 @@
-package Api
+package GFoundationApi
 
 type ITcpSession interface {
 	SetConnectedCallback(callback func(success bool, session ITcpSession))

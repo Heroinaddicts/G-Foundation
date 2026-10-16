@@ -1,9 +1,10 @@
 package Foundation
 
 import (
-	"GFoundation/Api"
 	"GFoundation/Foundation/Database"
+	"GFoundation/Foundation/Http"
 	"GFoundation/Foundation/Net"
+	"GFoundationApi"
 	"sync"
 )
 
@@ -13,6 +14,7 @@ type GFoundation struct {
 	timer   *GTimer
 	task    *GTask
 	dbproxy *Database.GDbProxy
+	httper  *Http.GHttp
 }
 
 var (
@@ -28,25 +30,26 @@ func GFoundationInstance() *GFoundation {
 			timer:   NewGTimer(),
 			task:    NewGTask(),
 			dbproxy: Database.NewGDbProxy(),
+			httper:  Http.NewGHttp(),
 		}
 	})
 
 	return gfinstance
 }
 
-func (f *GFoundation) GetNetApi() Api.INetApi {
+func (f *GFoundation) GetNetApi() GFoundationApi.INetApi {
 	return f.neter
 }
 
-func (f *GFoundation) GetTimerApi() Api.ITimerApi {
+func (f *GFoundation) GetTimerApi() GFoundationApi.ITimerApi {
 	return f.timer
 }
 
-func (f *GFoundation) GetTaskApi() Api.ITaskApi {
+func (f *GFoundation) GetTaskApi() GFoundationApi.ITaskApi {
 	return f.task
 }
 
-func (f *GFoundation) GetDbProxyApi() Api.IDbProxyApi {
+func (f *GFoundation) GetDbProxyApi() GFoundationApi.IDbProxyApi {
 	return f.dbproxy
 }
 
@@ -58,10 +61,19 @@ func (f *GFoundation) Launch() {
 	f.logic.Launch()
 }
 
+func (f *GFoundation) GetHttpApi() GFoundationApi.IHttpApi {
+	return f.httper
+}
+
 func (f *GFoundation) Update() {
 	f.neter.Update()
 	f.timer.Update()
 	f.task.Update()
 	f.logic.Update()
 	f.dbproxy.Update()
+	f.httper.Update()
+}
+
+func (l *GFoundation) GetModule(name string) GFoundationApi.IModule {
+	return l.logic.GetModule(name)
 }

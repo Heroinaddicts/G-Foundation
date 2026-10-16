@@ -1,8 +1,8 @@
 package Net
 
 import (
-	"GFoundation/Api"
-	"GFoundation/Utils"
+	"GFoundationApi"
+	"GFoundationUtils"
 	"fmt"
 	"time"
 )
@@ -22,12 +22,12 @@ type NeterEvent struct {
 }
 
 type Neter struct {
-	events *Utils.SPSCQueue[NeterEvent]
+	events *GFoundationUtils.SPSCQueue[NeterEvent]
 }
 
 func NewNeter() *Neter {
 	return &Neter{
-		events: Utils.NewSPSCQueue[NeterEvent](16384),
+		events: GFoundationUtils.NewSPSCQueue[NeterEvent](16384),
 	}
 }
 
@@ -78,12 +78,12 @@ func (r *Neter) Update() {
 	}
 
 }
-func (r *Neter) LaunchTcpServer(ip string, port uint16, accepted func(session Api.ITcpSession), err func(err error)) Api.ITcpServer {
+func (r *Neter) LaunchTcpServer(ip string, port uint16, accepted func(session GFoundationApi.ITcpSession), err func(err error)) GFoundationApi.ITcpServer {
 	s := NewTcpServer(ip, port, accepted, err, r)
 	return s
 }
 
-func (r *Neter) LaunchTcpClient(ip string, port uint16) Api.ITcpSession {
+func (r *Neter) LaunchTcpClient(ip string, port uint16) GFoundationApi.ITcpSession {
 	c := NewTcpSession(nil, nil, r)
 	c.ConnectAsync(ip, port)
 	return c

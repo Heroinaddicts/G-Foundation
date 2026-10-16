@@ -2,7 +2,7 @@
 package Foundation
 
 import (
-	"GFoundation/Api"
+	"GFoundationApi"
 	"container/list"
 	"reflect"
 	"time"
@@ -25,7 +25,7 @@ type timerHandle struct {
 	// target 保留强引用，避免计时期间被 GC 回收。
 	target   any
 	context  any
-	callback Api.TimerCallback
+	callback GFoundationApi.TimerCallback
 
 	interval     int64 // jiff
 	count        int
@@ -123,7 +123,7 @@ func timerTargetPointer(target any) (uintptr, bool) {
 	return value.Pointer(), true
 }
 
-func makeTimerKey(fun Api.TimerCallback, target any) (timerKey, bool) {
+func makeTimerKey(fun GFoundationApi.TimerCallback, target any) (timerKey, bool) {
 	targetPtr, ok := timerTargetPointer(target)
 	if !ok || fun == nil {
 		return timerKey{}, false
@@ -137,7 +137,7 @@ func makeTimerKey(fun Api.TimerCallback, target any) (timerKey, bool) {
 // StartTimer 创建或替换同一 target + callback 对应的 timer。
 // delay 和 interval 单位为毫秒。
 func (g *GTimer) StartTimer(
-	fun Api.TimerCallback,
+	fun GFoundationApi.TimerCallback,
 	target any,
 	context any,
 	delay int,
@@ -181,7 +181,7 @@ func (g *GTimer) StartTimer(
 }
 
 // StopTimer 强制结束指定 timer。可在该 timer 的 callback 中调用。
-func (g *GTimer) StopTimer(fun Api.TimerCallback, target any) {
+func (g *GTimer) StopTimer(fun GFoundationApi.TimerCallback, target any) {
 	key, ok := makeTimerKey(fun, target)
 	if !ok {
 		return
@@ -201,12 +201,12 @@ func (g *GTimer) killTimer(timer *timerHandle, notify bool) {
 	delete(g.timers, g.keyOf(timer))
 
 	if notify && !timer.polling {
-		g.call(timer, Api.TimerStateEnd, false)
+		g.call(timer, GFoundationApi.TimerStateEnd, false)
 	}
 }
 
 // PauseTimer 暂停 timer。暂停期间不消耗剩余时间。
-func (g *GTimer) PauseTimer(fun Api.TimerCallback, target any) {
+func (g *GTimer) PauseTimer(fun GFoundationApi.TimerCallback, target any) {
 	key, ok := makeTimerKey(fun, target)
 	if !ok {
 		return
@@ -219,7 +219,7 @@ func (g *GTimer) PauseTimer(fun Api.TimerCallback, target any) {
 
 	timer.paused = true
 	timer.pauseAt = g.jiff
-	g.call(timer, Api.TimerStatePause, false)
+	g.call(timer, GFoundationApi.TimerStatePause, false)
 
 	if !timer.polling {
 		g.detach(timer)
@@ -228,7 +228,7 @@ func (g *GTimer) PauseTimer(fun Api.TimerCallback, target any) {
 }
 
 // ResumeTimer 恢复已暂停的 timer。
-func (g *GTimer) ResumeTimer(fun Api.TimerCallback, target any) {
+func (g *GTimer) ResumeTimer(fun GFoundationApi.TimerCallback, target any) {
 	key, ok := makeTimerKey(fun, target)
 	if !ok {
 		return
@@ -241,7 +241,7 @@ func (g *GTimer) ResumeTimer(fun Api.TimerCallback, target any) {
 
 	timer.expire += g.jiff - timer.pauseAt
 	timer.paused = false
-	g.call(timer, Api.TimerStateResume, false)
+	g.call(timer, GFoundationApi.TimerStateResume, false)
 
 	if !timer.polling && timer.valid {
 		g.detach(timer)
@@ -250,7 +250,7 @@ func (g *GTimer) ResumeTimer(fun Api.TimerCallback, target any) {
 }
 
 // IsExistsTimer 查询指定 timer 是否存在。
-func (g *GTimer) IsExistsTimer(fun Api.TimerCallback, target any) bool {
+func (g *GTimer) IsExistsTimer(fun GFoundationApi.TimerCallback, target any) bool {
 	key, ok := makeTimerKey(fun, target)
 	if !ok {
 		return false
@@ -284,12 +284,12 @@ func (g *GTimer) fire(timer *timerHandle) {
 	timer.polling = true
 
 	if !timer.started {
-		g.call(timer, Api.TimerStateStart, false)
+		g.call(timer, GFoundationApi.TimerStateStart, false)
 		timer.started = true
 	}
 
 	if timer.valid {
-		g.call(timer, Api.TimerStateBeat, false)
+		g.call(timer, GFoundationApi.TimerStateBeat, false)
 		if timer.valid {
 			timer.fired++
 		}
@@ -299,14 +299,14 @@ func (g *GTimer) fire(timer *timerHandle) {
 
 	if !timer.valid {
 		// StopTimer 在 Start/Beat 回调中调用时，延后到回调返回后通知 End。
-		g.call(timer, Api.TimerStateEnd, false)
+		g.call(timer, GFoundationApi.TimerStateEnd, false)
 		return
 	}
 
-	if timer.count != Api.Unlimited && timer.count == timer.currentCount+1 {
+	if timer.count != GFoundationApi.Unlimited && timer.count == timer.currentCount+1 {
 		timer.valid = false
 		delete(g.timers, g.keyOf(timer))
-		g.call(timer, Api.TimerStateEnd, true)
+		g.call(timer, GFoundationApi.TimerStateEnd, true)
 		return
 	}
 
