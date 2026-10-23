@@ -6,3 +6,5 @@
 /GameSprout/Module/build
 /GameSprout/View/build
 /GRHI/Build
+/Bin
+*.qtcreator
