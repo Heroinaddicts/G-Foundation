@@ -4,14 +4,13 @@
 #include "GameSproutApi.h"
 #include "GRHIApi.h"
 
-enum class eAssetType : uint8_t {
-    Png,
-    Jpg,
+enum class eAssetType : uint16_t {
+    Texture = 0,
+    Audio = 1,
 
-};
 
-enum class eAssetImportType : uint8_t {
 
+    Prefab = 255
 };
 
 #endif //__Define_h__

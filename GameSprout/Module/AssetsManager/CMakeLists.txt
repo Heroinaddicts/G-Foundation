@@ -21,8 +21,12 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 add_library(AssetsManager SHARED
     Header.h
     ExportModule.cpp
+    Asset.cpp
+    Asset.h
     AssetsManager.cpp
     AssetsManager.h
+    TextureAssetFactory.cpp
+    TextureAssetFactory.h
     CMakeLists.txt
 )
 target_compile_features(AssetsManager PRIVATE cxx_std_20)
@@ -42,8 +46,12 @@ set_target_properties(AssetsManager PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/Header.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/ExportModule.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Asset.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Asset.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/AssetsManager.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/AssetsManager.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureAssetFactory.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/TextureAssetFactory.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
 )
 

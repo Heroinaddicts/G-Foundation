@@ -3,6 +3,7 @@
 #include "ISceneViewUI.h"
 #include "IIDEWindow.h"
 #include <QtGlobal>
+#include <QWidget>
 
 UsingGameSprout;
 

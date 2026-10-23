@@ -7,7 +7,7 @@ class IGuid {
 public:
     virtual ~IGuid() {}
 
-
+    virtual const std::string & Guid() const = 0;
 };
 
 class IGuidCreator : public GameSprout::IGameSproutModule {

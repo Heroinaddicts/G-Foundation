@@ -25,7 +25,7 @@ void Project::LaunchFinished(GameSproutApi * const api)  {
 }
 
 void Project::Update(GameSproutApi * const api)  {
-    
+    api->_Foundation->Update();
 }
 
 void Project::Release(GameSproutApi * const api)  {

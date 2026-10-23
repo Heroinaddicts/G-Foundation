@@ -5,7 +5,10 @@
 
 #include <QString>
 #include <QList>
-#include <QWidget>
+
+QT_BEGIN_NAMESPACE
+class QWidget;
+QT_END_NAMESPACE
 
 class IIDEMenu {
 public:
@@ -75,6 +78,14 @@ public:
     // 无效面板、重复面板、非正尺寸和数量不匹配均返回 false。
     virtual bool ResizeDockers(const QList<IIDEDocker*>& dockers,
                                const QList<int>& sizes, Qt::Orientation orientation) = 0;
+
+    // Main thread only, after Initialize and before Release. Each Loading must
+    // be paired with one Unloading, including failure/cancellation paths.
+    // The first title identifies the batch; later calls update its description.
+    // Progress counts completed work items equally; registering more may lower it.
+    // Long work must yield to the event loop between steps so the UI can repaint.
+    virtual void Loading(const std::string & title, const std::string & desc) = 0;
+    virtual void Unloading() = 0;
 };
 
 #endif //__IIDEWindow_h__

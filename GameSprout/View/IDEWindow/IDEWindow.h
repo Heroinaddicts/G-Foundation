@@ -12,6 +12,7 @@ class IDEWindowWindow;
 }
 QT_END_NAMESPACE
 class IDEDockerManager;
+class IDELoadingOverlay;
 
 class IDEWindow : public IIDEWindow {
 public:
@@ -26,6 +27,9 @@ public:
     IIDEDocker* QueryDocker(const QString& name) override;
     bool ResizeDockers(const QList<IIDEDocker*>& dockers,
                        const QList<int>& sizes, Qt::Orientation orientation) override;
+
+    void Loading(const std::string & title, const std::string & desc) override;
+    void Unloading() override;
 
     void Show() override;
     void Hide() override;
@@ -42,7 +46,11 @@ private:
     Ui::IDEWindowWindow* _Ui = nullptr;
     IIDEMenuBar* _MenuBar = nullptr;
     IDEDockerManager* _DockerManager = nullptr;
+    IDELoadingOverlay* _LoadingOverlay = nullptr;
     std::vector<std::pair<QString, IIDEDocker*>> _Dockers;
+
+    int _LoadingRefCount = 0;
+    int _TotalCount = 0;
 };
 
 #endif //__IDEWindow_h__

@@ -2,6 +2,7 @@
 #include "IDEMenuBarFinal.h"
 #include "IDEDockerFinal.h"
 #include "IDEDockerManager.h"
+#include "IDELoadingOverlay.h"
 #include "ui_IDEWindow.h"
 
 #include <QApplication>
@@ -37,6 +38,7 @@ bool IDEWindow::Initialize(GameSprout::GameSproutEditor * const editor) {
         _Window->setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
         _MenuBar = new IDEMenuBarFinal(_Window->menuBar());
         _DockerManager = new IDEDockerManager(_Window, _Ui->DockerWindowMenu);
+        _LoadingOverlay = new IDELoadingOverlay(_Window);
     } catch (...) {
         Release(nullptr);
         throw;
@@ -50,6 +52,31 @@ bool IDEWindow::Launch(GameSprout::GameSproutEditor * const editor) {
 
 void IDEWindow::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
     Show();
+}
+
+void IDEWindow::Loading(const std::string & title, const std::string & desc) {
+    if (!_LoadingOverlay) {
+        return;
+    }
+    if (0 == _LoadingRefCount) {
+        _LoadingOverlay->Begin(QString::fromStdString(title));
+    }
+    _LoadingRefCount++;
+    _TotalCount++;
+    _LoadingOverlay->SetDescription(QString::fromStdString(desc));
+    _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
+}
+
+void IDEWindow::Unloading() {
+    if (_LoadingRefCount <= 0) {
+        return;
+    }
+    _LoadingRefCount--;
+    _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
+    if (0 == _LoadingRefCount) {
+        _LoadingOverlay->End();
+        _TotalCount = 0;
+    }
 }
 
 void IDEWindow::Show() {
@@ -73,10 +100,17 @@ void IDEWindow::Hide() {
 
 void IDEWindow::Update(GameSprout::GameSproutEditor * const editor) {
     Q_UNUSED(editor);
+    if (_TotalCount > 0) {
+        _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
+    }
 }
 
 void IDEWindow::Release(GameSprout::GameSproutEditor * const editor) {
     Q_UNUSED(editor);
+    delete _LoadingOverlay;
+    _LoadingOverlay = nullptr;
+    _LoadingRefCount = 0;
+    _TotalCount = 0;
     // 先释放包装对象，再释放它们依赖的主窗口，避免重复删除 Qt 子控件。
     for (auto it = _Dockers.rbegin(); it != _Dockers.rend(); ++it) {
         delete it->second;

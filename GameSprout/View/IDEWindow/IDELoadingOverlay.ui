@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDELoadingOverlay</class>
+ <widget class="QFrame" name="loadingOverlay">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>1280</width><height>800</height></rect></property>
+  <property name="focusPolicy"><enum>Qt::StrongFocus</enum></property>
+  <property name="cursor"><cursorShape>WaitCursor</cursorShape></property>
+  <property name="accessibleName"><string>正在处理，请稍候</string></property>
+  <property name="styleSheet">
+   <string notr="true">QFrame#loadingOverlay { background-color: rgba(0, 0, 0, 110); }
+QFrame#loadingPanel { background-color: palette(window); color: palette(window-text); border: 1px solid palette(mid); border-radius: 10px; }
+QLabel { background: transparent; color: palette(window-text); border: none; }
+QProgressBar { min-height: 18px; border: 1px solid palette(mid); border-radius: 5px; background-color: palette(base); color: palette(text); text-align: center; }
+QProgressBar::chunk { background-color: palette(highlight); border-radius: 4px; }</string>
+  </property>
+  <layout class="QGridLayout" name="overlayLayout">
+   <property name="leftMargin"><number>24</number></property>
+   <property name="topMargin"><number>24</number></property>
+   <property name="rightMargin"><number>24</number></property>
+   <property name="bottomMargin"><number>24</number></property>
+   <item row="0" column="1"><spacer name="topSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeType"><enum>QSizePolicy::Expanding</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+   <item row="1" column="0"><spacer name="leftSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeType"><enum>QSizePolicy::Expanding</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+   <item row="1" column="1">
+    <widget class="QFrame" name="loadingPanel">
+     <property name="minimumSize"><size><width>320</width><height>0</height></size></property>
+     <property name="maximumSize"><size><width>520</width><height>16777215</height></size></property>
+     <layout class="QVBoxLayout" name="panelLayout">
+      <property name="spacing"><number>14</number></property>
+      <property name="leftMargin"><number>24</number></property>
+      <property name="topMargin"><number>24</number></property>
+      <property name="rightMargin"><number>24</number></property>
+      <property name="bottomMargin"><number>20</number></property>
+      <item><widget class="QLabel" name="titleLabel">
+       <property name="font"><font><pointsize>15</pointsize><bold>true</bold></font></property>
+       <property name="text"><string>正在处理</string></property>
+       <property name="textFormat"><enum>Qt::PlainText</enum></property>
+       <property name="wordWrap"><bool>true</bool></property>
+      </widget></item>
+      <item><widget class="QLabel" name="descriptionLabel">
+       <property name="text"><string>请稍候…</string></property>
+       <property name="textFormat"><enum>Qt::PlainText</enum></property>
+       <property name="wordWrap"><bool>true</bool></property>
+      </widget></item>
+      <item><widget class="QProgressBar" name="progressBar">
+       <property name="minimum"><number>0</number></property>
+       <property name="maximum"><number>100</number></property>
+       <property name="value"><number>0</number></property>
+       <property name="format"><string>%p%</string></property>
+      </widget></item>
+      <item><widget class="QLabel" name="completedLabel">
+       <property name="text"><string>已完成 0 / 0</string></property>
+       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+      </widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="2"><spacer name="rightSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeType"><enum>QSizePolicy::Expanding</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+   <item row="2" column="1"><spacer name="bottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeType"><enum>QSizePolicy::Expanding</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

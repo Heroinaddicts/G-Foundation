@@ -25,6 +25,9 @@ add_library(IDEWindow SHARED
     IDEWindow.cpp
     IDEWindow.h
     IDEWindow.ui
+    IDELoadingOverlay.h
+    IDELoadingOverlay.cpp
+    IDELoadingOverlay.ui
     IDEMenuFinal.h
     IDEMenuFinal.cpp
     IDEMenuBarFinal.h
@@ -67,6 +70,9 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.ui"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.ui"
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuFinal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuFinal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuBarFinal.h"

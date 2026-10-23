@@ -7,7 +7,7 @@ class AssetsManager : public IAssetsManager {
 public:
     virtual ~AssetsManager() {}
 
-    IAsset * QueryAsset(const std::string & guid) const override;
+    IAsset * QueryAsset(const IGuid * const guid) const override;
 
 private:
     bool Initialize(GameSproutApi * const api) override;

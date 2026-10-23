@@ -1,4 +1,6 @@
 #include "AssetsManager.h"
+#include "Asset.h"
+#include "TextureAssetFactory.h"
 
 bool AssetsManager::Initialize(GameSproutApi * const api) {
     g_GameSproutApi = api;
@@ -48,6 +50,24 @@ void AssetsManager::WatcherDir(const std::string & path) {
 
 void AssetsManager::LaunchFinished(GameSproutApi * const api)  {
     WatcherDir(_AssetsRoot.toStdString());
+
+    GetGameSproutView(api->_EditorApi, g_IIDEWindow, IDEWindow);
+
+    Foundation::ITaskGroup * group = api->_Foundation->TaskApi()->CreateTaskGroup();
+    for(int i =0; i<1000; i++) {
+        g_IIDEWindow->Loading("Test", "Test");
+        group->AddTask(
+            [](OUT Int64& code, ITaskContext&){
+                FoundationUtils::SafeSystem::Time::MillisecondSleep(100);
+                return true;
+            },
+            [](const TaskCompletion&, bool succeed, const ITaskContext&) {
+                g_IIDEWindow->Unloading();
+            }
+        );
+    }
+
+    group->Start(TaskSubmitOptions());
 }
 
 void AssetsManager::Update(GameSproutApi * const api)  {
@@ -57,8 +77,8 @@ void AssetsManager::Release(GameSproutApi * const api)  {
 }
 
 
-IAsset * AssetsManager::QueryAsset(const std::string & guid) const {
-    auto it = _Assets.find(guid);
+IAsset * AssetsManager::QueryAsset(const IGuid * const guid) const {
+    auto it = _Assets.find(guid->Guid());
     if (_Assets.end() == it) {
         return nullptr;
     }
