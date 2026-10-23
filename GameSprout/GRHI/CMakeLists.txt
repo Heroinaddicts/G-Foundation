@@ -11,7 +11,7 @@ endif()
 
 # SDL is built independently; only its prebuilt shared target is consumed here.
 find_package(SDL3 3.2 CONFIG REQUIRED COMPONENTS SDL3-shared
-    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/../../SDL/build"
+    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/../../../SDL/build"
 )
 include(CMakePushCheckState)
 include(CheckCXXSourceCompiles)
@@ -84,7 +84,7 @@ if(GRHI_GPU_DEBUG)
     target_compile_definitions(GRHI PRIVATE GRHI_GPU_DEBUG)
 endif()
 # Use Bin directly, including with multi-configuration generators such as Xcode.
-set(grhi_output_directory "$<1:${CMAKE_CURRENT_SOURCE_DIR}/../Bin>")
+set(grhi_output_directory "$<1:${CMAKE_CURRENT_SOURCE_DIR}/../../Bin>")
 set_target_properties(GRHI PROPERTIES
     CXX_EXTENSIONS OFF
     POSITION_INDEPENDENT_CODE ON

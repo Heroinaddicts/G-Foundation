@@ -8,3 +8,5 @@
 /GRHI/Build
 /Bin
 *.qtcreator
+/GameSprout/Foundation/build
+/GameSprout/GRHI/build

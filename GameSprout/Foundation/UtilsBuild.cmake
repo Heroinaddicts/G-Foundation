@@ -43,7 +43,7 @@ if(NOT TARGET FoundationUtils)
     set_target_properties(FoundationUtils PROPERTIES
         EXPORT_NAME Utils
         POSITION_INDEPENDENT_CODE ON
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Bin/$<0:>"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../Bin/$<0:>"
     )
 
     target_compile_features(FoundationUtils PUBLIC cxx_std_20)

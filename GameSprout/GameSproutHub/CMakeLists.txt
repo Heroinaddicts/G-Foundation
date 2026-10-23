@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-include("${CMAKE_CURRENT_LIST_DIR}/../../Foundation/ParallelBuild.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../Foundation/ParallelBuild.cmake")
 
 if(POLICY CMP0112)
     cmake_policy(SET CMP0112 NEW)
@@ -9,7 +9,7 @@ endif()
 project(GameSproutHub VERSION 0.1 LANGUAGES CXX)
 
 # Public APIs and prebuilt runtime only; Foundation is built independently.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationSDK.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../Foundation/FoundationSDK.cmake")
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)

@@ -15,7 +15,7 @@ endif()
 if(NOT TARGET GRHI::GRHI)
     add_library(GRHI::GRHI SHARED IMPORTED GLOBAL)
     get_filename_component(grhi_runtime_directory
-        "${CMAKE_CURRENT_LIST_DIR}/../Bin" ABSOLUTE
+        "${CMAKE_CURRENT_LIST_DIR}/../../Bin" ABSOLUTE
     )
     if(WIN32)
         set(grhi_runtime_filename "GRHI${CMAKE_SHARED_LIBRARY_SUFFIX}")

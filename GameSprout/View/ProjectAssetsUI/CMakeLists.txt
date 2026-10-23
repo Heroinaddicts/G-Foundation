@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-include("${CMAKE_CURRENT_LIST_DIR}/../../../Foundation/ParallelBuild.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../Foundation/ParallelBuild.cmake")
 
 # Querying the launcher's output directory must not make the plugin depend
 # on the launcher; the launcher already depends on its plugins.
@@ -13,8 +13,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 # Foundation's entry point propagates its API and Utils include paths.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../Foundation/FoundationApi.cmake")
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
@@ -73,7 +73,7 @@ if(TARGET GameSprout)
     set(view_output_directory "$<TARGET_FILE_DIR:GameSprout>/Logic/View")
 elseif(APPLE)
     set(view_output_directory
-        "${gamesprout_bin_directory}/GameSprout.app/Contents/MacOS/Logic/View")
+        "${gamesprout_bin_directory}/GameSproutEditor.app/Contents/MacOS/Logic/View")
 else()
     set(view_output_directory "${gamesprout_bin_directory}/Logic/View")
 endif()
