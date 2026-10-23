@@ -17,7 +17,7 @@ cmake --build Build
 ctest --test-dir Build --output-on-failure
 ```
 
-输出位于 `../Bin`。部署时同时复制 GRHI 和 SDL 运行库；macOS 对应
+输出位于 `../../Bin`。部署时同时复制 GRHI 和 SDL 运行库；macOS 对应
 `libGRHI.dylib`、`libSDL3.0.dylib`。消费者通过 `GRHI.cmake` 使用公共 API 和
 预构建 GRHI，不引入实现源码。`GRHI::GRHI` 的 `GRHI_RUNTIME_DEPENDENCIES` 属性
 提供 SDL 部署路径，GameSprout 已按该属性同步复制运行库。

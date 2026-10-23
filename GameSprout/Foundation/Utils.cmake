@@ -5,7 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/UtilsApi.cmake")
 # SDK users link the independently built archive, never its implementation.
 if(NOT TARGET Foundation::Utils)
     add_library(Foundation::Utils STATIC IMPORTED GLOBAL)
-    get_filename_component(foundation_utils_bin "${CMAKE_CURRENT_LIST_DIR}/../Bin" ABSOLUTE)
+    get_filename_component(foundation_utils_bin "${CMAKE_CURRENT_LIST_DIR}/../../Bin" ABSOLUTE)
     set_target_properties(Foundation::Utils PROPERTIES
         IMPORTED_LOCATION "${foundation_utils_bin}/${CMAKE_STATIC_LIBRARY_PREFIX}FoundationUtils${CMAKE_STATIC_LIBRARY_SUFFIX}"
         INTERFACE_LINK_LIBRARIES Foundation::UtilsApi

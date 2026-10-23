@@ -72,7 +72,7 @@ set(
 )
 set(
     FOUNDATION_DEPS_DIR
-    "${FOUNDATION_ROOT}/../Bin/Deps"
+    "${FOUNDATION_ROOT}/../../Bin/Deps"
     CACHE PATH
     "Dependency root owned by the Foundation solution."
 )

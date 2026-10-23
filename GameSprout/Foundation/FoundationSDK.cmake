@@ -6,7 +6,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/FoundationApi.cmake")
 # its private third-party dependencies. Consumers load it through the API.
 if(NOT TARGET Foundation::Foundation)
     add_library(Foundation::Foundation SHARED IMPORTED GLOBAL)
-    get_filename_component(foundation_sdk_bin "${CMAKE_CURRENT_LIST_DIR}/../Bin" ABSOLUTE)
+    get_filename_component(foundation_sdk_bin "${CMAKE_CURRENT_LIST_DIR}/../../Bin" ABSOLUTE)
     set(foundation_runtime_name "${CMAKE_SHARED_LIBRARY_PREFIX}Foundation${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set_target_properties(Foundation::Foundation PROPERTIES
         IMPORTED_LOCATION "${foundation_sdk_bin}/${foundation_runtime_name}"

@@ -140,7 +140,7 @@ endfunction()
 
 function(FoundationConfigureFoundationTargetOutput targetName outputSubdirectory)
     FoundationRequireFoundationTarget("${targetName}")
-    set(outputDirectory "${FOUNDATION_ROOT}/../Bin")
+    set(outputDirectory "${FOUNDATION_ROOT}/../../Bin")
     if(NOT "${outputSubdirectory}" STREQUAL "")
         string(APPEND outputDirectory "/${outputSubdirectory}")
     endif()
