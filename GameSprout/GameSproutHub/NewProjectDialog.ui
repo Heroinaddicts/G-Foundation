@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>NewProjectDialog</class>
+ <widget class="QDialog" name="NewProjectDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>620</width><height>310</height></rect></property>
+  <property name="minimumSize"><size><width>520</width><height>280</height></size></property>
+  <property name="windowTitle"><string>新建项目</string></property>
+  <property name="modal"><bool>true</bool></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>16</number></property>
+   <property name="leftMargin"><number>24</number></property>
+   <property name="topMargin"><number>24</number></property>
+   <property name="rightMargin"><number>24</number></property>
+   <property name="bottomMargin"><number>24</number></property>
+   <item>
+    <widget class="QLabel" name="descriptionLabel">
+     <property name="text"><string>选择保存位置并填写项目目录名。创建成功后立即打开编辑器。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="projectForm">
+     <property name="horizontalSpacing"><number>16</number></property>
+     <property name="verticalSpacing"><number>12</number></property>
+     <item row="0" column="0"><widget class="QLabel" name="nameLabel"><property name="text"><string>项目目录名</string></property></widget></item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="projectNameEdit">
+       <property name="maxLength"><number>128</number></property>
+       <property name="placeholderText"><string>我的游戏</string></property>
+       <property name="clearButtonEnabled"><bool>true</bool></property>
+      </widget>
+     </item>
+     <item row="1" column="0"><widget class="QLabel" name="locationLabel"><property name="text"><string>保存位置</string></property></widget></item>
+     <item row="1" column="1">
+      <layout class="QHBoxLayout" name="locationLayout">
+       <item><widget class="QLineEdit" name="locationEdit"><property name="readOnly"><bool>true</bool></property></widget></item>
+       <item><widget class="QPushButton" name="browseButton"><property name="text"><string>选择…</string></property><property name="autoDefault"><bool>false</bool></property></widget></item>
+      </layout>
+     </item>
+     <item row="2" column="0"><widget class="QLabel" name="pathLabel"><property name="text"><string>项目目录</string></property></widget></item>
+     <item row="2" column="1">
+      <widget class="QLabel" name="projectPathLabel">
+       <property name="text"><string/></property>
+       <property name="textFormat"><enum>Qt::PlainText</enum></property>
+       <property name="wordWrap"><bool>true</bool></property>
+       <property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="errorLabel">
+     <property name="visible"><bool>false</bool></property>
+     <property name="text"><string/></property>
+     <property name="textFormat"><enum>Qt::PlainText</enum></property>
+     <property name="wordWrap"><bool>true</bool></property>
+     <property name="styleSheet"><string notr="true">color: #b3261e;</string></property>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonsLayout">
+     <item><spacer name="buttonsSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="cancelButton"><property name="text"><string>取消</string></property><property name="autoDefault"><bool>false</bool></property></widget></item>
+     <item><widget class="QPushButton" name="createButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>创建并打开</string></property><property name="default"><bool>true</bool></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <tabstops><tabstop>projectNameEdit</tabstop><tabstop>locationEdit</tabstop><tabstop>browseButton</tabstop><tabstop>createButton</tabstop><tabstop>cancelButton</tabstop></tabstops>
+ <resources/>
+ <connections/>
+</ui>

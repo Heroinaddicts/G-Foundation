@@ -1,2 +1,8 @@
 *.pprof
 *.DS_Store
+/Foundation/build
+/GameSprout/GameSproutEditor/build
+/GameSprout/GameSproutHub/build
+/GameSprout/Module/build
+/GameSprout/View/build
+/GRHI/Build

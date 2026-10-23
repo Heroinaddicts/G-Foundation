@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerOptionsButton</class>
+ <widget class="QToolButton" name="DockerTabOptions">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>26</width><height>26</height></rect></property>
+  <property name="minimumSize"><size><width>26</width><height>0</height></size></property>
+  <property name="focusPolicy"><enum>Qt::NoFocus</enum></property>
+  <property name="toolTip"><string>面板选项</string></property>
+  <property name="text"><string>⋮</string></property>
+  <property name="autoRaise"><bool>true</bool></property>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,13 @@
+#pragma once
+
+#include "I{name}.h"
+#include "IIDEWindow.h"
+#include <QtGlobal>
+
+UsingGameSprout;
+
+inline extern GameSproutEditor * g_GameSproutEditor = nullptr;
+inline extern IIDEWindow * g_IIDEWindow = nullptr;
+
+class {name};
+inline extern {name} * g_Self = nullptr;

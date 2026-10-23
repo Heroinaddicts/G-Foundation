@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConsoleFilterPopup</class>
+ <widget class="QWidget" name="ConsoleFilterPopup">
+  <property name="minimumSize"><size><width>190</width><height>0</height></size></property>
+  <property name="windowTitle"><string>日志级别</string></property>
+  <property name="font"><font><pointsize>11</pointsize></font></property>
+  <property name="styleSheet"><string notr="true">QWidget#ConsoleFilterPopup {
+ background-color: #26282c; border: 1px solid #5b626c; border-radius: 4px;
+}
+QCheckBox { spacing: 10px; padding: 7px 8px; border: 1px solid transparent; border-radius: 3px; }
+QCheckBox:hover, QCheckBox:focus { background-color: #34445a; border-color: #8496b0; }
+QCheckBox::indicator {
+ width: 16px; height: 16px; border: 1px solid #8496b0; border-radius: 3px;
+ background-color: #191a1d;
+}
+QCheckBox::indicator:checked { background-color: #34445a; image: url(:/ConsoleUI/check.svg); }
+QLabel { color: #cbd0d6; padding: 3px 8px; }</string></property>
+  <layout class="QVBoxLayout" name="filterLayout">
+   <property name="spacing"><number>2</number></property>
+   <property name="leftMargin"><number>6</number></property>
+   <property name="topMargin"><number>6</number></property>
+   <property name="rightMargin"><number>6</number></property>
+   <property name="bottomMargin"><number>6</number></property>
+   <item><widget class="QLabel" name="filterHeading"><property name="text"><string>日志级别（可多选）</string></property></widget></item>
+      <item>
+       <widget class="QCheckBox" name="debugCheckBox">
+        <property name="text"><string>Debug 0</string></property>
+        <property name="checked"><bool>true</bool></property>
+        <property name="toolTip"><string>显示或隐藏 Debug 日志</string></property>
+        <property name="levelName" stdset="0"><string notr="true">Debug</string></property>
+        <property name="logColor" stdset="0"><color><red>241</red><green>243</green><blue>245</blue></color></property>
+        <property name="styleSheet"><string notr="true">color: #f1f3f5;</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="traceCheckBox">
+        <property name="text"><string>Trace 0</string></property>
+        <property name="checked"><bool>true</bool></property>
+        <property name="toolTip"><string>显示或隐藏 Trace 日志</string></property>
+        <property name="levelName" stdset="0"><string notr="true">Trace</string></property>
+        <property name="logColor" stdset="0"><color><red>139</red><green>223</green><blue>156</blue></color></property>
+        <property name="styleSheet"><string notr="true">color: #8bdf9c;</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="warningCheckBox">
+        <property name="text"><string>Warning 0</string></property>
+        <property name="checked"><bool>true</bool></property>
+        <property name="toolTip"><string>显示或隐藏 Warning 日志</string></property>
+        <property name="levelName" stdset="0"><string notr="true">Warning</string></property>
+        <property name="logColor" stdset="0"><color><red>255</red><green>213</green><blue>106</blue></color></property>
+        <property name="styleSheet"><string notr="true">color: #ffd56a;</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="errorCheckBox">
+        <property name="text"><string>Error 0</string></property>
+        <property name="checked"><bool>true</bool></property>
+        <property name="toolTip"><string>显示或隐藏 Error 日志</string></property>
+        <property name="levelName" stdset="0"><string notr="true">Error</string></property>
+        <property name="logColor" stdset="0"><color><red>255</red><green>150</green><blue>150</blue></color></property>
+        <property name="styleSheet"><string notr="true">color: #ff9696;</string></property>
+       </widget>
+      </item>
+  </layout>
+ </widget>
+ <resources><include location="ConsoleUI.qrc"/></resources>
+ <connections/>
+</ui>

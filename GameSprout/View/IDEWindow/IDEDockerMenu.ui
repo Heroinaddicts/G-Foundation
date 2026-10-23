@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerMenu</class>
+ <widget class="QMenu" name="DockerContextMenu">
+  <widget class="QMenu" name="DockerAddTab">
+   <property name="title"><string>添加标签页</string></property>
+  </widget>
+  <action name="DockerCustomSeparator">
+   <property name="separator"><bool>true</bool></property>
+   <property name="visible"><bool>false</bool></property>
+  </action>
+  <action name="DockerMaximize">
+   <property name="text"><string>最大化</string></property>
+   <property name="restoreText" stdset="0"><string>还原布局</string></property>
+  </action>
+  <action name="DockerFloat">
+   <property name="text"><string>浮动窗口</string></property>
+   <property name="dockText" stdset="0"><string>停靠窗口</string></property>
+  </action>
+  <action name="DockerClose"><property name="text"><string>关闭标签页</string></property></action>
+  <addaction name="DockerCustomSeparator"/>
+  <addaction name="DockerMaximize"/>
+  <addaction name="DockerFloat"/>
+  <addaction name="DockerClose"/>
+  <addaction name="separator"/>
+  <addaction name="DockerAddTab"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

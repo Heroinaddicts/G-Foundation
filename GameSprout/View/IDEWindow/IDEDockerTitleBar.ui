@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerTitleBar</class>
+ <widget class="QWidget" name="DockerTitleBar">
+  <property name="minimumSize"><size><width>120</width><height>26</height></size></property>
+  <property name="contextMenuPolicy"><enum>Qt::CustomContextMenu</enum></property>
+  <layout class="QHBoxLayout" name="titleLayout">
+   <property name="leftMargin"><number>2</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>6</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item><widget class="IDEDockerOptionsButton" name="DockerOptions"/></item>
+   <item><widget class="QLabel" name="DockerTitleLabel"><property name="text"><string/></property></widget></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>IDEDockerOptionsButton</class>
+   <extends>QToolButton</extends>
+   <header>IDEDockerOptionsButton.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,42 @@
+#ifndef __GameSproutEditorFinal_h__
+#define __GameSproutEditorFinal_h__
+
+#include "GameSproutApi.h"
+#include <map>
+#include <vector>
+
+class QLibrary;
+
+namespace GameSprout {
+    class GameSproutFinal;
+
+    class GameSproutEditorFinal : public GameSproutEditor {
+    public:
+        static GameSproutEditorFinal * GetInstance();
+        ~GameSproutEditorFinal() override;
+
+        IGameSproutView * FindGameSproutView(const std::string & name) const override;
+        IGameSproutModule * FindGameSproutModule(const std::string & name) const override;
+
+        void Update();
+        void Release();
+
+    private:
+        GameSproutEditorFinal(GRHI::GRHIApi * const grhi);
+        GameSproutEditorFinal(const GameSproutEditorFinal&) = delete;
+        GameSproutEditorFinal& operator=(const GameSproutEditorFinal&) = delete;
+
+        bool Initialize();
+        bool LoadLibraries(const char* directory, bool views);
+
+        std::map<std::string, IGameSproutModule*> _ModuleMap;
+        std::map<std::string, IGameSproutView*> _ViewMap;
+        std::vector<QLibrary*> _Libraries;
+        GameSproutFinal* _Api = nullptr;
+        bool _Ready = false;
+
+        friend class GameSproutFinal;
+    };
+}
+
+#endif //__GameSproutEditorFinal_h__

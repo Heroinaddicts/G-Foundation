@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConsoleUIWindow</class>
+ <widget class="QMainWindow" name="ConsoleUIWindow">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>1000</width><height>480</height></rect></property>
+  <property name="minimumSize"><size><width>360</width><height>180</height></size></property>
+  <property name="windowTitle"><string>Console</string></property>
+  <property name="font"><font><pointsize>11</pointsize></font></property>
+  <property name="maximumLogEntries" stdset="0"><number>5000</number></property>
+  <property name="timeColumnWidth" stdset="0"><number>112</number></property>
+  <property name="levelColumnWidth" stdset="0"><number>88</number></property>
+  <property name="styleSheet">
+   <string notr="true">QMainWindow#ConsoleUIWindow, QWidget#consoleContent, QWidget#detailPanel {
+ background-color: #202124; color: #f1f3f5;
+}
+QToolButton {
+ color: #f1f3f5; background-color: #303237; border: 1px solid #484b52;
+ border-radius: 3px; padding: 4px 8px;
+}
+QToolButton:checked { background-color: #34445a; border-color: #8496b0; }
+QToolButton:hover { background-color: #3c4047; }
+QLineEdit {
+ background-color: #191a1d; color: #f1f3f5; border: 1px solid #484b52;
+ border-radius: 3px; padding: 4px 6px;
+ selection-background-color: #34445a; selection-color: #ffffff;
+}
+QLabel { color: #cbd0d6; }
+QTreeWidget {
+ background-color: #202124; alternate-background-color: #26282c;
+ color: #f1f3f5; border: none; selection-background-color: #34445a;
+}
+QTreeWidget::item { padding: 5px 4px; border-bottom: 1px solid #303237; }
+QTreeWidget::item:selected { background-color: #34445a; }
+QTreeWidget::item:hover:!selected { background-color: #2e3035; }
+QHeaderView::section {
+ background-color: #303237; color: #dbe0e6; border: none;
+ border-bottom: 1px solid #484b52; padding: 5px 4px;
+}
+QPlainTextEdit {
+ background-color: #191a1d; color: #f1f3f5; border: 1px solid #484b52;
+ selection-background-color: #34445a; selection-color: #ffffff;
+}
+QSplitter::handle { background-color: #484b52; }</string>
+  </property>
+  <widget class="QWidget" name="consoleContent">
+   <layout class="QVBoxLayout" name="consoleLayout">
+    <property name="spacing"><number>6</number></property>
+    <property name="leftMargin"><number>8</number></property>
+    <property name="topMargin"><number>8</number></property>
+    <property name="rightMargin"><number>8</number></property>
+    <property name="bottomMargin"><number>8</number></property>
+    <item>
+     <layout class="QHBoxLayout" name="actionsLayout">
+      <property name="spacing"><number>6</number></property>
+      <item><widget class="QToolButton" name="clearButton"><property name="text"><string>清空</string></property><property name="toolTip"><string>清空全部日志</string></property></widget></item>
+      <item><widget class="QToolButton" name="followButton"><property name="text"><string>跟随</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property><property name="toolTip"><string>在列表底部时跟随新日志；向上滚动可暂停跟随</string></property></widget></item>
+      <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>搜索日志…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
+      <item><widget class="QToolButton" name="filterButton">
+       <property name="text"><string>全部级别</string></property>
+       <property name="toolTip"><string>选择显示的日志级别（可多选）</string></property>
+       <property name="arrowType"><enum>Qt::DownArrow</enum></property>
+       <property name="toolButtonStyle"><enum>Qt::ToolButtonTextBesideIcon</enum></property>
+       <property name="iconSize"><size><width>12</width><height>12</height></size></property>
+      </widget></item>
+      <item><widget class="QLabel" name="summaryLabel"><property name="text"><string>0 条日志</string></property><property name="toolTip"><string>最多保留最近 5000 条日志</string></property></widget></item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QSplitter" name="consoleSplitter">
+      <property name="orientation"><enum>Qt::Vertical</enum></property>
+      <property name="handleWidth"><number>4</number></property>
+      <property name="childrenCollapsible"><bool>false</bool></property>
+      <widget class="QTreeWidget" name="logList">
+       <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>3</verstretch></sizepolicy></property>
+       <property name="minimumSize"><size><width>0</width><height>60</height></size></property>
+       <property name="alternatingRowColors"><bool>true</bool></property>
+       <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
+       <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
+       <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+       <property name="verticalScrollMode"><enum>QAbstractItemView::ScrollPerPixel</enum></property>
+       <property name="rootIsDecorated"><bool>false</bool></property>
+       <property name="uniformRowHeights"><bool>true</bool></property>
+       <property name="itemsExpandable"><bool>false</bool></property>
+       <property name="wordWrap"><bool>false</bool></property>
+       <attribute name="headerStretchLastSection"><bool>true</bool></attribute>
+       <column><property name="text"><string>时间</string></property></column>
+       <column><property name="text"><string>级别</string></property></column>
+       <column><property name="text"><string>日志</string></property></column>
+      </widget>
+      <widget class="QWidget" name="detailPanel">
+       <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property>
+       <layout class="QVBoxLayout" name="detailLayout">
+        <property name="spacing"><number>4</number></property>
+        <property name="leftMargin"><number>0</number></property>
+        <property name="topMargin"><number>4</number></property>
+        <property name="rightMargin"><number>0</number></property>
+        <property name="bottomMargin"><number>0</number></property>
+        <item><widget class="QLabel" name="detailLabel"><property name="text"><string>日志详情</string></property><property name="emptyText" stdset="0"><string>日志详情</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+        <item><widget class="QPlainTextEdit" name="detailText"><property name="readOnly"><bool>true</bool></property><property name="placeholderText"><string>选择日志查看完整内容，可选中文字复制。</string></property><property name="tabChangesFocus"><bool>true</bool></property></widget></item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

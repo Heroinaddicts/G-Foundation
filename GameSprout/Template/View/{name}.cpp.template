@@ -1,0 +1,34 @@
+#include "{name}.h"
+#include "ui_{name}.h"
+#include <QApplication>
+#include <QMainWindow>
+
+void {name}::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
+    g_Self = this;
+    g_GameSproutEditor = editor;
+    GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
+}
+
+bool {name}::Initialize(GameSprout::GameSproutEditor * const editor) {
+    return true;
+}
+
+bool {name}::Launch(GameSprout::GameSproutEditor * const editor) {
+    return true;
+}
+
+void {name}::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
+
+}
+
+void {name}::Show() {
+}
+
+void {name}::Hide() {
+}
+
+void {name}::Update(GameSprout::GameSproutEditor * const editor) {
+}
+
+void {name}::Release(GameSprout::GameSproutEditor * const editor) {
+}

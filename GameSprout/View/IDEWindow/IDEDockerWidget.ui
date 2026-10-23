@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerWidget</class>
+ <widget class="QDockWidget" name="DockerWidget">
+  <property name="features"><set>QDockWidget::DockWidgetClosable|QDockWidget::DockWidgetMovable|QDockWidget::DockWidgetFloatable</set></property>
+  <property name="allowedAreas"><set>Qt::AllDockWidgetAreas</set></property>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

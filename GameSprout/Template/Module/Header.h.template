@@ -1,0 +1,7 @@
+#pragma once
+#include "I{name}.h"
+UsingGameSprout;
+
+inline extern GameSproutApi * g_GameSproutApi = nullptr;
+class {name};
+inline extern {name} * g_Self = nullptr;

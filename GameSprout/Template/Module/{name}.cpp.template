@@ -1,0 +1,26 @@
+#include "{name}.h"
+
+void {name}::BeforeInitialize(GameSproutApi * const api) {
+    g_Self = this;
+}
+
+bool {name}::Initialize(GameSproutApi * const api) {
+    g_GameSproutApi = api;
+    return true;
+}
+
+bool {name}::Launch(GameSproutApi * const api)  {
+    return true;
+}
+
+void {name}::LaunchFinished(GameSproutApi * const api)  {
+
+}
+
+void {name}::Update(GameSproutApi * const api)  {
+    
+}
+
+void {name}::Release(GameSproutApi * const api)  {
+    
+}

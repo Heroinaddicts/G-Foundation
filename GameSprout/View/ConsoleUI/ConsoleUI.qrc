@@ -1,0 +1,5 @@
+<RCC>
+ <qresource prefix="/ConsoleUI">
+  <file alias="check.svg">Assets/check.svg</file>
+ </qresource>
+</RCC>
