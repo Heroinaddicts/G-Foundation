@@ -21,6 +21,8 @@ inline extern IProject * g_IProject = nullptr;
 inline extern IConsole * g_IConsole = nullptr;
 inline extern IIDEWindow * g_IIDEWindow = nullptr;
 
+#define META_EXTENSION ".meta"
+
 template<typename T>
 class Asset : public IAsset {
 public:

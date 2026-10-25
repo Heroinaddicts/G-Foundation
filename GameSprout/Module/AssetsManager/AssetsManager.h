@@ -22,10 +22,12 @@ private:
     static void OnFileCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
     static void OnFileDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
     static void OnFileModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFileRename(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
 
     static void OnFolderCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
     static void OnFolderDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
     static void OnFolderModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFolderRename(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
 
 private:
     std::string _AssetsRoot;

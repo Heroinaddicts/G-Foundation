@@ -73,12 +73,27 @@ IAsset * AssetsManager::QueryAsset(const IGuid * const guid) const {
 
 
 void AssetsManager::OnFileCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
+    if (META_EXTENSION == extension) {
+        return;
+    }
+
+    QString path = QString::fromStdString( event.Path + ".meta");
+
+    QFile file(path);
+
+    // 仅新建；文件已存在则失败，不覆盖。
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        qWarning() << "创建失败：" << path << file.errorString();
+    }
 }
 
 void AssetsManager::OnFileDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
 }
 
 void AssetsManager::OnFileModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
+}
+
+void AssetsManager::OnFileRename(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
 }
 
 void AssetsManager::OnFolderCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
@@ -88,17 +103,66 @@ void AssetsManager::OnFolderDelete(const Foundation::FileSystemWatcherEvent & ev
 }
 
 void AssetsManager::OnFolderModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
-
 }
+
+void AssetsManager::OnFolderRename(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
+}
+
 
 void AssetsManager::OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
     qInfo() << event.OldPath << event.Path << (int)event.Type << (int)event.Action;
 
     switch(event.Action) {
-    case eFileSystemAction::CreateDir:
-        WatcherDir(event.Path);
+    case eFileSystemAction::Create:
+        switch(event.Type) {
+        case Foundation::eWatcherType::Directory: {
+            OnFolderCreate(event, extension, context);
+            WatcherDir(event.Path);
+            break;
+        }
+        case Foundation::eWatcherType::File: {
+            OnFileCreate(event, extension, context);
+            break;
+        }
+        }
         break;
-    case Foundation::eFileSystemAction::ModifyDir: {
+    case Foundation::eFileSystemAction::Modify: {
+        switch(event.Type) {
+        case Foundation::eWatcherType::Directory: {
+            OnFolderModify(event, extension, context);
+            break;
+        }
+        case Foundation::eWatcherType::File: {
+            OnFileModify(event, extension, context);
+            break;
+        }
+        }
+        break;
+    }
+    case Foundation::eFileSystemAction::Delete: {
+        switch(event.Type) {
+        case Foundation::eWatcherType::Directory: {
+            OnFolderDelete(event, extension, context);
+            break;
+        }
+        case Foundation::eWatcherType::File: {
+            OnFileDelete(event, extension, context);
+            break;
+        }
+        }
+        break;
+    }
+    case Foundation::eFileSystemAction::Rename: {
+        switch(event.Type) {
+        case Foundation::eWatcherType::Directory: {
+            OnFolderRename(event, extension, context);
+            break;
+        }
+        case Foundation::eWatcherType::File: {
+            OnFileRename(event, extension, context);
+            break;
+        }
+        }
         break;
     }
     default:

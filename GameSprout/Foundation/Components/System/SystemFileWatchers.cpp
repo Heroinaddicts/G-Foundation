@@ -465,8 +465,7 @@ namespace Foundation {
             watch->PathsByIdentity[current.Identity].insert(path);
             if (current.Directory) {
                 RetireDirectoryTree(oldPath, false);
-                Queue(watch, oldPath, eFileSystemAction::Delete, true);
-                Queue(watch, path, eFileSystemAction::Create, true);
+                Queue(watch, path, eFileSystemAction::Rename, true, false, oldPath);
             } else {
                 const auto action = ExtensionCaseOnly(oldPath, path)
                     ? eFileSystemAction::Modify : eFileSystemAction::Rename;
