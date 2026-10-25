@@ -22,17 +22,22 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
-add_library(LocalDatabase SHARED
-    Header.h
-    ExportModule.cpp
-    LocalDatabase.cpp
-    LocalDatabase.h
-    LDBSession.cpp
-    LDBSession.hpp
-    LDBTable.cpp
-    LDBTable.hpp
-    CMakeLists.txt
+# Keep the target and IDE tree in sync when files are added or removed.
+file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.inl"
 )
+# Exclude build output, separately built dependencies and test entry points.
+list(FILTER module_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen|ThirdParty|Tests)/")
+list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+
+add_library(LocalDatabase SHARED ${module_files})
 target_compile_features(LocalDatabase PRIVATE cxx_std_20)
 target_link_libraries(LocalDatabase PRIVATE
     Foundation::FoundationApi
@@ -49,15 +54,7 @@ target_include_directories(LocalDatabase PRIVATE
 set_target_properties(LocalDatabase PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Header.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ExportModule.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LocalDatabase.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LocalDatabase.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LDBSession.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LDBSession.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LDBTable.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/LDBTable.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    ${module_files}
 )
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

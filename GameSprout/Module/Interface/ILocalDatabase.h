@@ -6,18 +6,25 @@
 
 #include <vector>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 // Sessions and their tables are used on a single thread; no internal synchronization.
 class ILDBTable {
 public:
     virtual ~ILDBTable() {}
+    using fVisitCallback = std::function<bool(const std::string& key, const void* const data, const int len)>;
 
     virtual bool IsExists(const std::string & key) const = 0;
     // Inserts or overwrites. A null buffer is valid only when len is zero.
     virtual bool Set(const std::string & key, void * const data, const int len) = 0;
     // Copies into caller-owned storage; failure clears data.
     virtual bool Get(const std::string & key, std::vector<uint8_t>& data) const = 0;
+    // Synchronous: true continues, false stops successfully; an empty table succeeds.
+    // Returns false for an empty callback, a closed session or a database read error.
+    // key/data are borrowed for the current callback only. Do not access, close or
+    // destroy the owning session/tables from the callback. Callback exceptions propagate.
+    virtual bool ForEach(const fVisitCallback& callback) const = 0;
 };
 
 class ILDBSession {

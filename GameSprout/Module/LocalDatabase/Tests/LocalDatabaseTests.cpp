@@ -6,10 +6,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -256,6 +258,83 @@ void TestAutomaticClose(ILocalDatabase& database, const std::filesystem::path& p
     ExpectValue(*records, "key", {0x12, 0x00, 0x34});
 }
 
+void TestIteration(ILocalDatabase& database, const std::filesystem::path& path) {
+    ILDBSession* session = database.CreateLDB(path.string());
+    Check(session != nullptr, "Cannot create iteration test database");
+    try {
+        ILDBTable& table = RequireTable(*session, "records");
+        int calls = 0;
+        Check(table.ForEach([&](const std::string&, const void*, int) {
+            ++calls;
+            return true;
+        }) && calls == 0, "Empty table iteration must succeed without callbacks");
+        Check(!table.ForEach({}), "An empty iteration callback must be rejected");
+
+        const std::string binaryKey("asset\0key", 9);
+        const std::map<std::string, Bytes> expected{
+            {"empty", {}}, {binaryKey, {0x00, 0x7F, 0xFF, 0x00}},
+            {"ordinary", {0x12, 0x34}}
+        };
+        for (const auto& entry : expected)
+            Put(table, entry.first, entry.second);
+        Put(RequireTable(*session, "other"), "other-table-only", {0x55});
+
+        std::map<std::string, Bytes> visited;
+        const auto caller = std::this_thread::get_id();
+        Check(table.ForEach([&](const std::string& key, const void* data, int len) {
+            Check(std::this_thread::get_id() == caller, "Iteration callback changed threads");
+            Check(len >= 0 && (len == 0 || data != nullptr), "Invalid iteration buffer");
+            Bytes copy;
+            if (len > 0) {
+                const auto* begin = static_cast<const uint8_t*>(data);
+                copy.assign(begin, begin + len);
+            }
+            Check(visited.emplace(key, std::move(copy)).second, "Iteration duplicated a key");
+            return true;
+        }), "Complete iteration failed");
+        Check(visited == expected, "Iteration lost binary data or crossed table boundaries");
+
+        for (int round = 0; round < 8; ++round) {
+            calls = 0;
+            Check(table.ForEach([&](const std::string&, const void*, int) {
+                ++calls;
+                return false;
+            }) && calls == 1, "Early termination must succeed after one callback");
+
+            bool caught = false;
+            try {
+                table.ForEach([](const std::string&, const void*, int) -> bool {
+                    throw std::runtime_error("iteration callback failed");
+                });
+            } catch (const std::runtime_error& error) {
+                caught = std::string(error.what()) == "iteration callback failed";
+            }
+            Check(caught, "Iteration swallowed the callback exception");
+            calls = 0;
+            Check(table.ForEach([&](const std::string&, const void*, int) {
+                ++calls;
+                return true;
+            }) && calls == static_cast<int>(expected.size()),
+                "Early stop or exception leaked the read transaction");
+        }
+        Put(table, "after-iteration", {0xA5});
+        ExpectValue(table, "after-iteration", {0xA5});
+        for (const auto& entry : expected)
+            ExpectValue(table, entry.first, entry.second);
+
+        session->Close();
+        calls = 0;
+        Check(!table.ForEach([&](const std::string&, const void*, int) {
+            ++calls;
+            return true;
+        }) && calls == 0, "Closed session must reject iteration without callbacks");
+    } catch (...) {
+        delete session;
+        throw;
+    }
+    delete session;
+}
+
 } // namespace
 
 int main() {
@@ -270,6 +349,8 @@ int main() {
         std::cout << "[PASS] Persistence, idempotent Close, and closed wrappers\n";
         TestAutomaticClose(*database, temporary.Path() / "automatic-close");
         std::cout << "[PASS] Session destructor closes and persists\n";
+        TestIteration(*database, temporary.Path() / "iteration");
+        std::cout << "[PASS] Iteration, early stop, binary data, callback exceptions and cleanup\n";
         std::cout << "All LocalDatabase tests passed.\n";
         return 0;
     } catch (const std::exception& error) {

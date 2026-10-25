@@ -139,17 +139,15 @@ namespace Foundation {
     };
 
     enum class eFileSystemAction : uint8_t {
-        CreateDir = 0,
-        DeteleDir = 1,
-        CreateFile = 2,
-        ModifyFile = 3,
-        DeleteFile = 4,
-        Rename = 5 // Files only. Directory renames emit DeteleDir then CreateDir.
+        Create = 0,
+        Modify= 1,
+        Delete = 2,
+        Rename = 3 // Files only. Directory renames emit DeteleDir then CreateDir.
     };
 
     struct FileSystemWatcherEvent {
         eWatcherType Type = eWatcherType::File;
-        eFileSystemAction Action = eFileSystemAction::ModifyFile;
+        eFileSystemAction Action = eFileSystemAction::Modify;
         std::string Path;    // Current absolute UTF-8 path; deleted path for deletion.
         std::string OldPath; // Files only: set for Rename / extension-case-only ModifyFile.
     };

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __LDBSession_h__
+#define __LDBSession_h__
 
 #include "ILocalDatabase.h"
 #include <lmdb.h>
@@ -29,8 +30,10 @@ private:
     LDBTable * OpenTable(const std::string & name, bool create);
     bool IsValidKey(const std::string & key) const;
 
-    MDB_env * _Environment;
+    MDB_env * const _Environment;
     const std::filesystem::path _Path;
     const size_t _MaxKeySize;
     std::unordered_map<std::string, LDBTable *> _Tables;
 };
+
+#endif //__LDBSession_h__

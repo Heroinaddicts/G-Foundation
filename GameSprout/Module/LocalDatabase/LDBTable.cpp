@@ -1,7 +1,8 @@
-#include "LDBTable.hpp"
-#include "LDBSession.hpp"
+#include "LDBTable.h"
+#include "LDBSession.h"
 
 #include <QDebug>
+#include <limits>
 
 namespace {
 bool ReportError(const char * operation, int result) {
@@ -21,12 +22,57 @@ bool LDBTable::Get(const std::string & key, std::vector<uint8_t> & data) const {
     return Read(key, &data);
 }
 
-bool LDBTable::Read(const std::string & key, std::vector<uint8_t> * data) const {
-    if (!_Owner._Environment || !_Owner.IsValidKey(key))
+bool LDBTable::ForEach(const fVisitCallback & callback) const {
+    if (!_Owner->_Environment || !callback)
         return false;
 
     MDB_txn * transaction = nullptr;
-    int result = mdb_txn_begin(_Owner._Environment, nullptr, MDB_RDONLY, &transaction);
+    int result = mdb_txn_begin(_Owner->_Environment, nullptr, MDB_RDONLY, &transaction);
+    if (!ReportError("begin iteration transaction", result))
+        return false;
+
+    MDB_cursor * cursor = nullptr;
+    result = mdb_cursor_open(transaction, _Database, &cursor);
+    if (result != MDB_SUCCESS) {
+        mdb_txn_abort(transaction);
+        return ReportError("open iteration cursor", result);
+    }
+
+    bool success = true;
+    try {
+        MDB_val key{}, value{};
+        result = mdb_cursor_get(cursor, &key, &value, MDB_FIRST);
+        while (result == MDB_SUCCESS) {
+            if (value.mv_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+                qWarning("LocalDatabase ForEach: value exceeds the callback length limit");
+                success = false;
+                break;
+            }
+
+            const std::string currentKey(static_cast<const char *>(key.mv_data), key.mv_size);
+            if (!callback(currentKey, value.mv_data, static_cast<int>(value.mv_size)))
+                break;
+
+            result = mdb_cursor_get(cursor, &key, &value, MDB_NEXT);
+        }
+        if (result != MDB_SUCCESS && result != MDB_NOTFOUND)
+            success = ReportError("iterate table", result);
+    } catch (...) {
+        mdb_cursor_close(cursor);
+        mdb_txn_abort(transaction);
+        throw;
+    }
+    mdb_cursor_close(cursor);
+    mdb_txn_abort(transaction);
+    return success;
+}
+
+bool LDBTable::Read(const std::string & key, std::vector<uint8_t> * data) const {
+    if (!_Owner->_Environment || !_Owner->IsValidKey(key))
+        return false;
+
+    MDB_txn * transaction = nullptr;
+    int result = mdb_txn_begin(_Owner->_Environment, nullptr, MDB_RDONLY, &transaction);
     if (!ReportError("begin read transaction", result))
         return false;
 
@@ -57,11 +103,11 @@ bool LDBTable::Set(const std::string & key, void * const data, const int len) {
     if (len < 0 || (len > 0 && !data))
         return false;
 
-    if (!_Owner._Environment || !_Owner.IsValidKey(key))
+    if (!_Owner->_Environment || !_Owner->IsValidKey(key))
         return false;
 
     MDB_txn * transaction = nullptr;
-    int result = mdb_txn_begin(_Owner._Environment, nullptr, 0, &transaction);
+    int result = mdb_txn_begin(_Owner->_Environment, nullptr, 0, &transaction);
     if (!ReportError("begin write transaction", result))
         return false;
 

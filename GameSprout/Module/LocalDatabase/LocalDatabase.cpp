@@ -1,5 +1,5 @@
 #include "LocalDatabase.h"
-#include "LDBSession.hpp"
+#include "LDBSession.h"
 
 ILDBSession * LocalDatabase::CreateLDB(const std::string & path) {
     return LDBSession::Create(path);

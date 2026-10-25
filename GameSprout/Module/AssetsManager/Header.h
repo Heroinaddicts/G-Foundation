@@ -43,3 +43,20 @@ private:
     T * _Meta = nullptr;
 };
 
+struct AssetMetaInfo {
+    std::string _Guid;
+    uint64_t _CreateTick;
+    uint64_t _ModifyTick;
+    std::string _MD5;
+};
+
+struct AssetInfo {
+    std::string _Name;
+    std::string _Path;
+    uint64_t _CreateTick;
+    uint64_t _ModifyTick;
+    std::string _MD5;
+    AssetMetaInfo _AssetMetaInfo;
+};
+
+

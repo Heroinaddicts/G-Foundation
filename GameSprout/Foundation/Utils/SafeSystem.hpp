@@ -143,8 +143,10 @@ namespace FoundationUtils {
             };
 
             // Append files and directories; return the number of entries appended.
-            // _Name includes the file extension; directories have an empty _Externsion.
-            // Extension filters apply only to files. Rejected directories are not traversed.
+            // Files: _Name excludes the final extension; _Externsion has no leading dot.
+            // Directories keep their complete name and have an empty _Externsion.
+            // Extension filters also omit the dot and apply only to files; "*" accepts all.
+            // Rejected directories are not traversed.
             // The input directory itself is not returned; recursive=false lists direct children only.
             int EnumerateDirectory(const std::string& directory, const std::string& extension, OUT std::vector<FileInfo>& files, bool recursive = true, const std::set<std::string>& rejectDirectories = {}, const std::set<std::string>& rejectExtensions = {});
         }
@@ -499,14 +501,24 @@ namespace FoundationUtils {
 #endif
             }
 
+            std::string ExtensionWithoutDot(const std::filesystem::path& path) {
+                std::string extension = PathToUtf8(path.extension());
+                if (!extension.empty()) {
+                    extension.erase(0, 1);
+                }
+                return extension;
+            }
+
             bool IsExtensionAccepted(const std::filesystem::path& path, const std::string& extension, const std::set<std::string>& rejectExtensions) {
-                const std::string fileExtension = PathToUtf8(path.extension());
+                const std::string fileExtension = ExtensionWithoutDot(path);
                 return (extension == "*" || fileExtension == extension) && rejectExtensions.find(fileExtension) == rejectExtensions.end();
             }
 
             void AppendDirectoryEntry(const std::filesystem::path& path, const bool isDirectory, std::vector<FileInfo>& files) {
+                const std::string extension = isDirectory ? std::string() : ExtensionWithoutDot(path);
                 files.emplace_back(isDirectory, PathToUtf8(path.parent_path()),
-                    PathToUtf8(path.filename()), isDirectory ? std::string() : PathToUtf8(path.extension()));
+                    PathToUtf8(isDirectory || extension.empty() ? path.filename() : path.stem()),
+                    extension);
             }
 
             const std::string& GetCurrentExecutablePath() {

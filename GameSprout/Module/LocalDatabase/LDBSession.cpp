@@ -1,5 +1,5 @@
-#include "LDBSession.hpp"
-#include "LDBTable.hpp"
+#include "LDBSession.h"
+#include "LDBTable.h"
 
 #include <QDebug>
 #include <algorithm>
@@ -59,42 +59,41 @@ LDBSession * LDBSession::Open(const std::string & path) {
 }
 
 LDBSession * LDBSession::OpenInternal(const std::string & path, bool create) {
-    namespace fs = std::filesystem;
     if (path.empty() || path.find('\0') != std::string::npos)
         return nullptr;
 
     std::error_code error;
     const std::u8string utf8Input(path.begin(), path.end());
-    fs::path directory = fs::absolute(fs::path(utf8Input), error);
+    std::filesystem::path directory = std::filesystem::absolute(std::filesystem::path(utf8Input), error);
     if (error)
         return nullptr;
 
     if (create) {
-        fs::create_directories(directory, error);
+        std::filesystem::create_directories(directory, error);
         if (error)
             return nullptr;
     }
-    if (!fs::is_directory(directory, error) || error)
+    if (!std::filesystem::is_directory(directory, error) || error)
         return nullptr;
 
-    directory = fs::canonical(directory, error);
+    directory = std::filesystem::canonical(directory, error);
     if (error || !ReservePath(directory))
         return nullptr;
 
     MDB_env * environment = nullptr;
     try {
-        const fs::path databaseFile = directory / "data.mdb";
-        const fs::file_status status = fs::symlink_status(databaseFile, error);
+        const std::filesystem::path databaseFile = directory / "data.mdb";
+        const std::filesystem::file_status status = std::filesystem::symlink_status(databaseFile, error);
         if (error == std::errc::no_such_file_or_directory)
             error.clear();
-        const bool exists = status.type() != fs::file_type::not_found;
+        const bool exists = status.type() != std::filesystem::file_type::not_found;
         if (error || (create && exists) ||
-            (!create && (!exists || !fs::is_regular_file(databaseFile, error))) || error) {
+            (!create && (!exists || !std::filesystem::is_regular_file(databaseFile, error))) || error) {
             ReleasePath(directory);
             return nullptr;
         }
         // LMDB initializes zero-byte files; Open must reject them rather than create a new DB.
-        if (!create && (fs::file_size(databaseFile, error) == 0 || error)) {
+        if (!create && (std::filesystem::file_size(databaseFile, error) == 0 || error)) {
             ReleasePath(directory);
             return nullptr;
         }
@@ -172,7 +171,7 @@ LDBTable * LDBSession::OpenTable(const std::string & name, bool create) {
 
     LDBTable * table = nullptr;
     try {
-        table = new LDBTable(*this, database);
+        table = new LDBTable(this, database);
         _Tables.emplace(name, table);
     } catch (...) {
         delete table;
@@ -191,7 +190,6 @@ void LDBSession::Close() {
         return;
 
     mdb_env_close(_Environment);
-    _Environment = nullptr;
     ReleasePath(_Path);
     // Wrappers stay alive until this session is destroyed; they now reject operations.
 }

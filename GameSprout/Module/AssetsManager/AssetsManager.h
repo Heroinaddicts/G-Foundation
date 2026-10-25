@@ -19,6 +19,14 @@ private:
     static void WatcherDir(const std::string & path);
     static void OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
 
+    static void OnFileCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFileDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFileModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+
+    static void OnFolderCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFolderDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+    static void OnFolderModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+
 private:
     std::string _AssetsRoot;
     std::unordered_map<std::string, IAsset *> _Assets;

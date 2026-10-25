@@ -17,19 +17,17 @@
 
 namespace Foundation {
     namespace {
-        namespace fs = std::filesystem;
-
-        fs::path NativePath(const std::string& value) {
-            return fs::path(std::u8string(value.begin(), value.end()));
+        std::filesystem::path NativePath(const std::string& value) {
+            return std::filesystem::path(std::u8string(value.begin(), value.end()));
         }
 
-        std::string Utf8Path(const fs::path& value) {
+        std::string Utf8Path(const std::filesystem::path& value) {
             const std::u8string text = value.generic_u8string();
             return std::string(text.begin(), text.end());
         }
 
         bool ExtensionCaseOnly(const std::string& oldPath, const std::string& newPath) {
-            const fs::path oldName = NativePath(oldPath), newName = NativePath(newPath);
+            const std::filesystem::path oldName = NativePath(oldPath), newName = NativePath(newPath);
             if (oldName.parent_path() != newName.parent_path() || oldName.stem() != newName.stem()) {
                 return false;
             }
@@ -126,8 +124,8 @@ namespace Foundation {
 
         bool ScanChildren(const std::string& path, std::map<std::string, Entry>& entries) {
             std::error_code error;
-            fs::directory_iterator iterator(NativePath(path), error);
-            const fs::directory_iterator end;
+            std::filesystem::directory_iterator iterator(NativePath(path), error);
+            const std::filesystem::directory_iterator end;
             if (error) {
                 return false;
             }
@@ -151,13 +149,6 @@ namespace Foundation {
             return true;
         }
 
-        eFileSystemAction Created(const bool directory) {
-            return directory ? eFileSystemAction::CreateDir : eFileSystemAction::CreateFile;
-        }
-
-        eFileSystemAction Deleted(const bool directory) {
-            return directory ? eFileSystemAction::DeteleDir : eFileSystemAction::DeleteFile;
-        }
     }
 
     struct SystemFileWatchers::State {
@@ -336,7 +327,7 @@ namespace Foundation {
             const bool terminal =
                 NativePath(actual).parent_path() != NativePath(watch->Path).parent_path();
             const auto action = ExtensionCaseOnly(watch->Path, actual)
-                ? eFileSystemAction::ModifyFile : eFileSystemAction::Rename;
+                ? eFileSystemAction::Modify : eFileSystemAction::Rename;
             Queue(watch, actual, action, current.Directory, terminal, watch->Path);
             if (terminal) {
                 CloseWatch(watch);
@@ -400,7 +391,7 @@ namespace Foundation {
             }
             if (state != EntryResult::Present || current.Directory != watch->Self.Directory ||
                 (actual != watch->Path && current.Identity != watch->Self.Identity)) {
-                Queue(watch, watch->Path, Deleted(watch->Self.Directory), watch->Self.Directory, true);
+                Queue(watch, watch->Path, eFileSystemAction::Delete, watch->Self.Directory, true);
                 CloseWatch(watch);
                 return false;
             }
@@ -408,7 +399,7 @@ namespace Foundation {
                 return RenameSelf(watch, actual, current);
             }
             if (!current.Directory && FileChanged(watch->Self, current)) {
-                Queue(watch, watch->Path, eFileSystemAction::ModifyFile, false);
+                Queue(watch, watch->Path, eFileSystemAction::Modify, false);
             }
             watch->Self = current;
             return true;
@@ -430,7 +421,7 @@ namespace Foundation {
                 if (found->second.Directory) {
                     RetireDirectoryTree(path, true);
                 }
-                Queue(watch, path, Deleted(found->second.Directory), found->second.Directory);
+                Queue(watch, path, eFileSystemAction::Delete, found->second.Directory);
                 RemoveIndex(watch, found->second.Identity, path);
                 watch->Children.erase(found);
             }
@@ -474,11 +465,11 @@ namespace Foundation {
             watch->PathsByIdentity[current.Identity].insert(path);
             if (current.Directory) {
                 RetireDirectoryTree(oldPath, false);
-                Queue(watch, oldPath, eFileSystemAction::DeteleDir, true);
-                Queue(watch, path, eFileSystemAction::CreateDir, true);
+                Queue(watch, oldPath, eFileSystemAction::Delete, true);
+                Queue(watch, path, eFileSystemAction::Create, true);
             } else {
                 const auto action = ExtensionCaseOnly(oldPath, path)
-                    ? eFileSystemAction::ModifyFile : eFileSystemAction::Rename;
+                    ? eFileSystemAction::Modify : eFileSystemAction::Rename;
                 Queue(watch, path, action, false, false, oldPath);
             }
             return true;
@@ -494,11 +485,11 @@ namespace Foundation {
                 previous = watch->Children.end();
             }
             if (previous == watch->Children.end()) {
-                Queue(watch, actual, Created(current.Directory), current.Directory);
+                Queue(watch, actual, eFileSystemAction::Create, current.Directory);
                 watch->Children.emplace(actual, current);
             } else {
                 if (!current.Directory && FileChanged(previous->second, current)) {
-                    Queue(watch, actual, eFileSystemAction::ModifyFile, false);
+                    Queue(watch, actual, eFileSystemAction::Modify, false);
                 }
                 if (previous->second.Identity != current.Identity) {
                     RemoveIndex(watch, previous->second.Identity, actual);
@@ -620,7 +611,7 @@ namespace Foundation {
                     if (!filename || status < 0) {
                         watch->RescanParent = true;
                     } else {
-                        const fs::path relative = NativePath(filename).lexically_normal();
+                        const std::filesystem::path relative = NativePath(filename).lexically_normal();
                         if (!relative.empty() && relative != "." && relative != ".." &&
                             !relative.is_absolute() && !relative.has_parent_path()) {
                             watch->ParentCandidates.insert(Utf8Path(NativePath(watch->ParentPath) / relative));
@@ -629,7 +620,7 @@ namespace Foundation {
                 } else if (!filename || status < 0) {
                     watch->RescanChildren = true;
                 } else {
-                    const fs::path relative = NativePath(filename).lexically_normal();
+                    const std::filesystem::path relative = NativePath(filename).lexically_normal();
                     if (relative.empty() || relative == "." || relative == ".." ||
                         relative.is_absolute() || relative.has_parent_path()) {
                         return;
