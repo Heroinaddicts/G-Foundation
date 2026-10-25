@@ -153,7 +153,7 @@ namespace Foundation {
     };
 
     // event/extension are borrowed for this call; copy them to retain them.
-    // extension is Path's final suffix including '.', preserving case (e.g. ".PNG").
+    // extension is Path's final suffix without '.', preserving case (e.g. "PNG").
     // Directories and files with no extension receive ""; deleted files use Path's suffix.
     typedef std::function<void(const FileSystemWatcherEvent& event,
                                const std::string& extension, void* context)> fOnWatcherCallback;

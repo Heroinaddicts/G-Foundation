@@ -277,10 +277,14 @@ namespace Foundation {
         void Queue(Watch* watch, const std::string& path,
                    const eFileSystemAction action, const bool directory,
                    const bool terminal = false, const std::string& oldPath = {}) {
+            std::string extension = directory ? std::string() : Utf8Path(NativePath(path).extension());
+            if (!extension.empty()) {
+                extension.erase(0, 1);
+            }
             Queue(new Event{watch->ID,
                 {directory ? eWatcherType::Directory : eWatcherType::File,
                  action, path, oldPath},
-                directory ? std::string{} : Utf8Path(NativePath(path).extension()), terminal});
+                std::move(extension), terminal});
         }
 
         void EndDirectoryWatch(Watch* watch, const bool removed) {

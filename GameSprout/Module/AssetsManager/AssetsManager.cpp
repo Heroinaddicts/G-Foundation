@@ -88,6 +88,11 @@ void AssetsManager::OnFileCreate(const Foundation::FileSystemWatcherEvent & even
 }
 
 void AssetsManager::OnFileDelete(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
+    if (META_EXTENSION == extension) {
+
+    } else {
+        QFile::remove(QString::fromStdString(event.Path + "." + META_EXTENSION));
+    }
 }
 
 void AssetsManager::OnFileModify(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {

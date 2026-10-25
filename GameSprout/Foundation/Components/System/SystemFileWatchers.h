@@ -7,6 +7,7 @@ namespace Foundation {
     // Created, registered, dispatched and stopped on the main thread.
     // The implementation owns the native listener thread and its SPSC event queue.
     // Type distinguishes files/directories; Action is Create, Modify, Delete or Rename.
+    // Callback extensions omit the leading dot and preserve case; directories use "".
     // Directory renames report one Rename with Path and OldPath, without child deletions.
     // Affected directory watches end silently; register the new paths to keep watching.
     // A removed watched directory reports its cached direct children as deleted,
