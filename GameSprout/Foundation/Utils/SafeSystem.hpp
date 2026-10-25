@@ -145,7 +145,8 @@ namespace FoundationUtils {
             // Append files and directories; return the number of entries appended.
             // _Name includes the file extension; directories have an empty _Externsion.
             // Extension filters apply only to files. Rejected directories are not traversed.
-            int GetFileInDirectory(const std::string& directory, const std::string& extension, OUT std::vector<FileInfo>& files, bool recursive = true, const std::set<std::string>& rejectDirectories = {}, const std::set<std::string>& rejectExtensions = {});
+            // The input directory itself is not returned; recursive=false lists direct children only.
+            int EnumerateDirectory(const std::string& directory, const std::string& extension, OUT std::vector<FileInfo>& files, bool recursive = true, const std::set<std::string>& rejectDirectories = {}, const std::set<std::string>& rejectExtensions = {});
         }
     }
 }
@@ -503,7 +504,7 @@ namespace FoundationUtils {
                 return (extension == "*" || fileExtension == extension) && rejectExtensions.find(fileExtension) == rejectExtensions.end();
             }
 
-            void AppendFile(const std::filesystem::path& path, const bool isDirectory, std::vector<FileInfo>& files) {
+            void AppendDirectoryEntry(const std::filesystem::path& path, const bool isDirectory, std::vector<FileInfo>& files) {
                 files.emplace_back(isDirectory, PathToUtf8(path.parent_path()),
                     PathToUtf8(path.filename()), isDirectory ? std::string() : PathToUtf8(path.extension()));
             }
@@ -550,7 +551,7 @@ namespace FoundationUtils {
                 return !std::filesystem::exists(filePath, error) || std::filesystem::remove(filePath, error);
             }
 
-            int GetFileInDirectory(const std::string& directory, const std::string& extension, std::vector<FileInfo>& files, const bool recursive, const std::set<std::string>& rejectDirectories, const std::set<std::string>& rejectExtensions) {
+            int EnumerateDirectory(const std::string& directory, const std::string& extension, std::vector<FileInfo>& files, const bool recursive, const std::set<std::string>& rejectDirectories, const std::set<std::string>& rejectExtensions) {
                 std::error_code error;
                 const std::filesystem::path root = PathFromUtf8(directory);
                 if (!std::filesystem::is_directory(root, error)) {
@@ -568,11 +569,11 @@ namespace FoundationUtils {
                                 iterator.disable_recursion_pending();
                             }
                             else {
-                                AppendFile(entry.path(), true, files);
+                                AppendDirectoryEntry(entry.path(), true, files);
                             }
                         }
                         else if (entry.is_regular_file(error) && IsExtensionAccepted(entry.path(), extension, rejectExtensions)) {
-                            AppendFile(entry.path(), false, files);
+                            AppendDirectoryEntry(entry.path(), false, files);
                         }
                         iterator.increment(error);
                     }
@@ -584,11 +585,11 @@ namespace FoundationUtils {
                         const std::filesystem::directory_entry& entry = *iterator;
                         if (entry.is_directory(error)) {
                             if (rejectDirectories.find(PathToUtf8(entry.path().filename())) == rejectDirectories.end()) {
-                                AppendFile(entry.path(), true, files);
+                                AppendDirectoryEntry(entry.path(), true, files);
                             }
                         }
                         else if (entry.is_regular_file(error) && IsExtensionAccepted(entry.path(), extension, rejectExtensions)) {
-                            AppendFile(entry.path(), false, files);
+                            AppendDirectoryEntry(entry.path(), false, files);
                         }
                         iterator.increment(error);
                     }

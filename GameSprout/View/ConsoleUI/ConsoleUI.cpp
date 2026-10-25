@@ -94,15 +94,17 @@ void ConsoleUI::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
 }
 
 void ConsoleUI::ConsoleLog(const char * file, const int line, const eConsoleLog e, const std::string & log) {
-    const QString message = QStringLiteral("%1:%2 >> %3").arg(
-        QString::fromUtf8(file), QString::number(line),
-        QString::fromUtf8(log.data(), static_cast<int>(log.size())));
-    qCritical().noquote() << message;
+    const QString message = QString::fromUtf8(log.data(), static_cast<int>(log.size()));
+    const QString sourceFile = QString::fromUtf8(file);
+    const QString location = sourceFile.isEmpty() ? QString()
+        : QStringLiteral("%1:%2").arg(sourceFile).arg(line);
+    qCritical().noquote() << (location.isEmpty() ? message
+        : QStringLiteral("%1 >> %2").arg(location, message));
     if (!_Dispatch) {
         return;
     }
-    QMetaObject::invokeMethod(_Dispatch, [this, e, message]() {
-        AppendLog(e, message);
+    QMetaObject::invokeMethod(_Dispatch, [this, e, message, location]() {
+        AppendLog(e, message, location);
     }, Qt::AutoConnection);
 }
 
@@ -154,13 +156,14 @@ QCheckBox* ConsoleUI::LevelCheckBox(eConsoleLog level) const {
     return _Filters ? _Filters->LevelCheckBox(level) : nullptr;
 }
 
-bool ConsoleUI::MatchesFilters(eConsoleLog level, const QString& message) const {
+bool ConsoleUI::MatchesFilters(eConsoleLog level, const QString& message, const QString& location) const {
     const QCheckBox* button = LevelCheckBox(level);
     return button && button->isChecked() &&
-        message.contains(_Ui->searchEdit->text(), Qt::CaseInsensitive);
+        (message.contains(_Ui->searchEdit->text(), Qt::CaseInsensitive) ||
+         location.contains(_Ui->searchEdit->text(), Qt::CaseInsensitive));
 }
 
-void ConsoleUI::AppendLog(eConsoleLog level, const QString& message) {
+void ConsoleUI::AppendLog(eConsoleLog level, const QString& message, const QString& location) {
     QCheckBox* button = LevelCheckBox(level);
     if (!_Window || !button) {
         return;
@@ -179,13 +182,15 @@ void ConsoleUI::AppendLog(eConsoleLog level, const QString& message) {
     item->setText(0, QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")));
     item->setText(1, button->property("levelName").toString());
     item->setText(2, message.section(QLatin1Char('\n'), 0, 0).remove(QLatin1Char('\r')));
+    item->setToolTip(2, message);
     item->setData(0, Qt::UserRole, static_cast<int>(level));
     item->setData(0, Qt::UserRole + 1, message);
+    item->setData(0, Qt::UserRole + 2, location);
     const QColor color = button->property("logColor").value<QColor>();
-    for (int column = 0; column < 3; ++column) {
+    for (int column = 0; column < list->columnCount(); ++column) {
         item->setForeground(column, color);
     }
-    item->setHidden(!MatchesFilters(level, message));
+    item->setHidden(!MatchesFilters(level, message, location));
     ++_Counts[static_cast<int>(level)];
     UpdateCounters();
     if (follow && !item->isHidden()) {
@@ -201,7 +206,8 @@ void ConsoleUI::ApplyFilters() {
         QTreeWidgetItem* item = _Ui->logList->topLevelItem(index);
         item->setHidden(!MatchesFilters(
             static_cast<eConsoleLog>(item->data(0, Qt::UserRole).toInt()),
-            item->data(0, Qt::UserRole + 1).toString()));
+            item->data(0, Qt::UserRole + 1).toString(),
+            item->data(0, Qt::UserRole + 2).toString()));
     }
     if (_Ui->logList->currentItem() && _Ui->logList->currentItem()->isHidden()) {
         _Ui->logList->setCurrentItem(nullptr);
@@ -240,6 +246,9 @@ void ConsoleUI::UpdateDetails() {
     _Ui->detailLabel->setText(item
         ? QStringLiteral("[%1] %2").arg(item->text(1), item->text(0))
         : _Ui->detailLabel->property("emptyText").toString());
+    const QString location = item ? item->data(0, Qt::UserRole + 2).toString() : QString();
+    _Ui->sourceLocationLabel->setText(location);
+    _Ui->sourceLocationLabel->setToolTip(location);
 }
 
 void ConsoleUI::ClearLogs() {

@@ -79,6 +79,11 @@ void IDEWindow::Unloading() {
     }
 }
 
+void IDEWindow::SetLoadingInfo(const std::string & title, const std::string & desc) {
+    _LoadingOverlay->Begin(QString::fromStdString(title));
+    _LoadingOverlay->SetDescription(QString::fromStdString(desc));
+}
+
 void IDEWindow::Show() {
     if (!_Window) {
         return;

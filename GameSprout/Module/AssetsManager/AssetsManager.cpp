@@ -1,25 +1,25 @@
 #include "AssetsManager.h"
-#include "Asset.h"
-#include "TextureAssetFactory.h"
+#include "TextureAssetFactory.hpp"
 
 bool AssetsManager::Initialize(GameSproutApi * const api) {
     g_GameSproutApi = api;
     GetGameSproutModule(api->_EditorApi, g_IProject, Project);
     GetGameSproutModule(api->_EditorApi, g_IConsole, Console);
+    GetGameSproutView(api->_EditorApi, g_IIDEWindow, IDEWindow);
 
     GSRegLaunchedCallback(
         g_IProject,
         [&](GameSproutApi * const api) -> bool {
             if (api->_Foundation->GetLaunchArg("IsNewProject")) {
                 QDir dir(QString::fromStdString(g_IProject->GetProjectRoot()));
-                this->_AssetsRoot = QString::fromStdString(g_IProject->GetProjectRoot() + "/Assets");
-                GameSproutConsoleLog(g_IConsole, eConsoleLog::Trace, "New Project Create Assets Dir {}", this->_AssetsRoot.toStdString());
+                this->_AssetsRoot = QString::fromStdString(g_IProject->GetProjectRoot() + "/Assets").toStdString();
+                GameSproutConsoleLog(g_IConsole, eConsoleLog::Trace, "New Project Create Assets Dir {}", this->_AssetsRoot);
                 return dir.mkdir("Assets");
             }
 
-            this->_AssetsRoot = QString::fromStdString(g_IProject->GetProjectRoot() + "/Assets");
-            GameSproutConsoleLog(g_IConsole, eConsoleLog::Trace, "Project Assets Dir {}", this->_AssetsRoot.toStdString());
-            QDir dir(this->_AssetsRoot);
+            this->_AssetsRoot = QString::fromStdString(g_IProject->GetProjectRoot() + "/Assets").toStdString();
+            GameSproutConsoleLog(g_IConsole, eConsoleLog::Trace, "Project Assets Dir {}", this->_AssetsRoot);
+            QDir dir(QString::fromStdString(this->_AssetsRoot));
             return dir.exists();
         }
     );
@@ -40,7 +40,7 @@ void AssetsManager::WatcherDir(const std::string & path) {
     );
 
     std::vector<FoundationUtils::SafeSystem::File::FileInfo> files;
-    int count = FoundationUtils::SafeSystem::File::GetFileInDirectory(path, "*", files, false);
+    int count = FoundationUtils::SafeSystem::File::EnumerateDirectory(path, "*", files, false);
     for(int i=0; i<count; i++) {
         if (files[i]._IsDirectory) {
             WatcherDir(files[i]._ParentDirectory + "/" + files[i]._Name);
@@ -49,25 +49,13 @@ void AssetsManager::WatcherDir(const std::string & path) {
 }
 
 void AssetsManager::LaunchFinished(GameSproutApi * const api)  {
-    WatcherDir(_AssetsRoot.toStdString());
+    WatcherDir(_AssetsRoot);
 
-    GetGameSproutView(api->_EditorApi, g_IIDEWindow, IDEWindow);
-
-    Foundation::ITaskGroup * group = api->_Foundation->TaskApi()->CreateTaskGroup();
-    for(int i =0; i<1000; i++) {
-        g_IIDEWindow->Loading("Test", "Test");
-        group->AddTask(
-            [](OUT Int64& code, ITaskContext&){
-                FoundationUtils::SafeSystem::Time::MillisecondSleep(100);
-                return true;
-            },
-            [](const TaskCompletion&, bool succeed, const ITaskContext&) {
-                g_IIDEWindow->Unloading();
-            }
-        );
+    std::vector<FoundationUtils::SafeSystem::File::FileInfo> infos;
+    int count = FoundationUtils::SafeSystem::File::EnumerateDirectory(_AssetsRoot, "*", infos, true, {}, {".meta"});
+    for(int i=0; i<count; i++) {
+        GameSproutConsoleLog(g_IConsole, eConsoleLog::Debug, "Asset : {}/{}", infos[i]._ParentDirectory, infos[i]._Name);
     }
-
-    group->Start(TaskSubmitOptions());
 }
 
 void AssetsManager::Update(GameSproutApi * const api)  {
@@ -78,21 +66,10 @@ void AssetsManager::Release(GameSproutApi * const api)  {
 
 
 IAsset * AssetsManager::QueryAsset(const IGuid * const guid) const {
-    auto it = _Assets.find(guid->Guid());
-    if (_Assets.end() == it) {
-        return nullptr;
-    }
-
-    return it->second;
+    return nullptr;
 }
 
 void AssetsManager::OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context) {
-    qInfo() << "eWatcherType:" << (int)event.Type
-            << ", eFileSystemAction:" << (int)event.Action
-            << ", path " << QString::fromStdString(event.Path)
-            << ", oldPath " << QString::fromStdString(event.OldPath)
-            << ", extension " << QString::fromStdString(extension);
-
     switch(event.Action) {
     case eFileSystemAction::CreateDir:
         WatcherDir(event.Path);

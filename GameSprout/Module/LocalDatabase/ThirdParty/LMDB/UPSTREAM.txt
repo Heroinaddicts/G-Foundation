@@ -1,0 +1,15 @@
+Project: LMDB (Lightning Memory-Mapped Database)
+Upstream: https://github.com/LMDB/lmdb
+Version: 0.9.35
+Tag: LMDB_0.9.35
+Commit: 69087ced3cb6082f7dcfb4fc2dcaa3b68a7e2e8c
+Source directory: libraries/liblmdb
+Archive: https://codeload.github.com/LMDB/lmdb/tar.gz/refs/tags/LMDB_0.9.35
+Archive SHA256: 18b021fd589d30cc08860a9550a30ae51637117451385e9581616da751326632
+License: OpenLDAP Public License 2.8 (see LICENSE and COPYRIGHT).
+
+The upstream files are unmodified. Only the core library sources, public and
+internal headers, license, copyright, changelog and introduction are vendored.
+CMakeLists.txt and this file are local integration files. LMDB is compiled as
+a static C library and linked privately into LocalDatabase. No network access
+is needed to configure or build it.

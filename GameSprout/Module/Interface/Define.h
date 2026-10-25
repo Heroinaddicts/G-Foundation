@@ -9,7 +9,7 @@ enum class eAssetType : uint16_t {
     Audio = 1,
 
 
-
+    Folder = 254,
     Prefab = 255
 };
 

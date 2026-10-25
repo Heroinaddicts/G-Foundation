@@ -1,0 +1,197 @@
+#include "LDBSession.hpp"
+#include "LDBTable.hpp"
+
+#include <QDebug>
+#include <algorithm>
+
+namespace {
+    // Maps reserve address space; this does not eagerly allocate 256 MiB of RAM.
+    constexpr size_t kInitialMapSize = size_t(256) * 1024 * 1024;
+    constexpr MDB_dbi kMaxTables = 128;
+
+    std::vector<std::filesystem::path> s_OpenPaths;
+
+    bool ReservePath(const std::filesystem::path & path) {
+        for (const auto & active : s_OpenPaths) {
+            std::error_code error;
+            if (active == path || std::filesystem::equivalent(active, path, error))
+                return false;
+
+            // Also recognize aliases created by hard-linking the database file.
+            error.clear();
+            if (std::filesystem::equivalent(active / "data.mdb", path / "data.mdb", error))
+                return false;
+        }
+        s_OpenPaths.push_back(path);
+        return true;
+    }
+
+    void ReleasePath(const std::filesystem::path & path) {
+        const auto found = std::find(s_OpenPaths.begin(), s_OpenPaths.end(), path);
+        if (found != s_OpenPaths.end())
+            s_OpenPaths.erase(found);
+    }
+
+    bool ReportError(const char * operation, int result) {
+        if (result == MDB_SUCCESS)
+            return true;
+        qWarning("LocalDatabase %s: %s", operation, mdb_strerror(result));
+        return false;
+    }
+}
+
+LDBSession::LDBSession(MDB_env * environment, const std::filesystem::path & path)
+    : _Environment(environment), _Path(path),
+      _MaxKeySize(static_cast<size_t>(mdb_env_get_maxkeysize(environment))) {}
+
+LDBSession::~LDBSession() {
+    Close();
+    for (const auto & entry : _Tables)
+        delete entry.second;
+}
+
+LDBSession * LDBSession::Create(const std::string & path) {
+    return OpenInternal(path, true);
+}
+
+LDBSession * LDBSession::Open(const std::string & path) {
+    return OpenInternal(path, false);
+}
+
+LDBSession * LDBSession::OpenInternal(const std::string & path, bool create) {
+    namespace fs = std::filesystem;
+    if (path.empty() || path.find('\0') != std::string::npos)
+        return nullptr;
+
+    std::error_code error;
+    const std::u8string utf8Input(path.begin(), path.end());
+    fs::path directory = fs::absolute(fs::path(utf8Input), error);
+    if (error)
+        return nullptr;
+
+    if (create) {
+        fs::create_directories(directory, error);
+        if (error)
+            return nullptr;
+    }
+    if (!fs::is_directory(directory, error) || error)
+        return nullptr;
+
+    directory = fs::canonical(directory, error);
+    if (error || !ReservePath(directory))
+        return nullptr;
+
+    MDB_env * environment = nullptr;
+    try {
+        const fs::path databaseFile = directory / "data.mdb";
+        const fs::file_status status = fs::symlink_status(databaseFile, error);
+        if (error == std::errc::no_such_file_or_directory)
+            error.clear();
+        const bool exists = status.type() != fs::file_type::not_found;
+        if (error || (create && exists) ||
+            (!create && (!exists || !fs::is_regular_file(databaseFile, error))) || error) {
+            ReleasePath(directory);
+            return nullptr;
+        }
+        // LMDB initializes zero-byte files; Open must reject them rather than create a new DB.
+        if (!create && (fs::file_size(databaseFile, error) == 0 || error)) {
+            ReleasePath(directory);
+            return nullptr;
+        }
+
+        int result = mdb_env_create(&environment);
+        if (result == MDB_SUCCESS)
+            result = mdb_env_set_maxdbs(environment, kMaxTables);
+        if (result == MDB_SUCCESS && create)
+            result = mdb_env_set_mapsize(environment, kInitialMapSize);
+        if (result == MDB_SUCCESS) {
+            const auto utf8Path = directory.u8string();
+            result = mdb_env_open(environment,
+                reinterpret_cast<const char *>(utf8Path.c_str()), 0, 0644);
+        }
+        if (!ReportError(create ? "create" : "open", result)) {
+            if (environment)
+                mdb_env_close(environment);
+            ReleasePath(directory);
+            return nullptr;
+        }
+        return new LDBSession(environment, directory);
+    } catch (...) {
+        if (environment)
+            mdb_env_close(environment);
+        ReleasePath(directory);
+        throw;
+    }
+}
+
+bool LDBSession::CreateTable(const std::string & name) {
+    return OpenTable(name, true) != nullptr;
+}
+
+ILDBTable * LDBSession::GetTable(const std::string & name) {
+    return OpenTable(name, false);
+}
+
+LDBTable * LDBSession::OpenTable(const std::string & name, bool create) {
+    if (!_Environment || !IsValidKey(name) || name.find('\0') != std::string::npos)
+        return nullptr;
+
+    const auto found = _Tables.find(name);
+    if (found != _Tables.end())
+        return found->second;
+
+    MDB_txn * transaction = nullptr;
+    int result = mdb_txn_begin(_Environment, nullptr, 0, &transaction);
+    if (!ReportError("begin table transaction", result))
+        return nullptr;
+
+    MDB_dbi database = 0;
+    result = mdb_dbi_open(transaction, name.c_str(), create ? MDB_CREATE : 0, &database);
+    if (result != MDB_SUCCESS) {
+        mdb_txn_abort(transaction);
+        if (result != MDB_NOTFOUND)
+            ReportError("open table", result);
+        return nullptr;
+    }
+
+    unsigned int flags = 0;
+    result = mdb_dbi_flags(transaction, database, &flags);
+    if (result != MDB_SUCCESS || (flags & (MDB_INTEGERKEY | MDB_DUPSORT))) {
+        mdb_txn_abort(transaction);
+        if (result != MDB_SUCCESS)
+            ReportError("read table flags", result);
+        else
+            qWarning("LocalDatabase cannot open an integer-key or duplicate-value table through this interface");
+        return nullptr;
+    }
+
+    // Opening a DBI must be committed before the handle is reused by other transactions.
+    result = mdb_txn_commit(transaction);
+    if (!ReportError("commit table transaction", result))
+        return nullptr;
+
+    LDBTable * table = nullptr;
+    try {
+        table = new LDBTable(*this, database);
+        _Tables.emplace(name, table);
+    } catch (...) {
+        delete table;
+        mdb_dbi_close(_Environment, database);
+        throw;
+    }
+    return table;
+}
+
+bool LDBSession::IsValidKey(const std::string & key) const {
+    return !key.empty() && key.size() <= _MaxKeySize;
+}
+
+void LDBSession::Close() {
+    if (!_Environment)
+        return;
+
+    mdb_env_close(_Environment);
+    _Environment = nullptr;
+    ReleasePath(_Path);
+    // Wrappers stay alive until this session is destroyed; they now reject operations.
+}

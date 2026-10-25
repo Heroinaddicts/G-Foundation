@@ -7,6 +7,8 @@ class GuidCreator : public IGuidCreator {
 public:
     virtual ~GuidCreator() {}
 
+    Guid CreateGuid() override;
+
 private:
     void BeforeInitialize(GameSproutApi * const api) override;
     bool Initialize(GameSproutApi * const api) override;

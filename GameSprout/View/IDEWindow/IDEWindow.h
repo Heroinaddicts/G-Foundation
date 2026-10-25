@@ -30,6 +30,7 @@ public:
 
     void Loading(const std::string & title, const std::string & desc) override;
     void Unloading() override;
+    void SetLoadingInfo(const std::string & title, const std::string & desc) override;
 
     void Show() override;
     void Hide() override;

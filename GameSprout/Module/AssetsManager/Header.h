@@ -13,6 +13,7 @@
 #include "IIDEWindow.h"
 
 #include "SafeSystem.hpp"
+#include "SafeString.hpp"
 UsingGameSprout;
 
 inline extern GameSproutApi * g_GameSproutApi = nullptr;

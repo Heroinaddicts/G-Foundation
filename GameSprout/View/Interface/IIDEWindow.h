@@ -86,6 +86,7 @@ public:
     // Long work must yield to the event loop between steps so the UI can repaint.
     virtual void Loading(const std::string & title, const std::string & desc) = 0;
     virtual void Unloading() = 0;
+    virtual void SetLoadingInfo(const std::string & title, const std::string & desc) = 0;
 };
 
 #endif //__IIDEWindow_h__

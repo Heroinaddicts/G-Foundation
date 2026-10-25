@@ -23,6 +23,16 @@ public:
     virtual IAssetImporter * GetImporter() const = 0;
 };
 
+class IFolderImportSettings : public IAssetImportSettings {
+public:
+    virtual ~IFolderImportSettings() {}
+};
+
+class IFolderImporter : public IAssetImporter {
+public:
+    virtual ~IFolderImporter() {}
+};
+
 class ITextureImportSettings : public IAssetImportSettings {
 public:
     virtual ~ITextureImportSettings() {}

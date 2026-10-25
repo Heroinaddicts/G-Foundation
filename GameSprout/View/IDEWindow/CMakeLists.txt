@@ -19,33 +19,26 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
-add_library(IDEWindow SHARED
-    Header.h
-    ExportView.cpp
-    IDEWindow.cpp
-    IDEWindow.h
-    IDEWindow.ui
-    IDELoadingOverlay.h
-    IDELoadingOverlay.cpp
-    IDELoadingOverlay.ui
-    IDEMenuFinal.h
-    IDEMenuFinal.cpp
-    IDEMenuBarFinal.h
-    IDEMenuBarFinal.cpp
-    IDEDockerFinal.h
-    IDEDockerFinal.cpp
-    IDEDockerWidget.ui
-    IDEDockerMenu.ui
-    IDEDockerTitleBar.h
-    IDEDockerTitleBar.cpp
-    IDEDockerTitleBar.ui
-    IDEDockerOptionsButton.h
-    IDEDockerOptionsButton.cpp
-    IDEDockerOptionsButton.ui
-    IDEDockerManager.h
-    IDEDockerManager.cpp
-    CMakeLists.txt
+# Keep the target and IDE tree in sync when files are added or removed.
+file(GLOB_RECURSE view_files CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.inl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.ui"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.qrc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.qss"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Assets/*"
 )
+# Exclude generated files from standalone builds inside the source tree.
+list(FILTER view_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen)/")
+list(APPEND view_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+
+add_library(IDEWindow SHARED ${view_files})
 target_compile_features(IDEWindow PRIVATE cxx_std_20)
 target_link_libraries(IDEWindow PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
@@ -57,39 +50,26 @@ target_include_directories(IDEWindow PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../Interface"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutEditor/Api"
 )
+# Let AUTOUIC also find forms stored in subdirectories.
+set(view_ui_directories)
+foreach(view_file IN LISTS view_files)
+    if(view_file MATCHES "[.]ui$")
+        get_filename_component(view_ui_directory "${view_file}" DIRECTORY)
+        list(APPEND view_ui_directories "${view_ui_directory}")
+    endif()
+endforeach()
+list(REMOVE_DUPLICATES view_ui_directories)
+
 set_target_properties(IDEWindow PROPERTIES
     AUTOMOC ON
     AUTOUIC ON
+    AUTOUIC_SEARCH_PATHS "${view_ui_directories}"
     AUTORCC ON
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Header.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ExportView.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEWindow.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDELoadingOverlay.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuFinal.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuFinal.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuBarFinal.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEMenuBarFinal.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerFinal.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerFinal.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerWidget.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerMenu.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerTitleBar.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerTitleBar.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerTitleBar.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerOptionsButton.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerOptionsButton.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerOptionsButton.ui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerManager.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IDEDockerManager.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    ${view_files}
 )
 
 # Keep shared interfaces visible when opening IDEWindow by itself as well.
@@ -107,8 +87,8 @@ endif()
 get_filename_component(gamesprout_bin_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../Bin" ABSOLUTE
 )
-if(TARGET GameSprout)
-    set(view_output_directory "$<TARGET_FILE_DIR:GameSprout>/Logic/View")
+if(TARGET GameSproutEditor)
+    set(view_output_directory "$<TARGET_FILE_DIR:GameSproutEditor>/Logic/View")
 elseif(APPLE)
     set(view_output_directory
         "${gamesprout_bin_directory}/GameSproutEditor.app/Contents/MacOS/Logic/View")

@@ -18,19 +18,34 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
-add_library(GuidCreator SHARED
-    Header.h
-    ExportModule.cpp
-    GuidCreator.cpp
-    GuidCreator.h
-    CMakeLists.txt
+# Keep the target and IDE tree in sync when files are added or removed.
+file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.inl"
 )
+# Exclude generated files from standalone builds inside the source tree.
+list(FILTER module_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen)/")
+list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+
+add_library(GuidCreator SHARED ${module_files})
 target_compile_features(GuidCreator PRIVATE cxx_std_20)
 target_link_libraries(GuidCreator PRIVATE
     Foundation::FoundationApi
     GRHI::GRHIApi
     Qt${QT_VERSION_MAJOR}::Core
 )
+if(APPLE)
+    find_library(guid_core_foundation_framework CoreFoundation REQUIRED)
+    target_link_libraries(GuidCreator PRIVATE "${guid_core_foundation_framework}")
+elseif(WIN32)
+    target_link_libraries(GuidCreator PRIVATE ole32)
+endif()
 target_include_directories(GuidCreator PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Interface"
@@ -40,11 +55,7 @@ target_include_directories(GuidCreator PRIVATE
 set_target_properties(GuidCreator PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Header.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ExportModule.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/GuidCreator.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/GuidCreator.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    ${module_files}
 )
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -59,11 +70,11 @@ endif()
 get_filename_component(gamesprout_bin_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../Bin" ABSOLUTE
 )
-if(TARGET GameSprout)
-    set(module_output_directory "$<TARGET_FILE_DIR:GameSprout>/Logic/Module")
+if(TARGET GameSproutEditor)
+    set(module_output_directory "$<TARGET_FILE_DIR:GameSproutEditor>/Logic/Module")
 elseif(APPLE)
     set(module_output_directory
-        "${gamesprout_bin_directory}/GameSprout.app/Contents/MacOS/Logic/Module")
+        "${gamesprout_bin_directory}/GameSproutEditor.app/Contents/MacOS/Logic/Module")
 else()
     set(module_output_directory "${gamesprout_bin_directory}/Logic/Module")
 endif()

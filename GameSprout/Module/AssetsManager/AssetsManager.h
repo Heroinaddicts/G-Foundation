@@ -18,8 +18,9 @@ private:
 
     static void WatcherDir(const std::string & path);
     static void OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & extension, void * const context);
+
 private:
-    QString _AssetsRoot;
+    std::string _AssetsRoot;
     std::unordered_map<std::string, IAsset *> _Assets;
 };
 

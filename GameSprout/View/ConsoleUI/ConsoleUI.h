@@ -26,14 +26,14 @@ public:
     void Hide() override;
 
 private:
-    void AppendLog(eConsoleLog level, const QString& message);
+    void AppendLog(eConsoleLog level, const QString& message, const QString& location);
     void ApplyFilters();
     void UpdateDetails();
     void UpdateCounters();
     void ClearLogs();
     void UpdateFilterSummary();
     QCheckBox* LevelCheckBox(eConsoleLog level) const;
-    bool MatchesFilters(eConsoleLog level, const QString& message) const;
+    bool MatchesFilters(eConsoleLog level, const QString& message, const QString& location) const;
 
     ConsoleUI(const ConsoleUI&) = delete;
     ConsoleUI& operator=(const ConsoleUI&) = delete;
