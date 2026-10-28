@@ -1,27 +1,19 @@
-#ifndef __FolderAssetFactory_hpp__
-#define __FolderAssetFactory_hpp__
+#pragma once
 
-#include "Header.h"
+#include "AssetFactoryCommon.hpp"
 
-
-class FolderImporter : public IFolderImporter {
+class FolderImportSettings : public EmptyAssetImportSettings<IFolderImportSettings> {
 public:
-    virtual ~FolderImporter() {}
+    virtual ~FolderImportSettings() {}
 };
 
-class FolderMeta : public IAssetMeta {
+class FolderMeta : public AssetMetaWithSettings<FolderImportSettings> {
 public:
-    virtual ~FolderMeta() {}
+    FolderMeta(const Guid & guid, const std::string & path)
+        : AssetMetaWithSettings(eAssetType::Folder, guid, path) {}
 };
 
-class FolderAsset : public Asset<FolderMeta> {
-public:
-    virtual ~FolderAsset() {}
-};
-
-
-inline static IAssetImporter * OnFolderAssetCreate() {
-
+inline IAssetMeta * OnFolderAssetCreate(const Foundation::FileSystemWatcherEvent & event,
+    const std::string & name, const std::string & extension, void * const context) {
+    return CreateAssetMeta<FolderMeta>(event);
 }
-
-#endif //__FolderAssetFactory_hpp__

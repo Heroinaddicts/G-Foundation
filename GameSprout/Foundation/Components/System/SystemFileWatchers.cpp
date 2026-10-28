@@ -188,6 +188,7 @@ namespace Foundation {
         struct Event {
             UInt64 ID;
             FileSystemWatcherEvent Data;
+            std::string Name;
             std::string Extension;
             bool Terminal = false;
             bool Notify = true;
@@ -277,14 +278,17 @@ namespace Foundation {
         void Queue(Watch* watch, const std::string& path,
                    const eFileSystemAction action, const bool directory,
                    const bool terminal = false, const std::string& oldPath = {}) {
-            std::string extension = directory ? std::string() : Utf8Path(NativePath(path).extension());
+            const std::filesystem::path entryPath = NativePath(path);
+            std::string extension = directory ? std::string() : Utf8Path(entryPath.extension());
             if (!extension.empty()) {
                 extension.erase(0, 1);
             }
+            std::string name = Utf8Path(directory || extension.empty()
+                ? entryPath.filename() : entryPath.stem());
             Queue(new Event{watch->ID,
                 {directory ? eWatcherType::Directory : eWatcherType::File,
                  action, path, oldPath},
-                std::move(extension), terminal});
+                std::move(name), std::move(extension), terminal});
         }
 
         void EndDirectoryWatch(Watch* watch, const bool removed) {
@@ -296,7 +300,7 @@ namespace Foundation {
                 }
             }
             // Retire the main-thread registration without reporting the root itself.
-            Queue(new Event{watch->ID, {}, {}, true, false});
+            Queue(new Event{watch->ID, {}, {}, {}, true, false});
             CloseWatch(watch);
         }
 
@@ -826,7 +830,7 @@ namespace Foundation {
                 if (event.Notify) {
                     Registration& registration = found->second;
                     try {
-                        registration.Callback(event.Data, event.Extension, registration.Context);
+                        registration.Callback(event.Data, event.Name, event.Extension, registration.Context);
                     } catch (...) {
                         std::fputs("[Foundation][System] Filesystem watcher callback threw.\n", stderr);
                     }

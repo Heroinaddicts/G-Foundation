@@ -142,20 +142,21 @@ namespace Foundation {
         Create = 0,
         Modify= 1,
         Delete = 2,
-        Rename = 3 // Files only. Directory renames emit DeteleDir then CreateDir.
+        Rename = 3 // File or directory rename; OldPath identifies the previous location.
     };
 
     struct FileSystemWatcherEvent {
         eWatcherType Type = eWatcherType::File;
         eFileSystemAction Action = eFileSystemAction::Modify;
         std::string Path;    // Current absolute UTF-8 path; deleted path for deletion.
-        std::string OldPath; // Files only: set for Rename / extension-case-only ModifyFile.
+        std::string OldPath; // Set for Rename and file extension-case-only Modify.
     };
 
-    // event/extension are borrowed for this call; copy them to retain them.
+    // event/name/extension are borrowed for this call; copy them to retain them.
+    // name is Path's filename without its final extension; directories keep their full name.
     // extension is Path's final suffix without '.', preserving case (e.g. "PNG").
     // Directories and files with no extension receive ""; deleted files use Path's suffix.
-    typedef std::function<void(const FileSystemWatcherEvent& event,
+    typedef std::function<void(const FileSystemWatcherEvent& event, const std::string& name,
                                const std::string& extension, void* context)> fOnWatcherCallback;
 
     class ISystemApi {
@@ -172,11 +173,11 @@ namespace Foundation {
         // for directory watches; the watched directory itself is never reported.
         // Removing, renaming or replacing that directory silently ends its watch.
         // Watch its parent to receive events about the directory itself.
-        // Same-directory file renames are paired when observed
-        // within a short batch: Rename, or ModifyFile for extension case changes.
-        // Directory renames emit DeteleDir(old) then CreateDir(new), both with no OldPath.
+        // Same-directory renames are paired when observed within a short batch:
+        // Rename, or Modify for file extension-case-only changes.
+        // Directory renames emit Rename with both Path and OldPath.
         // File watches follow such renames; deleting the file ends its subscription
-        // after DeleteFile. Keep context/captures alive through Foundation Release
+        // after Delete. Keep context/captures alive through Foundation Release
         // unless a file watch has delivered its terminal event.
         virtual bool FileSystemWatcher(const std::string & path, void * const context, const fOnWatcherCallback callback) = 0;
     };
