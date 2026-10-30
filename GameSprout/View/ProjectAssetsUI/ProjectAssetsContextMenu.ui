@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProjectAssetsContextMenu</class>
+ <widget class="QMenu" name="ProjectAssetsContextMenu">
+  <widget class="QMenu" name="menuCreate">
+   <property name="title"><string>Create</string></property>
+   <widget class="QMenu" name="menuShader">
+    <property name="title"><string>Shader</string></property>
+    <addaction name="actionVertexShader"/>
+    <addaction name="actionFragmentShader"/>
+    <addaction name="actionComputeShader"/>
+    <addaction name="separator"/>
+    <addaction name="actionShaderInclude"/>
+   </widget>
+   <widget class="QMenu" name="menuAnimation">
+    <property name="title"><string>Animation</string></property>
+    <addaction name="actionAnimationClip"/>
+    <addaction name="actionAnimatorController"/>
+   </widget>
+   <addaction name="actionFolder"/>
+   <addaction name="separator"/>
+   <addaction name="actionMaterial"/>
+   <addaction name="actionScene"/>
+   <addaction name="menuShader"/>
+   <addaction name="menuAnimation"/>
+  </widget>
+  <action name="actionFolder"><property name="text"><string>Folder</string></property></action>
+  <action name="actionMaterial"><property name="text"><string>Material</string></property></action>
+  <action name="actionScene"><property name="text"><string>Scene</string></property></action>
+  <action name="actionVertexShader"><property name="text"><string>Vertex Shader</string></property></action>
+  <action name="actionFragmentShader"><property name="text"><string>Fragment Shader</string></property></action>
+  <action name="actionComputeShader"><property name="text"><string>Compute Shader</string></property></action>
+  <action name="actionShaderInclude"><property name="text"><string>Shader Include</string></property></action>
+  <action name="actionAnimationClip"><property name="text"><string>Animation Clip</string></property></action>
+  <action name="actionAnimatorController"><property name="text"><string>Animator Controller</string></property></action>
+  <action name="actionReveal"><property name="text"><string>Show in File Manager</string></property></action>
+  <action name="actionOpen"><property name="text"><string>Open</string></property></action>
+  <action name="actionDelete"><property name="text"><string>Delete</string></property></action>
+  <action name="actionRename"><property name="text"><string>Rename</string></property></action>
+  <action name="actionCopyPath"><property name="text"><string>Copy Path</string></property></action>
+  <action name="actionImport"><property name="text"><string>Import New Asset…</string></property></action>
+  <action name="actionRefresh"><property name="text"><string>Refresh</string></property></action>
+  <action name="actionReimport"><property name="text"><string>Reimport</string></property></action>
+  <action name="actionReimportAll"><property name="text"><string>Reimport All</string></property></action>
+  <action name="actionProperties"><property name="text"><string>Properties…</string></property></action>
+  <addaction name="menuCreate"/>
+  <addaction name="actionReveal"/>
+  <addaction name="actionOpen"/>
+  <addaction name="separator"/>
+  <addaction name="actionDelete"/>
+  <addaction name="actionRename"/>
+  <addaction name="actionCopyPath"/>
+  <addaction name="separator"/>
+  <addaction name="actionImport"/>
+  <addaction name="separator"/>
+  <addaction name="actionRefresh"/>
+  <addaction name="actionReimport"/>
+  <addaction name="actionReimportAll"/>
+  <addaction name="separator"/>
+  <addaction name="actionProperties"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

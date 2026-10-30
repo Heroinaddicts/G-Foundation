@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEContextMenu</class>
+ <widget class="QMenu" name="ContentContextMenu">
+  <property name="separatorsCollapsible"><bool>true</bool></property>
+  <property name="styleSheet"><string notr="true">QMenu { background:#292c31; color:#e0e2e6; border:1px solid #555b65; padding:5px 0; }
+QMenu::item { padding:6px 30px 6px 22px; }
+QMenu::item:selected { background:#3a526d; color:#ffffff; }
+QMenu::item:disabled { color:#858c97; }
+QMenu::separator { height:1px; background:#454a53; margin:5px 10px; }</string></property>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

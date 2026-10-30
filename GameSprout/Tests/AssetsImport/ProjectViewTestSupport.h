@@ -26,6 +26,7 @@ public:
     void Activate() override {Host.show();}
     void SetTitle(const QString & title) override {Host.setWindowTitle(title);}
     IIDEMenu * CreateChildMenu(const QString &) override {return nullptr;}
+    IContextMenuManager * GetContextMenuManager() const override {return nullptr;}
 };
 class PreviewIDE final : public IIDEWindow {
 public:

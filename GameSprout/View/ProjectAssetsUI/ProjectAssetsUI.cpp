@@ -79,6 +79,7 @@ bool ProjectAssetsUI::Launch(GameSprout::GameSproutEditor *) {
     if (!_Docker || !_Docker->AttachWidget(_Window)) return false;
     _Attached = true;
     _Docker->SetTitle("Project");
+    RegisterContextMenus();
     if (IIDEMenu * menu = _Docker->CreateChildMenu("刷新视图")) menu->SetClickCallback(&ProjectAssetsUI::RefreshMenu);
     _Subscribed = _Assets->RegisterAssetListener(this);
     if (!_Subscribed) return false;

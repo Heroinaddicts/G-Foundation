@@ -2,6 +2,7 @@
 #include "IDEDockerManager.h"
 #include "IDEDockerTitleBar.h"
 #include "IDEMenuFinal.h"
+#include "IDEContextMenuManagerFinal.h"
 #include "ui_IDEDockerWidget.h"
 #include "ui_IDEDockerMenu.h"
 
@@ -17,6 +18,7 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
         _DockUi = new Ui::IDEDockerWidget();
         _DockUi->setupUi(_Dock);
         _Dock->setObjectName(name);
+        _ContextMenuManager = new IDEContextMenuManagerFinal(_Dock);
         _Dock->setWindowTitle(name);
         // 关闭时隐藏，保留接口对象以便再次使用。
         _Dock->setAttribute(Qt::WA_DeleteOnClose, false);
@@ -60,6 +62,7 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
         _Manager->RegisterDocker(this);
     } catch (...) {
         _Manager->UnregisterDocker(this);
+        delete _ContextMenuManager;
         delete _MenuUi;
         delete _DockUi;
         delete _Dock;
@@ -69,6 +72,7 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
 
 IDEDockerFinal::~IDEDockerFinal() {
     _Manager->UnregisterDocker(this);
+    delete _ContextMenuManager;
     for (auto it = _Menus.rbegin(); it != _Menus.rend(); ++it) {
         delete *it;
     }
@@ -93,6 +97,7 @@ bool IDEDockerFinal::AttachWidget(QWidget* const widget) {
     if (_Dock->widget() != widget) {
         _Dock->setWidget(widget);
     }
+    _ContextMenuManager->AttachContent(widget);
     widget->show();
     Activate();
     return true;
@@ -176,4 +181,8 @@ void IDEDockerFinal::SetTitle(const QString& title) {
     if (!title.trimmed().isEmpty()) {
         _Dock->setWindowTitle(title);
     }
+}
+
+IContextMenuManager* IDEDockerFinal::GetContextMenuManager() const {
+    return _ContextMenuManager;
 }

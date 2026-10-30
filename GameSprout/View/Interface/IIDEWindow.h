@@ -10,6 +10,9 @@ QT_BEGIN_NAMESPACE
 class QWidget;
 QT_END_NAMESPACE
 
+
+typedef void(*fMenuClickCallback)();
+
 class IIDEMenu {
 public:
     virtual ~IIDEMenu() {}
@@ -17,8 +20,6 @@ public:
     // 创建叶子菜单项；该项继续创建子项时，转换为子菜单。
     // 返回指针由 IDEWindow 管理，调用方不能 delete。
     virtual IIDEMenu * CreateChildMenu(const QString & name) = 0;
-
-    typedef void(*fMenuClickCallback)();
 
     // 仅叶子菜单项触发回调；nullptr 清除回调。
     virtual void SetClickCallback(const fMenuClickCallback callback) = 0;
@@ -37,6 +38,25 @@ enum class eDockerLayout {
     Right,
     Top,
     Bottom,
+};
+
+class IContextMenu {
+public:
+    virtual ~IContextMenu() {}
+
+    // 主线程调用；返回值由所属 Docker 管理，调用方不能 delete。
+    // 同级同名返回已有项；空名称添加分隔线，分隔线不能添加子项。
+    virtual IContextMenu * CreateChildMenu(const std::string & name) = 0;
+    // 只对叶子项生效；nullptr 表示禁用。子菜单只负责展开。
+    virtual void SetClickCalback(const fMenuClickCallback callback) = 0;
+};
+
+class IContextMenuManager {
+public:
+    virtual ~IContextMenuManager() {}
+
+    // 主线程注册顶级项，规则与 CreateChildMenu 相同。
+    virtual IContextMenu * CreateMenu(const std::string & name) = 0;
 };
 
 class IIDEDocker {
@@ -61,6 +81,9 @@ public:
     // 注册面板专属菜单项，自动出现在该面板的“⋮”菜单中，位于默认操作之前。
     // 支持 CreateChildMenu 创建子菜单，返回指针由 Docker 管理。
     virtual IIDEMenu* CreateChildMenu(const QString& name) = 0;
+
+    // 内容区右键菜单，与标签栏的面板管理菜单独立；借用至 Docker 销毁。
+    virtual IContextMenuManager * GetContextMenuManager() const = 0;
 };
 
 class IIDEWindow : public GameSprout::IGameSproutView {

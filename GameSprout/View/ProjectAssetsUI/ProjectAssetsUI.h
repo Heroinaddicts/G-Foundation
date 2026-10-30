@@ -33,6 +33,7 @@ private:
     void Refresh();
     void UpdateStatus();
     void PublishSelection();
+    void RegisterContextMenus();
     static void RefreshMenu();
     QWidget * _Window = nullptr;
     QObject * _Dispatch = nullptr;

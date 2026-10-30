@@ -13,6 +13,7 @@ QT_END_NAMESPACE
 class IDEDockerManager;
 class IDEDockerTitleBar;
 class IDEMenuFinal;
+class IDEContextMenuManagerFinal;
 namespace Ui {
 class IDEDockerWidget;
 class IDEDockerMenu;
@@ -33,6 +34,7 @@ public:
     void Activate() override;
     void SetTitle(const QString& title) override;
     IIDEMenu* CreateChildMenu(const QString& name) override;
+    IContextMenuManager* GetContextMenuManager() const override;
 
     QDockWidget* GetDockWidget() const { return _Dock; }
     QMenu* GetContextMenu() const { return _Menu; }
@@ -48,6 +50,7 @@ private:
     Ui::IDEDockerWidget* _DockUi = nullptr;
     Ui::IDEDockerMenu* _MenuUi = nullptr;
     std::vector<IDEMenuFinal*> _Menus;
+    IDEContextMenuManagerFinal* _ContextMenuManager = nullptr;
 };
 
 #endif // GAMESPROUT_IDE_DOCKER_FINAL_H

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEContextMenuItem</class>
+ <widget class="QMenu" name="ContextSubmenu">
+  <action name="ContextAction">
+   <property name="enabled"><bool>false</bool></property>
+  </action>
+  <action name="ContextSeparator">
+   <property name="separator"><bool>true</bool></property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
