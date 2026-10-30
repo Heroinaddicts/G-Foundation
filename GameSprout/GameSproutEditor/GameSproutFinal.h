@@ -1,18 +1,18 @@
 #ifndef __GameSproutFinal_h__
 #define __GameSproutFinal_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-namespace GameSprout {
-    class GameSproutFinal : public GameSproutApi {
+namespace GameSproutEditor {
+    class GameSproutFinal : public GameSproutModuleApi {
     public:
         static GameSproutFinal * GetInstance();
 
         void Update();
 
     private:
-        GameSproutFinal(FoundationApi * const api, GameSproutEditor * const editor)
-            : GameSproutApi(api, editor) {}
+        GameSproutFinal(FoundationApi * const api, GameSproutViewApi * const editor)
+            : GameSproutModuleApi(api, editor) {}
 
         friend class GameSproutEditorFinal;
     };

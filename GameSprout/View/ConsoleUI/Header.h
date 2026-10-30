@@ -6,5 +6,5 @@
 
 UsingGameSprout;
 
-inline extern GameSproutEditor * g_GameSproutEditor = nullptr;
+inline extern GameSproutViewApi * g_GameSproutEditor = nullptr;
 inline extern IIDEWindow * g_IIDEWindow = nullptr;

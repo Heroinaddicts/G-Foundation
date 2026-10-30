@@ -1,12 +1,12 @@
 #ifndef __IConsole_h__
 #define __IConsole_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "IConsoleUI.h"
 #include "GRHIApi.h"
 #include <format>
 
-class IConsole : public GameSprout::IGameSproutModule {
+class IConsole : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IConsole() {}
 

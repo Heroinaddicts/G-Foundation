@@ -1,7 +1,7 @@
 #ifndef __Define_h__
 #define __Define_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "GRHIApi.h"
 
 #include <cstdint>

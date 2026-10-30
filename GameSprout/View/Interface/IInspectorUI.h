@@ -1,9 +1,9 @@
 #ifndef __IInspectorUI_h__
 #define __IInspectorUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class IInspectorUI : public GameSprout::IGameSproutView {
+class IInspectorUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IInspectorUI() {}
     virtual bool HasPendingChanges() const = 0;

@@ -38,7 +38,7 @@ public:
     virtual ~ICanvas() {}
 };
 
-class IUIWorld : public GameSprout::IGameSproutModule {
+class IUIWorld : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IUIWorld() {}
 

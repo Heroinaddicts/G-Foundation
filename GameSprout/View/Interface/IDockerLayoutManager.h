@@ -1,9 +1,9 @@
 #ifndef __IDockerLayoutManager_h__
 #define __IDockerLayoutManager_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class IDockerLayoutManager : public GameSprout::IGameSproutView {
+class IDockerLayoutManager : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IDockerLayoutManager() {}
     // 只排列已注册面板；面板尚未全部创建时返回 false，不修改布局。

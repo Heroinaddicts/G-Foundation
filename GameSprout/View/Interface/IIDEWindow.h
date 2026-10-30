@@ -1,7 +1,7 @@
 #ifndef __IIDEWindow_h__
 #define __IIDEWindow_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
 #include <QString>
 #include <QList>
@@ -86,7 +86,7 @@ public:
     virtual IContextMenuManager * GetContextMenuManager() const = 0;
 };
 
-class IIDEWindow : public GameSprout::IGameSproutView {
+class IIDEWindow : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IIDEWindow() {}
 

@@ -1,24 +1,24 @@
 #include "Console.h"
 
-bool Console::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool Console::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool Console::Launch(GameSproutApi * const api)  {
+bool Console::Launch(GameSproutModuleApi * const api)  {
     GetGameSproutView(api->_EditorApi, g_IConsoleUI, ConsoleUI);
     return true;
 }
 
-void Console::LaunchFinished(GameSproutApi * const api)  {
+void Console::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void Console::Update(GameSproutApi * const api)  {
+void Console::Update(GameSproutModuleApi * const api)  {
     
 }
 
-void Console::Release(GameSproutApi * const api)  {
+void Console::Release(GameSproutModuleApi * const api)  {
     
 }
 

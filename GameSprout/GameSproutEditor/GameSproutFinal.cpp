@@ -1,7 +1,7 @@
 #include "GameSproutFinal.h"
 #include "GameSproutEditorFinal.h"
 
-namespace GameSprout {
+namespace GameSproutEditor {
     GameSproutFinal * GameSproutFinal::GetInstance() {
         return GameSproutEditorFinal::GetInstance()->_Api;
     }

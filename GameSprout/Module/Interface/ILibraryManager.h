@@ -1,11 +1,11 @@
 #ifndef __ILibraryManager_h__
 #define __ILibraryManager_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "ILocalDatabase.h"
 #include "IAssetsPipeline.h"
 
-class ILibraryManager : public GameSprout::IGameSproutModule {
+class ILibraryManager : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~ILibraryManager() {}
     virtual ILDBSession * GetLDBSession() const = 0;

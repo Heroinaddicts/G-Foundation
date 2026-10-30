@@ -12,8 +12,8 @@
 #include <QDebug>
 #include <QStringList>
 
-namespace GameSprout {
-    GameSproutEditorFinal::GameSproutEditorFinal(GRHI::GRHIApi * const grhi) : GameSproutEditor(grhi) {}
+namespace GameSproutEditor {
+    GameSproutEditorFinal::GameSproutEditorFinal(GRHI::GRHIApi * const grhi) : GameSproutViewApi(grhi) {}
 
     GameSproutEditorFinal::~GameSproutEditorFinal() {
         Release();

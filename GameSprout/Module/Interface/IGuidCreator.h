@@ -81,7 +81,7 @@ private:
 
 static_assert(sizeof(Guid) == 16, "Guid must remain a 128-bit value.");
 
-class IGuidCreator : public GameSprout::IGameSproutModule {
+class IGuidCreator : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IGuidCreator() {}
 

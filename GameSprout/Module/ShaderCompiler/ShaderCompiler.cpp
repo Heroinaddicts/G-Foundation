@@ -16,7 +16,7 @@ static QString FindTool(const QString & name) {
         if(QFileInfo(path).isExecutable()) return path;
     return QStandardPaths::findExecutable(executable);
 }
-bool ShaderCompiler::Initialize(GameSprout::GameSproutApi *) {
+bool ShaderCompiler::Initialize(GameSproutEditor::GameSproutModuleApi *) {
     _Tools={FindTool("dxc"),FindTool("shadercross"),FindTool("spirv-cross")};
     QByteArray identity("SDL-DXC-ShaderCompiler-1");
     QFile versions(QDir(QFileInfo(_Tools.Cross).absolutePath()).filePath("../toolchain.json"));

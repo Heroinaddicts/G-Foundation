@@ -1,26 +1,26 @@
 #include "BuildSetting.h"
 
-void BuildSetting::BeforeInitialize(GameSproutApi * const api) {
+void BuildSetting::BeforeInitialize(GameSproutModuleApi * const api) {
     g_Self = this;
 }
 
-bool BuildSetting::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool BuildSetting::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool BuildSetting::Launch(GameSproutApi * const api)  {
+bool BuildSetting::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void BuildSetting::LaunchFinished(GameSproutApi * const api)  {
+void BuildSetting::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void BuildSetting::Update(GameSproutApi * const api)  {
+void BuildSetting::Update(GameSproutModuleApi * const api)  {
 
 }
 
-void BuildSetting::Release(GameSproutApi * const api)  {
+void BuildSetting::Release(GameSproutModuleApi * const api)  {
 
 }

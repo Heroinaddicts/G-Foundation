@@ -1,7 +1,7 @@
 #ifndef __IGameObject_h__
 #define __IGameObject_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "GRHIApi.h"
 
 class IScript {

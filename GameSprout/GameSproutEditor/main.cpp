@@ -7,7 +7,7 @@
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
-    GameSprout::GameSproutFinal * gsf = GameSprout::GameSproutFinal::GetInstance();
+    GameSproutEditor::GameSproutFinal * gsf = GameSproutEditor::GameSproutFinal::GetInstance();
 
     QTimer timer;
     timer.setTimerType(Qt::PreciseTimer);

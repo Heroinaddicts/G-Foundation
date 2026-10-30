@@ -3,21 +3,21 @@
 #include <QApplication>
 #include <QMainWindow>
 
-void BuildSettingUI::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
+void BuildSettingUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) {
     g_Self = this;
     g_GameSproutEditor = editor;
     GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
 }
 
-bool BuildSettingUI::Initialize(GameSprout::GameSproutEditor * const editor) {
+bool BuildSettingUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-bool BuildSettingUI::Launch(GameSprout::GameSproutEditor * const editor) {
+bool BuildSettingUI::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-void BuildSettingUI::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
+void BuildSettingUI::LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) {
 
 }
 
@@ -27,8 +27,8 @@ void BuildSettingUI::Show() {
 void BuildSettingUI::Hide() {
 }
 
-void BuildSettingUI::Update(GameSprout::GameSproutEditor * const editor) {
+void BuildSettingUI::Update(GameSproutEditor::GameSproutViewApi * const editor) {
 }
 
-void BuildSettingUI::Release(GameSprout::GameSproutEditor * const editor) {
+void BuildSettingUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
 }

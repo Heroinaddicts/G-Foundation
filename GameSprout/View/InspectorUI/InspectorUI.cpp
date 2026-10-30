@@ -12,7 +12,7 @@
 #include <QWidget>
 
 InspectorUI::~InspectorUI() { Release(nullptr); }
-void InspectorUI::BeforeInitialize(GameSprout::GameSproutEditor * editor) {
+void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) {
     g_Self = this;
     g_GameSproutEditor = editor;
     GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
@@ -20,7 +20,7 @@ void InspectorUI::BeforeInitialize(GameSprout::GameSproutEditor * editor) {
     GetGameSproutModule(editor, _Selection, SelectionManager);
     GetGameSproutModule(editor, _Library, LibraryManager);
 }
-bool InspectorUI::Initialize(GameSprout::GameSproutEditor *) {
+bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
     if (_Window) return true;
     if (!qobject_cast<QApplication *>(QCoreApplication::instance()) || !_Assets || !_Selection || !_Library) return false;
     try {
@@ -55,7 +55,7 @@ bool InspectorUI::Initialize(GameSprout::GameSproutEditor *) {
     } catch (...) { Release(nullptr);throw; }
     return true;
 }
-bool InspectorUI::Launch(GameSprout::GameSproutEditor *) {
+bool InspectorUI::Launch(GameSproutEditor::GameSproutViewApi *) {
     if (!_Window || !g_IIDEWindow) return false;
     _Docker = g_IIDEWindow->CreateDocker("Inspector");
     if (!_Docker || !_Docker->AttachWidget(_Window)) return false;
@@ -67,10 +67,10 @@ bool InspectorUI::Launch(GameSprout::GameSproutEditor *) {
     Refresh();
     return true;
 }
-void InspectorUI::Update(GameSprout::GameSproutEditor *) { if (_Dirty && _Window && !_ResolvingSelection) Refresh(); }
+void InspectorUI::Update(GameSproutEditor::GameSproutViewApi *) { if (_Dirty && _Window && !_ResolvingSelection) Refresh(); }
 void InspectorUI::Show() { if (_Window) _Window->show();if (_Docker) _Docker->Activate(); }
 void InspectorUI::Hide() { if (_Window) _Window->hide(); }
-void InspectorUI::Release(GameSprout::GameSproutEditor *) {
+void InspectorUI::Release(GameSproutEditor::GameSproutViewApi *) {
     if (_AssetSubscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _AssetSubscribed=false;_SelectionSubscribed=false;

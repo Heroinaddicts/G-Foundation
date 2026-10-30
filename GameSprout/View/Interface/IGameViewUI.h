@@ -1,9 +1,9 @@
 #ifndef __IGameViewUI_h__
 #define __IGameViewUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class IGameViewUI : public GameSprout::IGameSproutView {
+class IGameViewUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IGameViewUI() {}
 };

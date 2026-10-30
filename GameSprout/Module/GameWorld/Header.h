@@ -2,4 +2,4 @@
 #include "IGameWorld.h"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;

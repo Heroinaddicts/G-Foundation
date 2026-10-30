@@ -1,13 +1,13 @@
 #include "Project.h"
 
-bool Project::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool Project::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     _Root = api->_Foundation->GetLaunchArg("ProjectRoot");
 
     GetGameSproutModule(api->_EditorApi, g_IConsole, Console);
     GSRegLaunchedCallback(
         g_IConsole,
-        [&](GameSproutApi * const api) {
+        [&](GameSproutModuleApi * const api) {
             GameSproutConsoleLog(g_IConsole, eConsoleLog::Debug, "{}", _Root);
             return true;
         }
@@ -16,19 +16,19 @@ bool Project::Initialize(GameSproutApi * const api) {
     return true;
 }
 
-bool Project::Launch(GameSproutApi * const api)  {
+bool Project::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void Project::LaunchFinished(GameSproutApi * const api)  {
+void Project::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void Project::Update(GameSproutApi * const api)  {
+void Project::Update(GameSproutModuleApi * const api)  {
     api->_Foundation->Update();
 }
 
-void Project::Release(GameSproutApi * const api)  {
+void Project::Release(GameSproutModuleApi * const api)  {
     
 }
 

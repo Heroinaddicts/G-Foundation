@@ -15,7 +15,7 @@ IDEWindow::~IDEWindow() {
     Release(nullptr);
 }
 
-bool IDEWindow::Initialize(GameSprout::GameSproutEditor * const editor) {
+bool IDEWindow::Initialize(GameSproutEditor::GameSproutViewApi * const editor) {
     // 窗口是否显示由 Show/Hide 控制，不在初始化时抢占登录窗口。
     if (_Window) {
         return true;
@@ -46,11 +46,11 @@ bool IDEWindow::Initialize(GameSprout::GameSproutEditor * const editor) {
     return _Window != nullptr;
 }
 
-bool IDEWindow::Launch(GameSprout::GameSproutEditor * const editor) {
+bool IDEWindow::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     return _Window != nullptr;
 }
 
-void IDEWindow::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
+void IDEWindow::LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) {
     Show();
 }
 
@@ -103,14 +103,14 @@ void IDEWindow::Hide() {
     }
 }
 
-void IDEWindow::Update(GameSprout::GameSproutEditor * const editor) {
+void IDEWindow::Update(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
     if (_TotalCount > 0) {
         _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
     }
 }
 
-void IDEWindow::Release(GameSprout::GameSproutEditor * const editor) {
+void IDEWindow::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
     delete _LoadingOverlay;
     _LoadingOverlay = nullptr;

@@ -9,7 +9,7 @@
 
 ProjectAssetsUI::~ProjectAssetsUI() { Release(nullptr); }
 
-void ProjectAssetsUI::BeforeInitialize(GameSprout::GameSproutEditor * editor) {
+void ProjectAssetsUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) {
     g_Self = this;
     g_GameSproutEditor = editor;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
@@ -17,7 +17,7 @@ void ProjectAssetsUI::BeforeInitialize(GameSprout::GameSproutEditor * editor) {
     GetGameSproutModule(editor,_Selection,SelectionManager);
 }
 
-bool ProjectAssetsUI::Initialize(GameSprout::GameSproutEditor *) {
+bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
     if (_Window) return true;
     if (!qobject_cast<QApplication *>(QCoreApplication::instance()) || !_Assets) return false;
     try {
@@ -73,7 +73,7 @@ bool ProjectAssetsUI::Initialize(GameSprout::GameSproutEditor *) {
     return true;
 }
 
-bool ProjectAssetsUI::Launch(GameSprout::GameSproutEditor *) {
+bool ProjectAssetsUI::Launch(GameSproutEditor::GameSproutViewApi *) {
     if (!_Window || !g_IIDEWindow || !_Assets) return false;
     _Docker = g_IIDEWindow->CreateDocker("ProjectAssets");
     if (!_Docker || !_Docker->AttachWidget(_Window)) return false;
@@ -93,13 +93,13 @@ bool ProjectAssetsUI::Launch(GameSprout::GameSproutEditor *) {
     return true;
 }
 
-void ProjectAssetsUI::LaunchFinished(GameSprout::GameSproutEditor *) { _Dirty = true; }
-void ProjectAssetsUI::Update(GameSprout::GameSproutEditor *) { if (_Dirty && _Window) Refresh(); }
+void ProjectAssetsUI::LaunchFinished(GameSproutEditor::GameSproutViewApi *) { _Dirty = true; }
+void ProjectAssetsUI::Update(GameSproutEditor::GameSproutViewApi *) { if (_Dirty && _Window) Refresh(); }
 void ProjectAssetsUI::Show() { if (_Window) _Window->show(); if (_Docker) _Docker->Activate(); }
 void ProjectAssetsUI::Hide() { if (_Window) _Window->hide(); }
 void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->_Dirty=true; }
 
-void ProjectAssetsUI::Release(GameSprout::GameSproutEditor *) {
+void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _SelectionSubscribed=false;_Selection=nullptr;

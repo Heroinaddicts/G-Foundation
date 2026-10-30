@@ -1,10 +1,10 @@
 #ifndef __IAgentLocal_h__
 #define __IAgentLocal_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "GRHIApi.h"
 
-class IAgentLocal : public GameSprout::IGameSproutModule {
+class IAgentLocal : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IAgentLocal() {}
 };

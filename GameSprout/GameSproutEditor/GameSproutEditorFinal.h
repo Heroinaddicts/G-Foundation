@@ -1,16 +1,16 @@
 #ifndef __GameSproutEditorFinal_h__
 #define __GameSproutEditorFinal_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include <map>
 #include <vector>
 
 class QLibrary;
 
-namespace GameSprout {
+namespace GameSproutEditor {
     class GameSproutFinal;
 
-    class GameSproutEditorFinal : public GameSproutEditor {
+    class GameSproutEditorFinal : public GameSproutViewApi {
     public:
         static GameSproutEditorFinal * GetInstance();
         ~GameSproutEditorFinal() override;

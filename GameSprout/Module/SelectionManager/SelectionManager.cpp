@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <QDebug>
 
-bool SelectionManager::Initialize(GameSprout::GameSproutApi * api) {
+bool SelectionManager::Initialize(GameSproutEditor::GameSproutModuleApi * api) {
     _Assets = api->_EditorApi->GetGameSproutModule<IAssetsManager>("AssetsManager");
     return _Assets != nullptr;
 }
-bool SelectionManager::Launch(GameSprout::GameSproutApi *) {
+bool SelectionManager::Launch(GameSproutEditor::GameSproutModuleApi *) {
     _Subscribed = _Assets->RegisterAssetListener(this);
     return _Subscribed;
 }
@@ -34,7 +34,7 @@ void SelectionManager::UnregisterSelectionListener(ISelectionListener * listener
         if (it->second == listener) it = _Listeners.erase(it); else ++it;
     }
 }
-void SelectionManager::Update(GameSprout::GameSproutApi *) {
+void SelectionManager::Update(GameSproutEditor::GameSproutModuleApi *) {
     if (!_Dirty) return;
     _Dirty = false;
     const auto snapshot = _Selection;
@@ -63,7 +63,7 @@ void SelectionManager::OnAssetRemove(const AssetEvent & event) {
     std::erase_if(selection, [&](const ProjectAssetSelection & item) { return item.GuidString == event.GuidValue.GetGuidString(); });
     SetAssetSelection(selection);
 }
-void SelectionManager::Release(GameSprout::GameSproutApi *) {
+void SelectionManager::Release(GameSproutEditor::GameSproutModuleApi *) {
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     _Subscribed = false;
     _Assets = nullptr;

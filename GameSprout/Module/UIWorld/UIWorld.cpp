@@ -1,22 +1,22 @@
 #include "UIWorld.h"
 
-bool UIWorld::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool UIWorld::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool UIWorld::Launch(GameSproutApi * const api)  {
+bool UIWorld::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void UIWorld::LaunchFinished(GameSproutApi * const api)  {
+void UIWorld::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void UIWorld::Update(GameSproutApi * const api)  {
+void UIWorld::Update(GameSproutModuleApi * const api)  {
     
 }
 
-void UIWorld::Release(GameSproutApi * const api)  {
+void UIWorld::Release(GameSproutModuleApi * const api)  {
     
 }

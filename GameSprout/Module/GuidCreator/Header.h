@@ -2,6 +2,6 @@
 #include "IGuidCreator.h"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;
 class GuidCreator;
 inline extern GuidCreator * g_Self = nullptr;

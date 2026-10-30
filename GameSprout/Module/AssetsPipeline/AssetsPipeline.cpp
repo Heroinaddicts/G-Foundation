@@ -13,7 +13,7 @@ struct LoadingCompletion {
 }
 
 
-void AssetsPipeline::BeforeInitialize(GameSproutApi * api) {
+void AssetsPipeline::BeforeInitialize(GameSproutModuleApi * api) {
     g_Self = this;
     _Tasks = api->_Foundation->TaskApi();
     GetGameSproutModule(api->_EditorApi, _Project, Project);
@@ -22,11 +22,11 @@ void AssetsPipeline::BeforeInitialize(GameSproutApi * api) {
     GetGameSproutModule(api->_EditorApi, _ShaderCompiler, ShaderCompiler);
     GetGameSproutView(api->_EditorApi, _IDE, IDEWindow);
 }
-bool AssetsPipeline::Initialize(GameSproutApi * api) { g_GameSproutApi = api; return _Tasks && _Project && _Assets && _Library && _ShaderCompiler && _IDE; }
-bool AssetsPipeline::Launch(GameSproutApi *) { _Owner = _Tasks->RegisterTaskOwner(); return _Owner != Foundation::InvalidTaskOwnerId; }
-void AssetsPipeline::LaunchFinished(GameSproutApi *) {}
-void AssetsPipeline::Update(GameSproutApi *) {}
-void AssetsPipeline::Release(GameSproutApi *) {
+bool AssetsPipeline::Initialize(GameSproutModuleApi * api) { g_GameSproutModuleApi = api; return _Tasks && _Project && _Assets && _Library && _ShaderCompiler && _IDE; }
+bool AssetsPipeline::Launch(GameSproutModuleApi *) { _Owner = _Tasks->RegisterTaskOwner(); return _Owner != Foundation::InvalidTaskOwnerId; }
+void AssetsPipeline::LaunchFinished(GameSproutModuleApi *) {}
+void AssetsPipeline::Update(GameSproutModuleApi *) {}
+void AssetsPipeline::Release(GameSproutModuleApi *) {
     if (_Tasks && _Owner != Foundation::InvalidTaskOwnerId) _Tasks->UnregisterTaskOwner(_Owner);
     _Owner = Foundation::InvalidTaskOwnerId;
     for (const auto & task : _Running) { (void)task; if (_IDE) _IDE->Unloading(); }

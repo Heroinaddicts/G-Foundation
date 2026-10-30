@@ -1,10 +1,10 @@
 #ifndef __IBuildSetting_h__
 #define __IBuildSetting_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "GRHIApi.h"
 
-class IBuildSetting : public GameSprout::IGameSproutModule {
+class IBuildSetting : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IBuildSetting() {}
 };

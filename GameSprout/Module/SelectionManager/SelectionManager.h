@@ -13,10 +13,10 @@ public:
     void OnAssetModify(const AssetEvent & event) override;
     void OnAssetRemove(const AssetEvent & event) override;
 private:
-    bool Initialize(GameSprout::GameSproutApi * api) override;
-    bool Launch(GameSprout::GameSproutApi *) override;
-    void Update(GameSprout::GameSproutApi *) override;
-    void Release(GameSprout::GameSproutApi *) override;
+    bool Initialize(GameSproutEditor::GameSproutModuleApi * api) override;
+    bool Launch(GameSproutEditor::GameSproutModuleApi *) override;
+    void Update(GameSproutEditor::GameSproutModuleApi *) override;
+    void Release(GameSproutEditor::GameSproutModuleApi *) override;
     IAssetsManager * _Assets = nullptr;
     bool _Subscribed = false;
     bool _Dirty = false;

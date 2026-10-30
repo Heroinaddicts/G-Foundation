@@ -3,7 +3,7 @@
 
 #include "IGameObject.h"
 
-class IGameWorld : public GameSprout::IGameSproutModule {
+class IGameWorld : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IGameWorld() {}
 };

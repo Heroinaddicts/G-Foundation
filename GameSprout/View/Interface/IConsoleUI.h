@@ -1,7 +1,7 @@
 #ifndef __IConsoleUI_h__
 #define __IConsoleUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
 enum class eConsoleLog : uint8_t {
     Debug,
@@ -10,7 +10,7 @@ enum class eConsoleLog : uint8_t {
     Error
 };
 
-class IConsoleUI : public GameSprout::IGameSproutView {
+class IConsoleUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IConsoleUI() {}
     // UTF-8 plain text. After Initialize, worker-thread calls are dispatched

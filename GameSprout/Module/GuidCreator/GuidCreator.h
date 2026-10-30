@@ -10,12 +10,12 @@ public:
     Guid CreateGuid() override;
 
 private:
-    void BeforeInitialize(GameSproutApi * const api) override;
-    bool Initialize(GameSproutApi * const api) override;
-    bool Launch(GameSproutApi * const api) override;
-    void LaunchFinished(GameSproutApi * const api) override;
-    void Update(GameSproutApi * const api) override;
-    void Release(GameSproutApi * const api) override;
+    void BeforeInitialize(GameSproutModuleApi * const api) override;
+    bool Initialize(GameSproutModuleApi * const api) override;
+    bool Launch(GameSproutModuleApi * const api) override;
+    void LaunchFinished(GameSproutModuleApi * const api) override;
+    void Update(GameSproutModuleApi * const api) override;
+    void Release(GameSproutModuleApi * const api) override;
 };
 
 #endif //__GuidCreator_h__

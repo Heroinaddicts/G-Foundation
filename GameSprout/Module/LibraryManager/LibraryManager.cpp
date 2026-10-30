@@ -28,7 +28,7 @@ LDBWriteOperation Put(const std::string & table, const std::string & key, const 
 }
 }
 
-void LibraryManager::BeforeInitialize(GameSproutApi * const api) {
+void LibraryManager::BeforeInitialize(GameSproutModuleApi * const api) {
     g_Self = this;
     _PublicationBlocked = false;
     _Tasks = api->_Foundation->TaskApi();
@@ -37,7 +37,7 @@ void LibraryManager::BeforeInitialize(GameSproutApi * const api) {
     GetGameSproutModule(api->_EditorApi, g_IProject, Project);
     GetGameSproutModule(api->_EditorApi, g_IConsole, Console);
     GetGameSproutModule(api->_EditorApi, g_ILocalDatabase, LocalDatabase);
-    GSRegLaunchedCallback(g_IProject, [this](GameSproutApi *) -> bool {
+    GSRegLaunchedCallback(g_IProject, [this](GameSproutModuleApi *) -> bool {
         _LibraryRoot = QDir(QString::fromStdString(g_IProject->GetProjectRoot())).filePath("Library").toStdString();
         QDir directory(QString::fromStdString(_LibraryRoot));
         if (!directory.mkpath(".") || !directory.mkpath("Artifact") || !directory.mkpath(".Transactions") || !directory.mkpath("Staging")) return false;
@@ -57,14 +57,14 @@ void LibraryManager::BeforeInitialize(GameSproutApi * const api) {
     });
 }
 
-bool LibraryManager::Initialize(GameSproutApi * const api) { g_GameSproutApi = api; return true; }
-bool LibraryManager::Launch(GameSproutApi *) {
+bool LibraryManager::Initialize(GameSproutModuleApi * const api) { g_GameSproutModuleApi = api; return true; }
+bool LibraryManager::Launch(GameSproutModuleApi *) {
     if (!_Tasks || !_IDE) return false;
     _TaskOwner = _Tasks->RegisterTaskOwner();
     return _TaskOwner != Foundation::InvalidTaskOwnerId;
 }
-void LibraryManager::LaunchFinished(GameSproutApi *) { StartGarbageCollection(); }
-void LibraryManager::Update(GameSproutApi *) {}
+void LibraryManager::LaunchFinished(GameSproutModuleApi *) { StartGarbageCollection(); }
+void LibraryManager::Update(GameSproutModuleApi *) {}
 
 void LibraryManager::ClearLoaded(const std::string & guid) {
     const auto found = _Loaded.find(guid);
@@ -73,7 +73,7 @@ void LibraryManager::ClearLoaded(const std::string & guid) {
     _Loaded.erase(found);
 }
 
-void LibraryManager::Release(GameSproutApi *) {
+void LibraryManager::Release(GameSproutModuleApi *) {
     if (_Tasks && _TaskOwner != Foundation::InvalidTaskOwnerId) _Tasks->UnregisterTaskOwner(_TaskOwner);
     _TaskOwner = Foundation::InvalidTaskOwnerId;
     while (_CleanupTasks > 0) { --_CleanupTasks; if (_IDE) _IDE->Unloading(); }

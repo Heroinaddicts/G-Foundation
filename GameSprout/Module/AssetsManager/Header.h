@@ -22,7 +22,7 @@
 #include "SafeString.hpp"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;
 inline extern IProject * g_IProject = nullptr;
 inline extern IConsole * g_IConsole = nullptr;
 inline extern IIDEWindow * g_IIDEWindow = nullptr;

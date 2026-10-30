@@ -1,5 +1,5 @@
 #pragma once
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include <string>
 #include <vector>
 
@@ -17,7 +17,7 @@ public:
 };
 
 // 编辑器主线程使用。持有身份快照，不持有资源对象；监听者由调用者管理。
-class ISelectionManager : public GameSprout::IGameSproutModule {
+class ISelectionManager : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~ISelectionManager() {}
     virtual std::vector<ProjectAssetSelection> GetAssetSelection() const = 0;

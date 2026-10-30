@@ -130,14 +130,14 @@ void AssetsManager::ImportDependents(const std::string & relativePath) {
     }
 }
 
-void AssetsManager::Update(GameSproutApi *) {
+void AssetsManager::Update(GameSproutModuleApi *) {
     DispatchAssetEvents();
 }
 
 void AssetsManager::WatcherDir(const std::string & path) {
     const std::string canonical=QFileInfo(QString::fromStdString(path)).canonicalFilePath().toStdString();
     if (!s_Active || canonical.empty() || !s_Active->_Watches.insert(canonical).second) return;
-    if (!g_GameSproutApi->_Foundation->SystemApi()->FileSystemWatcher(canonical,s_Active,OnFileSystemWatcher)) {
+    if (!g_GameSproutModuleApi->_Foundation->SystemApi()->FileSystemWatcher(canonical,s_Active,OnFileSystemWatcher)) {
         s_Active->_Watches.erase(canonical);
         GameSproutConsoleLog(g_IConsole,eConsoleLog::Warning,"Cannot watch directory: {}",path);
     }

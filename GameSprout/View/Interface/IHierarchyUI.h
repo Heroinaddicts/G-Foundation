@@ -1,9 +1,9 @@
 #ifndef __IHierarchyUI_h__
 #define __IHierarchyUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class IHierarchyUI : public GameSprout::IGameSproutView {
+class IHierarchyUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IHierarchyUI() {}
 };

@@ -7,5 +7,5 @@
 UsingGameSprout;
 
 
-inline extern GameSproutEditor* g_Editor = nullptr; // 借用，不拥有 IDEWindow。
+inline extern GameSproutViewApi* g_Editor = nullptr; // 借用，不拥有 IDEWindow。
 inline extern IIDEWindow * g_IIDEWindow = nullptr;

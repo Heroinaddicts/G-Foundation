@@ -518,7 +518,7 @@ public:
     virtual void OnAssetRemove(const AssetEvent & event) = 0;
 };
 
-class IAssetsManager : public GameSprout::IGameSproutModule {
+class IAssetsManager : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IAssetsManager() {}
 

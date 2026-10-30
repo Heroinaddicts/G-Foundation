@@ -1,5 +1,5 @@
 #pragma once
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "Define.h"
 #include <vector>
 
@@ -44,7 +44,7 @@ struct ShaderCompileResult {
     std::vector<ShaderCompileDependency> Dependencies;
 };
 
-class IShaderCompiler : public GameSprout::IGameSproutModule {
+class IShaderCompiler : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IShaderCompiler() {}
     virtual const std::string & GetToolchainHash() const = 0;

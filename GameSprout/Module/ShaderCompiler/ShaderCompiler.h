@@ -12,10 +12,10 @@ public:
     const std::string & GetToolchainHash() const override { return _ToolchainHash; }
     bool Compile(const ShaderCompileRequest &, ShaderCompileResult &) const override;
 private:
-    bool Initialize(GameSprout::GameSproutApi *) override;
-    bool Launch(GameSprout::GameSproutApi *) override { return true; }
+    bool Initialize(GameSproutEditor::GameSproutModuleApi *) override;
+    bool Launch(GameSproutEditor::GameSproutModuleApi *) override { return true; }
     // Configuration stays immutable until outstanding Pipeline tasks have stopped.
-    void Release(GameSprout::GameSproutApi *) override {}
+    void Release(GameSproutEditor::GameSproutModuleApi *) override {}
     ShaderCompilerTools _Tools;
     std::string _ToolchainHash;
 };

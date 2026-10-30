@@ -17,9 +17,9 @@ ConsoleUI::~ConsoleUI() {
     Release(nullptr);
 }
 
-void ConsoleUI::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
+void ConsoleUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) {
     GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
-    GSRegInitliazedCallback(g_IIDEWindow, [&](GameSprout::GameSproutEditor * const editor) {
+    GSRegInitliazedCallback(g_IIDEWindow, [&](GameSproutEditor::GameSproutViewApi * const editor) {
         if (_Dispatch) {
             return _Window != nullptr;
         }
@@ -68,7 +68,7 @@ void ConsoleUI::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
         return true;
     });
 
-    GSRegLaunchedCallback(g_IIDEWindow, [&](GameSprout::GameSproutEditor * const editor) {
+    GSRegLaunchedCallback(g_IIDEWindow, [&](GameSproutEditor::GameSproutViewApi * const editor) {
         if (_Attached) {
             return true;
         }
@@ -81,15 +81,15 @@ void ConsoleUI::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
     });
 }
 
-bool ConsoleUI::Initialize(GameSprout::GameSproutEditor * const editor) {
+bool ConsoleUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-bool ConsoleUI::Launch(GameSprout::GameSproutEditor * const editor) {
+bool ConsoleUI::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-void ConsoleUI::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
+void ConsoleUI::LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
 }
 
@@ -127,10 +127,10 @@ void ConsoleUI::Hide() {
     }
 }
 
-void ConsoleUI::Update(GameSprout::GameSproutEditor * const editor) {
+void ConsoleUI::Update(GameSproutEditor::GameSproutViewApi * const editor) {
 }
 
-void ConsoleUI::Release(GameSprout::GameSproutEditor * const editor) {
+void ConsoleUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
     // Cancel queued logs and UI callbacks before releasing their state.
     delete _Dispatch;

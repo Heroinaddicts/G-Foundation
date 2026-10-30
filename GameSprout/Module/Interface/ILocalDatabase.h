@@ -1,7 +1,7 @@
 #ifndef __ILocalDatabase_h__
 #define __ILocalDatabase_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "GRHIApi.h"
 
 #include <vector>
@@ -53,7 +53,7 @@ public:
     virtual void Close() = 0;
 };
 
-class ILocalDatabase : public GameSprout::IGameSproutModule {
+class ILocalDatabase : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~ILocalDatabase() {}
 

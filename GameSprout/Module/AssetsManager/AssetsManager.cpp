@@ -30,8 +30,8 @@
 #include "LightmapParametersAssetFactory.hpp"
 #include "FolderAssetFactory.hpp"
 
-bool AssetsManager::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool AssetsManager::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     GetGameSproutModule(api->_EditorApi, g_IProject, Project);
     GetGameSproutModule(api->_EditorApi, g_IConsole, Console);
     GetGameSproutView(api->_EditorApi, g_IIDEWindow, IDEWindow);
@@ -42,7 +42,7 @@ bool AssetsManager::Initialize(GameSproutApi * const api) {
 
     GSRegLaunchedCallback(
         g_IProject,
-        [&](GameSproutApi * const api) -> bool {
+        [&](GameSproutModuleApi * const api) -> bool {
             if (api->_Foundation->GetLaunchArg("IsNewProject")) {
                 QDir dir(QString::fromStdString(g_IProject->GetProjectRoot()));
                 this->_AssetsRoot = QString::fromStdString(g_IProject->GetProjectRoot() + "/Assets").toStdString();
@@ -90,7 +90,7 @@ bool AssetsManager::Initialize(GameSproutApi * const api) {
     return true;
 }
 
-bool AssetsManager::Launch(GameSproutApi * const api) {
+bool AssetsManager::Launch(GameSproutModuleApi * const api) {
     if (!_Pipeline || !_Library || !g_IIDEWindow) return false;
     // Keep the editor blocked across worker completions and main-thread batches.
     g_IIDEWindow->Loading("初始化资源", "扫描 Assets 并校验资源数据库");
@@ -99,7 +99,7 @@ bool AssetsManager::Launch(GameSproutApi * const api) {
 }
 
 
-void AssetsManager::LaunchFinished(GameSproutApi * const api) {
+void AssetsManager::LaunchFinished(GameSproutModuleApi * const api) {
     _ReconcileOnScan = true;
     _ScanFailed = false;
     _ConflictingGuids.clear();
@@ -144,7 +144,7 @@ void AssetsManager::StoreAssetMeta(IAssetMeta * const meta) {
     _Assets.emplace(guid, meta);
 }
 
-void AssetsManager::Release(GameSproutApi * const api) {
+void AssetsManager::Release(GameSproutModuleApi * const api) {
     s_Active = nullptr;
     _AssetEvents.clear(); _AssetListeners.clear();
     FinishStartupLoading();

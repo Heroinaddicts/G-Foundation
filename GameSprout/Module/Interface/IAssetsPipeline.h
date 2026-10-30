@@ -1,7 +1,7 @@
 #ifndef __IAssetsPipeline_h__
 #define __IAssetsPipeline_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "IGuidCreator.h"
 #include <functional>
 #include <string>
@@ -66,7 +66,7 @@ struct AssetImportResult {
     AssetImportManifest Manifest;
 };
 
-class IAssetsPipeline : public GameSprout::IGameSproutModule {
+class IAssetsPipeline : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IAssetsPipeline() {}
     // Results are borrowed for the callback only. Callbacks run on Foundation::Update's thread.

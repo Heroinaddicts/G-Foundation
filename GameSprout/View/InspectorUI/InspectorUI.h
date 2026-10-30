@@ -26,12 +26,12 @@ public:
     void OnAssetModify(const AssetEvent &) override { _Dirty = true; }
     void OnAssetRemove(const AssetEvent &) override { _Dirty = true; }
 private:
-    void BeforeInitialize(GameSprout::GameSproutEditor * editor) override;
-    bool Initialize(GameSprout::GameSproutEditor * editor) override;
-    bool Launch(GameSprout::GameSproutEditor * editor) override;
-    void LaunchFinished(GameSprout::GameSproutEditor *) override { _Dirty = true; }
-    void Update(GameSprout::GameSproutEditor *) override;
-    void Release(GameSprout::GameSproutEditor *) override;
+    void BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) override;
+    bool Initialize(GameSproutEditor::GameSproutViewApi * editor) override;
+    bool Launch(GameSproutEditor::GameSproutViewApi * editor) override;
+    void LaunchFinished(GameSproutEditor::GameSproutViewApi *) override { _Dirty = true; }
+    void Update(GameSproutEditor::GameSproutViewApi *) override;
+    void Release(GameSproutEditor::GameSproutViewApi *) override;
     void Refresh();
     void UpdateButtons();
     bool ResolvePendingChanges();

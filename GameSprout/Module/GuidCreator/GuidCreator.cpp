@@ -71,27 +71,27 @@ Guid GuidCreator::CreateGuid() {
     return Guid(parts[0], parts[1], parts[2], parts[3]);
 }
 
-void GuidCreator::BeforeInitialize(GameSproutApi * const api) {
+void GuidCreator::BeforeInitialize(GameSproutModuleApi * const api) {
     g_Self = this;
 }
 
-bool GuidCreator::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool GuidCreator::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool GuidCreator::Launch(GameSproutApi * const api)  {
+bool GuidCreator::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void GuidCreator::LaunchFinished(GameSproutApi * const api)  {
+void GuidCreator::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void GuidCreator::Update(GameSproutApi * const api)  {
+void GuidCreator::Update(GameSproutModuleApi * const api)  {
     
 }
 
-void GuidCreator::Release(GameSproutApi * const api)  {
+void GuidCreator::Release(GameSproutModuleApi * const api)  {
     
 }

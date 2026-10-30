@@ -4,12 +4,12 @@
 
 DockerLayoutManager* DockerLayoutManager::s_Instance = nullptr;
 
-void DockerLayoutManager::BeforeInitialize(GameSprout::GameSproutEditor * const editor) {
+void DockerLayoutManager::BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) {
     s_Instance = this;
     g_Editor = editor;
     GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
 
-    GSRegLaunchedCallback(g_IIDEWindow, [&](GameSprout::GameSproutEditor * const editor) {
+    GSRegLaunchedCallback(g_IIDEWindow, [&](GameSproutEditor::GameSproutViewApi * const editor) {
         // 菜单与其他 View 的 Docker 一样，统一在 Launch 阶段创建。
         IIDEMenu* layoutMenu = g_IIDEWindow->GetMenuBar()->CreateChildMenu(QStringLiteral("布局"));
         IIDEMenu* resetMenu = layoutMenu ? layoutMenu->CreateChildMenu(QStringLiteral("恢复默认布局")) : nullptr;
@@ -21,15 +21,15 @@ void DockerLayoutManager::BeforeInitialize(GameSprout::GameSproutEditor * const 
     });
 }
 
-bool DockerLayoutManager::Initialize(GameSprout::GameSproutEditor * const editor) {
+bool DockerLayoutManager::Initialize(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-bool DockerLayoutManager::Launch(GameSprout::GameSproutEditor * const editor) {
+bool DockerLayoutManager::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     return true;
 }
 
-void DockerLayoutManager::LaunchFinished(GameSprout::GameSproutEditor * const editor) {
+void DockerLayoutManager::LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) {
     ResetDefaultLayout();
 }
 
@@ -80,11 +80,11 @@ void DockerLayoutManager::Show() {
 void DockerLayoutManager::Hide() {
 }
 
-void DockerLayoutManager::Update(GameSprout::GameSproutEditor * const editor) {
+void DockerLayoutManager::Update(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
 }
 
-void DockerLayoutManager::Release(GameSprout::GameSproutEditor * const editor) {
+void DockerLayoutManager::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
     if (s_Instance == this) {
         s_Instance = nullptr;

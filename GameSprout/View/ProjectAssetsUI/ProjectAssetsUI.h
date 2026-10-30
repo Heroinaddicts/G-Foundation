@@ -24,12 +24,12 @@ public:
     void OnAssetRemove(const AssetEvent &) override { _Dirty = true; }
     void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection> & selection) override;
 private:
-    void BeforeInitialize(GameSprout::GameSproutEditor * editor) override;
-    bool Initialize(GameSprout::GameSproutEditor * editor) override;
-    bool Launch(GameSprout::GameSproutEditor * editor) override;
-    void LaunchFinished(GameSprout::GameSproutEditor * editor) override;
-    void Update(GameSprout::GameSproutEditor * editor) override;
-    void Release(GameSprout::GameSproutEditor * editor) override;
+    void BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) override;
+    bool Initialize(GameSproutEditor::GameSproutViewApi * editor) override;
+    bool Launch(GameSproutEditor::GameSproutViewApi * editor) override;
+    void LaunchFinished(GameSproutEditor::GameSproutViewApi * editor) override;
+    void Update(GameSproutEditor::GameSproutViewApi * editor) override;
+    void Release(GameSproutEditor::GameSproutViewApi * editor) override;
     void Refresh();
     void UpdateStatus();
     void PublishSelection();

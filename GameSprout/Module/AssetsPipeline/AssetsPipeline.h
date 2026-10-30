@@ -17,12 +17,12 @@ public:
     void ImportAsset(IAssetMeta * meta, const fImportCallback & callback, bool force = false) override;
     void Invalidate(const Guid & guid) override;
 private:
-    void BeforeInitialize(GameSproutApi * api) override;
-    bool Initialize(GameSproutApi * api) override;
-    bool Launch(GameSproutApi * api) override;
-    void LaunchFinished(GameSproutApi * api) override;
-    void Update(GameSproutApi * api) override;
-    void Release(GameSproutApi * api) override;
+    void BeforeInitialize(GameSproutModuleApi * api) override;
+    bool Initialize(GameSproutModuleApi * api) override;
+    bool Launch(GameSproutModuleApi * api) override;
+    void LaunchFinished(GameSproutModuleApi * api) override;
+    void Update(GameSproutModuleApi * api) override;
+    void Release(GameSproutModuleApi * api) override;
     Foundation::ITaskApi * _Tasks = nullptr;
     IIDEWindow * _IDE = nullptr;
     IProject * _Project = nullptr;

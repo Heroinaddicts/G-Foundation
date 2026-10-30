@@ -2,6 +2,6 @@
 #include "IAssetsPipeline.h"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;
 class AssetsPipeline;
 inline extern AssetsPipeline * g_Self = nullptr;

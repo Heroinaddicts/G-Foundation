@@ -9,27 +9,27 @@ ILDBSession * LocalDatabase::OpenLDB(const std::string & path) {
     return LDBSession::Open(path);
 }
 
-void LocalDatabase::BeforeInitialize(GameSproutApi * const api) {
+void LocalDatabase::BeforeInitialize(GameSproutModuleApi * const api) {
     g_Self = this;
 }
 
-bool LocalDatabase::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool LocalDatabase::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool LocalDatabase::Launch(GameSproutApi * const api)  {
+bool LocalDatabase::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void LocalDatabase::LaunchFinished(GameSproutApi * const api)  {
+void LocalDatabase::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void LocalDatabase::Update(GameSproutApi * const api)  {
+void LocalDatabase::Update(GameSproutModuleApi * const api)  {
     
 }
 
-void LocalDatabase::Release(GameSproutApi * const api)  {
+void LocalDatabase::Release(GameSproutModuleApi * const api)  {
     
 }

@@ -32,7 +32,7 @@ set(PROJECT_SOURCES
         GameSproutFinal.h
         GameSproutEditorFinal.cpp
         GameSproutEditorFinal.h
-        Api/GameSproutApi.h
+        Api/GameSproutEditorApi.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

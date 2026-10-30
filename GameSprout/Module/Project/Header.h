@@ -3,5 +3,5 @@
 #include "IConsole.h"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;
 inline extern IConsole * g_IConsole = nullptr;

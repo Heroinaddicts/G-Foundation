@@ -39,12 +39,12 @@ private:
     ConsoleUI& operator=(const ConsoleUI&) = delete;
 
 private:
-    void BeforeInitialize(GameSprout::GameSproutEditor * const editor) override;
-    bool Initialize(GameSprout::GameSproutEditor * const editor) override;
-    bool Launch(GameSprout::GameSproutEditor * const editor) override;
-    void LaunchFinished(GameSprout::GameSproutEditor * const editor) override;
-    void Update(GameSprout::GameSproutEditor * const editor) override;
-    void Release(GameSprout::GameSproutEditor * const editor) override;
+    void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
+    bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
+    bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void Update(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void Release(GameSproutEditor::GameSproutViewApi * const editor) override;
 
     QMainWindow* _Window = nullptr; // Owned here until AttachWidget succeeds.
     Ui::ConsoleUIWindow* _Ui = nullptr;

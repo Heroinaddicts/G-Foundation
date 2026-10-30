@@ -1,9 +1,9 @@
 #ifndef __IBuildSettingUI_h__
 #define __IBuildSettingUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class IBuildSettingUI : public GameSprout::IGameSproutView {
+class IBuildSettingUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IBuildSettingUI() {}
 };

@@ -36,11 +36,11 @@ public:
     void Hide() override;
 
 private:
-    bool Initialize(GameSprout::GameSproutEditor * const editor) override;
-    bool Launch(GameSprout::GameSproutEditor * const editor) override;
-    void LaunchFinished(GameSprout::GameSproutEditor * const editor) override;
-    void Update(GameSprout::GameSproutEditor * const editor) override;
-    void Release(GameSprout::GameSproutEditor * const editor) override;
+    bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
+    bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void Update(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void Release(GameSproutEditor::GameSproutViewApi * const editor) override;
 
     // Qt 窗口及 C++ 包装对象均在 Release 中按顺序显式清理。
     QMainWindow* _Window = nullptr;

@@ -1,5 +1,5 @@
-#ifndef __GameSproutApi_h__
-#define __GameSproutApi_h__
+#ifndef __GameSproutEditorApi_h__
+#define __GameSproutEditorApi_h__
 
 #include <functional>
 #include <list>
@@ -8,19 +8,19 @@
 #include "GRHIApi.h"
 UsingFoundation;
 
-#define UsingGameSprout using namespace GameSprout;
+#define UsingGameSprout using namespace GameSproutEditor;
 
 
-namespace GameSprout {
+namespace GameSproutEditor {
     class GameSproutFinal;
     class GameSproutEditorFinal;
     class IGameSproutModule;
     class IGameSproutView;
 
-    class GameSproutEditor {
+    class GameSproutViewApi {
     public:
-        virtual ~GameSproutEditor() {}
-        GameSproutEditor(GRHI::GRHIApi * const grhi) : _GRHIApi(grhi) {}
+        virtual ~GameSproutViewApi() {}
+        GameSproutViewApi(GRHI::GRHIApi * const grhi) : _GRHIApi(grhi) {}
 
         virtual IGameSproutView * FindGameSproutView(const std::string & name) const = 0;
         template<typename V>
@@ -40,19 +40,19 @@ namespace GameSprout {
 #define GetGameSproutView(editor, v, name) v = editor->GetGameSproutView<I##name>(#name);
 #define GetGameSproutModule(editor, m, name) m = editor->GetGameSproutModule<I##name>(#name);
 
-    class GameSproutApi {
+    class GameSproutModuleApi {
     public:
-        virtual ~GameSproutApi() {}
-        GameSproutApi(FoundationApi * const api, GameSproutEditor* const editor) : _EditorApi(editor), _Foundation(api) {}
+        virtual ~GameSproutModuleApi() {}
+        GameSproutModuleApi(FoundationApi * const api, GameSproutViewApi* const editor) : _EditorApi(editor), _Foundation(api) {}
 
-        GameSproutEditor * const _EditorApi;
+        GameSproutViewApi * const _EditorApi;
         FoundationApi * const _Foundation;
     };
 
     template<typename T>
-    class IGameSproutT {
+    class IGameSproutEditorT {
     public:
-        virtual ~IGameSproutT() {}
+        virtual ~IGameSproutEditorT() {}
 
         using fOnInitializeCallback = std::function<bool(T * const t)>;
         using fOnLaunchedCallback = std::function<bool(T * const t)>;
@@ -77,7 +77,7 @@ namespace GameSprout {
                 : _Initialize(init), _Launch(launch), _FILE(file), _LINE(line) {}
         };
 
-        friend class ::GameSprout::GameSproutEditorFinal;
+        friend class ::GameSproutEditor::GameSproutEditorFinal;
         bool TriggerInitialized(T * const t) {
             for(auto itor=_InitializeCallbacks.begin(); itor != _InitializeCallbacks.end(); itor++) {
                 if (false == (*itor)._Initialize(t)) {
@@ -107,7 +107,7 @@ namespace GameSprout {
         std::list<CallbackInfo> _InitializeCallbacks;
     };
 
-    class IGameSproutView : public IGameSproutT<GameSproutEditor> {
+    class IGameSproutView : public IGameSproutEditorT<GameSproutViewApi> {
     public:
         virtual ~IGameSproutView() {}
 
@@ -115,32 +115,32 @@ namespace GameSprout {
         virtual void Hide() {}
 
     protected:
-        virtual void BeforeInitialize(GameSproutEditor * const editor) {}
-        virtual bool Initialize(GameSproutEditor * const editor) = 0;
-        virtual bool Launch(GameSproutEditor * const editor) = 0;
-        virtual void LaunchFinished(GameSproutEditor * const editor) {}
+        virtual void BeforeInitialize(GameSproutViewApi * const editor) {}
+        virtual bool Initialize(GameSproutViewApi * const editor) = 0;
+        virtual bool Launch(GameSproutViewApi * const editor) = 0;
+        virtual void LaunchFinished(GameSproutViewApi * const editor) {}
 
-        virtual void Update(GameSprout::GameSproutEditor * const editor) {}
+        virtual void Update(GameSproutEditor::GameSproutViewApi * const editor) {}
 
-        virtual void Release(GameSproutEditor * const editor) = 0;
+        virtual void Release(GameSproutViewApi * const editor) = 0;
 
         friend class GameSproutFinal;
         friend class GameSproutEditorFinal;
     };
 
-    class IGameSproutModule : public IGameSproutT<GameSproutApi>  {
+    class IGameSproutModule : public IGameSproutEditorT<GameSproutModuleApi>  {
     public:
         virtual ~IGameSproutModule() {}
 
     protected:
-        virtual void BeforeInitialize(GameSproutApi * const api) {}
-        virtual bool Initialize(GameSproutApi * const api) = 0;
-        virtual bool Launch(GameSproutApi * const api) = 0;
-        virtual void LaunchFinished(GameSproutApi * const api) {}
+        virtual void BeforeInitialize(GameSproutModuleApi * const api) {}
+        virtual bool Initialize(GameSproutModuleApi * const api) = 0;
+        virtual bool Launch(GameSproutModuleApi * const api) = 0;
+        virtual void LaunchFinished(GameSproutModuleApi * const api) {}
 
-        virtual void Update(GameSproutApi * const api) {}
+        virtual void Update(GameSproutModuleApi * const api) {}
 
-        virtual void Release(GameSproutApi * const api) = 0;
+        virtual void Release(GameSproutModuleApi * const api) = 0;
 
         friend class GameSproutFinal;
         friend class GameSproutEditorFinal;
@@ -163,7 +163,7 @@ namespace GameSprout {
 #define GameSproutViewEntryName "GetView"
 #define GameSproutViewInstance(View) \
     View s_##View; \
-    GameSproutExport GameSprout::IGameSproutView* (GetView)() noexcept { \
+    GameSproutExport GameSproutEditor::IGameSproutView* (GetView)() noexcept { \
         return &s_##View; \
     }
 
@@ -171,8 +171,8 @@ namespace GameSprout {
 #define GameSproutModuleEntryName "GetModule"
 #define GameSproutModuleInstance(Module) \
     Module s_##Module; \
-    GameSproutExport GameSprout::IGameSproutModule* (GetModule)() noexcept { \
+    GameSproutExport GameSproutEditor::IGameSproutModule* (GetModule)() noexcept { \
         return &s_##Module; \
     }
 
-#endif //__GameSproutApi_h__
+#endif //__GameSproutEditorApi_h__

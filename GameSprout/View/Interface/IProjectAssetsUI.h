@@ -1,10 +1,10 @@
 #ifndef __IProjectAssetsUI_h__
 #define __IProjectAssetsUI_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 #include "ISelectionManager.h"
 
-class IProjectAssetsUI : public GameSprout::IGameSproutView {
+class IProjectAssetsUI : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~IProjectAssetsUI() {}
     // 主线程；返回身份快照，不借用资源对象。

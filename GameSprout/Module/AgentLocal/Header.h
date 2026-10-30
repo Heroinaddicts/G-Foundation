@@ -2,6 +2,6 @@
 #include "IAgentLocal.h"
 UsingGameSprout;
 
-inline extern GameSproutApi * g_GameSproutApi = nullptr;
+inline extern GameSproutModuleApi * g_GameSproutModuleApi = nullptr;
 class AgentLocal;
 inline extern AgentLocal * g_Self = nullptr;

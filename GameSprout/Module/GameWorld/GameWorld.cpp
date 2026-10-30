@@ -1,22 +1,22 @@
 #include "GameWorld.h"
 
-bool GameWorld::Initialize(GameSproutApi * const api) {
-    g_GameSproutApi = api;
+bool GameWorld::Initialize(GameSproutModuleApi * const api) {
+    g_GameSproutModuleApi = api;
     return true;
 }
 
-bool GameWorld::Launch(GameSproutApi * const api)  {
+bool GameWorld::Launch(GameSproutModuleApi * const api)  {
     return true;
 }
 
-void GameWorld::LaunchFinished(GameSproutApi * const api)  {
+void GameWorld::LaunchFinished(GameSproutModuleApi * const api)  {
 
 }
 
-void GameWorld::Update(GameSproutApi * const api)  {
+void GameWorld::Update(GameSproutModuleApi * const api)  {
     
 }
 
-void GameWorld::Release(GameSproutApi * const api)  {
+void GameWorld::Release(GameSproutModuleApi * const api)  {
     
 }
