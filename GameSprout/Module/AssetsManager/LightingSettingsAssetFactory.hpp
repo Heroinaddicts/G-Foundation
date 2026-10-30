@@ -10,7 +10,7 @@ public:
 class LightingSettingsMeta : public AssetMetaWithSettings<LightingSettingsImportSettings> {
 public:
     LightingSettingsMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::LightingSettings, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::LightingSettings, guid, path) {}
 };
 
 inline IAssetMeta * OnLightingSettingsAssetCreate(const Foundation::FileSystemWatcherEvent & event,

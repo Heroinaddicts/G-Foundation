@@ -122,3 +122,17 @@ bool LDBTable::Set(const std::string & key, void * const data, const int len) {
     }
     return ReportError("commit write transaction", mdb_txn_commit(transaction));
 }
+
+bool LDBTable::Delete(const std::string & key) {
+    if (!_Owner->_Environment || !_Owner->IsValidKey(key)) return false;
+    MDB_txn * transaction = nullptr;
+    int result = mdb_txn_begin(_Owner->_Environment, nullptr, 0, &transaction);
+    if (!ReportError("begin delete", result)) return false;
+    MDB_val nativeKey{key.size(), const_cast<char *>(key.data())};
+    result = mdb_del(transaction, _Database, &nativeKey, nullptr);
+    if (result != MDB_SUCCESS && result != MDB_NOTFOUND) {
+        mdb_txn_abort(transaction);
+        return ReportError("delete", result);
+    }
+    return ReportError("commit delete", mdb_txn_commit(transaction));
+}

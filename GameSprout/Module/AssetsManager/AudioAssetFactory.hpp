@@ -191,7 +191,7 @@ private:
 class AudioMeta : public AssetMetaWithSettings<AudioImportSettings> {
 public:
     AudioMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Audio, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Audio, guid, path) {}
 };
 
 inline IAssetMeta * OnAudioAssetCreate(const Foundation::FileSystemWatcherEvent & event,

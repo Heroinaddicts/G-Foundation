@@ -62,7 +62,7 @@ private:
 class ScriptMeta : public AssetMetaWithSettings<ScriptImportSettings> {
 public:
     ScriptMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Script, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Script, guid, path) {}
 };
 
 inline IAssetMeta * OnScriptAssetCreate(const Foundation::FileSystemWatcherEvent & event,

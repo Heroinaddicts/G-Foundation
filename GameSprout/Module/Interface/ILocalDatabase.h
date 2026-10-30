@@ -9,7 +9,15 @@
 #include <functional>
 #include <string>
 
-// Sessions and their tables are used on a single thread; no internal synchronization.
+struct LDBWriteOperation {
+    std::string Table;
+    std::string Key;
+    std::vector<uint8_t> Data;
+    bool Delete = false;
+};
+
+// All database interfaces are synchronous and must be called on the main thread.
+// Sessions/tables have no internal synchronization; TaskApi workers must not access them.
 class ILDBTable {
 public:
     virtual ~ILDBTable() {}
@@ -20,6 +28,8 @@ public:
     virtual bool Set(const std::string & key, void * const data, const int len) = 0;
     // Copies into caller-owned storage; failure clears data.
     virtual bool Get(const std::string & key, std::vector<uint8_t>& data) const = 0;
+    // Missing keys succeed. A closed session or invalid key fails.
+    virtual bool Delete(const std::string & key) = 0;
     // Synchronous: true continues, false stops successfully; an empty table succeeds.
     // Returns false for an empty callback, a closed session or a database read error.
     // key/data are borrowed for the current callback only. Do not access, close or
@@ -35,6 +45,9 @@ public:
     virtual bool CreateTable(const std::string & name) = 0;
     // Borrowed pointer owned by this session. Missing tables return nullptr.
     virtual ILDBTable * GetTable(const std::string & name) = 0;
+
+    // All operations commit in one transaction or none do. Tables must exist.
+    virtual bool WriteBatch(const std::vector<LDBWriteOperation> & operations) = 0;
 
     // Idempotent. Table wrappers remain valid but reject operations after close.
     virtual void Close() = 0;

@@ -12,15 +12,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(AssetsPipeline VERSION 0.1 LANGUAGES CXX)
 endif()
 
+# The FBX decoder is upstream C; keep it compiled in its original language.
+enable_language(C)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui)
 
 # Keep the target and IDE tree in sync when files are added or removed.
 file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
     LIST_DIRECTORIES false
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cxx"
@@ -31,14 +35,20 @@ file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
 )
 # Exclude generated files from standalone builds inside the source tree.
 list(FILTER module_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen)/")
-list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(APPEND module_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ufbx/LICENSE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ufbx/UPSTREAM.json"
+    "${CMAKE_CURRENT_SOURCE_DIR}/AssetImport.txt"
+)
 
 add_library(AssetsPipeline SHARED ${module_files})
-target_compile_features(AssetsPipeline PRIVATE cxx_std_20)
+target_compile_features(AssetsPipeline PRIVATE c_std_99 cxx_std_20)
 target_link_libraries(AssetsPipeline PRIVATE
     Foundation::FoundationApi
     GRHI::GRHIApi
     Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Gui
 )
 target_include_directories(AssetsPipeline PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -79,4 +89,13 @@ set_target_properties(AssetsPipeline PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${module_output_directory}/$<0:>"
     PDB_OUTPUT_DIRECTORY "${module_output_directory}/$<0:>"
     COMPILE_PDB_OUTPUT_DIRECTORY "${module_output_directory}/$<0:>"
+)
+
+# Ship the decoder's license alongside this module's supporting files.
+add_custom_command(TARGET AssetsPipeline POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:AssetsPipeline>/Licenses/ufbx"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/ufbx/LICENSE"
+        "$<TARGET_FILE_DIR:AssetsPipeline>/Licenses/ufbx/LICENSE"
+    VERBATIM
 )

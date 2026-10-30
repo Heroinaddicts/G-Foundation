@@ -10,7 +10,7 @@ public:
 class RenderTextureMeta : public AssetMetaWithSettings<RenderTextureImportSettings> {
 public:
     RenderTextureMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::RenderTexture, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::RenderTexture, guid, path) {}
 };
 
 inline IAssetMeta * OnRenderTextureAssetCreate(const Foundation::FileSystemWatcherEvent & event,

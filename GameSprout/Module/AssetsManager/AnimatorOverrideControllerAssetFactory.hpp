@@ -10,7 +10,7 @@ public:
 class AnimatorOverrideControllerMeta : public AssetMetaWithSettings<AnimatorOverrideControllerImportSettings> {
 public:
     AnimatorOverrideControllerMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::AnimatorOverrideController, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::AnimatorOverrideController, guid, path) {}
 };
 
 inline IAssetMeta * OnAnimatorOverrideControllerAssetCreate(const Foundation::FileSystemWatcherEvent & event,

@@ -10,7 +10,7 @@ public:
 class FolderMeta : public AssetMetaWithSettings<FolderImportSettings> {
 public:
     FolderMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Folder, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Folder, guid, path) {}
 };
 
 inline IAssetMeta * OnFolderAssetCreate(const Foundation::FileSystemWatcherEvent & event,

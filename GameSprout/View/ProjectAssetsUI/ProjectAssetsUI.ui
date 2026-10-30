@@ -1,6 +1,40 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>ProjectAssetsUIWindow</class>
- <widget class="QMainWindow" name="ProjectAssetsUIWindow">
+ <widget class="QWidget" name="ProjectAssetsUIWindow">
+  <property name="minimumSize"><size><width>360</width><height>180</height></size></property>
+  <property name="errorColor" stdset="0"><color><red>255</red><green>151</green><blue>151</blue></color></property>
+  <property name="pendingColor" stdset="0"><color><red>188</red><green>207</green><blue>231</blue></color></property>
+  <property name="styleSheet"><string notr="true">QWidget#ProjectAssetsUIWindow { background:#25272b; color:#e0e2e6; }
+QTreeView { background:#25272b; alternate-background-color:#292c31; color:#e0e2e6; border:0; outline:0; selection-background-color:#3a526d; selection-color:#ffffff; }
+QTreeView::item { height:25px; padding-right:5px; }
+QTreeView::item:hover { background:#343b46; }
+QTreeView::item:selected { background:#3a526d; color:white; }
+QHeaderView::section { background:#30343a; color:#cbd0d8; border:0; padding:5px; text-align:left; }
+QLineEdit,QComboBox { background:#1d1f23; color:#e0e2e6; border:1px solid #454a53; border-radius:3px; padding:4px; min-height:21px; }
+QLineEdit:focus,QComboBox:focus { border-color:#7fa8d2; }
+QComboBox QAbstractItemView { background:#25272b; color:#e0e2e6; selection-background-color:#3a526d; }
+QToolButton { color:#e0e2e6; background:#30343a; border:1px solid #454a53; border-radius:3px; padding:4px 9px; }
+QToolButton:hover { background:#424a56; } QToolButton:disabled { color:#777e89; }
+QSplitter::handle { background:#42464e; width:3px; }
+QLabel { color:#adb4bf; padding:2px; }</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>4</number></property>
+   <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
+   <item><layout class="QHBoxLayout" name="navigationLayout" stretch="0,0,1,1">
+    <item><widget class="QToolButton" name="rootButton"><property name="text"><string>Assets</string></property><property name="toolTip"><string>返回资源根目录</string></property></widget></item>
+    <item><widget class="QToolButton" name="upButton"><property name="text"><string>↑</string></property><property name="toolTip"><string>上一级目录</string></property></widget></item>
+    <item><widget class="QComboBox" name="breadcrumbCombo"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>2</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="toolTip"><string>当前位置；选择上级目录跳转</string></property></widget></item>
+    <item><widget class="QLineEdit" name="searchEdit"><property name="minimumSize"><size><width>140</width><height>0</height></size></property><property name="placeholderText"><string>搜索当前目录及子目录…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
+   </layout></item>
+   <item><widget class="QSplitter" name="splitter">
+    <property name="orientation"><enum>Qt::Horizontal</enum></property><property name="childrenCollapsible"><bool>false</bool></property>
+    <widget class="QTreeView" name="folderTree"><property name="minimumSize"><size><width>140</width><height>0</height></size></property><property name="headerHidden"><bool>true</bool></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="uniformRowHeights"><bool>true</bool></property><property name="animated"><bool>false</bool></property></widget>
+    <widget class="QTreeView" name="assetTree"><property name="alternatingRowColors"><bool>true</bool></property><property name="uniformRowHeights"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property><property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="allColumnsShowFocus"><bool>true</bool></property></widget>
+   </widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>正在读取资源…</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  </layout>
  </widget>
+ <resources><include location="ProjectAssetsIcons.qrc"/></resources>
+ <connections/>
 </ui>

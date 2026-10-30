@@ -10,7 +10,7 @@ public:
 class AudioMixerMeta : public AssetMetaWithSettings<AudioMixerImportSettings> {
 public:
     AudioMixerMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::AudioMixer, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::AudioMixer, guid, path) {}
 };
 
 inline IAssetMeta * OnAudioMixerAssetCreate(const Foundation::FileSystemWatcherEvent & event,

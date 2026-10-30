@@ -272,7 +272,7 @@ private:
 class ModelMeta : public AssetMetaWithSettings<ModelImportSettings> {
 public:
     ModelMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Model, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Model, guid, path) {}
 };
 
 inline IAssetMeta * OnModelAssetCreate(const Foundation::FileSystemWatcherEvent & event,

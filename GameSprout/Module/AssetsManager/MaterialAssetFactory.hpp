@@ -10,7 +10,7 @@ public:
 class MaterialMeta : public AssetMetaWithSettings<MaterialImportSettings> {
 public:
     MaterialMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Material, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Material, guid, path) {}
 };
 
 inline IAssetMeta * OnMaterialAssetCreate(const Foundation::FileSystemWatcherEvent & event,

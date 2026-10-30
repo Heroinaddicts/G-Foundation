@@ -51,7 +51,7 @@ class AssetMetaWithSettings : public AssetMeta {
 public:
     virtual ~AssetMetaWithSettings() { delete _Settings; }
 
-    AssetMetaWithSettings(const eAssetType type, const Guid & guid, const std::string & path)
+    AssetMetaWithSettings(const eAssetImporterType type, const Guid & guid, const std::string & path)
         : AssetMeta(type, guid, path), _Settings(new Settings()) {}
 
     AssetMetaWithSettings(const AssetMetaWithSettings &) = delete;
@@ -60,12 +60,14 @@ public:
     IAssetImportSettings * GetImportSettings() const override { return _Settings; }
 
     bool ConvertToJson(Json::Value & value) const override {
-        const char * typeName = GetAssetTypeName(_AssetType);
+        const char * typeName = GetAssetImporterTypeName(_ImporterType);
         if (!_Guid.IsValid() || nullptr == typeName || nullptr == _Settings) return false;
         Json::Value result(Json::objectValue);
         if (!_Settings->ConvertToJson(result["ImportSettings"])) return false;
         result["Guid"] = _Guid.GetGuidString();
-        result["AssetType"] = typeName;
+        result["ImporterType"] = typeName;
+        result["Version"] = 1;
+        result["SubAssets"] = _SubAssets;
         result["Path"] = GetPath();
         value.swap(result);
         return true;
@@ -75,13 +77,15 @@ public:
         if (!value.isObject() || !value.isMember("Guid") || !value["Guid"].isString()) return false;
         const Guid guid(value["Guid"].asString());
         if (!guid.IsValid() || guid != _Guid) return false;
-        if (value.isMember("AssetType")) {
-            const char * typeName = GetAssetTypeName(_AssetType);
-            if (nullptr == typeName || !value["AssetType"].isString()
-                || value["AssetType"].asString() != typeName) return false;
+        const char * typeKey = value.isMember("ImporterType") ? "ImporterType" : "AssetType";
+        if (value.isMember(typeKey)) {
+            const char * typeName = GetAssetImporterTypeName(_ImporterType);
+            if (nullptr == typeName || !value[typeKey].isString()
+                || value[typeKey].asString() != typeName) return false;
         }
         if (value.isMember("Path") && !value["Path"].isString()) return false;
 
+        if (value.isMember("SubAssets") && !value["SubAssets"].isArray()) return false;
         Settings * settings = new Settings();
         try {
             if (value.isMember("ImportSettings") && !settings->ConvertFromJson(value["ImportSettings"])) {
@@ -95,6 +99,7 @@ public:
         // 定位路径由当前扫描位置决定，不能被复制或移动前的 JSON 旧路径覆盖。
         delete _Settings;
         _Settings = settings;
+        _SubAssets = value.get("SubAssets", Json::Value(Json::arrayValue));
         return true;
     }
 

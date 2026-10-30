@@ -10,7 +10,7 @@ public:
 class PhysicsMaterial2DMeta : public AssetMetaWithSettings<PhysicsMaterial2DImportSettings> {
 public:
     PhysicsMaterial2DMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::PhysicsMaterial2D, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::PhysicsMaterial2D, guid, path) {}
 };
 
 inline IAssetMeta * OnPhysicsMaterial2DAssetCreate(const Foundation::FileSystemWatcherEvent & event,

@@ -10,7 +10,7 @@ public:
 class CubemapMeta : public AssetMetaWithSettings<CubemapImportSettings> {
 public:
     CubemapMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Cubemap, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Cubemap, guid, path) {}
 };
 
 inline IAssetMeta * OnCubemapAssetCreate(const Foundation::FileSystemWatcherEvent & event,

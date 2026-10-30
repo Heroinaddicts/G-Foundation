@@ -213,7 +213,8 @@ namespace Foundation {
         uv_loop_t Loop{};
         uv_async_t Wakeup{};
         uv_timer_t BatchTimer{};
-        std::set<UInt64> DirtyWatches; // Worker-only; never scan every registered watch.
+        std::set<UInt64> DirtyWatches; // Worker-only; unchanged directory contents are never scanned.
+        std::chrono::steady_clock::time_point LastDirectoryCheck{};
         std::thread Worker;
         // Native handle ownership and Watches belong exclusively to Worker.
         std::map<UInt64, Watch*> Watches;
@@ -548,9 +549,31 @@ namespace Foundation {
         static void FlushChanges(uv_timer_t* timer) {
             State* service = static_cast<State*>(timer->data);
             std::set<UInt64> pending;
-            pending.swap(service->DirtyWatches);
             std::vector<std::pair<std::size_t, UInt64>> ordered;
             try {
+                const auto now = std::chrono::steady_clock::now();
+                if (now - service->LastDirectoryCheck >= std::chrono::seconds(1)) {
+                    service->LastDirectoryCheck = now;
+                    // Native backends can omit a rename notification entirely. Check
+                    // directory metadata in Worker; enumerate children only on change.
+                    for (const auto & [id, watch] : service->Watches) {
+                        if (!watch->Self.Directory || watch->Closing) continue;
+                        Entry current;
+                        const EntryResult result = ReadEntry(watch->Path, current);
+                        if (result == EntryResult::Failed) continue;
+                        if (result != EntryResult::Present || FileChanged(watch->Self, current)) {
+                            watch->RescanChildren = true;
+                            watch->RescanParent = true;
+                            service->DirtyWatches.insert(id);
+                            const auto parent = service->DirectoryWatches.find(watch->ParentPath);
+                            if (parent != service->DirectoryWatches.end()) for (UInt64 parentID : parent->second) {
+                                service->Watches.at(parentID)->RescanChildren = true;
+                                service->DirtyWatches.insert(parentID);
+                            }
+                        }
+                    }
+                }
+                pending.swap(service->DirtyWatches);
                 for (const UInt64 id : pending) {
                     const auto found = service->Watches.find(id);
                     if (found != service->Watches.end()) {
@@ -562,7 +585,7 @@ namespace Foundation {
                 std::sort(ordered.begin(), ordered.end());
             } catch (...) {
                 service->DirtyWatches.merge(pending);
-                uv_timer_start(&service->BatchTimer, &FlushChanges, 30, 0);
+                uv_timer_start(&service->BatchTimer, &FlushChanges, 30, 1000);
                 std::fputs("[Foundation][System] Failed to order filesystem changes.\n", stderr);
                 return;
             }
@@ -622,6 +645,8 @@ namespace Foundation {
                         if (!relative.empty() && relative != "." && relative != ".." &&
                             !relative.is_absolute() && !relative.has_parent_path()) {
                             watch->ParentCandidates.insert(Utf8Path(NativePath(watch->ParentPath) / relative));
+                        } else {
+                            watch->RescanParent = true;
                         }
                     }
                 } else if (!filename || status < 0) {
@@ -630,14 +655,19 @@ namespace Foundation {
                     const std::filesystem::path relative = NativePath(filename).lexically_normal();
                     if (relative.empty() || relative == "." || relative == ".." ||
                         relative.is_absolute() || relative.has_parent_path()) {
-                        return;
+                        // Some backends coalesce a directory rename into a descendant
+                        // notification. Reconcile direct children instead of dropping it;
+                        // callbacks still describe only the watched directory's children.
+                        watch->RescanChildren = true;
+                    } else {
+                        watch->DirtyChildren.insert(Utf8Path(NativePath(watch->Path) / relative));
                     }
-                    watch->DirtyChildren.insert(Utf8Path(NativePath(watch->Path) / relative));
                 }
                 State* service = watch->Service;
                 service->DirtyWatches.insert(watch->ID);
-                if (!uv_is_active(reinterpret_cast<uv_handle_t*>(&service->BatchTimer))) {
-                    uv_timer_start(&service->BatchTimer, &FlushChanges, 30, 0);
+                if (!uv_is_active(reinterpret_cast<uv_handle_t*>(&service->BatchTimer))
+                    || uv_timer_get_due_in(&service->BatchTimer) > 30) {
+                    uv_timer_start(&service->BatchTimer, &FlushChanges, 30, 1000);
                 }
             } catch (...) {
                 std::fputs("[Foundation][System] Failed to queue a filesystem change.\n", stderr);
@@ -750,6 +780,7 @@ namespace Foundation {
                 return false;
             }
             BatchTimer.data = this;
+            uv_timer_start(&BatchTimer, &FlushChanges, 1000, 1000);
             try {
                 Worker = std::thread([this]() { uv_run(&Loop, UV_RUN_DEFAULT); });
             } catch (...) {

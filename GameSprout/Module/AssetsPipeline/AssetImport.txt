@@ -1,0 +1,152 @@
+GameSprout 资源导入约定
+
+模块职责
+AssetsManager：扫描/监听 Assets、维护 Meta 与 GUID、合并重复事件、调度导入及依赖失效。
+AssetsPipeline：快照输入、通过 Foundation TaskApi 运行解码与预处理、拒绝过期结果。
+LibraryManager：发布产物、维护 GUID + LocalID 查询、反向依赖索引及缓存清理。
+LocalDatabase：单线程 LMDB 会话、遍历/删除、跨表原子 WriteBatch。
+
+调用方式
+编辑器修改某项 ImportSettings 后，调用 AssetsManager::ReimportAsset(guid)。
+直接调用 Pipeline::ImportAsset(meta, callback, force) 时，Meta 仅在提交时读取。
+force=true 绕过缓存。结果对象只在回调期间有效，需要保留时自行复制。
+QueryAsset(guid, localID) 返回 Library 持有的产物描述，不创建 GPU 资源。
+该 GUID 下次成功发布、删除或 Library 释放后，旧描述指针失效。
+
+线程与生命周期
+所有模块接口、Meta、LMDB、Loading/Unloading 和结果回调都在编辑器主线程使用。
+主线程先 Loading，再 SubmitTask；Foundation::Update 派发完成后 Unloading。
+拒绝提交、失败、取消、模块释放均配对 Unloading。
+AssetsManager::Launch 另外持有一层启动 Loading，覆盖扫描结果的主线程处理、
+目录监听复核、数据库对比、导入防抖和首轮导入队列，全部结束后才允许编辑器操作。
+实际扫描在所有模块 Launch 完成、Project/Library 就绪后的 LaunchFinished 同步执行。
+单个工作任务的 Unloading 不会提前解除这层启动 Loading。
+工作线程只持有路径、设置等快照，不访问 Meta、窗口或数据库。
+模块释放时注销 TaskOwner，未完成任务不再回调模块；工作数据由 TaskApi 清理。
+TaskApi 所在的 Foundation 动态库须保持加载，直到所有工作任务退出。
+
+源文件与 Meta
+Meta 位于源文件旁，例如 Assets/Characters/Bear.fbx.meta。
+Meta.Path 是相对 Assets 的路径：Characters/Bear.fbx。
+ImporterType 表示源文件导入器；产物 Type 才是 Mesh/Texture/AnimationClip 等资源类型。
+读取旧 Meta 时兼容原 AssetType 键；新保存使用 ImporterType。
+ImportSettings 是 Meta 的子对象；SubAssets 保存 Type/SourceKey/Name/LocalID。
+GUID 标识源文件，LocalID 标识其中一个资源。单资源图片也使用非零 LocalID。
+删除子资源后保留身份登记，避免旧 ID 被不同资源复用。
+重新导入及源文件/目录移动会保留 GUID；匹配同一 SourceKey 的子资源保留 LocalID。
+模型内部节点或资源自身改名可能改变 SourceKey；这种语义修改不能保证原子资源 ID。
+同名资源用同名序号区分；同名资源之间重新排序也可能改变对应关系。
+Meta 损坏或 GUID 冲突会报告错误，不会自动分配新 GUID 覆盖原文件。
+
+Library 布局与发布
+Library/ArtifactDB：Manifests、Dependents、AssetSources、AssetSourceBackups、Publications 等 LMDB 表。
+所有 ILocalDatabase 接口都是同步接口，只允许在主线程调用，包括遍历、读取和批量写入。
+AssetSources 由 AssetsManager 管理，记录 GUID、Assets 相对路径、导入器、源大小、
+源/Meta 修改时间（UTC 毫秒）、内容/设置哈希、最近有效 Meta，以及处理状态和错误。
+它独立于成功产物表：失败仍更新源观察状态，同时保留 Manifests 的上次成功版本。
+启动先遍历数据库并复制记录，遍历结束后检查对应资源和 Meta，恢复缺失 Meta；
+资源不存在时暂记删除候选，等全目录 GUID 匹配结束再确认，避免把移动误当删除。
+随后使用 SafeSystem::File::EnumerateDirectory 同步枚举 Assets，排除所有大小写的 meta 后缀。
+枚举、监听注册和逐文件的 Meta/数据库判断都在主线程进行。
+for 循环内立即恢复/创建 Meta、登记 GUID、对比和保存单个文件的记录；
+完整登记后，再向 Pipeline 提交每个资源的导入/缓存验证任务，保证依赖 GUID 已齐全。
+不再收集整批文件提交统一哈希任务；每个资源的哈希和缓存验证由其 ImportAsset 完成，
+复用同一次源文件读取的内容，不访问数据库。
+时间戳相同的资源仍通过各自的 Pipeline 任务验证内容与产物，命中缓存时不会重新解码。
+运行时目录变化回调只登记待扫描路径，由下一次主线程 Update 执行同一套逐文件流程，
+避免在 Foundation 派发文件事件期间同步进行整段目录扫描和监听注册。
+按 GUID 对比和更新记录；源/Meta 时间戳或大小变化按约定重新预处理，失败记录下次重试。
+时间戳相同仍检查内容/设置哈希、子资源身份、依赖及产物有效性。
+资源与 Meta 一起离线移动时保留 GUID/子资源 ID，并修正 Meta 的相对 Path。
+Meta 缺失时先按路径查活动表，再查备份表，历史身份唯一才恢复完整 Meta；不覆盖已有 Meta。
+删除时用一次 WriteBatch 写 AssetSourceBackups、删除 AssetSources 和 Library 活动/依赖索引。
+备份包含原记录、完整 Meta、最近成功 Manifest、备份时间和原因，保留多次删除历史。
+数据库提交成功后才删除确认属于该 GUID 的孤立 Meta。备份表不保存资源源文件字节。
+恢复资源文件后，可从备份恢复 GUID、导入设置和 LocalID，再重新生成运行时产物。
+GUID 冲突、Meta 损坏和读取失败不会当成资源删除；枚举不完整时保守跳过删除。
+首次升级旧项目时，从原成功产物记录补齐初始源记录，新时间字段缺失则重新验证一次。
+Library/<GUID>_<LocalID>.gsasset：最终运行时资源，直接按身份计算文件名。
+不再创建 Artifacts/<GUID>/<版本UUID> 这类资源目录，也不为每个资源写 manifest.json。
+版本信息 Generation 仅在数据库里保存；Directory 对新资源为空，保留旧字段用于兼容。
+Library/Staging/<任务UUID>：导入工作目录，失败/取消后清理。
+Library/.Transactions/<发布UUID>：发布时暂存旧文件和恢复日志，完成后删除。
+固定文件名发布时，先完整生成临时产物，保存恢复日志，逐个替换最终文件，
+再在同一数据库事务内提交 Manifest/依赖索引和提交标记。提交失败恢复旧文件。
+启动先恢复中断发布：未提交的恢复旧文件；已提交的保留新文件并清理残留临时文件。
+旧版目录产物仍可读取，下次成功导入迁移成平铺文件，旧目录由缓存清理回收。
+Editor.lock 防止两个编辑器进程同时打开同一 Library。
+缓存比较源 SHA256、设置、导入器版本、目标及依赖指纹，并校验产物文件 SHA256。
+依赖指纹包含源内容与其 Meta 的 GUID/导入设置/子资源登记。
+导入器算法发生不兼容变化时，应递增 AssetImportManifest::ImporterVersion。
+当前 Portable 表示容器与通用数据格式；Shader 的具体平台能力由 Variants 标注，
+不代表一份 MetalLib 可用于 Windows/iOS 等其他目标。
+
+.gsasset 容器（版本 1，所有整数为小端）
+0..7   8 字节：GSPROUT\0
+8..11  uint32：容器版本，当前为 1
+12..15 uint32：后续 UTF-8 JSON 元数据字节数
+16..23 uint64：后续二进制 payload 字节数
+24..   JSON 元数据，然后是 payload
+元数据必含 Version、Type、Guid、LocalID、Name，其余字段由资源类型定义。
+Texture：RGBA8 payload，Mips 描述每层尺寸/偏移/字节数。
+Mesh：VertexLayout/VertexStride 描述顶点，IndexOffset 后为 UInt32 索引。
+      Bones 保存节点路径与逆绑定矩阵；BlendShapes 保存控制点位移。
+AnimationClip：每帧 Time，然后按 Tracks 顺序存 T3/Q4/S3，
+               再按 BlendShapeTracks 顺序存权重；均为 float32。
+Model/Skeleton/Avatar/Material：JSON 中保存层级、属性及 Guid/LocalID 引用。
+Audio/Video：payload 是编码后的媒体；Container、EncodedInfo 描述格式。
+Font：字符指标、图集引用，按 IncludeFontData 决定是否附带源字体字节。
+Shader：Variants 提供每个后端的格式、入口与 payload 中的偏移/尺寸。
+此处提供导入产物与查询，后续 runtime 的资源解码器/GPU 上传仍需接入这些格式。
+
+本次实现的处理范围
+图片：通过 Qt QImageReader 解码；RGBA8、最大尺寸、Alpha、透明边缘颜色扩散、
+      颜色空间感知的缩放与 Mipmap。采样方式/KeepCPUCopy 写入元数据供 runtime 使用。
+      可解码后缀取决于部署的 Qt 图片插件；尚无 BC/ASTC GPU 纹理压缩。
+模型：ufbx 0.23.1，支持 FBX/OBJ；三角化、顶点/UV/法线/切线、线性蒙皮、
+      BlendShape、Generic 骨骼动画、层级、材质/内嵌与外部图片引用、OBJ MTL 依赖。
+      相机/灯光设置开启时导出对应静态属性。
+      不支持 glTF/DAE/Blend 等其他模型解码、Humanoid 重定向、顶点缓存、
+      双四元数、多 Skin、MeshCompression、Lightmap UV 自动展开。
+      Calculate 切线为基础 UV 导数算法；尚未实现 MikkTSpace/动画曲线压缩/
+      复杂材质图转换/GPU 顶点缓存重排。源相机/灯光属性动画尚未导出。
+音频：PCM/Vorbis/ADPCM、采样率、单声道与其响度规范化；LoadType 等记录给 runtime。
+视频：H264/H265/VP8、限制尺寸、翻转、可选音轨，或者保留源媒体不转码。
+字体：QRawFont 解码，指定字符或默认 ASCII 图集；尚无动态字体整形和 SDF 生成。
+文本/二进制：编码转换、换行规范化或原始数据封装。
+原生资源：Material/Scene/Animator 等须为 GameSprout JSON 对象，Version=1；
+          校验 Guid/LocalID 引用形式和源 GUID，跟踪依赖，输出规范化 JSON。
+          当前为通用文档导入，不读取 Unity YAML，不烘焙灯光、地形或物理数据，
+          尚未为所有原生资源定义完整的字段 schema 或验证被引用 LocalID 的实际可用性。
+          当前每个原生文档输出一个主资源；MainObjectID=0 自动选 ID，非零显式指定。
+ShaderInclude：保留源码并跟踪递归的引号 include；系统 include 交给编译器。
+Shader：MSL 调用 Apple 工具链生成 macOS MetalLib；GLSL 调用 glslangValidator
+        生成 SPIR-V；HLSL 调用 SDL_shadercross + DXC 生成 SPIR-V。
+        部署 shadercross 时还生成 MSL 与反射 JSON。未接入完整 SDL GPU 资源绑定布局，
+        尚无 DXIL 产物和独立 iOS Shader 构建目标。SPIR-V 目前只验证容器基本结构。
+Script 暂时跳过，不接入脚本执行器。Prefab 按约定暂不处理。
+不支持的格式/高级设置和缺少工具会返回失败，不把源码伪装成已完成预处理的结果。
+
+外部工具
+媒体工具优先查找编辑器旁 local_tools/ffmpeg/bin、local_tools/ffmpeg、同目录，再查 PATH。
+要求 ffmpeg 与 ffprobe，并且 ffmpeg 构建含所选编码器：
+Vorbis 需要 libvorbis；H264/H265 需要 libx264/libx265；VP8 需要 libvpx。
+Shader 工具在 local_tools/shadercross、local_tools/shadercross/bin、同目录与 PATH 查找。
+Apple MSL 需要已安装的 Xcode Metal Toolchain；仅存在 xcrun/metal 占位程序并不够。
+没有自动安装或下载这些工具；打包发布前需随编辑器部署并处理相应许可证。
+
+验证
+GameSprout/Tests/AssetsImport 是独立测试工程，加载实际 Foundation 和四个模块。
+覆盖实际 PNG、WAV、视频、字体、OBJ/MTL、依赖更新、缓存、失败保留、原子数据库写入、
+重命名/递归删除、GC、任务拒绝/取消/释放与主线程 Loading 配对。
+命令行可额外传入含 Bear_Animated.fbx 与 T_Bear.png 的目录，验证真实小熊网格和动画。
+Metal 成功用例在本机工具链缺失时会显式 SKIP，同时验证失败不能发布产物。
+尚未在 Windows/Linux 真机执行这套集成测试。
+
+启动对比测试：StartupReconcileChecks 启动六个独立子进程，在进程之间修改临时项目，
+覆盖离线增删/移动、相同大小和时间戳的内容修改、设置修改、缓存丢失、失败重试、
+缺失/损坏 Meta、重复 GUID、启动时新增文件、目录无读取权限时禁止误删、
+纯时间戳变化重新预处理、删除备份/孤立 Meta 清理，以及从备份恢复 GUID/LocalID/设置。
+
+平铺发布验证还覆盖：固定 GUID_LocalID 路径、强制重导入后路径不变、缓存清理不删活动文件，
+以及重启后回滚未提交替换、保留已提交替换并清理恢复目录。

@@ -10,7 +10,7 @@ public:
 class AvatarMaskMeta : public AssetMetaWithSettings<AvatarMaskImportSettings> {
 public:
     AvatarMaskMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::AvatarMask, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::AvatarMask, guid, path) {}
 };
 
 inline IAssetMeta * OnAvatarMaskAssetCreate(const Foundation::FileSystemWatcherEvent & event,

@@ -111,7 +111,7 @@ private:
 class ComputeShaderMeta : public AssetMetaWithSettings<ComputeShaderImportSettings> {
 public:
     ComputeShaderMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::ComputeShader, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::ComputeShader, guid, path) {}
 };
 
 inline IAssetMeta * OnComputeShaderAssetCreate(const Foundation::FileSystemWatcherEvent & event,

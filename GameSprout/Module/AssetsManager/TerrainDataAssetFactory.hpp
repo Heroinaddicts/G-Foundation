@@ -10,7 +10,7 @@ public:
 class TerrainDataMeta : public AssetMetaWithSettings<TerrainDataImportSettings> {
 public:
     TerrainDataMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::TerrainData, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::TerrainData, guid, path) {}
 };
 
 inline IAssetMeta * OnTerrainDataAssetCreate(const Foundation::FileSystemWatcherEvent & event,

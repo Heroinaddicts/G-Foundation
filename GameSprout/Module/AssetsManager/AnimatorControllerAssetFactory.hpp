@@ -10,7 +10,7 @@ public:
 class AnimatorControllerMeta : public AssetMetaWithSettings<AnimatorControllerImportSettings> {
 public:
     AnimatorControllerMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::AnimatorController, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::AnimatorController, guid, path) {}
 };
 
 inline IAssetMeta * OnAnimatorControllerAssetCreate(const Foundation::FileSystemWatcherEvent & event,

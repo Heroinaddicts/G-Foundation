@@ -10,7 +10,7 @@ public:
 class LightmapParametersMeta : public AssetMetaWithSettings<LightmapParametersImportSettings> {
 public:
     LightmapParametersMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::LightmapParameters, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::LightmapParameters, guid, path) {}
 };
 
 inline IAssetMeta * OnLightmapParametersAssetCreate(const Foundation::FileSystemWatcherEvent & event,

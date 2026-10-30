@@ -10,7 +10,7 @@ public:
 class SpriteAtlasMeta : public AssetMetaWithSettings<SpriteAtlasImportSettings> {
 public:
     SpriteAtlasMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::SpriteAtlas, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::SpriteAtlas, guid, path) {}
 };
 
 inline IAssetMeta * OnSpriteAtlasAssetCreate(const Foundation::FileSystemWatcherEvent & event,

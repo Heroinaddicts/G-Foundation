@@ -10,7 +10,7 @@ public:
 class ShaderVariantCollectionMeta : public AssetMetaWithSettings<ShaderVariantCollectionImportSettings> {
 public:
     ShaderVariantCollectionMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::ShaderVariantCollection, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::ShaderVariantCollection, guid, path) {}
 };
 
 inline IAssetMeta * OnShaderVariantCollectionAssetCreate(const Foundation::FileSystemWatcherEvent & event,

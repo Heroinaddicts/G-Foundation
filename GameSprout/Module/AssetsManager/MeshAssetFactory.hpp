@@ -180,7 +180,7 @@ private:
 class MeshMeta : public AssetMetaWithSettings<MeshImportSettings> {
 public:
     MeshMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Mesh, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Mesh, guid, path) {}
 };
 
 inline IAssetMeta * OnMeshAssetCreate(const Foundation::FileSystemWatcherEvent & event,

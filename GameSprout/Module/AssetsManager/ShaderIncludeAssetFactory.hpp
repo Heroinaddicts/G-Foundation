@@ -10,7 +10,7 @@ public:
 class ShaderIncludeMeta : public AssetMetaWithSettings<ShaderIncludeImportSettings> {
 public:
     ShaderIncludeMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::ShaderInclude, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::ShaderInclude, guid, path) {}
 };
 
 inline IAssetMeta * OnShaderIncludeAssetCreate(const Foundation::FileSystemWatcherEvent & event,

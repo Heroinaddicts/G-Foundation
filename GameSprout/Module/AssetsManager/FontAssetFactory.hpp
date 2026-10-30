@@ -121,7 +121,7 @@ private:
 class FontMeta : public AssetMetaWithSettings<FontImportSettings> {
 public:
     FontMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Font, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Font, guid, path) {}
 };
 
 inline IAssetMeta * OnFontAssetCreate(const Foundation::FileSystemWatcherEvent & event,

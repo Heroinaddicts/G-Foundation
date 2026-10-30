@@ -15,6 +15,7 @@ public:
         if (!AssetSettingsJson::WriteEnum(result["SourceLanguage"], _SourceLanguage, SourceLanguageNames)) {
             return false;
         }
+        if (!AssetSettingsJson::WriteEnum(result["Stage"], _Stage, StageNames)) return false;
         result["EntryPoint"] = _EntryPoint;
         result["Defines"] = Json::Value(Json::arrayValue);
         for (const std::string & item : _Defines) {
@@ -31,7 +32,9 @@ public:
             return false;
         }
         ShaderImportSettings settings;
-        if (!AssetSettingsJson::ReadEnum(value, "SourceLanguage", settings._SourceLanguage, SourceLanguageNames)
+        settings._Stage = _Stage;
+        if (!AssetSettingsJson::ReadEnum(value, "Stage", settings._Stage, StageNames)
+            || !AssetSettingsJson::ReadEnum(value, "SourceLanguage", settings._SourceLanguage, SourceLanguageNames)
             || !AssetSettingsJson::Read(value, "EntryPoint", settings._EntryPoint)
             || !AssetSettingsJson::Read(value, "Defines", settings._Defines)
             || !AssetSettingsJson::Read(value, "Optimize", settings._Optimize)
@@ -42,6 +45,9 @@ public:
         *this = settings;
         return true;
     }
+
+    eShaderStage GetStage() const override { return _Stage; }
+    void SetStage(eShaderStage stage) override { _Stage = stage; }
 
     // 源语言；Auto 由管线结合源文件判断。
     eShaderSourceLanguage GetSourceLanguage() const override {
@@ -101,6 +107,10 @@ private:
         {eShaderSourceLanguage::SPIRV, "SPIRV"},
     };
 
+    inline static constexpr AssetSettingsJson::EnumName<eShaderStage> StageNames[] = {
+        {eShaderStage::Vertex, "Vertex"}, {eShaderStage::Fragment, "Fragment"}, {eShaderStage::Compute, "Compute"}
+    };
+    eShaderStage _Stage = eShaderStage::Vertex;
     eShaderSourceLanguage _SourceLanguage = eShaderSourceLanguage::Auto;
     std::string _EntryPoint = "main";
     std::vector<std::string> _Defines = {};
@@ -111,7 +121,18 @@ private:
 class ShaderMeta : public AssetMetaWithSettings<ShaderImportSettings> {
 public:
     ShaderMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Shader, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Shader, guid, path) {
+        if (QFileInfo(QString::fromStdString(path)).suffix().compare("frag", Qt::CaseInsensitive) == 0)
+            static_cast<ShaderImportSettings *>(GetImportSettings())->SetStage(eShaderStage::Fragment);
+    }
+    bool ConvertFromJson(const Json::Value & value) override {
+        Json::Value migrated = value;
+        if (migrated["ImportSettings"].isObject() && !migrated["ImportSettings"].isMember("Stage")) {
+            const bool fragment = QFileInfo(QString::fromStdString(GetPath())).suffix().compare("frag", Qt::CaseInsensitive) == 0;
+            migrated["ImportSettings"]["Stage"] = fragment ? "Fragment" : "Vertex";
+        }
+        return AssetMetaWithSettings::ConvertFromJson(migrated);
+    }
 };
 
 inline IAssetMeta * OnShaderAssetCreate(const Foundation::FileSystemWatcherEvent & event,

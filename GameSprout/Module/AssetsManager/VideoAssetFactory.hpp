@@ -152,7 +152,7 @@ private:
 class VideoMeta : public AssetMetaWithSettings<VideoImportSettings> {
 public:
     VideoMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Video, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Video, guid, path) {}
 };
 
 inline IAssetMeta * OnVideoAssetCreate(const Foundation::FileSystemWatcherEvent & event,

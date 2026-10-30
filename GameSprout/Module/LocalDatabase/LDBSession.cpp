@@ -185,11 +185,47 @@ bool LDBSession::IsValidKey(const std::string & key) const {
     return !key.empty() && key.size() <= _MaxKeySize;
 }
 
+bool LDBSession::WriteBatch(const std::vector<LDBWriteOperation> & operations) {
+    if (!_Environment) return false;
+    if (operations.empty()) return true;
+    // Resolve handles before opening the write transaction (LMDB allows one writer).
+    std::vector<MDB_dbi> databases;
+    databases.reserve(operations.size());
+    for (const LDBWriteOperation & operation : operations) {
+        if (!IsValidKey(operation.Key)) return false;
+        LDBTable * table = OpenTable(operation.Table, false);
+        if (!table) return false;
+        databases.push_back(table->_Database);
+    }
+    MDB_txn * transaction = nullptr;
+    int result = mdb_txn_begin(_Environment, nullptr, 0, &transaction);
+    if (!ReportError("begin batch", result)) return false;
+    uint8_t empty = 0;
+    for (size_t i = 0; i < operations.size(); ++i) {
+        const LDBWriteOperation & operation = operations[i];
+        MDB_val key{operation.Key.size(), const_cast<char *>(operation.Key.data())};
+        if (operation.Delete) {
+            result = mdb_del(transaction, databases[i], &key, nullptr);
+            if (result == MDB_NOTFOUND) result = MDB_SUCCESS;
+        } else {
+            MDB_val value{operation.Data.size(), operation.Data.empty()
+                ? &empty : const_cast<uint8_t *>(operation.Data.data())};
+            result = mdb_put(transaction, databases[i], &key, &value, 0);
+        }
+        if (result != MDB_SUCCESS) {
+            mdb_txn_abort(transaction);
+            return ReportError("write batch", result);
+        }
+    }
+    return ReportError("commit batch", mdb_txn_commit(transaction));
+}
+
 void LDBSession::Close() {
     if (!_Environment)
         return;
 
     mdb_env_close(_Environment);
+    _Environment = nullptr;
     ReleasePath(_Path);
     // Wrappers stay alive until this session is destroyed; they now reject operations.
 }

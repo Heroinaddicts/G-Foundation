@@ -84,7 +84,7 @@ private:
 class TextMeta : public AssetMetaWithSettings<TextImportSettings> {
 public:
     TextMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Text, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Text, guid, path) {}
 };
 
 inline IAssetMeta * OnTextAssetCreate(const Foundation::FileSystemWatcherEvent & event,

@@ -10,7 +10,7 @@ public:
 class AnimationClipMeta : public AssetMetaWithSettings<AnimationClipImportSettings> {
 public:
     AnimationClipMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::AnimationClip, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::AnimationClip, guid, path) {}
 };
 
 inline IAssetMeta * OnAnimationClipAssetCreate(const Foundation::FileSystemWatcherEvent & event,

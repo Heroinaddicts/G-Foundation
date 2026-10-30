@@ -13,6 +13,7 @@ public:
     bool IsExists(const std::string & key) const override;
     bool Set(const std::string & key, void * const data, const int len) override;
     bool Get(const std::string & key, std::vector<uint8_t> & data) const override;
+    bool Delete(const std::string & key) override;
     bool ForEach(const fVisitCallback & callback) const override;
 
     LDBTable(const LDBTable &) = delete;

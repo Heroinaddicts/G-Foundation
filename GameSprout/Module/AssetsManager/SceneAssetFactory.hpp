@@ -10,7 +10,7 @@ public:
 class SceneMeta : public AssetMetaWithSettings<SceneImportSettings> {
 public:
     SceneMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Scene, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Scene, guid, path) {}
 };
 
 inline IAssetMeta * OnSceneAssetCreate(const Foundation::FileSystemWatcherEvent & event,

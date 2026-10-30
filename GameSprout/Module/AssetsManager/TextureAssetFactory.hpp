@@ -292,7 +292,7 @@ private:
 class TextureMeta : public AssetMetaWithSettings<TextureImportSettings> {
 public:
     TextureMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::Texture, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::Texture, guid, path) {}
 };
 
 inline IAssetMeta * OnTextureAssetCreate(const Foundation::FileSystemWatcherEvent & event,

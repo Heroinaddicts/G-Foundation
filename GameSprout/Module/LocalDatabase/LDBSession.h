@@ -17,6 +17,7 @@ public:
 
     bool CreateTable(const std::string & name) override;
     ILDBTable * GetTable(const std::string & name) override;
+    bool WriteBatch(const std::vector<LDBWriteOperation> & operations) override;
     void Close() override;
 
     LDBSession(const LDBSession &) = delete;
@@ -30,7 +31,7 @@ private:
     LDBTable * OpenTable(const std::string & name, bool create);
     bool IsValidKey(const std::string & key) const;
 
-    MDB_env * const _Environment;
+    MDB_env * _Environment;
     const std::filesystem::path _Path;
     const size_t _MaxKeySize;
     std::unordered_map<std::string, LDBTable *> _Tables;

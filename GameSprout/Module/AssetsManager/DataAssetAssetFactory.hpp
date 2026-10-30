@@ -10,7 +10,7 @@ public:
 class DataAssetMeta : public AssetMetaWithSettings<DataAssetImportSettings> {
 public:
     DataAssetMeta(const Guid & guid, const std::string & path)
-        : AssetMetaWithSettings(eAssetType::DataAsset, guid, path) {}
+        : AssetMetaWithSettings(eAssetImporterType::DataAsset, guid, path) {}
 };
 
 inline IAssetMeta * OnDataAssetAssetCreate(const Foundation::FileSystemWatcherEvent & event,

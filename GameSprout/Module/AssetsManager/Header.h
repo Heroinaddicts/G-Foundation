@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <unordered_map>
+#include <sstream>
 
 #include <JsonCpp/json.hpp>
 
@@ -43,136 +44,136 @@ static std::string ToLower(const std::string & str) {
 
 // 后缀只用于识别源资源类别，不代表相应解码器或运行时已经实现。
 // .asset 无法仅靠后缀区分具体内容，统一识别为 DataAsset。
-inline eAssetType GetAssetType(const std::string & extension) {
-    struct ExtensionType { const char * Extension; eAssetType Type; };
+inline eAssetImporterType GetAssetImporterType(const std::string & extension) {
+    struct ExtensionType { const char * Extension; eAssetImporterType Type; };
     static constexpr ExtensionType extensions[] = {
-        {"png", eAssetType::Texture},
-        {"jpg", eAssetType::Texture},
-        {"jpeg", eAssetType::Texture},
-        {"tga", eAssetType::Texture},
-        {"bmp", eAssetType::Texture},
-        {"tif", eAssetType::Texture},
-        {"tiff", eAssetType::Texture},
-        {"psd", eAssetType::Texture},
-        {"exr", eAssetType::Texture},
-        {"hdr", eAssetType::Texture},
-        {"dds", eAssetType::Texture},
-        {"ktx", eAssetType::Texture},
-        {"ktx2", eAssetType::Texture},
-        {"wav", eAssetType::Audio},
-        {"ogg", eAssetType::Audio},
-        {"mp3", eAssetType::Audio},
-        {"flac", eAssetType::Audio},
-        {"aif", eAssetType::Audio},
-        {"aiff", eAssetType::Audio},
-        {"fbx", eAssetType::Model},
-        {"obj", eAssetType::Model},
-        {"dae", eAssetType::Model},
-        {"dxf", eAssetType::Model},
-        {"blend", eAssetType::Model},
-        {"gltf", eAssetType::Model},
-        {"glb", eAssetType::Model},
-        {"mesh", eAssetType::Mesh},
-        {"mat", eAssetType::Material},
-        {"shader", eAssetType::Shader},
-        {"vert", eAssetType::Shader},
-        {"frag", eAssetType::Shader},
-        {"glsl", eAssetType::Shader},
-        {"metal", eAssetType::Shader},
-        {"spv", eAssetType::Shader},
-        {"compute", eAssetType::ComputeShader},
-        {"comp", eAssetType::ComputeShader},
-        {"hlsl", eAssetType::ShaderInclude},
-        {"hlsli", eAssetType::ShaderInclude},
-        {"cginc", eAssetType::ShaderInclude},
-        {"glslinc", eAssetType::ShaderInclude},
-        {"cg", eAssetType::ShaderInclude},
-        {"ttf", eAssetType::Font},
-        {"otf", eAssetType::Font},
-        {"fontsettings", eAssetType::Font},
-        {"mp4", eAssetType::Video},
-        {"mov", eAssetType::Video},
-        {"webm", eAssetType::Video},
-        {"avi", eAssetType::Video},
-        {"m4v", eAssetType::Video},
-        {"ogv", eAssetType::Video},
-        {"txt", eAssetType::Text},
-        {"json", eAssetType::Text},
-        {"xml", eAssetType::Text},
-        {"csv", eAssetType::Text},
-        {"tsv", eAssetType::Text},
-        {"yaml", eAssetType::Text},
-        {"yml", eAssetType::Text},
-        {"md", eAssetType::Text},
-        {"html", eAssetType::Text},
-        {"htm", eAssetType::Text},
-        {"fnt", eAssetType::Text},
-        {"manifest", eAssetType::Text},
-        {"bytes", eAssetType::Text},
-        {"cs", eAssetType::Script},
-        {"lua", eAssetType::Script},
-        {"js", eAssetType::Script},
-        {"ts", eAssetType::Script},
-        {"scene", eAssetType::Scene},
-        {"unity", eAssetType::Scene},
-        {"anim", eAssetType::AnimationClip},
-        {"controller", eAssetType::AnimatorController},
-        {"overridecontroller", eAssetType::AnimatorOverrideController},
-        {"mask", eAssetType::AvatarMask},
-        {"mixer", eAssetType::AudioMixer},
-        {"physicmaterial", eAssetType::PhysicsMaterial},
-        {"physicsmaterial2d", eAssetType::PhysicsMaterial2D},
-        {"rendertexture", eAssetType::RenderTexture},
-        {"cubemap", eAssetType::Cubemap},
-        {"spriteatlas", eAssetType::SpriteAtlas},
+        {"png", eAssetImporterType::Texture},
+        {"jpg", eAssetImporterType::Texture},
+        {"jpeg", eAssetImporterType::Texture},
+        {"tga", eAssetImporterType::Texture},
+        {"bmp", eAssetImporterType::Texture},
+        {"tif", eAssetImporterType::Texture},
+        {"tiff", eAssetImporterType::Texture},
+        {"psd", eAssetImporterType::Texture},
+        {"exr", eAssetImporterType::Texture},
+        {"hdr", eAssetImporterType::Texture},
+        {"dds", eAssetImporterType::Texture},
+        {"ktx", eAssetImporterType::Texture},
+        {"ktx2", eAssetImporterType::Texture},
+        {"wav", eAssetImporterType::Audio},
+        {"ogg", eAssetImporterType::Audio},
+        {"mp3", eAssetImporterType::Audio},
+        {"flac", eAssetImporterType::Audio},
+        {"aif", eAssetImporterType::Audio},
+        {"aiff", eAssetImporterType::Audio},
+        {"fbx", eAssetImporterType::Model},
+        {"obj", eAssetImporterType::Model},
+        {"dae", eAssetImporterType::Model},
+        {"dxf", eAssetImporterType::Model},
+        {"blend", eAssetImporterType::Model},
+        {"gltf", eAssetImporterType::Model},
+        {"glb", eAssetImporterType::Model},
+        {"mesh", eAssetImporterType::Mesh},
+        {"mat", eAssetImporterType::Material},
+        {"shader", eAssetImporterType::Shader},
+        {"vert", eAssetImporterType::Shader},
+        {"frag", eAssetImporterType::Shader},
+        {"glsl", eAssetImporterType::Shader},
+        {"metal", eAssetImporterType::Shader},
+        {"spv", eAssetImporterType::Shader},
+        {"compute", eAssetImporterType::ComputeShader},
+        {"comp", eAssetImporterType::ComputeShader},
+        {"hlsl", eAssetImporterType::ShaderInclude},
+        {"hlsli", eAssetImporterType::ShaderInclude},
+        {"cginc", eAssetImporterType::ShaderInclude},
+        {"glslinc", eAssetImporterType::ShaderInclude},
+        {"cg", eAssetImporterType::ShaderInclude},
+        {"ttf", eAssetImporterType::Font},
+        {"otf", eAssetImporterType::Font},
+        {"fontsettings", eAssetImporterType::Font},
+        {"mp4", eAssetImporterType::Video},
+        {"mov", eAssetImporterType::Video},
+        {"webm", eAssetImporterType::Video},
+        {"avi", eAssetImporterType::Video},
+        {"m4v", eAssetImporterType::Video},
+        {"ogv", eAssetImporterType::Video},
+        {"txt", eAssetImporterType::Text},
+        {"json", eAssetImporterType::Text},
+        {"xml", eAssetImporterType::Text},
+        {"csv", eAssetImporterType::Text},
+        {"tsv", eAssetImporterType::Text},
+        {"yaml", eAssetImporterType::Text},
+        {"yml", eAssetImporterType::Text},
+        {"md", eAssetImporterType::Text},
+        {"html", eAssetImporterType::Text},
+        {"htm", eAssetImporterType::Text},
+        {"fnt", eAssetImporterType::Text},
+        {"manifest", eAssetImporterType::Text},
+        {"bytes", eAssetImporterType::Text},
+        {"cs", eAssetImporterType::Script},
+        {"lua", eAssetImporterType::Script},
+        {"js", eAssetImporterType::Script},
+        {"ts", eAssetImporterType::Script},
+        {"scene", eAssetImporterType::Scene},
+        {"unity", eAssetImporterType::Scene},
+        {"anim", eAssetImporterType::AnimationClip},
+        {"controller", eAssetImporterType::AnimatorController},
+        {"overridecontroller", eAssetImporterType::AnimatorOverrideController},
+        {"mask", eAssetImporterType::AvatarMask},
+        {"mixer", eAssetImporterType::AudioMixer},
+        {"physicmaterial", eAssetImporterType::PhysicsMaterial},
+        {"physicsmaterial2d", eAssetImporterType::PhysicsMaterial2D},
+        {"rendertexture", eAssetImporterType::RenderTexture},
+        {"cubemap", eAssetImporterType::Cubemap},
+        {"spriteatlas", eAssetImporterType::SpriteAtlas},
         // 本项目的显式地形数据扩展名；Unity 通常将 TerrainData 保存在 .asset。
-        {"terraindata", eAssetType::TerrainData},
-        {"terrainlayer", eAssetType::TerrainLayer},
-        {"shadervariants", eAssetType::ShaderVariantCollection},
-        {"asset", eAssetType::DataAsset},
-        {"bin", eAssetType::DataAsset},
-        {"lighting", eAssetType::LightingSettings},
-        {"giparams", eAssetType::LightmapParameters},
+        {"terraindata", eAssetImporterType::TerrainData},
+        {"terrainlayer", eAssetImporterType::TerrainLayer},
+        {"shadervariants", eAssetImporterType::ShaderVariantCollection},
+        {"asset", eAssetImporterType::DataAsset},
+        {"bin", eAssetImporterType::DataAsset},
+        {"lighting", eAssetImporterType::LightingSettings},
+        {"giparams", eAssetImporterType::LightmapParameters},
     };
     const std::string ext = ToLower(extension);
     for (const ExtensionType & entry : extensions) {
         if (ext == entry.Extension) return entry.Type;
     }
-    return eAssetType::Unknown;
+    return eAssetImporterType::Unknown;
 }
 
-inline const char * GetAssetTypeName(const eAssetType type) {
+inline const char * GetAssetImporterTypeName(const eAssetImporterType type) {
     switch (type) {
-    case eAssetType::Texture: return "Texture";
-    case eAssetType::Audio: return "Audio";
-    case eAssetType::Mesh: return "Mesh";
-    case eAssetType::Model: return "Model";
-    case eAssetType::Material: return "Material";
-    case eAssetType::Shader: return "Shader";
-    case eAssetType::ComputeShader: return "ComputeShader";
-    case eAssetType::ShaderInclude: return "ShaderInclude";
-    case eAssetType::Font: return "Font";
-    case eAssetType::Video: return "Video";
-    case eAssetType::Text: return "Text";
-    case eAssetType::Script: return "Script";
-    case eAssetType::Scene: return "Scene";
-    case eAssetType::AnimationClip: return "AnimationClip";
-    case eAssetType::AnimatorController: return "AnimatorController";
-    case eAssetType::AnimatorOverrideController: return "AnimatorOverrideController";
-    case eAssetType::AvatarMask: return "AvatarMask";
-    case eAssetType::AudioMixer: return "AudioMixer";
-    case eAssetType::PhysicsMaterial: return "PhysicsMaterial";
-    case eAssetType::PhysicsMaterial2D: return "PhysicsMaterial2D";
-    case eAssetType::RenderTexture: return "RenderTexture";
-    case eAssetType::Cubemap: return "Cubemap";
-    case eAssetType::SpriteAtlas: return "SpriteAtlas";
-    case eAssetType::TerrainData: return "TerrainData";
-    case eAssetType::TerrainLayer: return "TerrainLayer";
-    case eAssetType::ShaderVariantCollection: return "ShaderVariantCollection";
-    case eAssetType::DataAsset: return "DataAsset";
-    case eAssetType::LightingSettings: return "LightingSettings";
-    case eAssetType::LightmapParameters: return "LightmapParameters";
-    case eAssetType::Folder: return "Folder";
+    case eAssetImporterType::Texture: return "Texture";
+    case eAssetImporterType::Audio: return "Audio";
+    case eAssetImporterType::Mesh: return "Mesh";
+    case eAssetImporterType::Model: return "Model";
+    case eAssetImporterType::Material: return "Material";
+    case eAssetImporterType::Shader: return "Shader";
+    case eAssetImporterType::ComputeShader: return "ComputeShader";
+    case eAssetImporterType::ShaderInclude: return "ShaderInclude";
+    case eAssetImporterType::Font: return "Font";
+    case eAssetImporterType::Video: return "Video";
+    case eAssetImporterType::Text: return "Text";
+    case eAssetImporterType::Script: return "Script";
+    case eAssetImporterType::Scene: return "Scene";
+    case eAssetImporterType::AnimationClip: return "AnimationClip";
+    case eAssetImporterType::AnimatorController: return "AnimatorController";
+    case eAssetImporterType::AnimatorOverrideController: return "AnimatorOverrideController";
+    case eAssetImporterType::AvatarMask: return "AvatarMask";
+    case eAssetImporterType::AudioMixer: return "AudioMixer";
+    case eAssetImporterType::PhysicsMaterial: return "PhysicsMaterial";
+    case eAssetImporterType::PhysicsMaterial2D: return "PhysicsMaterial2D";
+    case eAssetImporterType::RenderTexture: return "RenderTexture";
+    case eAssetImporterType::Cubemap: return "Cubemap";
+    case eAssetImporterType::SpriteAtlas: return "SpriteAtlas";
+    case eAssetImporterType::TerrainData: return "TerrainData";
+    case eAssetImporterType::TerrainLayer: return "TerrainLayer";
+    case eAssetImporterType::ShaderVariantCollection: return "ShaderVariantCollection";
+    case eAssetImporterType::DataAsset: return "DataAsset";
+    case eAssetImporterType::LightingSettings: return "LightingSettings";
+    case eAssetImporterType::LightmapParameters: return "LightmapParameters";
+    case eAssetImporterType::Folder: return "Folder";
     default: return nullptr;
     }
 }
@@ -189,14 +190,38 @@ class AssetMeta : public IAssetMeta {
 public:
     virtual ~AssetMeta() {}
     // path 相对于项目的 Assets 目录，例如 Textures/Bear.png。
-    AssetMeta(const eAssetType type, const Guid guid, const std::string & path) : IAssetMeta(type, guid), _Path(path) {}
+    AssetMeta(const eAssetImporterType type, const Guid guid, const std::string & path) : IAssetMeta(type, guid), _Path(path) {}
 
     const std::string & GetPath() const override {return _Path;}
     void SetPath(const std::string & path) { _Path = path; }
+    std::vector<IAsset *> GetSubAssets() const override;
+    eAssetImportState GetImportState() const override;
+    std::string GetImportError() const override;
 
 
     virtual bool ConvertToJson(Json::Value & value) const = 0;
     virtual bool ConvertFromJson(const Json::Value & value) = 0;
+
+    bool SerializeMeta(std::string & json) const override {
+        Json::Value value;
+        if (!ConvertToJson(value)) return false;
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = "";
+        json = Json::writeString(writer, value);
+        return true;
+    }
+
+    bool SetSubAssets(const std::string & json) override {
+        Json::CharReaderBuilder reader;
+        std::istringstream input(json);
+        Json::Value value;
+        std::string error;
+        if (!Json::parseFromStream(reader, input, &value, &error) || !value.isArray()) return false;
+        _SubAssets = value;
+        return true;
+    }
+
+    bool SaveMeta() override { return TrySaveToMetaFile(); }
 
     virtual void SaveToMetaFile() {
         TrySaveToMetaFile();
@@ -260,6 +285,9 @@ public:
         }
         return true;
     }
+
+protected:
+    Json::Value _SubAssets{Json::arrayValue};
 
 private:
     std::string _Path;

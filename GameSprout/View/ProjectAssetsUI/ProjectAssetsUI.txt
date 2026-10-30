@@ -1,0 +1,29 @@
+Project Assets browser
+
+Data ownership
+- AssetsManager owns source Meta objects and publishes Create / Modify / Remove snapshots.
+- All queries, subscriptions and callbacks use the main thread. Unsubscribe before destroying a listener.
+- Events are dispatched by AssetsManager::Update after database changes succeed. They are invalidation
+  notifications, not a replay log: querying may already return a newer state than a queued event.
+- ProjectAssetsUI subscribes before querying its initial snapshot. It marks itself dirty on events and
+  refreshes once in Update. It never scans files, reads the database or creates Meta objects.
+
+Subresources and selection
+- IAssetMeta::GetSubAssets returns the latest successfully published manifest's active children.
+  The main resource and historical LocalID registry entries are excluded.
+- Returned IAsset pointers are borrowed and can expire on reimport/removal. The UI stores copied
+  GUID / LocalID identities, names and types. Source selections have LocalID=0 and IsSubAsset=false.
+- Children are populated on source-row expansion. Reimport preserves selection and expansion by
+  identity. Removing the current folder navigates to the closest surviving ancestor.
+- Import errors remain visible while the previous successful subresources can still be inspected.
+
+Presentation
+- ProjectAssetsUI.ui owns widgets, layouts, styles and status colors. C++ binds models and behavior.
+- The left tree displays folders. The right tree displays immediate children, or recursive search
+  results under the current folder. Double-click folders or use the ancestor selector to navigate.
+- This version uses type icons. Thumbnails, Favorites, Packages and asset drag/drop are not included.
+
+Verification
+- GameSprout/Tests/AssetsImport/ProjectBrowserChecks.cpp loads the real UI and asset modules with
+  a test dock host. It covers startup/late subscriptions, live imports, subresources, selection,
+  directory rename/removal, search, import failures/recovery and listener removal.

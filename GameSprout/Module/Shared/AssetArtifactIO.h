@@ -1,0 +1,115 @@
+#pragma once
+
+#include "IAssetsPipeline.h"
+#include <JsonCpp/json.hpp>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QCryptographicHash>
+#include <sstream>
+#include <set>
+
+namespace AssetArtifactIO {
+inline std::string JsonText(const Json::Value & value) {
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    writer["emitUTF8"] = true;
+    return Json::writeString(writer, value);
+}
+inline bool Parse(const std::string & text, Json::Value & value) {
+    Json::CharReaderBuilder reader;
+    reader["rejectDupKeys"] = true;
+    reader["failIfExtra"] = true;
+    std::istringstream input(text);
+    std::string error;
+    return Json::parseFromStream(reader, input, &value, &error);
+}
+inline bool RelativePath(const std::string & path) {
+    const QString value = QDir::fromNativeSeparators(QString::fromStdString(path));
+    return !value.isEmpty() && !value.contains(QChar('\0')) && QDir::isRelativePath(value)
+        && QDir::cleanPath(value) == value && value != "." && value != ".." && !value.startsWith("../");
+}
+inline std::string Hash(const QByteArray & bytes) {
+    return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex().toStdString();
+}
+inline bool Write(const QString & path, const QByteArray & bytes, std::string & error) {
+    QSaveFile file(path);
+    file.setDirectWriteFallback(false);
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+        error = "Cannot write " + path.toStdString() + ": " + file.errorString().toStdString();
+        return false;
+    }
+    return true;
+}
+inline Json::Value ToJson(const AssetImportManifest & manifest) {
+    Json::Value value(Json::objectValue);
+    value["Version"] = 1;
+    value["Guid"] = manifest.GuidString;
+    value["SourcePath"] = manifest.SourcePath;
+    value["SourceHash"] = manifest.SourceHash;
+    value["SettingsHash"] = manifest.SettingsHash;
+    value["Target"] = manifest.Target;
+    value["ImporterVersion"] = manifest.ImporterVersion;
+    value["Directory"] = manifest.Directory;
+    value["Generation"] = manifest.Generation;
+    Json::Value identities;
+    if (!Parse(manifest.SubAssetsJson, identities)) identities = Json::Value(Json::arrayValue);
+    value["SubAssets"] = identities;
+    value["Assets"] = Json::Value(Json::arrayValue);
+    for (const AssetArtifact & asset : manifest.Assets) {
+        Json::Value item;
+        item["LocalID"] = static_cast<Json::UInt64>(asset.LocalID);
+        item["Type"] = static_cast<uint16_t>(asset.Type);
+        item["Name"] = asset.Name;
+        item["SourceKey"] = asset.SourceKey;
+        item["Path"] = asset.Path;
+        item["Hash"] = asset.Hash;
+        value["Assets"].append(item);
+    }
+    value["Dependencies"] = Json::Value(Json::arrayValue);
+    for (const AssetDependency & dependency : manifest.Dependencies) {
+        Json::Value item;
+        item["Path"] = dependency.Path;
+        item["Hash"] = dependency.Hash;
+        value["Dependencies"].append(item);
+    }
+    return value;
+}
+inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) {
+    if (!value.isObject() || value.get("Version", 0) != 1
+        || !value["Guid"].isString() || !Guid(value["Guid"].asString()).IsValid()
+        || !value["SourcePath"].isString() || !RelativePath(value["SourcePath"].asString())
+        || !value["Directory"].isString() || (!value["Directory"].asString().empty() && !RelativePath(value["Directory"].asString()))
+        || !value["SourceHash"].isString() || !value["SettingsHash"].isString()
+        || !value["Target"].isString() || !value["ImporterVersion"].isUInt()
+        || !value["Assets"].isArray() || !value["Dependencies"].isArray()
+        || !value["SubAssets"].isArray()) return false;
+    AssetImportManifest result;
+    result.GuidString = value["Guid"].asString();
+    result.SourcePath = value["SourcePath"].asString();
+    result.SourceHash = value["SourceHash"].asString();
+    result.SettingsHash = value["SettingsHash"].asString();
+    result.Target = value["Target"].asString();
+    result.ImporterVersion = value["ImporterVersion"].asUInt();
+    result.Directory = value["Directory"].asString();
+    if (value.isMember("Generation") && !value["Generation"].isString()) return false;
+    result.Generation = value.get("Generation", "").asString();
+    result.SubAssetsJson = JsonText(value["SubAssets"]);
+    std::set<uint64_t> ids;
+    for (const Json::Value & item : value["Assets"]) {
+        if (!item.isObject() || !item["LocalID"].isUInt64() || item["LocalID"].asUInt64() == 0
+            || !ids.insert(item["LocalID"].asUInt64()).second || !item["Type"].isUInt()
+            || item["Type"].asUInt() > 65535 || !item["Name"].isString() || !item["SourceKey"].isString()
+            || !item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
+        result.Assets.push_back({item["LocalID"].asUInt64(), static_cast<eAssetType>(item["Type"].asUInt()),
+            item["Name"].asString(), item["SourceKey"].asString(), item["Path"].asString(), item["Hash"].asString()});
+    }
+    for (const Json::Value & item : value["Dependencies"]) {
+        if (!item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
+        result.Dependencies.push_back({item["Path"].asString(), item["Hash"].asString()});
+    }
+    manifest = std::move(result);
+    return true;
+}
+}
