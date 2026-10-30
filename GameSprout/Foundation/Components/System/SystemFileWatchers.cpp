@@ -168,6 +168,7 @@ namespace Foundation {
             std::string Path;
             std::string ParentPath;
             Entry Self;
+            Entry DirectoryCheckpoint; // Metadata corresponding to the last full child snapshot.
             std::map<std::string, Entry> Children;
             std::map<FileIdentity, std::set<std::string>> PathsByIdentity;
             std::set<std::string> DirtyChildren;
@@ -544,6 +545,7 @@ namespace Foundation {
             for (const auto& [path, entry] : current) {
                 ObservePresentChild(watch, path, entry);
             }
+            watch->DirectoryCheckpoint = watch->Self;
         }
 
         static void FlushChanges(uv_timer_t* timer) {
@@ -561,7 +563,9 @@ namespace Foundation {
                         Entry current;
                         const EntryResult result = ReadEntry(watch->Path, current);
                         if (result == EntryResult::Failed) continue;
-                        if (result != EntryResult::Present || FileChanged(watch->Self, current)) {
+                        // CheckSelf may refresh Self on a parent-only notification.
+                        // That does not prove the child snapshot is up to date.
+                        if (result != EntryResult::Present || FileChanged(watch->DirectoryCheckpoint, current)) {
                             watch->RescanChildren = true;
                             watch->RescanParent = true;
                             service->DirtyWatches.insert(id);
@@ -708,6 +712,7 @@ namespace Foundation {
                     delete watch;
                     return false;
                 }
+                watch->DirectoryCheckpoint = watch->Self;
                 if (!StartHandle(watch, watch->ParentHandle, true, command.Error) ||
                     (watch->Self.Directory &&
                      (!StartHandle(watch, watch->ContentsHandle, false, command.Error) ||
