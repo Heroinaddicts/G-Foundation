@@ -177,6 +177,18 @@ bool Mesh(AssetImportJob & job, ufbx_mesh * mesh, const std::string & key, doubl
     metadata["UVChannels"] = static_cast<Json::UInt64>(uvCount);
     metadata["VertexStride"] = vertices.empty() ? 0 : vertices.front().size();
     metadata["VertexLayout"] = "float32:Position3,Normal3,Tangent4,UV2*N,Color4;uint32:Bone4;float32:Weight4;uint32:ControlPoint";
+    metadata["VertexAttributes"] = Json::Value(Json::arrayValue);
+    const auto attribute = [&](const char * semantic, const char * format, uint32_t offset, uint32_t channel = 0) {
+        Json::Value value;
+        value["Semantic"] = semantic;value["Format"] = format;value["Offset"] = offset;value["Channel"] = channel;
+        metadata["VertexAttributes"].append(value);
+    };
+    attribute("Position","Float32x3",0);attribute("Normal","Float32x3",12);attribute("Tangent","Float32x4",24);
+    for (uint32_t i=0;i<uvCount;++i) attribute("TexCoord","Float32x2",40+i*8,i);
+    attribute("Color","Float32x4",40+uint32_t(uvCount)*8);
+    attribute("BoneIndices","UInt32x4",56+uint32_t(uvCount)*8);
+    attribute("BoneWeights","Float32x4",72+uint32_t(uvCount)*8);
+    attribute("ControlPoint","UInt32",88+uint32_t(uvCount)*8);
     metadata["IndexFormat"] = "UInt32";
     metadata["Settings"] = job.Settings;
     QByteArray payload;

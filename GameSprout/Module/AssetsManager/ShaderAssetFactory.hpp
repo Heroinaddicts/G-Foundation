@@ -2,6 +2,7 @@
 
 #include "AssetFactoryCommon.hpp"
 #include "ImportSettingsJson.hpp"
+#include <QRegularExpression>
 
 class ShaderImportSettings : public IShaderImportSettings, public IImportSettingConverter {
 public:
@@ -21,6 +22,7 @@ public:
         for (const std::string & item : _Defines) {
             result["Defines"].append(item);
         }
+        result["GenerateDXIL"] = _GenerateDXIL;
         result["Optimize"] = _Optimize;
         result["GenerateDebugInfo"] = _GenerateDebugInfo;
         value.swap(result);
@@ -37,6 +39,7 @@ public:
             || !AssetSettingsJson::ReadEnum(value, "SourceLanguage", settings._SourceLanguage, SourceLanguageNames)
             || !AssetSettingsJson::Read(value, "EntryPoint", settings._EntryPoint)
             || !AssetSettingsJson::Read(value, "Defines", settings._Defines)
+            || !AssetSettingsJson::Read(value, "GenerateDXIL", settings._GenerateDXIL)
             || !AssetSettingsJson::Read(value, "Optimize", settings._Optimize)
             || !AssetSettingsJson::Read(value, "GenerateDebugInfo", settings._GenerateDebugInfo)
             || !settings.Validate()) {
@@ -49,7 +52,7 @@ public:
     eShaderStage GetStage() const override { return _Stage; }
     void SetStage(eShaderStage stage) override { _Stage = stage; }
 
-    // 源语言；Auto 由管线结合源文件判断。
+    // 当前只支持 HLSL 源码。
     eShaderSourceLanguage GetSourceLanguage() const override {
         return _SourceLanguage;
     }
@@ -76,6 +79,9 @@ public:
         _Defines = value;
     }
 
+    bool GetGenerateDXIL() const override { return _GenerateDXIL; }
+    void SetGenerateDXIL(const bool value) override { _GenerateDXIL = value; }
+
     // 是否请求编译器优化输出。
     bool GetOptimize() const override {
         return _Optimize;
@@ -96,24 +102,28 @@ public:
 
 private:
     bool Validate() const {
+        if (_Stage != eShaderStage::Vertex && _Stage != eShaderStage::Fragment && _Stage != eShaderStage::Compute) return false;
+        if (_SourceLanguage != eShaderSourceLanguage::HLSL || !QRegularExpression("^[A-Za-z_][A-Za-z0-9_]*$").match(QString::fromStdString(_EntryPoint)).hasMatch()) return false;
+        std::set<std::string> names;
+        for (const auto & define : _Defines) {
+            const QString value=QString::fromStdString(define), name=value.section('=',0,0);
+            if (!QRegularExpression("^[A-Za-z_][A-Za-z0-9_]*$").match(name).hasMatch() || value.contains('\n') || value.contains('\r') || value.contains(QChar('\0')) || !names.insert(name.toStdString()).second) return false;
+        }
         return true;
     }
 
     inline static constexpr AssetSettingsJson::EnumName<eShaderSourceLanguage> SourceLanguageNames[] = {
-        {eShaderSourceLanguage::Auto, "Auto"},
         {eShaderSourceLanguage::HLSL, "HLSL"},
-        {eShaderSourceLanguage::GLSL, "GLSL"},
-        {eShaderSourceLanguage::MSL, "MSL"},
-        {eShaderSourceLanguage::SPIRV, "SPIRV"},
     };
 
     inline static constexpr AssetSettingsJson::EnumName<eShaderStage> StageNames[] = {
         {eShaderStage::Vertex, "Vertex"}, {eShaderStage::Fragment, "Fragment"}, {eShaderStage::Compute, "Compute"}
     };
     eShaderStage _Stage = eShaderStage::Vertex;
-    eShaderSourceLanguage _SourceLanguage = eShaderSourceLanguage::Auto;
+    eShaderSourceLanguage _SourceLanguage = eShaderSourceLanguage::HLSL;
     std::string _EntryPoint = "main";
     std::vector<std::string> _Defines = {};
+    bool _GenerateDXIL = false;
     bool _Optimize = true;
     bool _GenerateDebugInfo = false;
 };
@@ -122,17 +132,12 @@ class ShaderMeta : public AssetMetaWithSettings<ShaderImportSettings> {
 public:
     ShaderMeta(const Guid & guid, const std::string & path)
         : AssetMetaWithSettings(eAssetImporterType::Shader, guid, path) {
-        if (QFileInfo(QString::fromStdString(path)).suffix().compare("frag", Qt::CaseInsensitive) == 0)
+        if (QString::fromStdString(path).endsWith(".frag.shader", Qt::CaseInsensitive) || QString::fromStdString(path).endsWith(".ps.shader", Qt::CaseInsensitive))
             static_cast<ShaderImportSettings *>(GetImportSettings())->SetStage(eShaderStage::Fragment);
+        else if (QString::fromStdString(path).endsWith(".compute.shader", Qt::CaseInsensitive))
+            static_cast<ShaderImportSettings *>(GetImportSettings())->SetStage(eShaderStage::Compute);
     }
-    bool ConvertFromJson(const Json::Value & value) override {
-        Json::Value migrated = value;
-        if (migrated["ImportSettings"].isObject() && !migrated["ImportSettings"].isMember("Stage")) {
-            const bool fragment = QFileInfo(QString::fromStdString(GetPath())).suffix().compare("frag", Qt::CaseInsensitive) == 0;
-            migrated["ImportSettings"]["Stage"] = fragment ? "Fragment" : "Vertex";
-        }
-        return AssetMetaWithSettings::ConvertFromJson(migrated);
-    }
+
 };
 
 inline IAssetMeta * OnShaderAssetCreate(const Foundation::FileSystemWatcherEvent & event,

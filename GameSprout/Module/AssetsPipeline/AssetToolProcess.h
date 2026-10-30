@@ -12,8 +12,7 @@ inline QString Find(const QString & name) {
     const QString executable=name;
 #endif
     const QDir application(QCoreApplication::applicationDirPath());
-    for (const QString & path : {application.filePath("local_tools/shadercross/bin/"+executable),
-        application.filePath("local_tools/shadercross/"+executable),
+    for (const QString & path : {application.filePath("local_tools/shaders/bin/"+executable),
         application.filePath("local_tools/"+executable),application.filePath(executable)})
         if (QFileInfo(path).isExecutable()) return path;
     return QStandardPaths::findExecutable(executable);
@@ -31,8 +30,15 @@ inline bool Run(AssetImportJob & job,const QString & program,const QStringList &
         if(job.Cancelled()) {process.kill();process.waitForFinished(5000);return false;}
         if(done || process.state()==QProcess::NotRunning) break;
     }
-    if(process.exitStatus()!=QProcess::NormalExit || process.exitCode()!=0)
-        return job.Fail("Asset compiler failed: "+diagnostics.toStdString());
+    if(process.exitStatus()!=QProcess::NormalExit || process.exitCode()!=0) {
+        if(!job.Stage.empty()) {
+            const QDir stage(QString::fromStdString(job.Stage));
+            const QByteArray assets=QByteArray::fromStdString(job.Request.AssetsRoot);
+            diagnostics.replace((stage.canonicalPath()+"/shader-input").toUtf8(),assets);
+            diagnostics.replace((stage.absolutePath()+"/shader-input").toUtf8(),assets);
+        }
+        return job.Fail("Asset compiler failed ("+QFileInfo(program).fileName().toStdString()+"): "+diagnostics.toStdString());
+    }
     return true;
 }
 inline bool Read(const QString & path,QByteArray & bytes) {

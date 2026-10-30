@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>AssetInfoInspectorForm</class>
+  <widget class="QWidget" name="AssetInfoInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QLabel" name="descriptionLabel">
+          <property name="text">
+            <string>资源信息</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <widget class="QTreeWidget" name="propertiesTree">
+          <property name="rootIsDecorated">
+            <bool>true</bool>
+          </property>
+          <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+          </property>
+          <property name="selectionMode">
+            <enum>QAbstractItemView::NoSelection</enum>
+          </property>
+          <column>
+            <property name="text">
+              <string>属性</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>值</string>
+            </property>
+          </column>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

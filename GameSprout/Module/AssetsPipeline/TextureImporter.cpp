@@ -102,6 +102,7 @@ bool ImportTextureBytes(AssetImportJob & job, QByteArray bytes, const std::strin
         Json::Value mip;
         mip["Width"] = image.width(); mip["Height"] = image.height();
         mip["Offset"] = static_cast<Json::UInt64>(payload.size());
+        mip["RowPitch"] = static_cast<Json::UInt64>(image.width()) * 4;
         mip["Size"] = static_cast<Json::UInt64>(image.width()) * image.height() * 4;
         metadata["Mips"].append(mip);
         for (int y = 0; y < image.height(); ++y) payload.append(reinterpret_cast<const char *>(image.constScanLine(y)), image.width() * 4);

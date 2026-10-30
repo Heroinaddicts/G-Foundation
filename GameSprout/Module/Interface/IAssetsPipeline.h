@@ -18,6 +18,10 @@ public:
     virtual eAssetType GetAssetType() const = 0;
     virtual const std::string & GetName() const = 0;
     virtual const std::string & GetArtifactPath() const = 0;
+    // 编辑器从 ArtifactDB 查询加载描述；产物文件自身没有 JSON 头部。
+    virtual const std::string & GetDataDescriptorJson() const = 0;
+    virtual uint32_t GetDataVersion() const = 0;
+    virtual uint64_t GetDataSize() const = 0;
 };
 
 struct AssetArtifact {
@@ -27,6 +31,9 @@ struct AssetArtifact {
     std::string SourceKey;
     std::string Path; // Relative to this manifest's artifact directory.
     std::string Hash;
+    uint32_t DataVersion = 2; // Headerless resource data; its layout is stored in ArtifactDB.
+    uint64_t DataSize = 0;
+    std::string DescriptorJson = "{}"; // Stored in ArtifactDB, never prepended to data.
 };
 
 struct AssetDependency {
@@ -39,9 +46,10 @@ struct AssetImportManifest {
     std::string SourcePath;
     std::string SourceHash;
     std::string SettingsHash;
+    std::string ToolchainHash; // Compiler versions are independent of user import settings.
     std::string Target = "Portable";
-    uint32_t ImporterVersion = 1;
-    std::string Directory; // Empty for flat artifacts; legacy manifests may name a directory.
+    uint32_t ImporterVersion = 2;
+    std::string Directory = "Artifact"; // Relative to Library; all published artifacts live here.
     std::string Generation; // Publication identity, independent of the stable filename.
     std::string SubAssetsJson = "[]";
     std::vector<AssetArtifact> Assets;
@@ -54,6 +62,7 @@ struct AssetImportResult {
     bool Superseded = false;
     bool Retry = false;
     std::string Error;
+    std::string Diagnostics;
     AssetImportManifest Manifest;
 };
 

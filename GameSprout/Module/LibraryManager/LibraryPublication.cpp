@@ -4,7 +4,7 @@
 
 namespace {
 bool ValidJournal(const Json::Value & journal) {
-    if (!journal.isObject() || journal["Version"] != 1 || !journal["Guid"].isString()
+    if (!journal.isObject() || journal["Version"] != 2 || journal["Directory"] != "Artifact" || !journal["Guid"].isString()
         || !Guid(journal["Guid"].asString()).IsValid() || !journal["Generation"].isString()
         || !journal["Files"].isArray()) return false;
     std::set<std::string> names;
@@ -18,10 +18,11 @@ bool ValidJournal(const Json::Value & journal) {
 }
 
 bool RollbackFiles(const QDir & library, const QDir & transaction, const Json::Value & journal) {
+    const QDir destination(library.filePath("Artifact"));
     bool restored = true;
     for (const Json::Value & file : journal["Files"]) {
         const QString name = QString::fromStdString(file["Name"].asString());
-        const QString target = library.filePath(name);
+        const QString target = destination.filePath(name);
         const QString saved = transaction.filePath(name + ".previous");
         if (QFileInfo::exists(saved)) {
             if (QFileInfo::exists(target) && !QFile::remove(target)) { restored = false; continue; }
@@ -71,10 +72,16 @@ bool LibraryManager::PublishFlatImport(const std::string & stage, AssetImportMan
     AssetImportManifest previous;
     const bool hasPrevious = GetManifest(Guid(manifest.GuidString), previous);
     AssetImportManifest published = manifest;
-    published.Directory.clear();
+    published.Directory = "Artifact";
+    const QDir destination(library.filePath("Artifact"));
+    if (!QDir().mkpath(destination.absolutePath())) { error = "Cannot create artifact directory"; return false; }
+    if (QFileInfo(destination.absolutePath()).isSymLink() || destination.canonicalPath() != library.canonicalPath() + "/Artifact") {
+        error = "Artifact destination must be inside this Library";return false;
+    }
     published.Generation = QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString();
     Json::Value journal;
-    journal["Version"] = 1;
+    journal["Version"] = 2;
+    journal["Directory"] = "Artifact";
     journal["Guid"] = manifest.GuidString;
     journal["Generation"] = published.Generation;
     journal["Files"] = Json::Value(Json::arrayValue);
@@ -83,7 +90,7 @@ bool LibraryManager::PublishFlatImport(const std::string & stage, AssetImportMan
         file["LocalID"] = Json::UInt64(asset.LocalID);
         asset.Path = manifest.GuidString + "_" + std::to_string(asset.LocalID) + ".gsasset";
         file["Name"] = asset.Path;
-        const QFileInfo old(library.filePath(QString::fromStdString(asset.Path)));
+        const QFileInfo old(destination.filePath(QString::fromStdString(asset.Path)));
         if (old.isSymLink() || (old.exists() && !old.isFile())) { error = "Invalid artifact destination"; return false; }
         file["HadOld"] = old.exists();
         journal["Files"].append(file);
@@ -106,7 +113,7 @@ bool LibraryManager::PublishFlatImport(const std::string & stage, AssetImportMan
     for (Json::ArrayIndex index = 0; index < journal["Files"].size(); ++index) {
         const Json::Value & file = journal["Files"][index];
         const QString name = QString::fromStdString(file["Name"].asString());
-        const QString target = library.filePath(name);
+        const QString target = destination.filePath(name);
         if (file["HadOld"].asBool() && !QFile::rename(target, transaction.filePath(name + ".previous"))) { replaced = false; break; }
         const QString source = transaction.filePath(QString::fromStdString(manifest.Assets[index].Path));
         if (!QFile::rename(source, target)) { replaced = false; break; }
@@ -118,12 +125,12 @@ bool LibraryManager::PublishFlatImport(const std::string & stage, AssetImportMan
         return false;
     }
     manifest = std::move(published);
-    if (hasPrevious && previous.Directory.empty()) {
+    if (hasPrevious) {
         std::set<uint64_t> active;
         for (const AssetArtifact & asset : manifest.Assets) active.insert(asset.LocalID);
         for (const AssetArtifact & old : previous.Assets) if (!active.count(old.LocalID)) {
             const std::string expected = previous.GuidString + "_" + std::to_string(old.LocalID) + ".gsasset";
-            if (old.Path == expected) QFile::remove(library.filePath(QString::fromStdString(expected)));
+            if (old.Path == expected) QFile::remove(destination.filePath(QString::fromStdString(expected)));
         }
     }
     ClearLoaded(manifest.GuidString);

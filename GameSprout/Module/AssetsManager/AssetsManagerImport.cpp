@@ -16,125 +16,129 @@ std::string AssetsManager::RelativePath(const std::string & absolutePath) const 
     if (path.startsWith(lexicalRoot + "/")) path = root + path.mid(lexicalRoot.size());
     return QDir(root).relativeFilePath(path).toStdString();
 }
-void AssetsManager::QueueImport(IAssetMeta * meta) {
+void AssetsManager::ImportAsset(IAssetMeta * meta, bool force) {
     if (!meta || _ConflictingGuids.count(meta->_Guid.GetGuidString())) return;
-    RecordPendingSource(meta);
+    if (!RecordPendingSource(meta)) return;
     if (meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script) return;
+    const std::string guid = meta->_Guid.GetGuidString();
     _Pipeline->Invalidate(meta->_Guid);
-    _Dirty[meta->_Guid.GetGuidString()] = std::chrono::steady_clock::now();
-}
-bool AssetsManager::ReimportAsset(const Guid & guid) {
-    IAssetMeta * meta = QueryAsset(guid);
-    if (!meta || meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script) return false;
-    if (!meta->SaveMeta()) return false;
-    _ForceImports.insert(guid.GetGuidString());
-    QueueImport(meta);
-    QueueDependents(meta->GetPath());
-    return true;
-}
-void AssetsManager::QueueDependents(const std::string & relativePath) {
-    // Transitive invalidation, bounded by a visited set for cyclic resource graphs.
-    std::deque<std::string> paths{relativePath};
-    std::set<std::string> visited;
-    while (!paths.empty()) {
-        const std::string path = paths.front(); paths.pop_front();
-        if (!visited.insert(path).second) continue;
-        for (const std::string & owner : _Library->FindDependents(path)) {
-            const auto asset = _Assets.find(owner);
-            if (asset != _Assets.end()) { QueueImport(asset->second); paths.push_back(asset->second->GetPath()); }
-        }
-    }
-}
-
-void AssetsManager::Update(GameSproutApi *) {
-    if (!_SourceDatabaseReady) return;
-    DispatchAssetEvents();
-    // Keep filesystem callbacks short. Enumerate/register watches on the next
-    // main-thread Update, after the current filesystem event dispatch finishes.
-    const auto directories = std::move(_DirectoriesToScan);
-    _DirectoriesToScan.clear();
-    for (const std::string & path : directories) {
-        const QFileInfo directory(QString::fromStdString(path));
-        if (!directory.isDir()) continue;
-        Foundation::FileSystemWatcherEvent event;
-        event.Type = Foundation::eWatcherType::Directory;
-        event.Action = Foundation::eFileSystemAction::Create;
-        event.Path = path;
-        if (RelativePath(path) != ".")
-            StoreAssetMeta(TriggerFactory(eAssetImporterType::Folder,event,directory.fileName().toStdString(),"",this));
-        WatcherDir(path);
-        ScanDirectory(path);
-    }
-    if (_ReconcileOnScan && !_StartupWatchesVerified && !_ScanFailed) {
-        // The first pass installs watches for every discovered directory. Read again
-        // after registration so additions in the discovery/registration gap are included.
-        // New directories created during this pass are covered by their parent's watch.
-        _StartupWatchesVerified = true;
-        ScanDirectory(_AssetsRoot);
-        return;
-    }
-    if (_ReconcileOnScan) {
-        ReconcileSources();
-        _ReconcileOnScan = false;
-    }
-    const auto now=std::chrono::steady_clock::now();
-    int submitted=0;
-    for (auto it=_Dirty.begin(); it!=_Dirty.end() && submitted<4 && _Importing.size()<8;) {
-        if (_Importing.count(it->first)) { ++it; continue; }
-        if (now-it->second<std::chrono::milliseconds(100)) {++it;continue;}
-        const std::string guid=it->first;
-        it=_Dirty.erase(it);
-        const auto found=_Assets.find(guid);
-        if (found==_Assets.end()) continue;
-        ++submitted;
-        _Importing.insert(guid);
-        const bool force = _ForceImports.erase(guid) != 0;
-        _Pipeline->ImportAsset(found->second,[guid](const AssetImportResult & result) {
-            AssetsManager * owner=s_Active;
-            if (!owner) return;
-            owner->_Importing.erase(guid);
-            if (result.Superseded) {
-                if (result.Retry) {
-                    IAssetMeta * current=owner->QueryAsset(Guid(guid));
-                    if (current) owner->QueueImport(current);
+    const uint64_t operation = ++_NextImportID;
+    _ActiveImportCallbacks.insert(operation);
+    try {
+        _Pipeline->ImportAsset(meta, [guid,operation](const AssetImportResult & result) {
+            AssetsManager * owner = s_Active;
+            if (!owner || !owner->_ActiveImportCallbacks.count(operation)) return;
+            // Finish the startup barrier even when result handling fails or retries.
+            struct Completion {
+                AssetsManager * Owner;
+                uint64_t Operation;
+                ~Completion() {
+                    Owner->_ActiveImportCallbacks.erase(Operation);
+                    if (!Owner->_ReconcileOnScan && Owner->_ActiveImportCallbacks.empty()) Owner->FinishStartupLoading();
                 }
+            } completion{owner,operation};
+            if (result.Superseded) {
+                if (result.Retry) owner->ImportAsset(owner->QueryAsset(Guid(guid)));
                 return;
             }
-            const auto found=owner->_Assets.find(guid);
-            if (found==owner->_Assets.end()) return;
+            const auto found = owner->_Assets.find(guid);
+            if (found == owner->_Assets.end()) return;
             if (!result.Success) {
                 owner->RecordImportResult(found->second, result);
                 GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Import {} failed: {}",found->second->GetPath(),result.Error);
                 return;
             }
-            IAssetMeta * meta=found->second;
-            if (meta->GetPath()!=result.Manifest.SourcePath) return;
-            // Updating only the identity registry preserves current settings and Meta ownership.
-            std::string before,after;
-            meta->SerializeMeta(before);
-            if (!meta->SetSubAssets(result.Manifest.SubAssetsJson) || !meta->SerializeMeta(after)) return;
-            if (after!=before && !meta->SaveMeta()) {
+            IAssetMeta * current = found->second;
+            if (current->GetPath() != result.Manifest.SourcePath) return;
+            std::string before, after;
+            current->SerializeMeta(before);
+            if (!current->SetSubAssets(result.Manifest.SubAssetsJson) || !current->SerializeMeta(after)) return;
+            if (after != before && !current->SaveMeta()) {
                 AssetImportResult failed = result;
                 failed.Success = false;
                 failed.Error = "Cannot persist imported identities";
-                owner->RecordImportResult(meta, failed);
-                GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot persist imported identities: {}",meta->GetPath());
+                owner->RecordImportResult(current, failed);
+                GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot persist imported identities: {}",current->GetPath());
                 return;
             }
-            owner->RecordImportResult(meta, result);
-            if (after != before) owner->QueueDependents(meta->GetPath());
-            GameSproutConsoleLog(g_IConsole,eConsoleLog::Trace,"Imported {}: {} resources{}",meta->GetPath(),result.Manifest.Assets.size(),result.Cached?" (cached)":"");
-        },force);
+            owner->RecordImportResult(current, result);
+            if(!result.Diagnostics.empty())
+                GameSproutConsoleLog(g_IConsole,eConsoleLog::Warning,"Shader compiler diagnostics for {}:\n{}",current->GetPath(),result.Diagnostics);
+            if (after != before) owner->ImportDependents(current->GetPath());
+            GameSproutConsoleLog(g_IConsole,eConsoleLog::Trace,"{} {}: {} resources",
+                result.Cached ? "缓存命中" : "预处理完成", current->GetPath(), result.Manifest.Assets.size());
+        }, force);
+    } catch (...) {
+        // SubmitTask can reject synchronously; its callback already balances the count.
+        // Exceptions before callback ownership is transferred need the same cleanup.
+        _ActiveImportCallbacks.erase(operation);
+        if (!_ReconcileOnScan && _ActiveImportCallbacks.empty()) FinishStartupLoading();
+        throw;
     }
-    if (!_ReconcileOnScan && _DirectoriesToScan.empty() && _Dirty.empty() && _Importing.empty())
-        FinishStartupLoading();
+}
+bool AssetsManager::ReimportAsset(const Guid & guid) {
+    IAssetMeta * meta = QueryAsset(guid);
+    if (!meta || meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script) return false;
+    if (!meta->SaveMeta()) return false;
+    ImportAsset(meta, true);
+    ImportDependents(meta->GetPath());
+    return true;
+}
+bool AssetsManager::ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
+    const std::string & expectedSettingsJson, std::string & error) {
+    error.clear();
+    auto * meta = static_cast<AssetMeta *>(QueryAsset(guid));
+    if (!meta || !_SourceDatabaseReady || _ConflictingGuids.count(guid.GetGuidString())) {
+        error = "资源不存在、数据库尚未就绪或 GUID 冲突。";
+        return false;
+    }
+    Json::Value candidate, expected, current;
+    std::string snapshot;
+    if (!AssetArtifactIO::Parse(settingsJson, candidate) || !candidate.isObject()
+        || !AssetArtifactIO::Parse(expectedSettingsJson, expected) || !expected.isObject()
+        || !meta->SerializeMeta(snapshot) || !AssetArtifactIO::Parse(snapshot, current)) {
+        error = "导入设置快照无效。";
+        return false;
+    }
+    if (current["ImportSettings"] != expected) {
+        error = "导入设置已被外部修改，请恢复到最新设置后重新编辑。";
+        return false;
+    }
+    if (candidate == expected) return true;
+    if (meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script
+        || !meta->ApplySettings(candidate)) {
+        error = "设置校验或 Meta 保存失败，原设置已保留。";
+        return false;
+    }
+    ImportAsset(meta, true);
+    ImportDependents(meta->GetPath());
+    return true;
+}
+void AssetsManager::ImportDependents(const std::string & relativePath) {
+    // Transitive invalidation, bounded by a visited set for cyclic resource graphs.
+    std::deque<std::string> paths{relativePath};
+    std::set<std::string> visited{relativePath};
+    while (!paths.empty()) {
+        const std::string path = paths.front(); paths.pop_front();
+        for (const std::string & owner : _Library->FindDependents(path)) {
+            const auto asset = _Assets.find(owner);
+            if (asset != _Assets.end() && visited.insert(asset->second->GetPath()).second) {
+                ImportAsset(asset->second);
+                paths.push_back(asset->second->GetPath());
+            }
+        }
+    }
+}
+
+void AssetsManager::Update(GameSproutApi *) {
     DispatchAssetEvents();
 }
 
 void AssetsManager::WatcherDir(const std::string & path) {
-    if (!s_Active || !s_Active->_Watches.insert(path).second) return;
-    if (!g_GameSproutApi->_Foundation->SystemApi()->FileSystemWatcher(path,s_Active,OnFileSystemWatcher)) {
-        s_Active->_Watches.erase(path);
+    const std::string canonical=QFileInfo(QString::fromStdString(path)).canonicalFilePath().toStdString();
+    if (!s_Active || canonical.empty() || !s_Active->_Watches.insert(canonical).second) return;
+    if (!g_GameSproutApi->_Foundation->SystemApi()->FileSystemWatcher(canonical,s_Active,OnFileSystemWatcher)) {
+        s_Active->_Watches.erase(canonical);
         GameSproutConsoleLog(g_IConsole,eConsoleLog::Warning,"Cannot watch directory: {}",path);
     }
 }
@@ -144,18 +148,20 @@ void AssetsManager::ScanDirectory(const std::string & path) {
     std::vector<FoundationUtils::SafeSystem::File::FileInfo> infos;
     FoundationUtils::SafeSystem::File::EnumerateDirectory(path, "*", infos, true, {}, {"meta", "META"});
     if (!QFileInfo(QString::fromStdString(path)).isReadable()) _ScanFailed = true;
+    const auto fileInfo = [](const FoundationUtils::SafeSystem::File::FileInfo & info) {
+        const std::string filename = info._Name + ((!info._IsDirectory && !info._Externsion.empty()) ? "." + info._Externsion : "");
+        return QFileInfo(QDir(QString::fromStdString(info._ParentDirectory)).filePath(QString::fromStdString(filename)));
+    };
+    // Enumerate once. Register every identity before submitting native documents
+    // that may refer to a source appearing later in this same enumeration.
     for (const auto & info : infos) {
         if (!info._IsDirectory && ToLower(info._Externsion) == "meta") continue;
-        const std::string filename = info._Name + ((!info._IsDirectory && !info._Externsion.empty()) ? "." + info._Externsion : "");
-        const QFileInfo file(QDir(QString::fromStdString(info._ParentDirectory)).filePath(QString::fromStdString(filename)));
+        const QFileInfo file = fileInfo(info);
         if (!file.exists() || file.isSymLink()) continue;
         Foundation::FileSystemWatcherEvent event;
         event.Type = info._IsDirectory ? Foundation::eWatcherType::Directory : Foundation::eWatcherType::File;
         event.Action = Foundation::eFileSystemAction::Create;
         event.Path = file.absoluteFilePath().toStdString();
-        // Each discovered resource is handled here on the main thread. These calls
-        // recover/create Meta, register its GUID and check the database immediately.
-        // Imports queue until the full GUID registry is available for dependencies.
         RestoreMissingMeta(event.Path);
         if (info._IsDirectory) {
             if (!file.isReadable()) {
@@ -163,26 +169,44 @@ void AssetsManager::ScanDirectory(const std::string & path) {
                 GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot read asset directory: {}",event.Path);
             }
             WatcherDir(event.Path);
-            StoreAssetMeta(TriggerFactory(eAssetImporterType::Folder,event,info._Name,"",this));
-        } else OnFileCreate(event,info._Name,info._Externsion,this);
-        const auto known = _AssetGuidsByPath.find(RelativePath(event.Path));
-        if (known == _AssetGuidsByPath.end() || _ConflictingGuids.count(known->second)) continue;
+        }
+        const eAssetImporterType type = info._IsDirectory ? eAssetImporterType::Folder : GetAssetImporterType(info._Externsion);
+        IAssetMeta * meta = TriggerFactory(type,event,info._Name,info._Externsion,this);
+        if (!meta && type != eAssetImporterType::Unknown) {
+            RecordSourceError(RelativePath(event.Path), "Cannot load source Meta");
+            GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot load source Meta: {}",event.Path);
+        }
+        StoreAssetMeta(meta);
+    }
+    // All comparisons and submissions finish before this function returns.
+    // Update() never drains an import queue or starts a second scan.
+    for (const auto & info : infos) {
+        if (!info._IsDirectory && ToLower(info._Externsion) == "meta") continue;
+        const QFileInfo file = fileInfo(info);
+        if (!file.exists() || file.isSymLink()) continue;
+        const auto known = _AssetGuidsByPath.find(RelativePath(file.absoluteFilePath().toStdString()));
+        if (known == _AssetGuidsByPath.end()) continue;
         IAssetMeta * meta = QueryAsset(Guid(known->second));
         if (!meta) continue;
-        const AssetSourceRecord current = DescribeSource(meta);
+        if (_ConflictingGuids.count(known->second)) {
+            AssetSourceRecord failed = DescribeSource(meta);
+            failed.Status = "Failed";failed.Error = "Duplicate asset GUID";
+            SaveSourceRecord(failed);
+            continue;
+        }
         const auto previous = _SourceRecords.find(known->second);
-        if (meta->_ImporterType != eAssetImporterType::Folder && meta->_ImporterType != eAssetImporterType::Script
-            && previous != _SourceRecords.end()
+        const AssetSourceRecord current = DescribeSource(meta);
+        const bool force = previous != _SourceRecords.end()
             && (previous->second.SourceSize != current.SourceSize
                 || previous->second.SourceModifyTime != current.SourceModifyTime
                 || previous->second.MetaModifyTime != current.MetaModifyTime
-                || previous->second.Status == "Failed"))
-            _ForceImports.insert(known->second);
-        if (!_ReconcileOnScan) continue; // Live handlers have already persisted Pending.
-        // Persist each observation during enumeration, while retaining the pre-scan
-        // snapshot for move/deletion reconciliation and dependency invalidation.
-        const auto original = _StartupSourceRecords.find(known->second);
-        if (original == _StartupSourceRecords.end() || original->second.Path == current.Path)
-            SaveSourceRecord(current);
+                || previous->second.Status == "Failed");
+        if (previous != _SourceRecords.end() && previous->second.Path != current.Path && !meta->SaveMeta()) {
+            RecordSourceError(previous->second.Path, "Cannot update moved Meta");
+            _ScanFailed = true;
+            continue;
+        }
+        ImportAsset(meta, force);
+        if (!_ReconcileOnScan) ImportDependents(meta->GetPath());
     }
 }

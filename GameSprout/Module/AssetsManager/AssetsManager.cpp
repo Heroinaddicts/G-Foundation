@@ -102,7 +102,6 @@ bool AssetsManager::Launch(GameSproutApi * const api) {
 void AssetsManager::LaunchFinished(GameSproutApi * const api) {
     _ReconcileOnScan = true;
     _ScanFailed = false;
-    _StartupWatchesVerified = false;
     _ConflictingGuids.clear();
     if (!OpenSourceDatabase()) {
         GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot read asset source database; startup comparison stopped");
@@ -116,6 +115,9 @@ void AssetsManager::LaunchFinished(GameSproutApi * const api) {
     WatcherDir(g_IProject->GetProjectRoot());
     WatcherDir(_AssetsRoot);
     ScanDirectory(_AssetsRoot);
+    ReconcileSources();
+    _ReconcileOnScan = false;
+    if (_ActiveImportCallbacks.empty()) FinishStartupLoading();
 }
 
 void AssetsManager::StoreAssetMeta(IAssetMeta * const meta) {
@@ -126,7 +128,6 @@ void AssetsManager::StoreAssetMeta(IAssetMeta * const meta) {
         if (existingGuid->second->GetPath() != meta->GetPath()) {
             _ConflictingGuids.insert(guid);
             _Pipeline->Invalidate(meta->_Guid);
-            _Dirty.erase(guid);
             const auto previous = _SourceRecords.find(guid);
             if (previous != _SourceRecords.end()) RecordSourceError(previous->second.Path, "Duplicate asset GUID");
             GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Duplicate asset GUID {}: {} and {}",guid,existingGuid->second->GetPath(),meta->GetPath());
@@ -141,7 +142,6 @@ void AssetsManager::StoreAssetMeta(IAssetMeta * const meta) {
     }
     _AssetGuidsByPath.emplace(meta->GetPath(), guid);
     _Assets.emplace(guid, meta);
-    QueueImport(meta);
 }
 
 void AssetsManager::Release(GameSproutApi * const api) {
@@ -149,9 +149,9 @@ void AssetsManager::Release(GameSproutApi * const api) {
     _AssetEvents.clear(); _AssetListeners.clear();
     FinishStartupLoading();
     for (const auto & entry : _Assets) delete entry.second;
-    _Assets.clear(); _AssetGuidsByPath.clear(); _Dirty.clear();
-    _DirectoriesToScan.clear();
-    _Watches.clear(); _Importing.clear(); _ForceImports.clear(); _ConflictingGuids.clear();
+    _Assets.clear(); _AssetGuidsByPath.clear();
+    _Watches.clear(); _ConflictingGuids.clear();
+    _ActiveImportCallbacks.clear();
     _BackupSourcesByPath.clear();
     _SourceRecords.clear(); _SourceGuidsByPath.clear(); _StartupSourceRecords.clear(); _SourceDatabaseReady = false;
     s_AssetFactorys.clear();

@@ -14,6 +14,7 @@ void ProjectAssetsUI::BeforeInitialize(GameSprout::GameSproutEditor * editor) {
     g_GameSproutEditor = editor;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Assets,AssetsManager);
+    GetGameSproutModule(editor,_Selection,SelectionManager);
 }
 
 bool ProjectAssetsUI::Initialize(GameSprout::GameSproutEditor *) {
@@ -66,7 +67,7 @@ bool ProjectAssetsUI::Initialize(GameSprout::GameSproutEditor *) {
             if (!_Rebuilding) _ExpandedAssets.erase(index.data(ProjectAssetsModel::KeyRole).toString());
         });
         QObject::connect(_Ui->assetTree->selectionModel(),&QItemSelectionModel::selectionChanged,_Dispatch,[this] {
-            if (!_Rebuilding) UpdateStatus();
+            if (!_Rebuilding) { _FolderSelected=false;UpdateStatus();PublishSelection(); }
         });
     } catch (...) { Release(nullptr); throw; }
     return true;
@@ -81,6 +82,11 @@ bool ProjectAssetsUI::Launch(GameSprout::GameSproutEditor *) {
     if (IIDEMenu * menu = _Docker->CreateChildMenu("刷新视图")) menu->SetClickCallback(&ProjectAssetsUI::RefreshMenu);
     _Subscribed = _Assets->RegisterAssetListener(this);
     if (!_Subscribed) return false;
+    if (_Selection) {
+        _SelectionSubscribed = _Selection->RegisterSelectionListener(this);
+        if (!_SelectionSubscribed) return false;
+        OnAssetSelectionChanged(_Selection->GetAssetSelection());
+    }
     // Subscribe before the initial query. Events and snapshots merge by identity.
     Refresh();
     return true;
@@ -94,6 +100,8 @@ void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->_Dirty=true; }
 
 void ProjectAssetsUI::Release(GameSprout::GameSproutEditor *) {
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
+    if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
+    _SelectionSubscribed=false;_Selection=nullptr;
     _Subscribed=false;
     delete _Dispatch;_Dispatch=nullptr;
     if (!_Attached) delete _Window;

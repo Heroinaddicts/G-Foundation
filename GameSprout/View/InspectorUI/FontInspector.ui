@@ -1,0 +1,189 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>FontInspectorForm</class>
+  <widget class="QWidget" name="FontInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>字体导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="FontSizeLabel">
+                <property name="text">
+                  <string>字号（像素）</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QLineEdit" name="fontSizeEdit">
+                <property name="settingKey" stdset="0">
+                  <string>FontSize</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>uint32</string>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="RenderModeLabel">
+                <property name="text">
+                  <string>字形渲染方式</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QComboBox" name="renderModeCombo">
+                <property name="settingKey" stdset="0">
+                  <string>RenderMode</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Smooth</string>
+                    <string>Raster</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>平滑</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>像素栅格</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="CharacterPaddingLabel">
+                <property name="text">
+                  <string>字形边距（像素）</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QLineEdit" name="characterPaddingEdit">
+                <property name="settingKey" stdset="0">
+                  <string>CharacterPadding</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>uint32</string>
+                </property>
+                <property name="minimumValue" stdset="0">
+                  <number>0</number>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="0">
+              <widget class="QLabel" name="CharacterSpacingLabel">
+                <property name="text">
+                  <string>额外字符间距</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="1">
+              <widget class="QSpinBox" name="characterSpacingSpin">
+                <property name="settingKey" stdset="0">
+                  <string>CharacterSpacing</string>
+                </property>
+                <property name="minimum">
+                  <number>-2147483648</number>
+                </property>
+                <property name="maximum">
+                  <number>2147483647</number>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="0">
+              <widget class="QLabel" name="CustomCharactersLabel">
+                <property name="text">
+                  <string>预生成字符</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="1">
+              <widget class="QPlainTextEdit" name="customCharactersEdit">
+                <property name="settingKey" stdset="0">
+                  <string>CustomCharacters</string>
+                </property>
+                <property name="maximumSize">
+                  <size>
+                    <width>16777215</width>
+                    <height>100</height>
+                  </size>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="0">
+              <widget class="QLabel" name="IncludeFontDataLabel">
+                <property name="text">
+                  <string>保留源字体数据</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="1">
+              <widget class="QCheckBox" name="includeFontDataCheck">
+                <property name="settingKey" stdset="0">
+                  <string>IncludeFontData</string>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>空字符集合使用默认 ASCII。当前字号上限 512，边距上限 64，字符上限 4096；不支持动态文字整形或 SDF。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

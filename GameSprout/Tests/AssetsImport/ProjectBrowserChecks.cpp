@@ -1,76 +1,4 @@
-#include "AssetTestSupport.h"
-#include "IProjectAssetsUI.h"
-#include <QApplication>
-#include <QTreeView>
-#include <QLineEdit>
-#include <QComboBox>
-#include <QFileInfo>
-#include <QItemSelectionModel>
-
-class PreviewDock final : public IIDEDocker {
-public:
-    QWidget Host;
-    QWidget * Content=nullptr;
-    bool AttachWidget(QWidget * widget) override {if(!widget||Content)return false;Content=widget;widget->setParent(&Host);Host.resize(900,520);widget->setGeometry(Host.rect());widget->show();Host.show();return true;}
-    void Layout(eDockerLayout) override {}
-    bool Split(IIDEDocker *,Qt::Orientation) override {return true;}
-    bool Tabify(IIDEDocker *) override {return true;}
-    void Activate() override {Host.show();}
-    void SetTitle(const QString & title) override {Host.setWindowTitle(title);}
-    IIDEMenu * CreateChildMenu(const QString &) override {return nullptr;}
-};
-class PreviewIDE final : public IIDEWindow {
-public:
-    TestIDE Counter;
-    PreviewDock Dock;
-    void Loading(const std::string & title,const std::string & desc) override {Counter.Loading(title,desc);}
-    void Unloading() override {Counter.Unloading();}
-    void SetLoadingInfo(const std::string &,const std::string &) override {}
-    IIDEMenuBar * GetMenuBar() const override {return nullptr;}
-    IIDEDocker * CreateDocker(const QString &) override {return &Dock;}
-    IIDEDocker * QueryDocker(const QString &) override {return &Dock;}
-    bool ResizeDockers(const QList<IIDEDocker *> &,const QList<int> &,Qt::Orientation) override {return true;}
-    bool Initialize(GameSprout::GameSproutEditor *) override {return true;}
-    bool Launch(GameSprout::GameSproutEditor *) override {return true;}
-    void Release(GameSprout::GameSproutEditor *) override {}
-};
-class PreviewEditor final : public GameSprout::GameSproutEditor {
-public:
-    PreviewEditor():GameSproutEditor(nullptr) {}
-    std::map<std::string,GameSprout::IGameSproutModule *> Modules;
-    IIDEWindow * IDE=nullptr;
-    GameSprout::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}
-    GameSprout::IGameSproutView * FindGameSproutView(const std::string & name) const override {return name=="IDEWindow"?IDE:nullptr;}
-};
-IProjectAssetsUI * LoadProjectView() {
-#if defined(_WIN32)
-    HMODULE handle=LoadLibraryW(std::filesystem::path(std::string(TEST_BINARY_ROOT)+"/Logic/View/ProjectAssetsUI.dll").c_str());
-    auto entry=reinterpret_cast<GameSprout::IGameSproutView *(*)()>(GetProcAddress(handle,"GetView"));
-#else
-#if defined(__APPLE__)
-    const char * suffix=".dylib";
-#else
-    const char * suffix=".so";
-#endif
-    void * handle=dlopen((std::string(TEST_BINARY_ROOT)+"/Logic/View/libProjectAssetsUI"+suffix).c_str(),RTLD_NOW|RTLD_LOCAL);
-    Check(handle!=nullptr,"Cannot load ProjectAssetsUI");
-    auto entry=reinterpret_cast<GameSprout::IGameSproutView *(*)()>(dlsym(handle,"GetView"));
-#endif
-    Check(entry!=nullptr,"ProjectAssetsUI entry missing");return static_cast<IProjectAssetsUI *>(entry());
-}
-class Recorder final : public IAssetListener {
-public:
-    std::vector<AssetEvent> Events;
-    const std::thread::id Main=std::this_thread::get_id();
-    void Save(const AssetEvent & event){Check(std::this_thread::get_id()==Main,"Asset event on worker thread");Events.push_back(event);}
-    void OnAssetCreate(const AssetEvent & event) override {Save(event);}
-    void OnAssetModify(const AssetEvent & event) override {Save(event);}
-    void OnAssetRemove(const AssetEvent & event) override {Save(event);}
-};
-QModelIndex FindRow(QTreeView * tree,const QString & name) {
-    for(int row=0;row<tree->model()->rowCount();++row){auto index=tree->model()->index(row,0);if(index.data().toString()==name)return index;}
-    return {};
-}
+#include "ProjectViewTestSupport.h"
 
 int main(int argc,char **argv) {
     QApplication application(argc,argv);
@@ -89,7 +17,7 @@ int main(int argc,char **argv) {
         PreviewIDE ide;PreviewEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
         GameSprout::GameSproutApi api(&foundation,&editor);
-        for(const std::string & name:{"LocalDatabase","LibraryManager","AssetsPipeline","AssetsManager","GuidCreator"})editor.Modules[name]=LoadModule(name);
+        for(const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})editor.Modules[name]=LoadModule(name);
         for(const auto & entry:editor.Modules)GameSprout::GameSproutEditorFinal::Before(entry.second,&api);
         for(const auto & entry:editor.Modules)Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second,&api),"Module initialization failed");
         IProjectAssetsUI * ui=LoadProjectView();
@@ -105,6 +33,7 @@ int main(int argc,char **argv) {
         auto pump=[&](const std::function<bool()> & done) {
             const auto start=std::chrono::steady_clock::now();
             do {real->Update();QCoreApplication::processEvents();GameSprout::GameSproutEditorFinal::Update(manager,&api);
+                GameSprout::GameSproutEditorFinal::Update(editor.Modules["SelectionManager"],&api);
                 if(launched)GameSprout::GameSproutEditorFinal::Update(ui,&editor);
                 if(done())return;QThread::msleep(2);
             }while(std::chrono::steady_clock::now()-start<std::chrono::seconds(35));
@@ -167,6 +96,7 @@ int main(int argc,char **argv) {
         Check(recorder.Events.size()==count,"Unregistered listener received callbacks");
         ui->Hide();ui->Show();Check(ide.Dock.Content->isVisible(),"Hidden panel did not reopen");
         GameSprout::GameSproutEditorFinal::Release(ui,&editor);
+        GameSprout::GameSproutEditorFinal::Release(editor.Modules["SelectionManager"],&api);
         GameSprout::GameSproutEditorFinal::Release(manager,&api);
         GameSprout::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
         GameSprout::GameSproutEditorFinal::Release(editor.Modules["LibraryManager"],&api);

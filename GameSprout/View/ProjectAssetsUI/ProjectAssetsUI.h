@@ -9,7 +9,7 @@ class QObject;
 class ProjectAssetsModel;
 namespace Ui { class ProjectAssetsUIWindow; }
 
-class ProjectAssetsUI : public IProjectAssetsUI, public IAssetListener {
+class ProjectAssetsUI : public IProjectAssetsUI, public IAssetListener, public ISelectionListener {
 public:
     ProjectAssetsUI() = default;
     ProjectAssetsUI(const ProjectAssetsUI &) = delete;
@@ -22,6 +22,7 @@ public:
     void OnAssetCreate(const AssetEvent &) override { _Dirty = true; }
     void OnAssetModify(const AssetEvent &) override { _Dirty = true; }
     void OnAssetRemove(const AssetEvent &) override { _Dirty = true; }
+    void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection> & selection) override;
 private:
     void BeforeInitialize(GameSprout::GameSproutEditor * editor) override;
     bool Initialize(GameSprout::GameSproutEditor * editor) override;
@@ -31,6 +32,7 @@ private:
     void Release(GameSprout::GameSproutEditor * editor) override;
     void Refresh();
     void UpdateStatus();
+    void PublishSelection();
     static void RefreshMenu();
     QWidget * _Window = nullptr;
     QObject * _Dispatch = nullptr;
@@ -38,9 +40,14 @@ private:
     ProjectAssetsModel * _FolderModel = nullptr;
     ProjectAssetsModel * _AssetModel = nullptr;
     IAssetsManager * _Assets = nullptr;
+    ISelectionManager * _Selection = nullptr;
     IIDEDocker * _Docker = nullptr;
     bool _Attached = false;
     bool _Subscribed = false;
+    bool _SelectionSubscribed = false;
+    bool _FolderSelected = false;
+    bool _RestoreExternalSelection = false;
+    std::vector<ProjectAssetSelection> _ExternalSelection;
     bool _Dirty = true;
     bool _Rebuilding = false;
     bool _ResetSelection = false;

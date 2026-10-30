@@ -52,7 +52,7 @@ void SimulateInterruptedPublications(ILibraryManager * library, const Json::Valu
         const Json::Value asset = manifest["Assets"][0];
         const QString name = QString::fromStdString(asset["Path"].asString());
         Json::Value journal;
-        journal["Version"] = 1; journal["Guid"] = guid; journal["Generation"] = generation;
+        journal["Version"] = 2; journal["Directory"] = "Artifact"; journal["Guid"] = guid; journal["Generation"] = generation;
         Json::Value file;
         file["Name"] = asset["Path"]; file["LocalID"] = asset["LocalID"]; file["HadOld"] = true;
         journal["Files"].append(file);
@@ -62,8 +62,8 @@ void SimulateInterruptedPublications(ILibraryManager * library, const Json::Valu
             Check(AssetArtifactIO::Write(QDir(folder).filePath(name + ".previous"),"obsolete previous bytes",error), error);
             Check(library->GetLDBSession()->WriteBatch({{"Publications",generation,{1},false}}), "Cannot create publication commit marker");
         } else {
-            Check(QFile::rename(root.filePath(name),QDir(folder).filePath(name + ".previous")), "Cannot preserve previous artifact fixture");
-            Check(AssetArtifactIO::Write(root.filePath(name),"uncommitted replacement bytes",error), error);
+            Check(QFile::rename(root.filePath("Artifact/"+name),QDir(folder).filePath(name + ".previous")), "Cannot preserve previous artifact fixture");
+            Check(AssetArtifactIO::Write(root.filePath("Artifact/"+name),"uncommitted replacement bytes",error), error);
         }
     }
 }
@@ -84,7 +84,7 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
     foundation.Tasks.Real = real->TaskApi();
     foundation.Tasks.IDE = &ide;
     GameSprout::GameSproutApi api(&foundation, &editor);
-    for (const std::string & name : {"LocalDatabase", "LibraryManager", "AssetsPipeline", "AssetsManager", "GuidCreator"})
+    for (const std::string & name : {"LocalDatabase", "LibraryManager", "ShaderCompiler", "AssetsPipeline", "AssetsManager", "GuidCreator"})
         editor.Modules[name] = LoadModule(name);
     for (const auto & entry : editor.Modules) GameSprout::GameSproutEditorFinal::Before(entry.second, &api);
     for (const auto & entry : editor.Modules) Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second, &api), "Module Initialize: " + entry.first);
@@ -116,8 +116,18 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
         late.fill(Qt::green);
         Check(late.save(QDir(projectRoot).filePath("Assets/FolderA/Late.png")), "Cannot create startup enumeration fixture");
     }
+    if (phase == 1) foundation.Tasks.BeforeSubmission = [&] {
+        Check(manager->GetAssetMetas().size() == 14, "Task submitted before the full GUID registry was available");
+    };
     GameSprout::GameSproutEditorFinal::Finished(manager, &api);
+    const int startupLoadingTotal = ide.Loads;
+    if (phase == 1) {
+        Check(foundation.Tasks.Submissions == 13, "ScanDirectory returned before all 13 imports were submitted");
+        Check(ide.Loads == 14, "Initial Loading denominator was not registered during the scan");
+    }
+    foundation.Tasks.BeforeSubmission = {};
     Json::Value state = wait(phase == 1 ? 14 : phase == 5 ? 12 : 13, true);
+    if (phase == 1) Check(ide.Loads == startupLoadingTotal, "Startup denominator kept growing after ScanDirectory returned");
     const QDir root(projectRoot);
     if (phase == 1) {
         const Guid stableGuid(state["Paths"]["Stable.png"].asString());

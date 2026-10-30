@@ -186,11 +186,7 @@ enum class eShaderStage : uint8_t {
 };
 
 enum class eShaderSourceLanguage : uint8_t {
-    Auto,
-    HLSL,
-    GLSL,
-    MSL,
-    SPIRV,
+    HLSL
 };
 
 enum class eFontRenderMode : uint8_t {

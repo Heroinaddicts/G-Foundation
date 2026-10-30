@@ -5,7 +5,9 @@
 #include <QDateTime>
 #include <map>
 
+class IShaderCompiler;
 struct AssetImportRequest {
+    IShaderCompiler * Compiler = nullptr; // Initialized editor module; kept alive until all tasks finish.
     std::string GuidString;
     std::string AssetsRoot;
     std::string LibraryRoot;
@@ -53,5 +55,3 @@ bool ImportMedia(AssetImportJob & job);
 bool ImportFont(AssetImportJob & job);
 bool ImportDocument(AssetImportJob & job);
 bool ImportShader(AssetImportJob & job);
-bool CollectShaderIncludes(AssetImportJob & job, const std::string & path,
-    const QByteArray & source, std::set<std::string> & seen);

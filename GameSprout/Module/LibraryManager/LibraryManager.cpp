@@ -13,6 +13,9 @@ public:
     eAssetType GetAssetType() const override { return _Artifact.Type; }
     const std::string & GetName() const override { return _Artifact.Name; }
     const std::string & GetArtifactPath() const override { return _Path; }
+    const std::string & GetDataDescriptorJson() const override { return _Artifact.DescriptorJson; }
+    uint32_t GetDataVersion() const override { return _Artifact.DataVersion; }
+    uint64_t GetDataSize() const override { return _Artifact.DataSize; }
 private:
     const Guid _Guid;
     const AssetArtifact _Artifact;
@@ -37,7 +40,9 @@ void LibraryManager::BeforeInitialize(GameSproutApi * const api) {
     GSRegLaunchedCallback(g_IProject, [this](GameSproutApi *) -> bool {
         _LibraryRoot = QDir(QString::fromStdString(g_IProject->GetProjectRoot())).filePath("Library").toStdString();
         QDir directory(QString::fromStdString(_LibraryRoot));
-        if (!directory.mkpath(".") || !directory.mkpath(".Transactions") || !directory.mkpath("Staging")) return false;
+        if (!directory.mkpath(".") || !directory.mkpath("Artifact") || !directory.mkpath(".Transactions") || !directory.mkpath("Staging")) return false;
+        const QFileInfo artifactDirectory(directory.filePath("Artifact"));
+        if (artifactDirectory.isSymLink() || artifactDirectory.canonicalFilePath() != directory.canonicalPath() + "/Artifact") return false;
         _Lock = new QLockFile(directory.filePath("Editor.lock"));
         if (!_Lock->tryLock(0)) {
             GameSproutConsoleLog(g_IConsole, eConsoleLog::Error, "Library is already in use: {}", _LibraryRoot);
@@ -137,7 +142,11 @@ bool LibraryManager::CommitImport(const std::string & stage, AssetImportManifest
     std::set<uint64_t> ids;
     for (const AssetArtifact & asset : manifest.Assets) {
         const QFileInfo file(QDir(stagePath).filePath(QString::fromStdString(asset.Path)));
-        if (asset.LocalID == 0 || !ids.insert(asset.LocalID).second || !AssetArtifactIO::RelativePath(asset.Path)
+        Json::Value descriptor;
+        if (asset.DataVersion != 2 || !AssetArtifactIO::Parse(asset.DescriptorJson, descriptor) || !descriptor.isObject()
+            || (descriptor["Encoding"] != "RawBytes" && descriptor["Encoding"] != "BinaryValueLE1")
+            || asset.DataSize != static_cast<uint64_t>(file.size())
+            || asset.LocalID == 0 || !ids.insert(asset.LocalID).second || !AssetArtifactIO::RelativePath(asset.Path)
             || !file.isFile() || file.isSymLink() || !file.canonicalFilePath().startsWith(stagePath + "/")) {
             error = "Incomplete or invalid artifact: " + asset.Path; return false;
         }

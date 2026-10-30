@@ -204,7 +204,7 @@ public:
     virtual eShaderStage GetStage() const = 0;
     virtual void SetStage(eShaderStage stage) = 0;
 
-    // 源语言；Auto 由管线结合源文件判断。
+    // 当前只支持 HLSL 源码。
     virtual eShaderSourceLanguage GetSourceLanguage() const = 0;
     virtual void SetSourceLanguage(const eShaderSourceLanguage value) = 0;
 
@@ -219,6 +219,10 @@ public:
     // 是否请求编译器优化输出。
     virtual bool GetOptimize() const = 0;
     virtual void SetOptimize(const bool value) = 0;
+
+    // 默认生成 SPIR-V/MSL；启用 DXIL 还需要可用的 DXC downstream 编译器。
+    virtual bool GetGenerateDXIL() const = 0;
+    virtual void SetGenerateDXIL(const bool value) = 0;
 
     // 是否在编译产物中保留调试信息。
     virtual bool GetGenerateDebugInfo() const = 0;
@@ -230,7 +234,7 @@ class IComputeShaderImportSettings : public IAssetImportSettings {
 public:
     virtual ~IComputeShaderImportSettings() {}
 
-    // 源语言；Auto 由管线结合源文件判断。
+    // 当前只支持 HLSL 源码。
     virtual eShaderSourceLanguage GetSourceLanguage() const = 0;
     virtual void SetSourceLanguage(const eShaderSourceLanguage value) = 0;
 
@@ -245,6 +249,10 @@ public:
     // 是否请求编译器优化输出。
     virtual bool GetOptimize() const = 0;
     virtual void SetOptimize(const bool value) = 0;
+
+    // 默认生成 SPIR-V/MSL；启用 DXIL 还需要可用的 DXC downstream 编译器。
+    virtual bool GetGenerateDXIL() const = 0;
+    virtual void SetGenerateDXIL(const bool value) = 0;
 
     // 是否在编译产物中保留调试信息。
     virtual bool GetGenerateDebugInfo() const = 0;
@@ -468,6 +476,7 @@ public:
 
     // 相对于项目 Assets 目录的源资产路径。
     virtual const std::string & GetPath() const = 0;
+    // 借用指针：Meta 重载或成功应用新设置后，必须重新获取。
     virtual IAssetImportSettings * GetImportSettings() const = 0;
     // 主线程查询；仅返回最近成功导入的有效子资源，排除主资源和历史身份记录。
     // 借用指针，重新导入/删除后失效。UI 长期保存 GUID + LocalID。
@@ -515,6 +524,10 @@ public:
 
     virtual IAssetMeta * QueryAsset(const Guid &guid) const = 0;
     virtual bool ReimportAsset(const Guid & guid) = 0;
+    // 主线程：校验并保存设置后安排导入。expected 是编辑开始时的设置快照，
+    // 外部修改造成冲突时返回 false；验证/保存失败不替换原设置。
+    virtual bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
+        const std::string & expectedSettingsJson, std::string & error) = 0;
     // Borrowed until source removal or module release; main thread only.
     virtual std::vector<IAssetMeta *> GetAssetMetas() const = 0;
     // path 相对 Assets；空字符串表示根目录。只返回直接子项，目录在前。

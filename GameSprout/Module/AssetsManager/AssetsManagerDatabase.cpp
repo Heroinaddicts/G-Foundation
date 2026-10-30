@@ -144,12 +144,14 @@ void AssetsManager::ForgetSourceRecord(const std::string & guid) {
     }
 }
 
-void AssetsManager::RecordPendingSource(IAssetMeta * meta) {
-    if (!_SourceDatabaseReady || _ReconcileOnScan) return;
+bool AssetsManager::RecordPendingSource(IAssetMeta * meta) {
+    if (!_SourceDatabaseReady || !meta) return false;
     AssetSourceRecord record = DescribeSource(meta);
     // A watcher reports a possible change, not its new content fingerprint.
     if (record.Status != "NotRequired") record.SourceHash.clear();
-    SaveSourceRecord(record);
+    if (SaveSourceRecord(record)) return true;
+    _ScanFailed = true;
+    return false;
 }
 
 void AssetsManager::RecordImportResult(IAssetMeta * meta, const AssetImportResult & result) {
@@ -169,7 +171,6 @@ void AssetsManager::RecordSourceError(const std::string & path, const std::strin
     if (known != _SourceGuidsByPath.end()) for (const std::string & guid : known->second)
         failed.push_back(_SourceRecords.at(guid));
     for (AssetSourceRecord & record : failed) {
-        _Dirty.erase(record.GuidString);
         _Pipeline->Invalidate(Guid(record.GuidString));
         record.Status = "Failed";
         record.Error = error;
@@ -211,7 +212,6 @@ void AssetsManager::ReconcileSources() {
     size_t added = 0, changed = 0, moved = 0, removed = 0;
     const QDir root(QString::fromStdString(_AssetsRoot));
     const auto previous = _StartupSourceRecords;
-    std::vector<AssetSourceRecord> observations;
     for (const auto & entry : _Assets) {
         if (_ConflictingGuids.count(entry.first)) continue;
         IAssetMeta * meta = entry.second;
@@ -221,26 +221,16 @@ void AssetsManager::ReconcileSources() {
         const auto old = previous.find(entry.first);
         if (old == previous.end()) ++added;
         else {
-            if (record.Importer != eAssetImporterType::Folder && record.Importer != eAssetImporterType::Script
-                && (old->second.SourceModifyTime != record.SourceModifyTime || old->second.MetaModifyTime != record.MetaModifyTime
-                    || old->second.SourceSize != record.SourceSize || old->second.Status == "Failed"))
-                _ForceImports.insert(entry.first);
             const bool pathChanged = old->second.Path != record.Path;
-            if (pathChanged) { ++moved; QueueDependents(old->second.Path); }
-            if (pathChanged || old->second.SourceHash != record.SourceHash || old->second.SettingsHash != record.SettingsHash) {
+            if (pathChanged) ++moved;
+            if (pathChanged || old->second.SourceSize != record.SourceSize
+                || old->second.SourceModifyTime != record.SourceModifyTime
+                || old->second.MetaModifyTime != record.MetaModifyTime || old->second.SettingsHash != record.SettingsHash) {
                 ++changed;
-                QueueDependents(record.Path);
             }
         }
-        // A valid Meta at a new location keeps its GUID; persist its corrected relative path.
-        if (old != previous.end() && old->second.Path != record.Path && !meta->SaveMeta()) {
-            record.Status = "Failed";
-            record.Error = "Cannot update moved Meta";
-        }
-        observations.push_back(std::move(record));
     }
-    // One inventory transaction avoids flushing LMDB separately for every scanned file.
-    if (!SaveSourceRecords(observations)) _ScanFailed = true;
+    // Each scanned source has already been persisted/submitted synchronously.
 
     // Pruning is permitted only after a complete successful directory scan. An unreadable
     // subtree, corrupt Meta or GUID collision cannot be mistaken for a deleted resource.
@@ -252,7 +242,6 @@ void AssetsManager::ReconcileSources() {
             RecordSourceError(entry.second.Path, "Source exists but its Meta cannot be loaded");
             continue;
         }
-        QueueDependents(entry.second.Path);
         std::string error;
         if (ArchiveSourceRecord(entry.first, replaced ? "Replaced" : "Deleted")) ++removed;
     }
@@ -271,12 +260,6 @@ void AssetsManager::CheckDatabaseSources() {
         const QFileInfo source(root.filePath(QString::fromStdString(record.Path)));
         if (!source.exists() || source.isSymLink()) continue;
         RestoreMissingMeta(source.absoluteFilePath().toStdString());
-        const QFileInfo sidecar(source.absoluteFilePath() + ".meta");
-        if (record.Importer != eAssetImporterType::Folder && record.Importer != eAssetImporterType::Script
-            && (record.SourceModifyTime != source.lastModified().toMSecsSinceEpoch()
-                || record.MetaModifyTime != sidecar.lastModified().toMSecsSinceEpoch()
-                || record.SourceSize != source.size() || record.Status == "Failed"))
-            _ForceImports.insert(entry.first);
     }
 }
 

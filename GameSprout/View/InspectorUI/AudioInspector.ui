@@ -1,0 +1,313 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>AudioInspectorForm</class>
+  <widget class="QWidget" name="AudioInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>音频导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="ForceToMonoLabel">
+                <property name="text">
+                  <string>转为单声道</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QCheckBox" name="forceToMonoCheck">
+                <property name="settingKey" stdset="0">
+                  <string>ForceToMono</string>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="NormalizeLabel">
+                <property name="text">
+                  <string>单声道响度归一化</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QCheckBox" name="normalizeCheck">
+                <property name="settingKey" stdset="0">
+                  <string>Normalize</string>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="CompressionFormatLabel">
+                <property name="text">
+                  <string>编码格式</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QComboBox" name="compressionFormatCombo">
+                <property name="settingKey" stdset="0">
+                  <string>CompressionFormat</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>PCM</string>
+                    <string>Vorbis</string>
+                    <string>ADPCM</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>PCM</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Vorbis</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>ADPCM</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="3" column="0">
+              <widget class="QLabel" name="QualityLabel">
+                <property name="text">
+                  <string>Vorbis 质量</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="1">
+              <widget class="QDoubleSpinBox" name="qualitySpin">
+                <property name="settingKey" stdset="0">
+                  <string>Quality</string>
+                </property>
+                <property name="minimum">
+                  <double>0</double>
+                </property>
+                <property name="maximum">
+                  <double>1</double>
+                </property>
+                <property name="decimals">
+                  <number>4</number>
+                </property>
+                <property name="singleStep">
+                  <double>0.05</double>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="0">
+              <widget class="QLabel" name="SampleRateModeLabel">
+                <property name="text">
+                  <string>采样率模式</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="1">
+              <widget class="QComboBox" name="sampleRateModeCombo">
+                <property name="settingKey" stdset="0">
+                  <string>SampleRateMode</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Preserve</string>
+                    <string>Optimize</string>
+                    <string>Override</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>保持源采样率</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>优化至 8–48 kHz</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>指定采样率</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="5" column="0">
+              <widget class="QLabel" name="SampleRateOverrideLabel">
+                <property name="text">
+                  <string>指定采样率 Hz</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="1">
+              <widget class="QLineEdit" name="sampleRateOverrideEdit">
+                <property name="settingKey" stdset="0">
+                  <string>SampleRateOverride</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>uint32</string>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="0">
+              <widget class="QLabel" name="LoadTypeLabel">
+                <property name="text">
+                  <string>运行时加载方式</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="1">
+              <widget class="QComboBox" name="loadTypeCombo">
+                <property name="settingKey" stdset="0">
+                  <string>LoadType</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>DecompressOnLoad</string>
+                    <string>CompressedInMemory</string>
+                    <string>Streaming</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>DecompressOnLoad</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>CompressedInMemory</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Streaming</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="7" column="0">
+              <widget class="QLabel" name="PreloadAudioDataLabel">
+                <property name="text">
+                  <string>预加载数据</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="7" column="1">
+              <widget class="QCheckBox" name="preloadAudioDataCheck">
+                <property name="settingKey" stdset="0">
+                  <string>PreloadAudioData</string>
+                </property>
+              </widget>
+            </item>
+            <item row="8" column="0">
+              <widget class="QLabel" name="LoadInBackgroundLabel">
+                <property name="text">
+                  <string>后台加载</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="8" column="1">
+              <widget class="QCheckBox" name="loadInBackgroundCheck">
+                <property name="settingKey" stdset="0">
+                  <string>LoadInBackground</string>
+                </property>
+              </widget>
+            </item>
+            <item row="9" column="0">
+              <widget class="QLabel" name="AmbisonicLabel">
+                <property name="text">
+                  <string>Ambisonic</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="9" column="1">
+              <widget class="QCheckBox" name="ambisonicCheck">
+                <property name="settingKey" stdset="0">
+                  <string>Ambisonic</string>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>转码需要 ffmpeg/ffprobe；Vorbis 还需 libvorbis 编码器。加载方式、预加载和后台加载写入产物元数据，由后续 runtime 执行；Ambisonic 目前不做声场解码。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

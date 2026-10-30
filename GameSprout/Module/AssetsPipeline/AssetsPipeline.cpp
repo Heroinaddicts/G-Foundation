@@ -1,6 +1,7 @@
 #include "AssetsPipeline.h"
 #include "AssetImportJob.h"
 #include "IAssetsManager.h"
+#include "IShaderCompiler.h"
 #include <QDateTime>
 #include <exception>
 
@@ -18,9 +19,10 @@ void AssetsPipeline::BeforeInitialize(GameSproutApi * api) {
     GetGameSproutModule(api->_EditorApi, _Project, Project);
     GetGameSproutModule(api->_EditorApi, _Assets, AssetsManager);
     GetGameSproutModule(api->_EditorApi, _Library, LibraryManager);
+    GetGameSproutModule(api->_EditorApi, _ShaderCompiler, ShaderCompiler);
     GetGameSproutView(api->_EditorApi, _IDE, IDEWindow);
 }
-bool AssetsPipeline::Initialize(GameSproutApi * api) { g_GameSproutApi = api; return _Tasks && _Project && _Assets && _Library && _IDE; }
+bool AssetsPipeline::Initialize(GameSproutApi * api) { g_GameSproutApi = api; return _Tasks && _Project && _Assets && _Library && _ShaderCompiler && _IDE; }
 bool AssetsPipeline::Launch(GameSproutApi *) { _Owner = _Tasks->RegisterTaskOwner(); return _Owner != Foundation::InvalidTaskOwnerId; }
 void AssetsPipeline::LaunchFinished(GameSproutApi *) {}
 void AssetsPipeline::Update(GameSproutApi *) {}
@@ -48,6 +50,7 @@ void AssetsPipeline::ImportAsset(IAssetMeta * meta, const fImportCallback & call
     request.GuidString = meta->_Guid.GetGuidString();
     request.Force = force;
     request.Importer = meta->_ImporterType;
+    request.Compiler = _ShaderCompiler;
     request.SourcePath = meta->GetPath();
     // Only native resource documents contain GUID references needing this lookup snapshot.
     switch (request.Importer) {
@@ -92,7 +95,7 @@ void AssetsPipeline::ImportAsset(IAssetMeta * meta, const fImportCallback & call
                 result.Success = succeeded && job && result.Success;
                 const auto revision = _Revisions.find(request.GuidString);
                 if (revision == _Revisions.end() || revision->second != request.Revision) {
-                    result.Success = false; result.Superseded = true; result.Error = "Import superseded";
+                    result.Success = false; result.Superseded = true; result.Retry = false; result.Error = "Import superseded";
                 }
                 if (result.Success) {
                     for (const auto & stamp : job->DependencyStamps) {

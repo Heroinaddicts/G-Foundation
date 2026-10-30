@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>TextInspectorForm</class>
+  <widget class="QWidget" name="TextInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>文本导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="EncodingLabel">
+                <property name="text">
+                  <string>源数据编码</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QComboBox" name="encodingCombo">
+                <property name="settingKey" stdset="0">
+                  <string>Encoding</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Auto</string>
+                    <string>UTF8</string>
+                    <string>UTF16LE</string>
+                    <string>UTF16BE</string>
+                    <string>Binary</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>Auto</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>UTF8</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>UTF16LE</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>UTF16BE</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Binary</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="NormalizeLineEndingsLabel">
+                <property name="text">
+                  <string>统一换行为 LF</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QCheckBox" name="normalizeLineEndingsCheck">
+                <property name="settingKey" stdset="0">
+                  <string>NormalizeLineEndings</string>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="StripByteOrderMarkLabel">
+                <property name="text">
+                  <string>移除 BOM</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QCheckBox" name="stripByteOrderMarkCheck">
+                <property name="settingKey" stdset="0">
+                  <string>StripByteOrderMark</string>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>Binary 保留原始字节，不执行换行和 BOM 处理。其他模式将文本输出为 UTF-8。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

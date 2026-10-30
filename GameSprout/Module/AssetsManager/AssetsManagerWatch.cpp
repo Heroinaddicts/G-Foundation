@@ -29,14 +29,15 @@ void AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) 
         const auto recorded = _SourceRecords.find(guid);
         const std::string oldPath = found != _Assets.end() ? found->second->GetPath() : recorded->second.Path;
         _Pipeline->Invalidate(Guid(guid));
-        QueueDependents(oldPath);
+        ImportDependents(oldPath);
         std::string error;
         if (!ArchiveSourceRecord(guid, "Deleted")) continue;
-        _Dirty.erase(guid); _ForceImports.erase(guid); _AssetGuidsByPath.erase(oldPath);
+        _AssetGuidsByPath.erase(oldPath);
         if (found != _Assets.end()) { delete found->second; _Assets.erase(found); }
     }
+    const std::string watchedPath=all ? _CanonicalAssetsRoot : path;
     for (auto it=_Watches.begin();it!=_Watches.end();) {
-        if (*it==path || (recursive && it->compare(0,path.size()+1,path+"/")==0)) it=_Watches.erase(it);else ++it;
+        if (*it==watchedPath || (recursive && it->compare(0,watchedPath.size()+1,watchedPath+"/")==0)) it=_Watches.erase(it);else ++it;
     }
 }
 
@@ -67,7 +68,7 @@ void AssetsManager::ReloadMeta(const std::string & sourcePath) {
         RecordSourceError(meta->GetPath(), "Invalid Meta settings or changed GUID");
         GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Invalid Meta settings or changed GUID: {}",sourcePath);return;
     }
-    QueueImport(meta);QueueDependents(meta->GetPath());
+    ImportAsset(meta);ImportDependents(meta->GetPath());
 }
 
 void AssetsManager::RenameSource(const Foundation::FileSystemWatcherEvent & event,bool directory) {
@@ -78,22 +79,24 @@ void AssetsManager::RenameSource(const Foundation::FileSystemWatcherEvent & even
         GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot move Meta from {} to {}",event.OldPath,event.Path);return;
     }
     std::vector<IAssetMeta *> moved;
+    std::vector<std::string> oldPaths;
     for (const auto & entry:_Assets) if (entry.second->GetPath()==oldRelative || (directory && entry.second->GetPath().compare(0,oldRelative.size()+1,oldRelative+"/")==0)) moved.push_back(entry.second);
     for (IAssetMeta * meta:moved) {
         const std::string oldPath=meta->GetPath();
+        oldPaths.push_back(oldPath);
         const std::string newPath=newRelative+oldPath.substr(oldRelative.size());
         const std::string guid=meta->_Guid.GetGuidString();
-        QueueDependents(oldPath);_Pipeline->Invalidate(meta->_Guid);
+        _Pipeline->Invalidate(meta->_Guid);
         _AssetGuidsByPath.erase(oldPath);
         static_cast<AssetMeta *>(meta)->SetPath(newPath);
         _AssetGuidsByPath[newPath]=guid;
         if (!meta->SaveMeta()) GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot update moved Meta: {}",newPath);
-        QueueImport(meta);QueueDependents(newPath);
+        RecordPendingSource(meta);
     }
     for (auto it=_Watches.begin();it!=_Watches.end();) {
         if (*it==event.OldPath || it->compare(0,event.OldPath.size()+1,event.OldPath+"/")==0) it=_Watches.erase(it);else ++it;
     }
-    if (directory) _DirectoriesToScan.insert(event.Path);
+    if (directory) { WatcherDir(event.Path);ScanDirectory(event.Path); }
     else {
         const auto found=_AssetGuidsByPath.find(newRelative);
         if (found!=_AssetGuidsByPath.end()) {
@@ -112,12 +115,17 @@ void AssetsManager::RenameSource(const Foundation::FileSystemWatcherEvent & even
                     GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot change importer: {}",error);return;
                 }
                 const std::string guid=meta->_Guid.GetGuidString();
-                delete meta;_Assets.erase(guid);_AssetGuidsByPath.erase(newRelative);_Dirty.erase(guid);
+                delete meta;_Assets.erase(guid);_AssetGuidsByPath.erase(newRelative);
                 const std::string name=QFileInfo(QString::fromStdString(event.Path)).completeBaseName().toStdString();
                 StoreAssetMeta(TriggerFactory(importer,event,name,extension,this));
-            }
+                const auto replacement=_AssetGuidsByPath.find(newRelative);
+                if (replacement!=_AssetGuidsByPath.end()) ImportAsset(QueryAsset(Guid(replacement->second)));
+            } else if (meta) { ImportAsset(meta);ImportDependents(newRelative); }
         } else OnFileCreate(event,QFileInfo(QString::fromStdString(event.Path)).completeBaseName().toStdString(),QFileInfo(QString::fromStdString(event.Path)).suffix().toStdString(),this);
     }
+    // Reverse indexes still use the old paths, but every referenced GUID must
+    // already resolve to its new path when the dependent's snapshot is taken.
+    for (const std::string & oldPath:oldPaths) ImportDependents(oldPath);
 }
 
 void AssetsManager::OnFileCreate(const Foundation::FileSystemWatcherEvent & event,const std::string & name,const std::string & extension,void * context) {
@@ -126,9 +134,8 @@ void AssetsManager::OnFileCreate(const Foundation::FileSystemWatcherEvent & even
     if (ToLower(extension)==META_EXTENSION) {owner->ReloadMeta(event.Path.substr(0,event.Path.size()-5));return;}
     if (!QFileInfo::exists(QString::fromStdString(event.Path))) return;
     const std::string relative=owner->RelativePath(event.Path);
-    const auto existing=owner->_AssetGuidsByPath.find(relative);
-    if (existing!=owner->_AssetGuidsByPath.end()) owner->QueueImport(owner->QueryAsset(Guid(existing->second)));
-    else {
+    auto existing=owner->_AssetGuidsByPath.find(relative);
+    if (existing==owner->_AssetGuidsByPath.end()) {
         owner->RestoreMissingMeta(event.Path);
         IAssetMeta * meta = TriggerFactory(GetAssetImporterType(extension), event, name, extension, context);
         if (!meta && GetAssetImporterType(extension) != eAssetImporterType::Unknown) {
@@ -136,8 +143,21 @@ void AssetsManager::OnFileCreate(const Foundation::FileSystemWatcherEvent & even
             GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot load source Meta: {}",event.Path);
         }
         owner->StoreAssetMeta(meta);
+        existing=owner->_AssetGuidsByPath.find(relative);
     }
-    owner->QueueDependents(relative);
+    if (existing!=owner->_AssetGuidsByPath.end()) {
+        IAssetMeta * meta=owner->QueryAsset(Guid(existing->second));
+        const auto known=owner->_SourceRecords.find(existing->second);
+        if (meta && event.Action==Foundation::eFileSystemAction::Create && known!=owner->_SourceRecords.end()) {
+            const AssetSourceRecord current=owner->DescribeSource(meta);
+            const AssetSourceRecord & previous=known->second;
+            if ((previous.Status=="Pending" || previous.Status=="Ready") && previous.SourceSize==current.SourceSize
+                && previous.SourceModifyTime==current.SourceModifyTime && previous.MetaModifyTime==current.MetaModifyTime
+                && previous.MetaJson==current.MetaJson) return; // Already handled by this directory's synchronous scan.
+        }
+        owner->ImportAsset(meta);
+    }
+    owner->ImportDependents(relative);
 }
 void AssetsManager::OnFileDelete(const Foundation::FileSystemWatcherEvent & event,const std::string &,const std::string & extension,void * context) {
     AssetsManager * owner=static_cast<AssetsManager *>(context);
@@ -163,7 +183,12 @@ void AssetsManager::OnFileRename(const Foundation::FileSystemWatcherEvent & even
 void AssetsManager::OnFolderCreate(const Foundation::FileSystemWatcherEvent & event,const std::string & name,const std::string &,void * context) {
     AssetsManager * owner=static_cast<AssetsManager *>(context);
     if (!owner || owner!=s_Active || !QFileInfo(QString::fromStdString(event.Path)).isDir()) return;
-    owner->_DirectoriesToScan.insert(event.Path);
+    owner->RestoreMissingMeta(event.Path);
+    owner->StoreAssetMeta(TriggerFactory(eAssetImporterType::Folder,event,name,"",context));
+    const auto folder=owner->_AssetGuidsByPath.find(owner->RelativePath(event.Path));
+    if (folder!=owner->_AssetGuidsByPath.end()) owner->RecordPendingSource(owner->QueryAsset(Guid(folder->second)));
+    owner->WatcherDir(event.Path);
+    owner->ScanDirectory(event.Path);
 }
 void AssetsManager::OnFolderDelete(const Foundation::FileSystemWatcherEvent & event,const std::string &,const std::string &,void * context) {
     AssetsManager * owner=static_cast<AssetsManager *>(context);
@@ -196,7 +221,8 @@ void AssetsManager::OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent
         if (event.Action==Foundation::eFileSystemAction::Delete || (event.Action==Foundation::eFileSystemAction::Rename && old==root && path!=root)) {
             owner->RemoveAssetRecords(owner->_AssetsRoot,true);
         } else if (path==root && (event.Action==Foundation::eFileSystemAction::Create || event.Action==Foundation::eFileSystemAction::Rename)) {
-            owner->_DirectoriesToScan.insert(owner->_AssetsRoot);
+            owner->WatcherDir(owner->_AssetsRoot);
+            owner->ScanDirectory(owner->_AssetsRoot);
         }
         return;
     }

@@ -1,0 +1,474 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>ModelInspectorForm</class>
+  <widget class="QWidget" name="ModelInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>模型导入设置</string>
+          </property>
+          <layout class="QVBoxLayout" name="groupLayout">
+            <item>
+              <widget class="QTabWidget" name="modelTabs">
+                <widget class="QWidget" name="modelPage">
+                  <attribute name="title">
+                    <string>模型</string>
+                  </attribute>
+                  <layout class="QFormLayout" name="modelLayout">
+                    <item row="0" column="0">
+                      <widget class="QLabel" name="ScaleFactorLabel">
+                        <property name="text">
+                          <string>缩放倍率</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="1">
+                      <widget class="QLineEdit" name="scaleFactorEdit">
+                        <property name="settingKey" stdset="0">
+                          <string>ScaleFactor</string>
+                        </property>
+                        <property name="fieldType" stdset="0">
+                          <string>positiveFloat</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="0">
+                      <widget class="QLabel" name="UseFileScaleLabel">
+                        <property name="text">
+                          <string>换算文件单位</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="1">
+                      <widget class="QCheckBox" name="useFileScaleCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>UseFileScale</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="0">
+                      <widget class="QLabel" name="NormalsModeLabel">
+                        <property name="text">
+                          <string>法线来源</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="2" column="1">
+                      <widget class="QComboBox" name="normalsModeCombo">
+                        <property name="settingKey" stdset="0">
+                          <string>NormalsMode</string>
+                        </property>
+                        <property name="values" stdset="0">
+                          <stringlist notr="true">
+                            <string>Import</string>
+                            <string>Calculate</string>
+                            <string>None</string>
+                          </stringlist>
+                        </property>
+                        <item>
+                          <property name="text">
+                            <string>Import</string>
+                          </property>
+                        </item>
+                        <item>
+                          <property name="text">
+                            <string>Calculate</string>
+                          </property>
+                        </item>
+                        <item>
+                          <property name="text">
+                            <string>None</string>
+                          </property>
+                        </item>
+                      </widget>
+                    </item>
+                    <item row="3" column="0">
+                      <widget class="QLabel" name="NormalSmoothingAngleLabel">
+                        <property name="text">
+                          <string>法线平滑角度</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="3" column="1">
+                      <widget class="QDoubleSpinBox" name="normalSmoothingAngleSpin">
+                        <property name="settingKey" stdset="0">
+                          <string>NormalSmoothingAngle</string>
+                        </property>
+                        <property name="minimum">
+                          <double>0</double>
+                        </property>
+                        <property name="maximum">
+                          <double>180</double>
+                        </property>
+                        <property name="decimals">
+                          <number>3</number>
+                        </property>
+                        <property name="singleStep">
+                          <double>0.05</double>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="0">
+                      <widget class="QLabel" name="TangentsModeLabel">
+                        <property name="text">
+                          <string>切线来源</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="4" column="1">
+                      <widget class="QComboBox" name="tangentsModeCombo">
+                        <property name="settingKey" stdset="0">
+                          <string>TangentsMode</string>
+                        </property>
+                        <property name="values" stdset="0">
+                          <stringlist notr="true">
+                            <string>Import</string>
+                            <string>Calculate</string>
+                            <string>None</string>
+                          </stringlist>
+                        </property>
+                        <item>
+                          <property name="text">
+                            <string>Import</string>
+                          </property>
+                        </item>
+                        <item>
+                          <property name="text">
+                            <string>Calculate</string>
+                          </property>
+                        </item>
+                        <item>
+                          <property name="text">
+                            <string>None</string>
+                          </property>
+                        </item>
+                      </widget>
+                    </item>
+                    <item row="5" column="0">
+                      <widget class="QLabel" name="WeldVerticesLabel">
+                        <property name="text">
+                          <string>合并重复顶点</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="5" column="1">
+                      <widget class="QCheckBox" name="weldVerticesCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>WeldVertices</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="6" column="0">
+                      <widget class="QLabel" name="KeepCPUCopyLabel">
+                        <property name="text">
+                          <string>保留 CPU 副本</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="6" column="1">
+                      <widget class="QCheckBox" name="keepCPUCopyCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>KeepCPUCopy</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="7" column="0">
+                      <widget class="QLabel" name="MeshCompressionLabel">
+                        <property name="text">
+                          <string>网格压缩</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="7" column="1">
+                      <widget class="QComboBox" name="meshCompressionCombo">
+                        <property name="settingKey" stdset="0">
+                          <string>MeshCompression</string>
+                        </property>
+                        <property name="toolTip">
+                          <string>当前管线仅支持关闭网格压缩。</string>
+                        </property>
+                        <property name="values" stdset="0">
+                          <stringlist notr="true">
+                            <string>Off</string>
+                          </stringlist>
+                        </property>
+                        <item>
+                          <property name="text">
+                            <string>关闭</string>
+                          </property>
+                        </item>
+                      </widget>
+                    </item>
+                    <item row="8" column="0">
+                      <widget class="QLabel" name="OptimizeMeshLabel">
+                        <property name="text">
+                          <string>顶点/索引重排</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="8" column="1">
+                      <widget class="QCheckBox" name="optimizeMeshCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>OptimizeMesh</string>
+                        </property>
+                        <property name="enabled">
+                          <bool>false</bool>
+                        </property>
+                        <property name="toolTip">
+                          <string>尚未实现重排，保留原设置。</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="9" column="0">
+                      <widget class="QLabel" name="GenerateLightmapUVsLabel">
+                        <property name="text">
+                          <string>自动光照 UV</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="9" column="1">
+                      <widget class="QCheckBox" name="generateLightmapUVsCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>GenerateLightmapUVs</string>
+                        </property>
+                        <property name="toolTip">
+                          <string>尚未接入 UV 展开器，启用后不能应用。</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="10" column="0">
+                      <widget class="QLabel" name="ImportBlendShapesLabel">
+                        <property name="text">
+                          <string>导入形态目标</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="10" column="1">
+                      <widget class="QCheckBox" name="importBlendShapesCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>ImportBlendShapes</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="11" column="0">
+                      <widget class="QLabel" name="ImportCamerasLabel">
+                        <property name="text">
+                          <string>导入摄像机</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="11" column="1">
+                      <widget class="QCheckBox" name="importCamerasCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>ImportCameras</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="12" column="0">
+                      <widget class="QLabel" name="ImportLightsLabel">
+                        <property name="text">
+                          <string>导入灯光</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="12" column="1">
+                      <widget class="QCheckBox" name="importLightsCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>ImportLights</string>
+                        </property>
+                      </widget>
+                    </item>
+                  </layout>
+                </widget>
+                <widget class="QWidget" name="animationPage">
+                  <attribute name="title">
+                    <string>骨骼 / 动画</string>
+                  </attribute>
+                  <layout class="QFormLayout" name="animationLayout">
+                    <item row="0" column="0">
+                      <widget class="QLabel" name="ImportAnimationLabel">
+                        <property name="text">
+                          <string>导入动画</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="1">
+                      <widget class="QCheckBox" name="importAnimationCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>ImportAnimation</string>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="0">
+                      <widget class="QLabel" name="AnimationTypeLabel">
+                        <property name="text">
+                          <string>骨骼动画类型</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="1" column="1">
+                      <widget class="QComboBox" name="animationTypeCombo">
+                        <property name="settingKey" stdset="0">
+                          <string>AnimationType</string>
+                        </property>
+                        <property name="values" stdset="0">
+                          <stringlist notr="true">
+                            <string>None</string>
+                            <string>Generic</string>
+                          </stringlist>
+                        </property>
+                        <item>
+                          <property name="text">
+                            <string>不导入</string>
+                          </property>
+                        </item>
+                        <item>
+                          <property name="text">
+                            <string>Generic</string>
+                          </property>
+                        </item>
+                      </widget>
+                    </item>
+                  </layout>
+                </widget>
+                <widget class="QWidget" name="materialsPage">
+                  <attribute name="title">
+                    <string>材质</string>
+                  </attribute>
+                  <layout class="QFormLayout" name="materialsLayout">
+                    <item row="0" column="0">
+                      <widget class="QLabel" name="ImportMaterialsLabel">
+                        <property name="text">
+                          <string>导入材质</string>
+                        </property>
+                        <property name="textFormat">
+                          <enum>Qt::PlainText</enum>
+                        </property>
+                        <property name="wordWrap">
+                          <bool>true</bool>
+                        </property>
+                      </widget>
+                    </item>
+                    <item row="0" column="1">
+                      <widget class="QCheckBox" name="importMaterialsCheck">
+                        <property name="settingKey" stdset="0">
+                          <string>ImportMaterials</string>
+                        </property>
+                      </widget>
+                    </item>
+                  </layout>
+                </widget>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>当前支持 FBX/OBJ 和 Generic 动画。Humanoid、网格压缩、自动光照 UV 和顶点/索引重排尚未实现。切线 Calculate 使用基础 UV 导数算法。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

@@ -1,0 +1,232 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>VideoInspectorForm</class>
+  <widget class="QWidget" name="VideoInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>视频导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="TranscodeLabel">
+                <property name="text">
+                  <string>重新编码</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QCheckBox" name="transcodeCheck">
+                <property name="settingKey" stdset="0">
+                  <string>Transcode</string>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="CodecLabel">
+                <property name="text">
+                  <string>视频编码</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QComboBox" name="codecCombo">
+                <property name="settingKey" stdset="0">
+                  <string>Codec</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Auto</string>
+                    <string>H264</string>
+                    <string>H265</string>
+                    <string>VP8</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>Auto</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>H264</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>H265</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>VP8</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="MaxWidthLabel">
+                <property name="text">
+                  <string>最大宽度</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QLineEdit" name="maxWidthEdit">
+                <property name="settingKey" stdset="0">
+                  <string>MaxWidth</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>uint32</string>
+                </property>
+                <property name="minimumValue" stdset="0">
+                  <number>2</number>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="0">
+              <widget class="QLabel" name="MaxHeightLabel">
+                <property name="text">
+                  <string>最大高度</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="1">
+              <widget class="QLineEdit" name="maxHeightEdit">
+                <property name="settingKey" stdset="0">
+                  <string>MaxHeight</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>uint32</string>
+                </property>
+                <property name="minimumValue" stdset="0">
+                  <number>2</number>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="0">
+              <widget class="QLabel" name="ImportAudioLabel">
+                <property name="text">
+                  <string>保留音轨</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="1">
+              <widget class="QCheckBox" name="importAudioCheck">
+                <property name="settingKey" stdset="0">
+                  <string>ImportAudio</string>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="0">
+              <widget class="QLabel" name="EncodeAlphaLabel">
+                <property name="text">
+                  <string>保留透明通道</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="1">
+              <widget class="QCheckBox" name="encodeAlphaCheck">
+                <property name="settingKey" stdset="0">
+                  <string>EncodeAlpha</string>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="0">
+              <widget class="QLabel" name="FlipHorizontalLabel">
+                <property name="text">
+                  <string>水平翻转</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="1">
+              <widget class="QCheckBox" name="flipHorizontalCheck">
+                <property name="settingKey" stdset="0">
+                  <string>FlipHorizontal</string>
+                </property>
+              </widget>
+            </item>
+            <item row="7" column="0">
+              <widget class="QLabel" name="FlipVerticalLabel">
+                <property name="text">
+                  <string>垂直翻转</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="7" column="1">
+              <widget class="QCheckBox" name="flipVerticalCheck">
+                <property name="settingKey" stdset="0">
+                  <string>FlipVertical</string>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>转码需要 ffmpeg/ffprobe 和对应编码器。关闭转码时保留源容器；透明通道仅支持 Auto/VP8。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

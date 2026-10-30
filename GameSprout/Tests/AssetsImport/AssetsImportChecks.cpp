@@ -1,4 +1,5 @@
 #include "AssetTestSupport.h"
+#include "ShaderImportChecks.h"
 
 int main(int argc,char **argv) {
     QGuiApplication application(argc,argv);
@@ -12,7 +13,7 @@ int main(int argc,char **argv) {
         TestEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide;
         GameSprout::GameSproutApi api(&foundation,&editor);
-        std::vector<std::string> names{"LocalDatabase","LibraryManager","AssetsPipeline","AssetsManager","GuidCreator"};
+        std::vector<std::string> names{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator"};
         for (const std::string & name:names) editor.Modules[name]=LoadModule(name);
         for (const auto & entry:editor.Modules) GameSprout::GameSproutEditorFinal::Before(entry.second,&api);
         for (const auto & entry:editor.Modules) Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second,&api),"Module Initialize: "+entry.first);
@@ -46,28 +47,18 @@ int main(int argc,char **argv) {
         TestMeta texture(eAssetImporterType::Texture,Guid(1,2,3,4),"Test.png");texture.Settings["MaxSize"]=4;texture.Settings["GenerateMipmaps"]=true;
         auto first=import(texture);Check(first.Success&&!first.Cached,"Texture import failed: "+first.Error);
         Check(first.Manifest.Assets.size()==1,"Texture artifact count");
-        Check(first.Manifest.Directory.empty() && first.Manifest.Assets[0].Path == texture._Guid.GetGuidString()+"_"+std::to_string(first.Manifest.Assets[0].LocalID)+".gsasset", "Artifacts are not flat GUID_LocalID files");
+        Check(first.Manifest.Directory=="Artifact" && first.Manifest.Assets[0].Path == texture._Guid.GetGuidString()+"_"+std::to_string(first.Manifest.Assets[0].LocalID)+".gsasset", "Artifacts are not flat GUID_LocalID files");
         IAsset * asset=library->QueryAsset(texture._Guid,first.Manifest.Assets[0].LocalID);Check(asset!=nullptr,"Library lookup failed");
-        QByteArray pixels;auto info=ReadArtifact(asset->GetArtifactPath(),&pixels);
+        QByteArray pixels;auto info=ReadArtifact(asset,&pixels);
         Check(info["Width"]==4 && info["Height"]==3 && info["Mips"].size()==3 && pixels.size()==60,"Texture resize/mipmap payload incorrect");
+        Check(info["Encoding"]=="RawBytes" && info["Mips"][0]["Offset"].asUInt64()==0 && info["Mips"][0]["RowPitch"].asUInt64()==16,"Texture DB layout missing");
+        Check(asset->GetDataSize()==60 && QFileInfo(QString::fromStdString(asset->GetArtifactPath())).size()==60,"Texture file contains a header");
+        Check(QDir(root.filePath("Library")).entryList({"*.gsasset"},QDir::Files).isEmpty(),"Artifact written directly under Library");
         auto cached=import(texture);Check(cached.Success&&cached.Cached,"Cache not reused");
         auto forced=import(texture,true);Check(forced.Success&&!forced.Cached&&forced.Manifest.Generation!=first.Manifest.Generation,"Force reimport did not regenerate artifacts");
         Check(forced.Manifest.Assets[0].LocalID==first.Manifest.Assets[0].LocalID,"Reimport changed LocalID");
         first=forced;
         std::string error;
-        AssetImportManifest legacy=first.Manifest;
-        legacy.Directory="Artifacts/"+texture._Guid.GetGuidString()+"/legacy-version";
-        legacy.Generation.clear();
-        const std::string flatName=legacy.Assets[0].Path;
-        const QString oldFile=QString::fromStdString(library->GetLibraryRoot()+"/"+flatName);
-        Check(QDir().mkpath(QString::fromStdString(library->GetLibraryRoot()+"/"+legacy.Directory)),"Cannot create legacy fixture");
-        legacy.Assets[0].Path=std::to_string(legacy.Assets[0].LocalID)+".gsasset";
-        Check(QFile::rename(oldFile,QString::fromStdString(library->GetLibraryRoot()+"/"+legacy.Directory+"/"+legacy.Assets[0].Path)),"Cannot move legacy fixture");
-        const std::string legacyJson=AssetArtifactIO::JsonText(AssetArtifactIO::ToJson(legacy));
-        Check(library->GetLDBSession()->WriteBatch({{"Manifests",texture._Guid.GetGuidString(),std::vector<uint8_t>(legacyJson.begin(),legacyJson.end()),false}}),"Cannot record legacy fixture");
-        const auto migrated=import(texture);
-        Check(migrated.Success&&!migrated.Cached&&migrated.Manifest.Directory.empty()&&migrated.Manifest.Assets[0].Path==flatName,"Legacy directory artifact did not migrate to flat storage");
-        first=migrated;
         Check(AssetArtifactIO::Write(png,"invalid png",error),"Cannot corrupt fixture");
         auto failed=import(texture);Check(!failed.Success&&!failed.Error.empty(),"Corrupt image succeeded");
         AssetImportManifest current;Check(library->GetManifest(texture._Guid,current)&&current.Generation==first.Manifest.Generation,"Failure replaced last good output");
@@ -96,13 +87,13 @@ int main(int argc,char **argv) {
         if(!QStandardPaths::findExecutable("ffmpeg").isEmpty()) {
             TestMeta audio(eAssetImporterType::Audio,Guid(10,20,30,40),"Tone.wav");audio.Settings["CompressionFormat"]="PCM";audio.Settings["ForceToMono"]=true;
             const auto result=import(audio);Check(result.Success,"Audio preprocessing failed: "+result.Error);
-            const auto value=ReadArtifact(library->QueryAsset(audio._Guid,result.Manifest.Assets[0].LocalID)->GetArtifactPath());
+            const auto value=ReadArtifact(library->QueryAsset(audio._Guid,result.Manifest.Assets[0].LocalID));
             Check(value["Container"]=="wav"&&value["EncodedInfo"]["streams"][0]["sample_rate"]=="44100","Encoded audio invalid");
             const QString videoFile=root.filePath("Assets/Video.mp4");
             Check(QProcess::execute(QStandardPaths::findExecutable("ffmpeg"),{"-nostdin","-v","error","-y","-f","lavfi","-i","color=c=red:s=16x16:d=0.2","-c:v","libx264","-pix_fmt","yuv420p",videoFile})==0,"Video fixture failed");
             TestMeta video(eAssetImporterType::Video,Guid(11,21,31,41),"Video.mp4");video.Settings["MaxWidth"]=8;video.Settings["MaxHeight"]=8;video.Settings["Codec"]="H264";
             const auto encoded=import(video);Check(encoded.Success,"Video preprocessing failed: "+encoded.Error);
-            const auto data=ReadArtifact(library->QueryAsset(video._Guid,encoded.Manifest.Assets[0].LocalID)->GetArtifactPath());
+            const auto data=ReadArtifact(library->QueryAsset(video._Guid,encoded.Manifest.Assets[0].LocalID));
             Check(data["EncodedInfo"]["streams"][0]["width"]==8&&data["EncodedInfo"]["streams"][0]["height"]==8,"Video size processing failed");
             std::string audioMeta;audio.SerializeMeta(audioMeta);
             Check(AssetArtifactIO::Write(root.filePath("Assets/Tone.wav.meta"),QByteArray::fromStdString(audioMeta),error),"Cannot persist audio fixture settings");
@@ -115,28 +106,12 @@ int main(int argc,char **argv) {
             TestMeta font(eAssetImporterType::Font,Guid(12,22,32,42),"Font.ttf");font.Settings["CustomCharacters"]="GameSprout";font.Settings["FontSize"]=24;
             const auto result=import(font);Check(result.Success&&result.Manifest.Assets.size()==2,"Font atlas preprocessing failed: "+result.Error);
             for(const auto & artifact:result.Manifest.Assets) if(artifact.Type==eAssetType::Font) {
-                const auto value=ReadArtifact(library->QueryAsset(font._Guid,artifact.LocalID)->GetArtifactPath());Check(value["Glyphs"].size()==10,"Font character de-duplication failed");
+                const auto value=ReadArtifact(library->QueryAsset(font._Guid,artifact.LocalID));Check(value["Glyphs"].size()==10,"Font character de-duplication failed");
             }
             std::cout<<"PASS font decoding, glyph metadata and atlas generation\n";
         }
-#if defined(__APPLE__)
-        const QByteArray metal="#include <metal_stdlib>\nusing namespace metal;\nvertex float4 vertex_main(uint id [[vertex_id]]) { return float4(float(id),0,0,1); }\n";
-        Check(AssetArtifactIO::Write(root.filePath("Assets/Test.metal"),metal,error),"Cannot write Metal fixture");
-        TestMeta shader(eAssetImporterType::Shader,Guid(13,23,33,43),"Test.metal");shader.Settings["SourceLanguage"]="MSL";shader.Settings["EntryPoint"]="vertex_main";shader.Settings["Stage"]="Vertex";
-        const auto compiled=import(shader);
-        if (compiled.Success) {
-            const auto metalInfo=ReadArtifact(library->QueryAsset(shader._Guid,compiled.Manifest.Assets[0].LocalID)->GetArtifactPath());
-            Check(metalInfo["Variants"][0]["Format"]=="MetalLib","Metal artifact format failed");
-            std::string shaderMeta;shader.SerializeMeta(shaderMeta);
-            Check(AssetArtifactIO::Write(root.filePath("Assets/Test.metal.meta"),QByteArray::fromStdString(shaderMeta),error),"Cannot persist shader fixture settings");
-            std::cout<<"PASS native Metal source compilation to metallib\n";
-        } else {
-            Check(compiled.Error.find("missing Metal Toolchain")!=std::string::npos,"Metal compilation failed unexpectedly: "+compiled.Error);
-            Check(!library->GetManifest(shader._Guid,current),"Missing compiler published an artifact");
-            Check(QFile::remove(root.filePath("Assets/Test.metal")),"Cannot remove unsupported shader fixture");
-            std::cout<<"SKIP Metal success case: Xcode Metal Toolchain is missing; PASS explicit failure and no commit\n";
-        }
-#endif
+        CheckShaderImports(root,library,import);
+
         Check(root.mkpath("Assets/OBJ/Materials"),"Cannot create OBJ fixture directory");
         Check(image.save(root.filePath("Assets/OBJ/Color.png")),"Cannot write OBJ texture");
         TestMeta objTexture(eAssetImporterType::Texture,Guid(15,25,35,45),"OBJ/Color.png");
@@ -150,9 +125,15 @@ int main(int argc,char **argv) {
         const auto importedModel=import(model);Check(importedModel.Success,"OBJ/MTL preprocessing failed: "+importedModel.Error);
         bool hasMaterial=false,hasMesh=false,hasMTL=false,hasTexture=false;
         for(const auto & asset:importedModel.Manifest.Assets) {
-            if(asset.Type==eAssetType::Mesh) hasMesh=true;
+            if(asset.Type==eAssetType::Mesh) {
+                hasMesh=true;
+                QByteArray meshBytes;
+                const auto layout=ReadArtifact(library->QueryAsset(model._Guid,asset.LocalID),&meshBytes);
+                Check(layout["Encoding"]=="RawBytes" && layout["VertexAttributes"].size()>0,"Mesh DB vertex layout missing");
+                Check(uint64_t(meshBytes.size())==layout["IndexOffset"].asUInt64()+layout["IndexCount"].asUInt64()*4,"Mesh file contains a header or invalid indices");
+            }
             if(asset.Type==eAssetType::Material) {
-                const Json::Value value=ReadArtifact(library->QueryAsset(model._Guid,asset.LocalID)->GetArtifactPath());
+                const Json::Value value=ReadArtifact(library->QueryAsset(model._Guid,asset.LocalID));
                 for(const auto & texture:value["Textures"]) if(texture["Asset"]["Guid"]==objTexture._Guid.GetGuidString()) hasMaterial=true;
             }
         }
@@ -232,7 +213,7 @@ int main(int argc,char **argv) {
             bool animationMoves=false;
             for(const AssetArtifact & artifact:bearManifest.Assets) {
                 IAsset * imported=library->QueryAsset(Guid(bearManifest.GuidString),artifact.LocalID);
-                QByteArray payload;const Json::Value value=ReadArtifact(imported->GetArtifactPath(),&payload);
+                QByteArray payload;const Json::Value value=ReadArtifact(imported,&payload);
                 if(artifact.Type==eAssetType::Mesh) {
                     Check(value["Bones"].size()==37&&value["UVChannels"].asUInt64()>0,"Mesh lost bones/UVs");
                     const quint64 vertexCount=value["VertexCount"].asUInt64();
@@ -253,8 +234,8 @@ int main(int argc,char **argv) {
         }
         Check(console.Errors.empty(),"Unexpected lifecycle import errors");
         Check(library->GetManifest(Guid(liveGuidString),current),"Missing current texture before GC");
-        const QString activeGeneration=QString::fromStdString(library->GetLibraryRoot()+"/"+current.Assets[0].Path);
-        const QString orphan=root.filePath("Library/"+QString::fromStdString(Guid(99,98,97,96).GetGuidString())+"_999.gsasset");
+        const QString activeGeneration=QString::fromStdString(library->GetLibraryRoot()+"/"+current.Directory+"/"+current.Assets[0].Path);
+        const QString orphan=root.filePath("Library/Artifact/"+QString::fromStdString(Guid(99,98,97,96).GetGuidString())+"_999.gsasset");
         Check(AssetArtifactIO::Write(orphan,"orphan",error),"Cannot create orphan cache fixture");
         GameSprout::GameSproutEditorFinal::Finished(library,&api);
         pump([&]{return ide.Count==0&&!QFileInfo::exists(orphan);});

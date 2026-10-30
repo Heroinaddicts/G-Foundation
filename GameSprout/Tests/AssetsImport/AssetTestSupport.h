@@ -7,6 +7,7 @@
 #include "IIDEWindow.h"
 #include "FoundationExport.h"
 #include "../../Module/Shared/AssetArtifactIO.h"
+#include "../../Module/Shared/AssetValueBinary.h"
 #include <QGuiApplication>
 #include <QImage>
 #include <QTemporaryDir>
@@ -85,12 +86,16 @@ public:
     Foundation::ITaskApi * Real=nullptr;
     TestIDE * IDE=nullptr;
     bool Reject=false;
+    int Submissions=0;
+    std::function<void()> BeforeSubmission;
     std::function<void()> BeforeCompletion;
     UInt64 RegisterTaskOwner() override {return Real->RegisterTaskOwner();}
     void UnregisterTaskOwner(UInt64 owner) override {Real->UnregisterTaskOwner(owner);}
     bool CancelTask(UInt64 task) override {return Real->CancelTask(task);}
     Foundation::TaskSubmitResult SubmitTask(const Foundation::TaskSubmitOptions & options,Foundation::fTask task,Foundation::fTaskCompleted completed) override {
         Check(IDE->Count>0,"Task submitted before Loading");
+        ++Submissions;
+        if (BeforeSubmission) BeforeSubmission();
         if (Reject) return {};
         return Real->SubmitTask(options,std::move(task),
             [this, completed=std::move(completed)](const Foundation::TaskCompletion & info, bool success, const Foundation::ITaskContext & context) {
@@ -163,14 +168,24 @@ public:
     bool SaveMeta() override {return true;}
 };
 
-Json::Value ReadArtifact(const std::string & path,QByteArray * payload=nullptr) {
-    QFile file(QString::fromStdString(path));Check(file.open(QIODevice::ReadOnly),"Artifact missing");
-    QDataStream input(&file);input.setByteOrder(QDataStream::LittleEndian);
-    char magic[8];Check(input.readRawData(magic,8)==8 && QByteArray(magic,8)==QByteArray("GSPROUT\0",8),"Artifact magic mismatch");
-    quint32 version,length;quint64 size;input>>version>>length>>size;
-    Check(version==1 && length<100000000,"Invalid artifact header");
-    const QByteArray json=file.read(length);Json::Value value;
-    Check(AssetArtifactIO::Parse(json.toStdString(),value),"Artifact JSON invalid");
-    const QByteArray data=file.readAll();Check(quint64(data.size())==size,"Artifact payload size mismatch");
-    if (payload) *payload=data;return value;
+Json::Value ReadArtifact(IAsset * asset,QByteArray * payload=nullptr) {
+    Check(asset && asset->GetDataVersion()==2,"Artifact has no version-2 DB descriptor");
+    Json::Value value;
+    Check(AssetArtifactIO::Parse(asset->GetDataDescriptorJson(),value) && value.isObject(),"Invalid DB data descriptor");
+    QFile file(QString::fromStdString(asset->GetArtifactPath()));Check(file.open(QIODevice::ReadOnly),"Artifact missing");
+    const QByteArray data=file.readAll();
+    Check(static_cast<uint64_t>(data.size())==asset->GetDataSize(),"Artifact raw data size mismatch");
+    if (value["Encoding"]=="BinaryValueLE1") {
+        Check(AssetValueBinary::Decode(data,value),"Invalid structural binary body");
+        if (payload) payload->clear();
+    } else {
+        Check(value["Encoding"]=="RawBytes","Unknown data encoding");
+        if (payload) *payload=data;
+    }
+    value["Version"]=1;
+    value["Type"]=static_cast<uint16_t>(asset->GetAssetType());
+    value["Guid"]=asset->GetGuid().GetGuidString();
+    value["LocalID"]=Json::UInt64(asset->GetLocalID());
+    value["Name"]=asset->GetName();
+    return value;
 }

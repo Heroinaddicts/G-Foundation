@@ -15,7 +15,7 @@ std::vector<ProjectAssetSelection> ProjectAssetsUI::GetSelection() const {
         if (!Guid(guid).IsValid()) continue;
         result.push_back({guid,index.data(ProjectAssetsModel::LocalIDRole).toString().toULongLong(),index.data(ProjectAssetsModel::SubAssetRole).toBool()});
     }
-    if (result.empty() && !_CurrentFolderGuid.isEmpty()) result.push_back({_CurrentFolderGuid.toStdString(),0,false});
+    if (result.empty() && _FolderSelected && !_CurrentFolderGuid.isEmpty()) result.push_back({_CurrentFolderGuid.toStdString(),0,false});
     return result;
 }
 
@@ -33,9 +33,29 @@ bool ProjectAssetsUI::NavigateToDirectory(const std::string & path) {
     }
     _ResetSelection = target != _CurrentPath;
     _CurrentPath=target;_CurrentFolderGuid=guid;
+    _FolderSelected=!guid.isEmpty();
     _Ui->searchEdit->clear();
     _Dirty=true;
     return true;
+}
+
+void ProjectAssetsUI::PublishSelection() {
+    if (_Selection && !_Rebuilding) _Selection->SetAssetSelection(GetSelection());
+}
+
+void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSelection> & selection) {
+    if (!_Window || selection == GetSelection()) return;
+    _ExternalSelection=selection;
+    _RestoreExternalSelection=true;
+    if (!selection.empty()) {
+        IAssetMeta * meta=_Assets->QueryAsset(Guid(selection.front().GuidString));
+        if (meta) {
+            const QString parent=QFileInfo(QString::fromStdString(meta->GetPath())).path();
+            NavigateToDirectory(parent=="." ? "" : parent.toStdString());
+        }
+    }
+    _FolderSelected=false;
+    _Dirty=true;
 }
 
 void ProjectAssetsUI::Refresh() {
@@ -58,7 +78,13 @@ void ProjectAssetsUI::Refresh() {
         }
     }
     std::vector<QString> selection;
-    if(!_ResetSelection) for(const QModelIndex & index:_Ui->assetTree->selectionModel()->selectedRows(0))
+    if (_RestoreExternalSelection) {
+        for (const auto & item:_ExternalSelection) {
+            const QString guid=QString::fromStdString(item.GuidString);
+            selection.push_back(item.IsSubAsset ? guid+":"+QString::number(item.LocalID) : guid);
+            if (item.IsSubAsset) _ExpandedAssets.insert(guid);
+        }
+    } else if(!_ResetSelection) for(const QModelIndex & index:_Ui->assetTree->selectionModel()->selectedRows(0))
         selection.push_back(index.data(ProjectAssetsModel::KeyRole).toString());
     const int folderScroll=_Ui->folderTree->verticalScrollBar()->value();
     const int assetScroll=_ResetSelection ? 0 : _Ui->assetTree->verticalScrollBar()->value();
@@ -110,8 +136,10 @@ void ProjectAssetsUI::Refresh() {
     _Ui->folderTree->doItemsLayout();_Ui->assetTree->doItemsLayout();
     _Ui->folderTree->verticalScrollBar()->setValue(folderScroll);
     _Ui->assetTree->verticalScrollBar()->setValue(assetScroll);
-    _ResetSelection=false;_Dirty=false;
+    _ResetSelection=false;_Dirty=false;_RestoreExternalSelection=false;
     UpdateStatus();
+    // The guard still suppresses transient empty selections during model reset.
+    if (_Selection) _Selection->SetAssetSelection(GetSelection());
 }
 
 void ProjectAssetsUI::UpdateStatus() {

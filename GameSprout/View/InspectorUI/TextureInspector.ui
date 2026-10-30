@@ -1,0 +1,370 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>TextureInspectorForm</class>
+  <widget class="QWidget" name="TextureInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="textureGroup">
+          <property name="title">
+            <string>贴图导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="colorSpaceComboLabel">
+                <property name="text">
+                  <string>颜色空间</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QComboBox" name="colorSpaceCombo">
+                <item>
+                  <property name="text">
+                    <string>SRGB（颜色图片）</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Linear（数值数据）</string>
+                  </property>
+                </item>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>SRGB</string>
+                    <string>Linear</string>
+                  </stringlist>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="alphaSourceComboLabel">
+                <property name="text">
+                  <string>Alpha 来源</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QComboBox" name="alphaSourceCombo">
+                <item>
+                  <property name="text">
+                    <string>源图片 Alpha</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>忽略 Alpha</string>
+                  </property>
+                </item>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>FromSource</string>
+                    <string>None</string>
+                  </stringlist>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="alphaTransparencyCheckLabel">
+                <property name="text">
+                  <string>透明边缘扩色</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QCheckBox" name="alphaTransparencyCheck">
+                <property name="toolTip">
+                  <string>处理透明像素附近的颜色，减轻过滤黑边。Alpha 保存数值时请关闭。</string>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="0">
+              <widget class="QLabel" name="maxSizeComboLabel">
+                <property name="text">
+                  <string>最大尺寸</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="1">
+              <widget class="QComboBox" name="maxSizeCombo">
+                <item>
+                  <property name="text">
+                    <string>32</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>32</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>64</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>64</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>128</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>128</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>256</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>256</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>512</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>512</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>1024</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>1024</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>2048</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>2048</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>4096</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>4096</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>8192</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>8192</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>16384</string>
+                  </property>
+                  <property name="toolTip">
+                    <string>16384</string>
+                  </property>
+                </item>
+                <property name="editable">
+                  <bool>true</bool>
+                </property>
+                <property name="insertPolicy">
+                  <enum>QComboBox::NoInsert</enum>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="0">
+              <widget class="QLabel" name="mipmapsCheckLabel">
+                <property name="text">
+                  <string>生成 Mipmap</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="1">
+              <widget class="QCheckBox" name="mipmapsCheck" />
+            </item>
+            <item row="5" column="0">
+              <widget class="QLabel" name="cpuCopyCheckLabel">
+                <property name="text">
+                  <string>保留 CPU 副本</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="1">
+              <widget class="QCheckBox" name="cpuCopyCheck" />
+            </item>
+            <item row="6" column="0">
+              <widget class="QLabel" name="filterComboLabel">
+                <property name="text">
+                  <string>过滤方式</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="1">
+              <widget class="QComboBox" name="filterCombo">
+                <item>
+                  <property name="text">
+                    <string>Point</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Bilinear</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Trilinear</string>
+                  </property>
+                </item>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Point</string>
+                    <string>Bilinear</string>
+                    <string>Trilinear</string>
+                  </stringlist>
+                </property>
+              </widget>
+            </item>
+            <item row="7" column="0">
+              <widget class="QLabel" name="wrapUComboLabel">
+                <property name="text">
+                  <string>水平寻址 U</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="7" column="1">
+              <widget class="QComboBox" name="wrapUCombo">
+                <item>
+                  <property name="text">
+                    <string>重复</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>边缘钳制</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>镜像重复</string>
+                  </property>
+                </item>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Repeat</string>
+                    <string>ClampToEdge</string>
+                    <string>MirrorRepeat</string>
+                  </stringlist>
+                </property>
+              </widget>
+            </item>
+            <item row="8" column="0">
+              <widget class="QLabel" name="wrapVComboLabel">
+                <property name="text">
+                  <string>垂直寻址 V</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="8" column="1">
+              <widget class="QComboBox" name="wrapVCombo">
+                <item>
+                  <property name="text">
+                    <string>重复</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>边缘钳制</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>镜像重复</string>
+                  </property>
+                </item>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Repeat</string>
+                    <string>ClampToEdge</string>
+                    <string>MirrorRepeat</string>
+                  </stringlist>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="draftHintLabel">
+          <property name="text">
+            <string>修改先保存在面板草稿中；点击应用后保存 Meta 并重新导入。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

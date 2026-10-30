@@ -1,0 +1,39 @@
+Inspector 资源设置面板
+
+选择与显示
+- SelectionManager 保存资源身份快照并在主线程 Update 合并通知，不持有 Meta/IAsset。
+- ProjectAssetsUI 发布文件、目录和子资源选择，也响应外部选择恢复；模型重建不发布瞬间空选择。
+- InspectorUI 订阅选择和资源事件，按需重新查询 Meta/Library。锁定时保留检查目标。
+- 源文件显示路径、GUID、导入器、状态和导入设置；子资源显示名称、类型、LocalID 和产物描述。
+- 当前支持单选编辑 Texture、Model、Audio、Text、Font、Video、Shader 和 ComputeShader。
+- Model 按模型、骨骼/动画、材质分页；暂未实现的压缩/Humanoid/光照 UV 等能力受限。
+- 其他原生源资源设置和子资源信息仍为只读。多选仅显示数量。
+- 未实现纹理/模型/动画预览，也未读取完整产物 payload；资源删除后不继续使用旧指针。
+
+设置编辑
+- TextureInspector 内部保留 JSON 设置草稿，不持有或提前修改 ITextureImportSettings。
+- 其他专用面板继承 ImportSettingsInspector，以 .ui 中的 settingKey/values/fieldType 绑定数据。
+- 只有本来就存在的控件参与绑定；公共逻辑不创建控件，不持有资源对象。
+- 未改动的数值保留原始精度，提交后以管理器规范化后的设置作为新基准，支持连续提交。
+- 支持颜色空间、Alpha 来源、透明扩色、最大尺寸、Mipmap、CPU 副本、过滤和 U/V 寻址。
+- ApplyImportSettings 在主线程验证编辑基准，拒绝已被 AssetsManager 接收的外部设置冲突。
+- 创建并验证新设置对象，原子保存 Meta 后才释放旧设置；验证或保存失败恢复原设置对象。
+- 成功后走已有导入队列、TaskApi 和 Pipeline Loading/Unloading。导入失败保留最近成功产物。
+- Revert 重新读取管理器中的最新设置，不重新导入。资源事件不会覆盖未应用的草稿。
+- 切换选择时如有草稿，提供应用、放弃和取消切换；取消会恢复统一选择及 Project 高亮。
+- 当前不跨编辑器退出保存草稿；后续接入项目关闭流程时需要处理未应用设置。
+
+文件组织
+- InspectorUI 负责 View 生命周期；InspectorRefresh 负责检查目标与内容，InspectorEditing 负责提交与切换。
+- Texture/Model/Audio/Text/Font/Video/Shader Inspector 与 AssetInfoInspector 各自拥有 .h/.cpp/.ui。
+- ShaderInspector 同时处理普通 Shader 和固定 Compute 阶段，普通 Shader 不允许选择 Compute。
+- 所有控件、布局、范围、枚举、样式及对话框在 .ui 定义。AssetInfoInspector 负责只读属性树。
+
+验证
+- InspectorChecks 加载实际 InspectorUI、ProjectAssetsUI、SelectionManager 及资源模块。
+- 覆盖初始选择、草稿隔离、恢复、无效输入、Meta 写失败回滚、外部设置冲突、重新生成贴图、
+  切换时应用/放弃/取消、锁定、子资源类型、改名保持 GUID、删除清理及 Loading 配对。
+- InspectorPanelChecks 进一步验证模型缩放后的顶点、连续浮点设置提交、文本换行转换、
+  音频采样率、视频缩放、字体字号和字形重建、Shader 宏定义保存及 Compute 阶段限制。
+- 媒体测试需要 ffmpeg/ffprobe，字体测试需要系统字体；缺少时显式跳过对应产物验证。
+- Shader 工具缺失允许导入失败，验证设置可保存且错误可见，不宣称已完成跨平台着色器编译。

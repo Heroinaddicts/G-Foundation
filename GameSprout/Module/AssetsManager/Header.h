@@ -76,18 +76,7 @@ inline eAssetImporterType GetAssetImporterType(const std::string & extension) {
         {"mesh", eAssetImporterType::Mesh},
         {"mat", eAssetImporterType::Material},
         {"shader", eAssetImporterType::Shader},
-        {"vert", eAssetImporterType::Shader},
-        {"frag", eAssetImporterType::Shader},
-        {"glsl", eAssetImporterType::Shader},
-        {"metal", eAssetImporterType::Shader},
-        {"spv", eAssetImporterType::Shader},
-        {"compute", eAssetImporterType::ComputeShader},
-        {"comp", eAssetImporterType::ComputeShader},
-        {"hlsl", eAssetImporterType::ShaderInclude},
         {"hlsli", eAssetImporterType::ShaderInclude},
-        {"cginc", eAssetImporterType::ShaderInclude},
-        {"glslinc", eAssetImporterType::ShaderInclude},
-        {"cg", eAssetImporterType::ShaderInclude},
         {"ttf", eAssetImporterType::Font},
         {"otf", eAssetImporterType::Font},
         {"fontsettings", eAssetImporterType::Font},
@@ -222,6 +211,7 @@ public:
     }
 
     bool SaveMeta() override { return TrySaveToMetaFile(); }
+    virtual bool ApplySettings(const Json::Value & value) = 0;
 
     virtual void SaveToMetaFile() {
         TrySaveToMetaFile();

@@ -44,11 +44,12 @@ inline bool Write(const QString & path, const QByteArray & bytes, std::string & 
 }
 inline Json::Value ToJson(const AssetImportManifest & manifest) {
     Json::Value value(Json::objectValue);
-    value["Version"] = 1;
+    value["Version"] = 2;
     value["Guid"] = manifest.GuidString;
     value["SourcePath"] = manifest.SourcePath;
     value["SourceHash"] = manifest.SourceHash;
     value["SettingsHash"] = manifest.SettingsHash;
+    value["ToolchainHash"] = manifest.ToolchainHash;
     value["Target"] = manifest.Target;
     value["ImporterVersion"] = manifest.ImporterVersion;
     value["Directory"] = manifest.Directory;
@@ -65,6 +66,11 @@ inline Json::Value ToJson(const AssetImportManifest & manifest) {
         item["SourceKey"] = asset.SourceKey;
         item["Path"] = asset.Path;
         item["Hash"] = asset.Hash;
+        item["DataVersion"] = asset.DataVersion;
+        item["DataSize"] = Json::UInt64(asset.DataSize);
+        Json::Value descriptor;
+        if (!Parse(asset.DescriptorJson, descriptor)) descriptor = Json::Value(Json::objectValue);
+        item["Descriptor"] = descriptor;
         value["Assets"].append(item);
     }
     value["Dependencies"] = Json::Value(Json::arrayValue);
@@ -77,11 +83,11 @@ inline Json::Value ToJson(const AssetImportManifest & manifest) {
     return value;
 }
 inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) {
-    if (!value.isObject() || value.get("Version", 0) != 1
+    if (!value.isObject() || value["Version"] != 2
         || !value["Guid"].isString() || !Guid(value["Guid"].asString()).IsValid()
         || !value["SourcePath"].isString() || !RelativePath(value["SourcePath"].asString())
-        || !value["Directory"].isString() || (!value["Directory"].asString().empty() && !RelativePath(value["Directory"].asString()))
-        || !value["SourceHash"].isString() || !value["SettingsHash"].isString()
+        || value["Directory"] != "Artifact"
+        || !value["SourceHash"].isString() || !value["SettingsHash"].isString() || !value["ToolchainHash"].isString()
         || !value["Target"].isString() || !value["ImporterVersion"].isUInt()
         || !value["Assets"].isArray() || !value["Dependencies"].isArray()
         || !value["SubAssets"].isArray()) return false;
@@ -90,6 +96,7 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
     result.SourcePath = value["SourcePath"].asString();
     result.SourceHash = value["SourceHash"].asString();
     result.SettingsHash = value["SettingsHash"].asString();
+    result.ToolchainHash = value["ToolchainHash"].asString();
     result.Target = value["Target"].asString();
     result.ImporterVersion = value["ImporterVersion"].asUInt();
     result.Directory = value["Directory"].asString();
@@ -102,8 +109,14 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
             || !ids.insert(item["LocalID"].asUInt64()).second || !item["Type"].isUInt()
             || item["Type"].asUInt() > 65535 || !item["Name"].isString() || !item["SourceKey"].isString()
             || !item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
-        result.Assets.push_back({item["LocalID"].asUInt64(), static_cast<eAssetType>(item["Type"].asUInt()),
-            item["Name"].asString(), item["SourceKey"].asString(), item["Path"].asString(), item["Hash"].asString()});
+        AssetArtifact asset{item["LocalID"].asUInt64(), static_cast<eAssetType>(item["Type"].asUInt()),
+            item["Name"].asString(), item["SourceKey"].asString(), item["Path"].asString(), item["Hash"].asString()};
+        if (!item["DataVersion"].isUInt() || item["DataVersion"].asUInt() != 2
+            || !item["DataSize"].isUInt64() || !item["Descriptor"].isObject()
+            || (item["Descriptor"]["Encoding"] != "RawBytes" && item["Descriptor"]["Encoding"] != "BinaryValueLE1")) return false;
+        asset.DataSize = item["DataSize"].asUInt64();
+        asset.DescriptorJson = JsonText(item["Descriptor"]);
+        result.Assets.push_back(std::move(asset));
     }
     for (const Json::Value & item : value["Dependencies"]) {
         if (!item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;

@@ -128,8 +128,3 @@ bool ImportDocument(AssetImportJob & job) {
     metadata["Format"]="GameSproutDocument";metadata["Data"]=document;
     return job.Emit(type,"main",name,metadata);
 }
-
-bool CollectShaderIncludes(AssetImportJob & job,const std::string & path,
-    const QByteArray & source,std::set<std::string> & seen) {
-    return Includes(job,path,source,seen);
-}

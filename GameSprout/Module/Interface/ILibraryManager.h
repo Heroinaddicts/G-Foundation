@@ -12,7 +12,7 @@ public:
     virtual const std::string & GetLibraryRoot() const = 0;
     virtual std::vector<std::string> GetManifestGuids() const = 0;
     virtual bool GetManifest(const Guid & guid, AssetImportManifest & manifest) const = 0;
-    // Stage lives below Library/Staging. Final paths are Library/<Guid>_<LocalID>.gsasset.
+    // Stage lives below Library/Staging. Final paths are Library/Artifact/<Guid>_<LocalID>.gsasset.
     // Publication journals restore old files after an uncommitted replacement or crash.
     virtual bool CommitImport(const std::string & stage, AssetImportManifest & manifest, std::string & error) = 0;
     // 主线程同步执行；additionalWrites 与产物/依赖索引删除在同一事务提交。

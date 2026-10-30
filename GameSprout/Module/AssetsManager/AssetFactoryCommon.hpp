@@ -59,6 +59,26 @@ public:
 
     IAssetImportSettings * GetImportSettings() const override { return _Settings; }
 
+    bool ApplySettings(const Json::Value & value) override {
+        Settings * candidate = new Settings();
+        Settings * previous = _Settings;
+        try {
+            if (!candidate->ConvertFromJson(value)) { delete candidate; return false; }
+            _Settings = candidate;
+            if (!SaveMeta()) {
+                _Settings = previous;
+                delete candidate;
+                return false;
+            }
+        } catch (...) {
+            _Settings = previous;
+            delete candidate;
+            throw;
+        }
+        delete previous;
+        return true;
+    }
+
     bool ConvertToJson(Json::Value & value) const override {
         const char * typeName = GetAssetImporterTypeName(_ImporterType);
         if (!_Guid.IsValid() || nullptr == typeName || nullptr == _Settings) return false;

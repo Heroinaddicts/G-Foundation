@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>InspectorPendingChangesDialog</class>
+  <widget class="QDialog" name="InspectorPendingChangesDialog">
+    <property name="windowTitle">
+      <string>未应用的导入设置</string>
+    </property>
+    <property name="modal">
+      <bool>true</bool>
+    </property>
+    <property name="styleSheet">
+      <string>QDialog { background:#25272b; } QLabel { color:#e0e2e6; } QPushButton { padding:6px 14px; }</string>
+    </property>
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QLabel" name="descriptionLabel">
+          <property name="text">
+            <string>当前资源有未应用的导入设置。请选择应用、放弃修改或取消切换。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <layout class="QHBoxLayout" name="buttonLayout">
+          <item>
+            <widget class="QPushButton" name="applyButton">
+              <property name="text">
+                <string>应用</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="discardButton">
+              <property name="text">
+                <string>放弃修改</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="cancelButton">
+              <property name="text">
+                <string>取消切换</string>
+              </property>
+            </widget>
+          </item>
+        </layout>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

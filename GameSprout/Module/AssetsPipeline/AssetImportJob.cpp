@@ -1,6 +1,7 @@
 #include "AssetImportJob.h"
 #include <QUuid>
-#include <QDataStream>
+#include "../Shared/AssetValueBinary.h"
+#include "IShaderCompiler.h"
 
 namespace {
 bool ReadSource(const QString & path, QByteArray & bytes, std::string & error) {
@@ -49,24 +50,32 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
     const std::string typedKey = std::to_string(static_cast<uint16_t>(type)) + ":" + key;
     if (!ProducedKeys.insert(typedKey).second) return Fail("Duplicate imported object identity: " + key);
     const uint64_t id = ID(type, key, name);
-    metadata["Version"] = 1;
-    metadata["Type"] = static_cast<uint16_t>(type);
-    metadata["Guid"] = Request.GuidString;
-    metadata["LocalID"] = static_cast<Json::UInt64>(id);
-    metadata["Name"] = name;
-    // Portable container: magic(8), LE version(u32), metadata length(u32), payload length(u64), JSON UTF-8, payload.
-    const QByteArray json = QByteArray::fromStdString(AssetArtifactIO::JsonText(metadata));
+    const bool structured = type == eAssetType::Model || type == eAssetType::Skeleton
+        || type == eAssetType::Avatar || type == eAssetType::Material
+        || metadata["Format"] == "GameSproutDocument";
     QByteArray bytes;
-    QDataStream stream(&bytes, QIODevice::WriteOnly);
-    stream.setByteOrder(QDataStream::LittleEndian);
-    stream.writeRawData("GSPROUT\0", 8);
-    stream << quint32(1) << quint32(json.size()) << quint64(payload.size());
-    stream.writeRawData(json.constData(), json.size());
-    stream.writeRawData(payload.constData(), payload.size());
-    if (stream.status() != QDataStream::Ok) return Fail("Artifact serialization failed");
+    Json::Value descriptor;
+    if (structured) {
+        if (!payload.isEmpty() || !AssetValueBinary::Encode(metadata, bytes))
+            return Fail("Cannot encode structural resource data");
+        descriptor["Encoding"] = "BinaryValueLE1";
+        descriptor["Format"] = metadata.get("Format", "StructuredResource");
+        for (const char * key : {"Nodes", "Bones", "Animations", "Textures"})
+            if (metadata[key].isArray()) descriptor[std::string(key) + "Count"] = metadata[key].size();
+    } else {
+        bytes = payload;
+        descriptor = std::move(metadata);
+        descriptor["Encoding"] = "RawBytes";
+    }
+    // Resource type, identity, layout and byte size belong to ArtifactDB. The
+    // file contains only raw payload or the structural binary body, no JSON header.
     const std::string filename = std::to_string(id) + ".gsasset";
     if (!AssetArtifactIO::Write(QDir(QString::fromStdString(Stage)).filePath(QString::fromStdString(filename)), bytes, Result.Error)) return false;
-    Result.Manifest.Assets.push_back({id, type, name, key, filename, AssetArtifactIO::Hash(bytes)});
+    AssetArtifact artifact{id, type, name, key, filename, AssetArtifactIO::Hash(bytes)};
+    artifact.DataVersion = 2;
+    artifact.DataSize = static_cast<uint64_t>(bytes.size());
+    artifact.DescriptorJson = AssetArtifactIO::JsonText(descriptor);
+    Result.Manifest.Assets.push_back(std::move(artifact));
     return true;
 }
 
@@ -133,13 +142,19 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     manifest.SourceHash = AssetArtifactIO::Hash(job.SourceBytes);
     manifest.SettingsHash = AssetArtifactIO::Hash(QByteArray::fromStdString(
         std::to_string(static_cast<uint16_t>(job.Request.Importer)) + ":" + AssetArtifactIO::JsonText(job.Settings)));
+    if(job.Request.Importer==eAssetImporterType::Shader || job.Request.Importer==eAssetImporterType::ComputeShader) {
+        if(!job.Request.Compiler) return job.Fail("ShaderCompiler module is unavailable");
+        manifest.ToolchainHash=job.Request.Compiler->GetToolchainHash();
+    }
     bool cached = !job.Request.Force && job.Request.HasPrevious
-        && job.Request.Previous.Directory.empty() && !job.Request.Previous.Generation.empty() && job.Request.Previous.SourcePath == manifest.SourcePath
+        && job.Request.Previous.Directory == "Artifact" && !job.Request.Previous.Generation.empty() && job.Request.Previous.SourcePath == manifest.SourcePath
         && job.Request.Previous.SourceHash == manifest.SourceHash && job.Request.Previous.SettingsHash == manifest.SettingsHash
+        && job.Request.Previous.ToolchainHash == manifest.ToolchainHash
         && job.Request.Previous.ImporterVersion == manifest.ImporterVersion && job.Request.Previous.Target == manifest.Target;
     if (cached) {
         // A manually changed identity registry must never be overwritten by a cache hit.
         for (const auto & asset : job.Request.Previous.Assets) {
+            if (asset.DataVersion != 2) { cached = false; break; }
             const std::string key = std::to_string(static_cast<uint16_t>(asset.Type)) + ":" + asset.SourceKey;
             const auto identity = job.IDs.find(key);
             if (identity == job.IDs.end() || identity->second != asset.LocalID) { cached = false; break; }
@@ -153,6 +168,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
             QByteArray bytes;
             std::string ignored;
             if (!ReadSource(QString::fromStdString(job.Request.LibraryRoot + "/" + job.Request.Previous.Directory + "/" + asset.Path), bytes, ignored)
+                || static_cast<uint64_t>(bytes.size()) != asset.DataSize
                 || AssetArtifactIO::Hash(bytes) != asset.Hash) { cached = false; break; }
         }
     }

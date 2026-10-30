@@ -1,0 +1,196 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>ShaderInspectorForm</class>
+  <widget class="QWidget" name="ShaderInspectorForm">
+    <layout class="QVBoxLayout" name="mainLayout">
+      <item>
+        <widget class="QGroupBox" name="settingsGroup">
+          <property name="title">
+            <string>Shader 导入设置</string>
+          </property>
+          <layout class="QFormLayout" name="settingsLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="StageLabel">
+                <property name="text">
+                  <string>着色器阶段</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QComboBox" name="stageCombo">
+                <property name="settingKey" stdset="0">
+                  <string>Stage</string>
+                </property>
+                <property name="values" stdset="0">
+                  <stringlist notr="true">
+                    <string>Vertex</string>
+                    <string>Fragment</string>
+                    <string>Compute</string>
+                  </stringlist>
+                </property>
+                <item>
+                  <property name="text">
+                    <string>Vertex</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Fragment</string>
+                  </property>
+                </item>
+                <item>
+                  <property name="text">
+                    <string>Compute</string>
+                  </property>
+                </item>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QLabel" name="SourceLanguageLabel">
+                <property name="text">
+                  <string>源语言</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QLabel" name="sourceLanguageValue">
+                <property name="text">
+                  <string>HLSL</string>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="0">
+              <widget class="QLabel" name="EntryPointLabel">
+                <property name="text">
+                  <string>入口函数</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QLineEdit" name="entryPointEdit">
+                <property name="settingKey" stdset="0">
+                  <string>EntryPoint</string>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="0">
+              <widget class="QLabel" name="DefinesLabel">
+                <property name="text">
+                  <string>宏定义（每行一条）</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="3" column="1">
+              <widget class="QPlainTextEdit" name="definesEdit">
+                <property name="settingKey" stdset="0">
+                  <string>Defines</string>
+                </property>
+                <property name="fieldType" stdset="0">
+                  <string>lines</string>
+                </property>
+                <property name="maximumSize">
+                  <size>
+                    <width>16777215</width>
+                    <height>100</height>
+                  </size>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="0">
+              <widget class="QLabel" name="OptimizeLabel">
+                <property name="text">
+                  <string>编译优化</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="4" column="1">
+              <widget class="QCheckBox" name="optimizeCheck">
+                <property name="settingKey" stdset="0">
+                  <string>Optimize</string>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="0">
+              <widget class="QLabel" name="GenerateDebugInfoLabel">
+                <property name="text">
+                  <string>调试信息</string>
+                </property>
+                <property name="textFormat">
+                  <enum>Qt::PlainText</enum>
+                </property>
+                <property name="wordWrap">
+                  <bool>true</bool>
+                </property>
+              </widget>
+            </item>
+            <item row="5" column="1">
+              <widget class="QCheckBox" name="generateDebugInfoCheck">
+                <property name="settingKey" stdset="0">
+                  <string>GenerateDebugInfo</string>
+                </property>
+              </widget>
+            </item>
+            <item row="6" column="1">
+              <widget class="QCheckBox" name="generateDXILCheck">
+                <property name="text">
+                  <string>同时生成 Direct3D 12（DXIL）代码</string>
+                </property>
+                <property name="toolTip">
+                  <string>默认生成 SPIR-V 和 MSL；启用后同时生成供 Direct3D 12 使用的 DXIL。</string>
+                </property>
+                <property name="settingKey" stdset="0">
+                  <string>GenerateDXIL</string>
+                </property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="capabilityLabel">
+          <property name="text">
+            <string>ShaderCompiler 使用 DXC、SDL_shadercross 和 SPIRV-Cross 离线编译 HLSL；缺失工具或编译失败时保留最近成功产物。</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
+</ui>

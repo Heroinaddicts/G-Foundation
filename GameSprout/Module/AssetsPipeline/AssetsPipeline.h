@@ -9,6 +9,7 @@
 #include <map>
 
 class IAssetsManager;
+class IShaderCompiler;
 
 class AssetsPipeline : public IAssetsPipeline {
 public:
@@ -26,6 +27,7 @@ private:
     IIDEWindow * _IDE = nullptr;
     IProject * _Project = nullptr;
     IAssetsManager * _Assets = nullptr;
+    IShaderCompiler * _ShaderCompiler = nullptr;
     ILibraryManager * _Library = nullptr;
     UInt64 _Owner = Foundation::InvalidTaskOwnerId;
     std::map<UInt64, std::string> _Running;

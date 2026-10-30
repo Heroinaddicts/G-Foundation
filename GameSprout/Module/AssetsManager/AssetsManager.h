@@ -8,7 +8,6 @@
 #include <QDateTime>
 #include <deque>
 #include <set>
-#include <chrono>
 
 class AssetsManager : public IAssetsManager {
 public:
@@ -16,6 +15,8 @@ public:
 
     IAssetMeta * QueryAsset(const Guid & guid) const override;
     bool ReimportAsset(const Guid & guid) override;
+    bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
+        const std::string & expectedSettingsJson, std::string & error) override;
     std::vector<IAssetMeta *> GetAssetMetas() const override;
     std::vector<IAssetMeta *> GetAssetsInDirectory(const std::string & path) const override;
     bool RegisterAssetListener(IAssetListener * listener) override;
@@ -71,8 +72,8 @@ private:
     static void OnFolderRename(const Foundation::FileSystemWatcherEvent & event, const std::string & name, const std::string & extension, void * const context);
 
 private:
-    void QueueImport(IAssetMeta * meta);
-    void QueueDependents(const std::string & relativePath);
+    void ImportAsset(IAssetMeta * meta, bool force = false);
+    void ImportDependents(const std::string & relativePath);
     void ReloadMeta(const std::string & sourcePath);
     std::string RelativePath(const std::string & absolutePath) const;
     void RenameSource(const Foundation::FileSystemWatcherEvent & event, bool directory);
@@ -83,24 +84,21 @@ private:
     bool ArchiveSourceRecord(const std::string & guid, const std::string & reason);
     void CheckDatabaseSources();
     AssetSourceRecord DescribeSource(IAssetMeta * meta) const;
-    void RecordPendingSource(IAssetMeta * meta);
+    bool RecordPendingSource(IAssetMeta * meta);
     void RecordImportResult(IAssetMeta * meta, const AssetImportResult & result);
     void RecordSourceError(const std::string & path, const std::string & error);
     void RestoreMissingMeta(const std::string & path);
     void ReconcileSources();
     void FinishStartupLoading();
     std::set<std::string> _Watches;
-    std::set<std::string> _DirectoriesToScan;
-    std::map<std::string, std::chrono::steady_clock::time_point> _Dirty;
-    std::set<std::string> _Importing;
-    std::set<std::string> _ForceImports;
     std::set<std::string> _ConflictingGuids;
     IAssetsPipeline * _Pipeline = nullptr;
     ILibraryManager * _Library = nullptr;
     bool _ReconcileOnScan = true;
     bool _ScanFailed = false;
-    bool _StartupWatchesVerified = false;
     bool _StartupLoading = false;
+    uint64_t _NextImportID = 0;
+    std::set<uint64_t> _ActiveImportCallbacks; // Submitted operations only; never a scheduling queue.
     bool _SourceDatabaseReady = false;
     std::map<std::string, AssetSourceRecord> _SourceRecords;
     std::unordered_map<std::string, std::set<std::string>> _SourceGuidsByPath;

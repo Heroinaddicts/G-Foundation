@@ -2,12 +2,7 @@
 #define __IProjectAssetsUI_h__
 
 #include "GameSproutApi.h"
-
-struct ProjectAssetSelection {
-    std::string GuidString;
-    uint64_t LocalID = 0; // 源文件/目录选择时为 0；子资源为非零 LocalID。
-    bool IsSubAsset = false;
-};
+#include "ISelectionManager.h"
 
 class IProjectAssetsUI : public GameSprout::IGameSproutView {
 public:
