@@ -49,8 +49,15 @@ void TransformComponent::SetLocalScale(Vector3 value) {
 }
 
 Mat4 TransformComponent::GetLocalMatrix() const {
+    if (_PoseOwner) return _EvaluatedMatrix;
     return RuntimeMath::ComposeTRS(_Position, _Rotation, _Scale);
 }
+
+bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& matrix) {
+    if(!animatorID || IsSceneRoot() || !RuntimeMath::IsFinite(matrix) || (_PoseOwner && _PoseOwner!=animatorID)) return false;
+    _EvaluatedMatrix=matrix;_PoseOwner=animatorID;return true;
+}
+void TransformComponent::ClearEvaluatedPose(std::uint64_t animatorID) {if(_PoseOwner==animatorID)_PoseOwner=0;}
 
 Mat4 TransformComponent::GetWorldMatrix() const {
     Mat4 world = GetLocalMatrix();

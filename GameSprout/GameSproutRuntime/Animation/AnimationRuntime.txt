@@ -1,0 +1,77 @@
+Animation runtime contract
+==========================
+
+Ownership and layering
+- Prepared Model/Skeleton/AnimationClip/AnimatorController CPU data and the borrowed resource service are public Runtime contracts.
+- Runtime owns model instances, bone bindings, shared immutable animation resource caches and per-Animator parameters/times/poses.
+- Editor Module provides prepared resources and persists authoring configuration. Editor View only edits those public services.
+- Renderer consumes the evaluated pose; GRHI only receives generic uniforms, vertex/index buffers, pipelines and draws.
+- Runtime has no Qt, editor database, FBX decoder or .meta dependency. The packaged player supplies the same resource interface.
+
+Instances and transforms
+- Model source node indices, Clip track indices and Mesh bone-palette indices are independent.
+- Model instantiation creates a wrapper with Animator, original node hierarchy, and a geometry-transform child for every mesh.
+- Bindings map original source paths to stable Runtime IDs. Renaming a node does not change its binding.
+- Mesh-local skin matrix = inverse(mesh world) * bone world * inverse bind matrix, in the Mesh palette order.
+- Source/authoring Position/Rotation/Scale getters remain unchanged by animation. Evaluated local/world matrices include the running pose.
+- Animation evaluation does not produce ComponentChanged. Stop/removal clears evaluated poses and exposes authoring TRS again.
+- Scene source stores configuration and binding file IDs; live parameters, current state and time are not serialized.
+- Deleted node bindings retain their path with ID 0; removing an Animator clears surviving skin references to it.
+- The special Scene root cannot contain character Animator or SkinnedMeshRenderer components.
+
+Supported current execution format
+- Generic skeleton and Humanoid reference-axis retargeting, relative-time sampled TRS clips and shortest-arc quaternion interpolation. See HumanoidRuntime.txt for the human profile, IK and synchronization contracts.
+- Immutable resources are cached per Runtime and generation; provider revision changes invalidate/rebind complete Animator data.
+- Controller-global Float/Int/Bool/Trigger parameters and ordered layers. Unsynchronized layers own independent FSMs, times and crossfades; synchronized layers share their source graph and normalized phase, with optional motion overrides and Timing influence.
+- Each FSM checks AnyState then current-state conditions,
+  looping ExitTime crossings, second-based crossfade, destination normalized offset and explicit self-transition setting.
+- Trigger values are consumed after all layers evaluate their selected transition, so one pulse may transition several layers.
+- Clip states and 1D blend states with strictly increasing thresholds. 1D clips blend at synchronized normalized phases.
+- Automatic transitions finish before considering another automatic transition. This format has no automatic interruption policy.
+- Manual CrossFade can interrupt, preserving authored bone contributions and continuous write coverage for continuity. Missing tracks are resolved from the current lower/reference pose each evaluation, never frozen into the interrupted source.
+- Play, Pause, Resume, Stop, Seek and speed. Reverse playback is rejected by nonnegative speed validation.
+
+Explicit future work
+- Morph deformation, nested machines, 2D/Direct trees, automatic transition interruption and general animation constraints are not executed by this version.
+- Humanoid retargeting, hand/foot IK, LookAt and synchronization are implemented; full muscle limits, twist-bone distribution and automatic terrain grounding remain outside the current human solver.
+- Pipeline semantic validation must reject declarations requiring unsupported execution features.
+- Scene/Game views render the result of one host Runtime::Update; Render never advances animation.
+
+Root motion and notifications
+- A prepared trajectory is a model/wrapper-space rigid transform relative to clip start: A(t)=T(t)*inverse(T(0)).
+- Disabled retains original clip TRS. ExtractOnly strips inverse(A(t)) from top-level skeleton roots and exposes delta.
+- ApplyToObject additionally accumulates local rigid deltas in a character-root overlay; authoring TRS are never modified.
+- Animated skeleton bindings must not include the Animator host itself when root motion is enabled; use an independent wrapper.
+- Looping uses SE3 composition, including cycle rotation; delta=inverse(A(previous))*A(current), not current wrapped position minus previous.
+- Root deltas mix per active motion using mean start/end weights; crossfade completion splits long frames. 1D parameter changes preserve normalized phase on both live state clocks.
+- Stop/removal/configuration resets restore authoring transforms. Pause retains current pose; Seek changes sample time without emitting marker history or applying historical motion.
+- Clip marker intervals are (previous,current]. A zero-time marker is additionally emitted once on the first positive advance after state entry, not during Update(0), Pause or Seek.
+- At a loop boundary, the finishing cycle's Duration marker precedes the next cycle's zero-time marker.
+- All positive-weight active clips emit markers, including crossfade and 1D sources; notifications carry occurrence weight so game logic can filter effects. Same-time events are deterministic by clip identity then loop index.
+- StateEnter occurs when a state becomes active; StateExit occurs when it stops contributing, including a completed transition or Stop. Superseded pending notifications are discarded.
+- IRuntimeListener::OnAnimationEvent and OnRootMotion execute at the end of Runtime::Update on the host thread. The batch is fixed; callbacks that enqueue new notifications defer them to the next Update.
+- Any OnRootMotion listener returning true takes over movement and suppresses builtin application. During this object's callback, ApplyRootMotionDelta may submit one collision-solved local delta; Runtime applies it once as an overlay after all listeners, even if that listener returned false. The entry point rejects calls outside the callback or repeated/stale submissions.
+- Actor/Animator identity, component serial and operation epoch are rechecked after callbacks. Deletion, component removal, Pause, Stop or mode changes prevent stale movement from applying.
+- Marker bursts are limited to 4096 per Animator Update and 8192 pending Runtime records. Exceeding a limit stops the Animator with an explicit diagnostic and invalidates its partial batch.
+- The current delta getter reports the proposed animation delta. Physics takeover may apply a smaller solved delta without changing the source proposal.
+
+Layer mixing and AvatarMask
+- Base layer is fixed unmasked Override at weight 1. Higher layers have finite weights 0..1 and Override or Additive mode.
+- Controller defaults, masks and reference clips are shared immutable resources. State clocks, parameters and changed layer weights belong to each Animator; preview changes do not emit authoring events or persist in Scene.
+- Override mixes lower pose toward sampled pose per bone at layerWeight * maskWeight. Missing bone tracks retain the lower pose, including 1D and crossfade sources.
+- Additive defaults to Skeleton rest, or samples ReferenceClip at ReferenceTime seconds without looping. Missing reference tracks use rest. Missing animated tracks use reference, yielding identity contribution.
+- Additive local position = lower + (sample - reference) * weight. Local rotation = lower * slerp(identity, inverse(reference) * sample, weight), shortest arc. Local scale = lower * lerp(1, sample / reference, weight), component-wise; zero reference scales are rejected.
+- Transform masks bind one exact Skeleton resource identity; sparse node overrides inherit through SkeletonNode.Parent. Paths are stable source paths, never editable names or string-prefix guesses. Storage need not be parent-first.
+- Humanoid masks use semantic body/head/limb/finger weights through the target Avatar, without a Skeleton identity or transform paths. They are portable across validated human rigs; RootMotionWeight remains separate.
+- An absent mask enables all bones and root motion. A mask's DefaultWeight applies to unoverridden roots; RootMotionWeight is an independent scalar. Unknown/duplicate paths, foreign Skeleton and invalid weights are rejected.
+- A provider revision invalidates Controller, Mask, reference and clip caches together and rebinds per-instance layer state. Malformed updated data clears animation overlays and reports diagnostics.
+- Root delta is evaluated independently in each layer, then mixed bottom-up: Override interpolates current delta toward layer delta; Additive composes identity-to-layer weighted delta. Effective weight is layerWeight * mask.RootMotionWeight. Layers with no extracted root trajectory leave lower root motion intact.
+- Only the final root delta is dispatched and collision-solved once per Animator Update. Static additive reference poses have no velocity contribution.
+- Clip notifications identify LayerIndex and LayerName; occurrence weights include state/1D/crossfade and layer weights. A zero-weight layer advances state clocks but emits no clip markers.
+- Animation markers have no bone path, so bone/root masks do not suppress markers. An upper-body layer with RootMotionWeight=0 still emits its positive-weight clip events. State lifecycle notifications retain identity even when the layer weight is 0.
+- Layer playback APIs default to layer 0; invalid indices fail. Pause/Resume/Stop apply to the whole Animator, while Play/CrossFade/Seek and playback-state queries select one layer.
+
+Unity implementation references used for the layer design
+- Editor/Src/Animation/AnimatorControllerLayer.h: independent state machine, default layer weight, blending mode and AvatarMask.
+- Modules/Animation/Director/AnimationLayerMixerPlayable.cpp: separate per-layer pose/root masks and bottom-up root/pose blending.
+- Generic path masks and portable Humanoid body-part masks share the Runtime layer mixer. HumanoidRuntime.txt documents the reference-axis solver and the remaining differences from Unity's complete muscle/constraint system.

@@ -21,6 +21,10 @@ GRHI::IShader* CreatePreviewShader(GRHI::IDevice& device,PreviewShader shader) {
         GS_SHADER_CASE(MeshFragment,Fragment)
         GS_SHADER_CASE(GridVertex,Vertex)
         GS_SHADER_CASE(GridFragment,Fragment)
+        GS_SHADER_CASE(SkinnedMeshVertex,Vertex)
+        GS_SHADER_CASE(SkinnedMeshNoUVVertex,Vertex)
+        GS_SHADER_CASE(SkinnedMeshNoColorVertex,Vertex)
+        GS_SHADER_CASE(SkinnedMeshNoUVNoColorVertex,Vertex)
 #undef GS_SHADER_CASE
     }
     GRHI::ShaderDesc description;description.Stage=stage;description.Codes=codes;description.CodeCount=3;

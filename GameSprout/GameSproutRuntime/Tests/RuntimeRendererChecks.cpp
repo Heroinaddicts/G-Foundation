@@ -84,6 +84,11 @@ int main(int argc,char** argv) {
         Check(!runtime->CreateRenderer(nullptr,&provider) && !runtime->CreateRenderer(device,nullptr),"Invalid renderer dependencies accepted");
         GRHI::TextureDesc description;description.Width=128;description.Height=128;description.Usage=GRHI::TextureUsage::ColorTarget;
         target=device->CreateTexture(description);Check(target,device->GetLastError());
+        GameSproutRuntime::RenderView startupClear;startupClear.ColorTarget=target;startupClear.DrawScene=false;startupClear.ClearColor={1,0,0,1};
+        Check(renderer->Render(startupClear),renderer->GetLastError());
+        const auto startupPixel=Center(*device,*target);
+        Check(startupPixel[0]==255&&startupPixel[1]==0&&startupPixel[2]==0&&provider.MeshLoads==0,
+            "An empty startup view required a scene or loaded draw resources");
         auto* scene=runtime->CreateScene("Offscreen scene");auto* object=scene->CreateGameObject("Real triangle");
         auto* mesh=object->AddComponent<GameSproutRuntime::IMeshComponent>();
         auto* meshRenderer=object->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
@@ -98,6 +103,20 @@ int main(int argc,char** argv) {
         Check(renderer->GetStatistics().VisibleObjects==1 && renderer->GetStatistics().Triangles==1 && mesh->GetLocalBounds().Extents.X==1,
               "Renderer mesh/statistics/loaded bounds mismatch");
         runtime->Update(0);Check(probe.Calls==0 && scene->GetChildCount()==1 && !scene->GetMainCamera(),"Render changed scene/main camera or emitted derived-cache changes");
+        GameSproutRuntime::RenderedCamera rendered;
+        Check(renderer->GetRenderedCamera(rendered)&&rendered.SceneID==scene->GetInstanceID(),"Scene frame has no camera snapshot");
+        auto clear=view;clear.DrawScene=false;clear.Scene=nullptr;clear.DrawGrid=true;clear.ClearColor={.25f,.5f,.75f,1};
+        clear.Camera.View.Data[0]=std::numeric_limits<float>::quiet_NaN();
+        GameSproutRuntime::DebugDrawList ignoredDebug;
+        ignoredDebug.Lines.push_back({{std::numeric_limits<float>::quiet_NaN(),0,0},{}, {}});clear.DebugDraw=&ignoredDebug;
+        Check(renderer->Render(clear),renderer->GetLastError());pixel=Center(*device,*target);
+        Check(std::abs(pixel[0]-64)<=1&&std::abs(pixel[1]-128)<=1&&std::abs(pixel[2]-191)<=1,"Clear-only view retained previous geometry or ignored clear color");
+        Check(!renderer->GetRenderedCamera(rendered)&&rendered.SceneID==0&&rendered.Width==0&&
+            renderer->GetStatistics().DrawCalls==0&&renderer->GetStatistics().Triangles==0,"Clear-only view retained a pick camera or submitted grid/debug/scene geometry");
+        GameSproutRuntime::SceneRaycastHit clearHit;clearHit.ObjectID=123;
+        Check(!renderer->Raycast(nullptr,{{0,0,3},{0,0,-1}},clearHit)&&clearHit.ObjectID==0,"A missing scene reused stale picking data");
+        Check(renderer->Raycast(scene,{{0,0,3},{0,0,-1}},clearHit)&&clearHit.ObjectID==object->GetInstanceID(),"Explicit scene queries incorrectly depended on the previous view camera");
+        Check(renderer->Render(view)&&renderer->GetRenderedCamera(rendered),"Scene rendering did not recover after clear-only frame");
         const int loads=provider.MeshLoads;
         Check(renderer->Render(view) && provider.MeshLoads==loads,"Unchanged prepared mesh was uploaded again");
         for(const auto flags:std::initializer_list<std::array<bool,2>>{{true,true},{false,true},{true,false},{false,false}}) {

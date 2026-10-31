@@ -6,6 +6,7 @@ cbuffer DrawUniform : register(b0, space1)
     column_major float4x4 ViewProjection;
     column_major float4x4 NormalMatrix;
     float4 BaseColor;
+    float4 TextureST;
 };
 
 struct MeshInput {
@@ -42,7 +43,7 @@ MeshOutput TransformVertex(float3 position, float3 normal, float4 color, float2 
     float lengthSquared = dot(transformed, transformed);
     output.Normal = lengthSquared > 1e-12 ? transformed * rsqrt(lengthSquared) : float3(0, 1, 0);
     output.Color = color * BaseColor;
-    output.UV = uv;
+    output.UV = uv * TextureST.xy + TextureST.zw;
     return output;
 }
 MeshOutput MeshVertex(MeshInput input) {
@@ -57,6 +58,45 @@ MeshOutput MeshNoColorVertex(MeshNoColorInput input) {
 }
 MeshOutput MeshNoUVNoColorVertex(MeshNoUVNoColorInput input) {
     return TransformVertex(input.Position, input.Normal, float4(1, 1, 1, 1), float2(0, 0));
+}
+
+// Same 128-matrix limit as Renderer::MaxSkinBones. b0 remains the ordinary draw uniform.
+cbuffer SkinUniform : register(b1, space1)
+{
+    column_major float4x4 SkinBones[128];
+};
+MeshOutput SkinVertex(float3 position, float3 normal, float4 color, float2 uv, uint4 bones, float4 weights)
+{
+    // The CPU validates every index and the normalized, nonnegative weights before uploading.
+    // Each matrix maps the bind mesh's local space into this instance's current mesh local space.
+    float4x4 skin = SkinBones[bones.x] * weights.x + SkinBones[bones.y] * weights.y
+                 + SkinBones[bones.z] * weights.z + SkinBones[bones.w] * weights.w;
+    float3 skinnedPosition = mul(skin, float4(position, 1.0)).xyz;
+    // Inverse transpose of the blended linear deformation, including nonuniform bone scale.
+    float3 a = float3(skin[0][0], skin[1][0], skin[2][0]);
+    float3 b = float3(skin[0][1], skin[1][1], skin[2][1]);
+    float3 c = float3(skin[0][2], skin[1][2], skin[2][2]);
+    float determinant = dot(a, cross(b, c));
+    float3 skinnedNormal = normal;
+    if (abs(determinant) > 1e-12)
+        skinnedNormal = (cross(b, c) * normal.x + cross(c, a) * normal.y + cross(a, b) * normal.z) / determinant;
+    return TransformVertex(skinnedPosition, skinnedNormal, color, uv);
+}
+MeshOutput SkinnedMeshVertex(MeshInput input,
+    [[vk::location(4)]] uint4 bones : TEXCOORD4, [[vk::location(5)]] float4 weights : TEXCOORD5) {
+    return SkinVertex(input.Position, input.Normal, input.Color, input.UV, bones, weights);
+}
+MeshOutput SkinnedMeshNoUVVertex(MeshNoUVInput input,
+    [[vk::location(4)]] uint4 bones : TEXCOORD4, [[vk::location(5)]] float4 weights : TEXCOORD5) {
+    return SkinVertex(input.Position, input.Normal, input.Color, float2(0, 0), bones, weights);
+}
+MeshOutput SkinnedMeshNoColorVertex(MeshNoColorInput input,
+    [[vk::location(4)]] uint4 bones : TEXCOORD4, [[vk::location(5)]] float4 weights : TEXCOORD5) {
+    return SkinVertex(input.Position, input.Normal, float4(1, 1, 1, 1), input.UV, bones, weights);
+}
+MeshOutput SkinnedMeshNoUVNoColorVertex(MeshNoUVNoColorInput input,
+    [[vk::location(4)]] uint4 bones : TEXCOORD4, [[vk::location(5)]] float4 weights : TEXCOORD5) {
+    return SkinVertex(input.Position, input.Normal, float4(1, 1, 1, 1), float2(0, 0), bones, weights);
 }
 
 Texture2D<float4> BaseTexture : register(t0, space2);

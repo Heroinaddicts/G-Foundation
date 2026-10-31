@@ -15,6 +15,7 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
             ++_Statistics.SkippedObjects;continue;
         }
         DrawObject data;data.ObjectID=object->GetInstanceID();data.Name=object->GetName();data.Model=object->GetTransform()->GetWorldMatrix();
+        data.Skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
         Mat4 inverse;
         if(!RuntimeMath::IsFinite(data.Model) || !RuntimeMath::TryInverseAffine(data.Model,inverse)) {
             ++_Statistics.SkippedObjects;Diagnostic("Skipped singular/nonfinite mesh transform: "+data.Name);continue;

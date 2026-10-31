@@ -19,11 +19,13 @@ bool Renderer::GetWorldBounds(IScene* scene,std::uint64_t objectID,Bounds& bound
     try {
         SyncRevision();IGameObject* object=nullptr;MeshGPU* mesh=nullptr;Mat4 model;
         if(!QueryObject(scene,objectID,object,mesh,model)) return false;
+        std::vector<Vector3> positions;
+        if(!PosedPositions(*object,*mesh,positions)) return false;
         PickingMath::Vector localMinimum,localMaximum;bool first=true;
         // 先求被section引用顶点的本地AABB，不信任源产物的bounds。
         // 再变换盒子而非每个三角形顶点，使Center始终为M*localCenter，旋转非对称网格时不漂移。
         for(const auto& section:mesh->Data.Sections) for(std::uint32_t index=0;index<section.IndexCount;++index) {
-            const PickingMath::Vector point(mesh->Positions[mesh->Indices[section.FirstIndex+index]]);
+            const PickingMath::Vector point(positions[mesh->Indices[section.FirstIndex+index]]);
             if(first) {localMinimum=localMaximum=point;first=false;}
             else {
                 localMinimum={std::min(localMinimum.X,point.X),std::min(localMinimum.Y,point.Y),std::min(localMinimum.Z,point.Z)};
@@ -58,6 +60,8 @@ bool Renderer::AppendSelectionOutline(IScene* scene,std::uint64_t objectID,Debug
     try {
         SyncRevision();IGameObject* object=nullptr;MeshGPU* mesh=nullptr;Mat4 model;
         if(!QueryObject(scene,objectID,object,mesh,model)) return false;
+        std::vector<Vector3> positions;
+        if(!PosedPositions(*object,*mesh,positions)) return false;
         constexpr std::size_t limit=1048576;
         if(draw.Lines.size()>limit/2 || draw.Triangles.size()>limit/3 || draw.Lines.size()*2+draw.Triangles.size()*3>limit)
             return Fail("Existing debug draw exceeds vertex limit");
@@ -71,8 +75,8 @@ bool Renderer::AppendSelectionOutline(IScene* scene,std::uint64_t objectID,Debug
                 if(a==b || !edges.emplace(a,b).second) continue;
                 if(lines.size()>=available) return Fail("Selection outline exceeds debug vertex limit");
                 Vector3 from,to;
-                if(!PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(mesh->Positions[a]),1),from) ||
-                   !PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(mesh->Positions[b]),1),to)) return Fail("Selection outline has nonfinite world positions");
+                if(!PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[a]),1),from) ||
+                   !PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[b]),1),to)) return Fail("Selection outline has nonfinite world positions");
                 lines.push_back({from,to,tint,depthTest});
             }
         }

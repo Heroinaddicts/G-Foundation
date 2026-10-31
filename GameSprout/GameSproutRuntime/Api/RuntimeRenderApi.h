@@ -1,56 +1,9 @@
 #pragma once
 #include "GameSproutRuntimeApi.h"
 #include "GRHIApi.h"
+#include "RuntimeResourceApi.h"
 
 namespace GameSproutRuntime {
-
-struct MeshSection {
-    std::uint32_t FirstIndex = 0;
-    std::uint32_t IndexCount = 0;
-    std::uint32_t MaterialSlot = 0;
-};
-
-// 已预处理的顶点与 UInt32 索引原始字节，直接上传 GRHI Buffer。
-// 顶点属性均为 float32：Position/Normal 三分量、Color 四分量、UV 两分量。
-struct MeshRenderData {
-    std::vector<std::uint8_t> Bytes;
-    std::uint32_t VertexCount = 0;
-    std::uint32_t VertexStride = 0;
-    std::uint32_t IndexCount = 0;
-    std::uint64_t IndexOffset = 0;
-    std::uint32_t PositionOffset = 0;
-    std::uint32_t NormalOffset = 12;
-    std::int32_t ColorOffset = -1;
-    std::int32_t UVOffset = -1;
-    std::vector<MeshSection> Sections;
-    Bounds LocalBounds;
-};
-
-struct TextureRenderData {
-    std::uint32_t Width = 0;
-    std::uint32_t Height = 0;
-    bool SRGB = true;
-    // 第一版上传 mip0；此处已是紧密排列的 RGBA8，无源图片解码。
-    std::vector<std::uint8_t> Pixels;
-    GRHI::SamplerDesc Sampler;
-};
-
-struct MaterialRenderData {
-    Color BaseColor;
-    ResourceReference BaseColorTexture;
-    bool DoubleSided = false;
-};
-
-class IRuntimeResourceProvider {
-public:
-    virtual ~IRuntimeResourceProvider() = default;
-    // 返回递增修订号，产物替换/删除时令 Renderer 释放并重新查询缓存。
-    virtual std::uint64_t GetRevision() const = 0;
-    // 同步读取已预处理数据；失败清空输出并给出原因。不得返回源 FBX/PNG。
-    virtual bool LoadMesh(const ResourceReference& reference, MeshRenderData& data, std::string& error) = 0;
-    virtual bool LoadTexture(const ResourceReference& reference, TextureRenderData& data, std::string& error) = 0;
-    virtual bool LoadMaterial(const ResourceReference& reference, MaterialRenderData& data, std::string& error) = 0;
-};
 
 struct RenderCamera {
     Mat4 View;
@@ -86,6 +39,9 @@ struct RenderView {
     Color ClearColor{0.09f, 0.10f, 0.12f, 1.0f};
     // 仅在 Render 调用期间借用；最多 1,048,576 个调试顶点。
     const DebugDrawList* DebugDraw = nullptr;
+    // false：仅清空指定目标；忽略 Scene/Camera/Grid/DebugDraw，不生成绘制或有效相机快照。
+    // 可用于尚未加载场景或没有活动游戏相机的宿主窗口。
+    bool DrawScene = true;
 };
 
 struct SceneRaycastHit {
@@ -123,12 +79,13 @@ public:
     // 最近成功提交帧；Render 失败/目标不可用后返回 false 并清空输出。
     virtual bool GetRenderedCamera(RenderedCamera& camera) const = 0;
     // 以下查询均在宿主线程执行，禁止在 Runtime/provider 回调或 Render 内重入。
+    // 蒙皮对象使用当前已求值姿态；Render 和查询均不推进动画时间。
     // 精确、双面的最近 Mesh 三角形拾取；跳过非激活/不可见/缺失资源及奇异变换。
     // 无命中返回 false 且输出清空；非法参数也返回 false，GetLastError 给出原因。
     // 当前对象统一位于第 0 层，cullingMask 的最低位控制 Mesh 查询。
     virtual bool Raycast(IScene* scene, const Ray& worldRay, SceneRaycastHit& hit,
                          std::uint32_t cullingMask = ~0u) = 0;
-    // 从Mesh引用顶点的本地AABB变换得到保守世界AABB；其中心=M*localCenter。
+    // 从Mesh引用顶点（蒙皮对象为当前变形顶点）的本地AABB变换得到保守世界AABB；其中心=M*localCenter。
     // 可用于聚焦非激活/不可见对象；旋转时操作中心不因重新拟合世界顶点而漂移。
     virtual bool GetWorldBounds(IScene* scene, std::uint64_t objectID, Bounds& bounds) = 0;
     // 追加所选对象的精确 Mesh 边线；边按索引去重。失败不修改已有列表。

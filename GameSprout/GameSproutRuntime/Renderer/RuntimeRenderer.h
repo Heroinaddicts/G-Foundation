@@ -27,8 +27,10 @@ private:
         bool operator<(const ResourceKey& other) const {return std::tie(Guid,LocalID)<std::tie(other.Guid,other.LocalID);}
     };
     struct MeshGPU {
+        struct SkinVertex { std::uint32_t Bones[4]{}; float Weights[4]{}; };
         MeshRenderData Data;
         std::vector<Vector3> Positions;
+        std::vector<SkinVertex> Skin;
         std::vector<std::uint32_t> Indices;
         GRHI::IBuffer* Buffer=nullptr;
         std::string Error;
@@ -38,11 +40,11 @@ private:
     struct PipelineKey {
         GRHI::TextureFormat Format=GRHI::TextureFormat::Unknown;
         std::uint32_t Stride=0,Position=0,Normal=0;
-        std::int32_t Color=-1,UV=-1;
+        std::int32_t Color=-1,UV=-1,BoneIndices=-1,BoneWeights=-1;
         bool Grid=false,DoubleSided=false,Negative=false,DebugTriangles=false,DepthTest=true;
         bool operator<(const PipelineKey& other) const {
-            return std::tie(Format,Stride,Position,Normal,Color,UV,Grid,DoubleSided,Negative,DebugTriangles,DepthTest)<
-                std::tie(other.Format,other.Stride,other.Position,other.Normal,other.Color,other.UV,other.Grid,other.DoubleSided,other.Negative,other.DebugTriangles,other.DepthTest);
+            return std::tie(Format,Stride,Position,Normal,Color,UV,BoneIndices,BoneWeights,Grid,DoubleSided,Negative,DebugTriangles,DepthTest)<
+                std::tie(other.Format,other.Stride,other.Position,other.Normal,other.Color,other.UV,other.BoneIndices,other.BoneWeights,other.Grid,other.DoubleSided,other.Negative,other.DebugTriangles,other.DepthTest);
         }
     };
     struct Depth {GRHI::ITexture* Texture=nullptr;std::uint64_t LastUsed=0;};
@@ -52,9 +54,14 @@ private:
         ResourceReference Mesh;
         std::vector<ResourceReference> Materials;
         std::string Name;
+        std::vector<Mat4> SkinMatrices;
+        bool Skinned=false;
         bool Negative=false;
     };
-    struct DrawUniform {Mat4 Model,ViewProjection,Normal;Color BaseColor;};
+    struct DrawUniform {Mat4 Model,ViewProjection,Normal;Color BaseColor;Vector4 TextureST{1,1,0,0};};
+    // Keep this limit equal to Preview.hlsl. Uniform data is per object, never shared with the Mesh.
+    static constexpr std::size_t MaxSkinBones = 128;
+    struct SkinUniform { Mat4 Bones[MaxSkinBones]; };
     struct DebugVertex {Vector3 Position;Color Tint;};
     struct DebugBatch {std::vector<DebugVertex> Vertices;bool Triangles=false,DepthTest=false;};
     bool Initialize();
@@ -70,6 +77,8 @@ private:
                    const std::vector<DebugBatch>& batches,std::vector<GRHI::IBuffer*>& buffers);
     bool BeginQuery(IScene* scene);
     bool QueryObject(IScene* scene,std::uint64_t objectID,IGameObject*& object,MeshGPU*& mesh,Mat4& model);
+    bool SkinMatrices(IGameObject& object,const MeshGPU& mesh,std::vector<Mat4>& matrices);
+    bool PosedPositions(IGameObject& object,const MeshGPU& mesh,std::vector<Vector3>& positions);
     void SyncRevision();
     void ClearResources();
     void Diagnostic(const std::string& error);
@@ -83,7 +92,7 @@ private:
     std::map<ResourceKey,Material> _Materials;
     std::map<PipelineKey,GRHI::IGraphicsPipeline*> _Pipelines;
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
-    GRHI::IShader* _Shaders[7]{};
+    GRHI::IShader* _Shaders[11]{};
     GRHI::ITexture* _White=nullptr;
     GRHI::ISampler* _DefaultSampler=nullptr;
     GRHI::IBuffer* _Grid=nullptr;

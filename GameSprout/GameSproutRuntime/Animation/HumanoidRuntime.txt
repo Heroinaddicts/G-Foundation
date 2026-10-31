@@ -1,0 +1,49 @@
+Humanoid、IK 和同步层（当前格式）
+
+边界
+- Module 构造/校验 Avatar 的人体角色映射与完整参考姿态，生成独立 Avatar 子资源。
+- Avatar 与 SourceSkeleton、SourceClip 分开；Model.Avatar 为目标配置，Clip.SourceAvatar 为源配置。
+- Runtime 仅从 IRuntimeResourceProvider 取得 CPU 数据，没有 Qt、源 FBX、数据库、Editor 依赖。
+- Renderer/GRHI 沿用已有最终骨矩阵，完全不知道人体角色、IK 或 Animator 层。
+
+重定向
+- HumanBone 与 Unity HumanBodyBones 的 55 个命名角色一致。15 个必需角色包含 Hips/Spine/Head、双臂三段、双腿三段；肩、胸、颈、指骨等可选。
+- Api/HumanoidValidation.h 是离线与 Runtime 共用的纯 header 校验/参考轴构造工具。映射按 Skeleton 稳定路径，禁止重复、缺骨、错误祖先、循环、零长度参考段。
+- ReferencePose 为完整 Skeleton 顺序的 local TRS。Axis 为参考姿态中解剖轴到模型空间的旋转，通过肢体几何和身体前方向建立；不是直接复制 FBX bone-local 轴。
+- 重定向取源 global pose 相对源 reference 的旋转增量，转换到目标解剖轴，再相乘目标 reference global rotation，最后还原目标 local rotation。
+- 保留目标肢体平移与长度，只按人体尺度比转换 Hips 运动。未映射/源缺少的可选目标骨采用目标参考姿态，不复制源 local TRS。
+- HumanScale = reference hip-head 距离 + 最长 hip-foot 距离（模型空间米）。RootMotion 同样变换参考身体轴与尺度，并沿用提取、一次应用、主线程碰撞解决回调。
+- 当前为通用参考骨轴的 Humanoid 重定向，不序列化 Unity 私有 95-muscle 数据；不包含肌肉限位、扭转骨分配、自动接地/地形碰撞。
+- 人体参考/求解只支持正的均匀节点缩放，非均匀/镜像/退化骨架明确失败。
+
+遮罩
+- Transform mask 仍绑定一套 Skeleton 的路径；Humanoid mask 不绑定 Skeleton，按 Body/Head/左右 Arm/Leg/Fingers 的语义权重跨角色使用。
+- root motion 使用独立 RootMotionWeight。目标 helper 节点继承最近的 mapped human 父骨权重；无 mapped ancestor 使用 DefaultWeight。
+
+IK
+- 全部动画层混合/重定向后，按 layer index 执行启用 IKPass 的回调和求解；IKPass 不因该层混合权重为零而跳过。
+- OnAnimatorIK 在 Update 的同一个主线程 operation barrier 内执行。每个 listener 之后检查节点、组件序号和配置版本，Stop/删除/换 Avatar 会中止当前求解，绝不保留裸组件异步引用。
+- 四个 hand/foot 两骨链支持 Position/Rotation/Hint 独立 [0,1] 权重，Hint 为肘/膝弯曲平面的极向目标；不可达位置夹到肢体可达半径，不拉长骨骼。
+- LookAt 的 Body/Head/Eyes 和 clamp 权重在肢体目标之前求解，保证身体转动不会再次破坏已解的手脚目标。
+- 目标 Position/Hint/LookAt.Position 全部为 Animator wrapper 的局部空间；Rotation 也为该模型空间，不是骨 local rotation 或世界 rotation。
+- goals 是每个 Animator 的瞬时预览/运行状态，保留到 ClearIKGoals/Stop/Avatar 替换，不发送 ComponentChanged、不写入 .scene。
+- paused 下设置/清除目标会重算 pose，不推进时钟、事件和 root motion，也不触发 OnAnimatorIK。回调中设置目标不会递归求解。
+
+同步层
+- 公共 Controller 的 sync 层只声明 SyncedLayerIndex、MotionOverrides 和层混合配置，不复制源层 States/Transitions。
+- 源必须是独立状态机；自引用、循环、同步链、未知/重复 override 状态以及同步层自建图明确拒绝。
+- MotionOverrides 按源 state 名替换 Clip 或 1D motions，不更改拓扑/条件/状态速度/循环规则。
+- 运行时共用源 FSM、参数、trigger、当前/下一状态、转场和 normalized phase。Play/Seek/CrossFade 指向 sync 层会转发到源 FSM。
+- GetPlaybackState.Time 是同步组的逻辑秒，NormalizedTime 对所有成员相同。每层 motion 按自己的 clip duration 采样并携带独立 layer 身份事件/root delta。
+- SyncedLayerAffectsTiming 仅允许 Override。按层序 duration = lerp(duration, sync duration, layerWeight)，weight1 完全采用 sync duration。关闭时只拉伸 sync motion，不改变源时间。
+- 修改影响 timing 的 layer weight 或 1D parameter 会保持组的当前/下一 normalized phase，固定秒的 CrossFade 时长保持固定秒。
+- 连续打断时每层分别冻结自己的动画贡献和 per-bone coverage，不冻结源层的骨骼 pose，也不把 lower baseline 烘进 upper。
+
+Unity 本地参考（2021.3.17f）
+- Modules/Animation/HumanDescription.h：HumanBone/SkeletonBone 和参考骨架。
+- Modules/Animation/HumanTrait.*、AvatarBuilder.cpp：必需角色、人体参考结构。
+- Modules/Animation/HumanPoseHandler.cpp：骨架与人体 pose 的转换边界。
+- Modules/Animation/Animator.cpp 的 Animator IK 主线程 pass：完整 pose 后逐层 IKPass。
+- Modules/Animation/Director/AnimatorControllerPlayable.cpp：共享 state machine 与 synchronized timing weights。
+- Modules/Animation/mecanim/statemachine/statemachine.cpp 591-626：同步组时长的按层权重覆盖。
+- Editor/Src/Animation/AnimatorControllerLayer.*：sync source、override Motion、IKPass 与 timing 开关。

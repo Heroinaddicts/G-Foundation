@@ -56,3 +56,47 @@ endif()
 add_test(NAME Runtime.RendererGPU COMMAND RuntimeRendererChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.RendererGPU PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+
+add_executable(RuntimeSkinningChecks RuntimeSkinningChecks.cpp)
+target_link_libraries(RuntimeSkinningChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeSkinningChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.SkinningGPU COMMAND RuntimeSkinningChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.SkinningGPU PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60)
+
+add_executable(RuntimeAnimationChecks RuntimeAnimationChecks.cpp)
+target_link_libraries(RuntimeAnimationChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeAnimationChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.Animation COMMAND RuntimeAnimationChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+
+add_executable(RuntimeMotionChecks RuntimeMotionChecks.cpp)
+target_link_libraries(RuntimeMotionChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeMotionChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.RootMotionAndEvents COMMAND RuntimeMotionChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.RootMotionAndEvents PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeLayerChecks RuntimeLayerChecks.cpp)
+target_link_libraries(RuntimeLayerChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeLayerChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.AnimationLayersAndMasks COMMAND RuntimeLayerChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.AnimationLayersAndMasks PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeHumanChecks RuntimeHumanChecks.cpp)
+target_link_libraries(RuntimeHumanChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeHumanChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.HumanoidIKAndSynchronization COMMAND RuntimeHumanChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.HumanoidIKAndSynchronization PROPERTIES TIMEOUT 30)

@@ -18,9 +18,34 @@ bool ValidateMesh(GameSproutRuntime::MeshRenderData& data,std::string& error) {
         !Attribute(data.VertexStride,data.PositionOffset,12) || !Attribute(data.VertexStride,data.NormalOffset,12) ||
         (data.ColorOffset!=-1 && !Attribute(data.VertexStride,data.ColorOffset,16)) ||
         (data.UVOffset!=-1 && !Attribute(data.VertexStride,data.UVOffset,8)) ||
+        (data.BoneIndicesOffset!=-1 && !Attribute(data.VertexStride,data.BoneIndicesOffset,16)) ||
+        (data.BoneWeightsOffset!=-1 && !Attribute(data.VertexStride,data.BoneWeightsOffset,16)) ||
+        ((data.BoneIndicesOffset<0)!=(data.BoneWeightsOffset<0)) ||
+        (!data.Bones.empty() && data.BoneIndicesOffset<0) ||
         data.IndexOffset%4 || std::uint64_t(data.VertexCount)*data.VertexStride>data.IndexOffset ||
         data.IndexOffset>data.Bytes.size() || std::uint64_t(data.IndexCount)*4>data.Bytes.size()-data.IndexOffset) {
         error="Invalid prepared mesh byte layout, counts or offsets";return false;
+    }
+    for(const auto& bone:data.Bones) if(bone.NodePath.empty() || !GameSproutRuntime::RuntimeMath::IsFinite(bone.InverseBindMatrix)) {
+        error="Invalid prepared mesh bone path or inverse bind matrix";return false;
+    }
+    if(data.BoneIndicesOffset>=0) for(std::uint32_t vertex=0;vertex<data.VertexCount;++vertex) {
+        const auto* indices=data.Bytes.data()+std::uint64_t(vertex)*data.VertexStride+data.BoneIndicesOffset;
+        const auto* weights=data.Bytes.data()+std::uint64_t(vertex)*data.VertexStride+data.BoneWeightsOffset;
+        double total=0;
+        for(std::size_t influence=0;influence<4;++influence) {
+            const auto bone=Read32(indices+influence*4);
+            const float weight=std::bit_cast<float>(Read32(weights+influence*4));
+            if(!std::isfinite(weight) || weight<0 || weight>1 ||
+               (!data.Bones.empty() && bone>=data.Bones.size()) ||
+               (data.Bones.empty() && (bone!=0 || weight!=0))) {
+                error="Invalid prepared mesh bone index or weight";return false;
+            }
+            total+=weight;
+        }
+        if(!data.Bones.empty() && std::fabs(total-1.0)>0.001) {
+            error="Prepared skin weights must be normalized and bind every vertex";return false;
+        }
     }
     for (std::uint32_t index=0;index<data.IndexCount;++index) {
         const auto* bytes=data.Bytes.data()+data.IndexOffset+std::uint64_t(index)*4;
@@ -84,6 +109,15 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
                 for(std::uint32_t vertex=0;vertex<entry.Data.VertexCount;++vertex) {
                     const auto* bytes=entry.Data.Bytes.data()+std::uint64_t(vertex)*entry.Data.VertexStride+entry.Data.PositionOffset;
                     entry.Positions.push_back({std::bit_cast<float>(Read32(bytes)),std::bit_cast<float>(Read32(bytes+4)),std::bit_cast<float>(Read32(bytes+8))});
+                    if(!entry.Data.Bones.empty()) {
+                        MeshGPU::SkinVertex skin;
+                        const auto* source=entry.Data.Bytes.data()+std::uint64_t(vertex)*entry.Data.VertexStride;
+                        for(std::size_t influence=0;influence<4;++influence) {
+                            skin.Bones[influence]=Read32(source+entry.Data.BoneIndicesOffset+influence*4);
+                            skin.Weights[influence]=std::bit_cast<float>(Read32(source+entry.Data.BoneWeightsOffset+influence*4));
+                        }
+                        entry.Skin.push_back(skin);
+                    }
                 }
                 entry.Indices.reserve(entry.Data.IndexCount);
                 for(std::uint32_t index=0;index<entry.Data.IndexCount;++index)
@@ -96,7 +130,7 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
         } catch(const std::exception& exception) {entry.Error=exception.what();}
         catch(...) {entry.Error="Resource provider threw while loading mesh";}
         std::vector<std::uint8_t>().swap(entry.Data.Bytes);
-        if(!entry.Buffer) {entry.Positions.clear();entry.Indices.clear();}
+        if(!entry.Buffer) {entry.Positions.clear();entry.Skin.clear();entry.Indices.clear();}
     }
     if(!entry.Buffer) {Diagnostic("Mesh "+reference.Guid+"_"+std::to_string(reference.LocalID)+": "+entry.Error);return nullptr;}
     return &entry;

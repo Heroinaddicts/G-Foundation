@@ -21,6 +21,8 @@
 namespace GRHI { class IDevice; }
 
 namespace GameSproutRuntime {
+    struct AnimationNotification;
+    struct RootMotionNotification;
     class IRuntimeRenderer;
     class IRuntimeResourceProvider;
     class IObject {
@@ -146,6 +148,7 @@ namespace GameSproutRuntime {
         virtual bool SetLocalRotation(Quaternion rotation) = 0;
         virtual Vector3 GetLocalScale() const = 0; // 默认 (1,1,1)，零缩放可能造成不可逆。
         virtual void SetLocalScale(Vector3 scale) = 0;
+        virtual bool IsAnimationDriven() const { return false; }
         virtual Mat4 GetLocalMatrix() const = 0; // T * R * S。
         virtual Mat4 GetWorldMatrix() const = 0; // ParentWorld * Local。
     protected:
@@ -252,10 +255,16 @@ namespace GameSproutRuntime {
         std::string ComponentType;
         std::string Error;
     };
+    struct AnimatorIKNotification;
     class IRuntimeListener {
     public:
         virtual ~IRuntimeListener() = default;
+        virtual void OnAnimatorIK(const AnimatorIKNotification&) {}
         virtual void OnSceneNodeEvent(const SceneNodeEvent& event) = 0;
+        // Host-thread, end-of-Update delivery. Unregister before destroying the listener.
+        virtual void OnAnimationEvent(const AnimationNotification&) {}
+        // Return true to take over movement (e.g. GPhysics); builtin ApplyToObject then does not apply it.
+        virtual bool OnRootMotion(const RootMotionNotification&) { return false; }
     };
 
     class IGameSproutRuntime {
@@ -275,11 +284,18 @@ namespace GameSproutRuntime {
         virtual void UnregisterListener(IRuntimeListener* listener) = 0;
         // Update、Render、节点/组件遍历及事件回调内部返回 true；此时禁止同步加载场景。
         virtual bool IsExecuting() const = 0;
+        // Borrowed prepared resource service; set before creating/loading animation instances.
+        // The service must outlive this Runtime or be detached before it is destroyed.
+        virtual void SetResourceProvider(IRuntimeResourceProvider*) {}
+        virtual IRuntimeResourceProvider* GetResourceProvider() const { return nullptr; }
+        virtual IGameObject* InstantiateModel(IScene*, const ResourceReference&, IGameObject*, std::string& error) { error="Model instantiation is unavailable";return nullptr; }
         virtual void Update(float deltaSeconds) = 0; // 有限且非负，单位秒。
         // 旧的无 View 帧入口不猜测窗口或游戏主相机。3D 绘制使用 CreateRenderer + RenderView。
         virtual void Render() = 0;
     };
 
 }
+
+#include "RuntimeAnimationApi.h"
 
 #endif //__GameSproutRuntimeApi_h__

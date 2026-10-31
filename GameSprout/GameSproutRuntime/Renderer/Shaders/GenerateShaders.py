@@ -24,7 +24,9 @@ def main():
         root = pathlib.Path(directory)
         for entry, stage in [("MeshVertex", "vertex"), ("MeshNoUVVertex", "vertex"),
                              ("MeshNoColorVertex", "vertex"), ("MeshNoUVNoColorVertex", "vertex"),
-                             ("MeshFragment", "fragment"), ("GridVertex", "vertex"), ("GridFragment", "fragment")]:
+                             ("MeshFragment", "fragment"), ("GridVertex", "vertex"), ("GridFragment", "fragment"),
+                             ("SkinnedMeshVertex", "vertex"), ("SkinnedMeshNoUVVertex", "vertex"),
+                             ("SkinnedMeshNoColorVertex", "vertex"), ("SkinnedMeshNoUVNoColorVertex", "vertex")]:
             spirv = root / (entry + ".spv")
             run([options.shadercross, source, "-s", "HLSL", "-d", "SPIRV", "-t", stage, "-e", entry, "-o", spirv])
             reflection = root / (entry + ".json")

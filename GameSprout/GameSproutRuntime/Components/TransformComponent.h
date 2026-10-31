@@ -11,14 +11,20 @@ public:
     bool SetLocalRotation(Quaternion value) override;
     Vector3 GetLocalScale() const override { return _Scale; }
     void SetLocalScale(Vector3 value) override;
+    bool IsAnimationDriven() const override {return _PoseOwner!=0;}
     Mat4 GetLocalMatrix() const override;
     Mat4 GetWorldMatrix() const override;
     bool SetLocalMatrix(const Mat4& value);
+    // Evaluation changes the displayed pose, never the serialized authoring TRS.
+    bool SetEvaluatedPose(std::uint64_t animatorID, const Mat4& matrix);
+    void ClearEvaluatedPose(std::uint64_t animatorID);
 
 private:
     bool IsSceneRoot() const;
     Vector3 _Position;
     Quaternion _Rotation;
     Vector3 _Scale{1.0f, 1.0f, 1.0f};
+    std::uint64_t _PoseOwner = 0;
+    Mat4 _EvaluatedMatrix;
 };
 }

@@ -23,7 +23,7 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
 bool Runtime::RegisterListener(IRuntimeListener* listener) {
     if(!listener || _ShuttingDown || _NextListener==std::numeric_limits<std::uint64_t>::max()) return false;
     for(const auto& entry:_Listeners) if(entry.second.Pointer==listener) return false;
-    _Listeners.emplace(++_NextListener,Listener{listener,_EventSequence});
+    _Listeners.emplace(++_NextListener,Listener{listener,_EventSequence,_AnimationSequence});
     return true;
 }
 void Runtime::UnregisterListener(IRuntimeListener* listener) {

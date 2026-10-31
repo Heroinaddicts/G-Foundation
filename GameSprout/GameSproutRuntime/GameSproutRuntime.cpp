@@ -114,6 +114,7 @@ void Runtime::Update(float deltaSeconds) {
                 }
             }
         }
+        DispatchAnimationEvents();
         DispatchEvents();
     } catch (...) { _Updating=false;throw; }
     _Updating=false;

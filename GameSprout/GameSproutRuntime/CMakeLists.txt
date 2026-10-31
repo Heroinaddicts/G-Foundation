@@ -41,6 +41,9 @@ target_compile_definitions(GameSproutRuntime PRIVATE GAMESPROUT_RUNTIME_EXPORTS)
 
 get_filename_component(gamesprout_runtime_output_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/../../Bin" ABSOLUTE)
+set(GAMESPROUT_RUNTIME_OUTPUT_DIRECTORY "${gamesprout_runtime_output_directory}" CACHE PATH
+    "Runtime binary output directory; isolated verification builds may override this path")
+set(gamesprout_runtime_output_directory "${GAMESPROUT_RUNTIME_OUTPUT_DIRECTORY}")
 # The generator expression prevents Xcode and other multi-config generators
 # from adding Debug/Release directories below Bin.
 set(gamesprout_runtime_output "$<1:${gamesprout_runtime_output_directory}>")

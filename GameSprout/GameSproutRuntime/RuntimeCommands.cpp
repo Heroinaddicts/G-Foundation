@@ -80,6 +80,7 @@ void Runtime::DestroyNow(GameObjectState& state) {
         IGameObject* object=current->Object;
         current->SceneOwner->ClearMainCameraForNode(current->ID);
         current->Destroying=true;
+        ForgetObjectAnimationBindings(current->ID);
         Notify(*current,SceneNodeEventType::Destroy);
         current->ReleaseComponents();
         if(parent) std::erase(parent->Children,current);

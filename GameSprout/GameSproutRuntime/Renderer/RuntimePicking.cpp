@@ -54,6 +54,8 @@ bool Renderer::Raycast(IScene* scene,const Ray& worldRay,SceneRaycastHit& hit,st
             const Mat4 model=object->GetTransform()->GetWorldMatrix();Mat4 inverse;
             if(!RuntimeMath::IsFinite(model) || !RuntimeMath::TryInverseAffine(model,inverse)) continue;
             auto* mesh=Mesh(component->GetMesh());if(!mesh) continue;
+            std::vector<Vector3> positions;
+            if(!PosedPositions(*object,*mesh,positions)) continue;
             const auto localOrigin=PickingMath::Transform(inverse,origin,1);
             // 不再次归一化：相交参数t继续以世界射线单位计量，非均匀缩放下仍可直接比较远近。
             const auto localDirection=PickingMath::Transform(inverse,worldDirection,0);
@@ -69,7 +71,7 @@ bool Renderer::Raycast(IScene* scene,const Ray& worldRay,SceneRaycastHit& hit,st
                 if(mesh->Data.UVOffset>=0 && !material.BaseColorTexture.Guid.empty() && !Texture(material.BaseColorTexture)) continue;
                 for(std::uint32_t offset=0;offset<section.IndexCount;offset+=3) {
                     const auto first=section.FirstIndex+offset;
-                    const PickingMath::Vector a(mesh->Positions[mesh->Indices[first]]),b(mesh->Positions[mesh->Indices[first+1]]),c(mesh->Positions[mesh->Indices[first+2]]);
+                    const PickingMath::Vector a(positions[mesh->Indices[first]]),b(positions[mesh->Indices[first+1]]),c(positions[mesh->Indices[first+2]]);
                     double distance=0;
                     if(!PickingMath::Intersect(localOrigin,localDirection,a,b,c,distance)||distance>=nearest) continue;
                     const auto worldA=PickingMath::Transform(model,a,1),worldB=PickingMath::Transform(model,b,1),worldC=PickingMath::Transform(model,c,1);

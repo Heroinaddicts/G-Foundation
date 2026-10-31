@@ -1,5 +1,6 @@
 #pragma once
 #include "Api/GameSproutRuntimeApi.h"
+#include "Animation/AnimationResources.h"
 #include <deque>
 #include <map>
 #include <typeindex>
@@ -8,6 +9,7 @@
 namespace GameSproutRuntime {
 class GameObjectState;
 class Scene;
+class AnimatorComponent;
 
 class Runtime final : public IGameSproutRuntime {
 public:
@@ -26,6 +28,15 @@ public:
     bool IsExecuting() const override { return _Depth != 0 || _Updating || _Flushing; }
     void Update(float deltaSeconds) override;
     void Render() override;
+    void SetResourceProvider(IRuntimeResourceProvider*) override;
+    IRuntimeResourceProvider* GetResourceProvider() const override {return _AnimationResources.GetProvider();}
+    IGameObject* InstantiateModel(IScene*,const ResourceReference&,IGameObject*,std::string&) override;
+    AnimationResources& GetAnimationResources() {return _AnimationResources;}
+    void ForgetObjectAnimationBindings(std::uint64_t objectID);
+    void ForgetAnimatorReferences(std::uint64_t objectID);
+    bool DispatchAnimatorIK(AnimatorComponent&,std::uint32_t);
+    bool QueueAnimation(AnimatorComponent&,const AnimationNotification&);
+    bool QueueRootMotion(AnimatorComponent&,const RootMotionNotification&);
 
     GameObjectState* Find(IGameObject* object) const;
     GameObjectState* Find(std::uint64_t id) const;
@@ -50,7 +61,13 @@ private:
         std::uint64_t Serial = 0;
     };
     struct EventRecord { std::uint64_t Sequence; SceneNodeEvent Event; };
-    struct Listener { IRuntimeListener* Pointer; std::uint64_t AfterSequence; };
+    struct Listener { IRuntimeListener* Pointer; std::uint64_t AfterSequence; std::uint64_t AfterAnimationSequence=0; };
+    struct AnimationRecord {
+        std::uint64_t Sequence=0,ObjectID=0,Serial=0,Version=0;
+        bool Motion=false;
+        AnimationNotification Event;
+        RootMotionNotification RootMotion;
+    };
     std::uint64_t NextID();
     bool RegisterNode(GameObjectState& state);
     bool ReparentNow(GameObjectState& child, GameObjectState& parent, bool keepWorld);
@@ -58,6 +75,9 @@ private:
     void DestroyNow(GameObjectState& state);
     void FlushCommands() noexcept;
     void DispatchEvents();
+    void DispatchAnimationEvents();
+    AnimatorComponent* ResolveAnimation(const AnimationRecord&) const;
+    bool QueueAnimationRecord(AnimatorComponent&,AnimationRecord);
     void RenderWorld();
     void RenderUI();
     std::vector<Scene*> _Scenes;
@@ -65,6 +85,8 @@ private:
     std::map<IGameObject*,GameObjectState*> _ByPointer;
     std::deque<Command> _Commands;
     std::deque<EventRecord> _Events;
+    std::deque<AnimationRecord> _AnimationEvents;
+    std::uint64_t _AnimationSequence=0;
     std::map<std::uint64_t,Listener> _Listeners;
     std::uint64_t _NextID = 0;
     std::uint64_t _EventSequence = 0;
@@ -73,6 +95,7 @@ private:
     bool _Flushing = false;
     bool _Updating = false;
     bool _ShuttingDown = false;
+    AnimationResources _AnimationResources;
 };
 
 // 所有回调与树/组件遍历共用一个屏障。退出最外层后再执行结构命令。

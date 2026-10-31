@@ -4,9 +4,11 @@
 
 namespace GameSproutRuntime {
 bool Renderer::Initialize() {
-    static_assert(sizeof(DrawUniform)==208,"Shader draw uniform must match std140 layout");
+    static_assert(sizeof(DrawUniform)==224,"Shader draw uniform must match std140 layout");
+    static_assert(sizeof(SkinUniform)==8192,"Shader skin uniform must match 128 column-major matrices");
     const PreviewShader kinds[]={PreviewShader::MeshVertex,PreviewShader::MeshNoUVVertex,PreviewShader::MeshNoColorVertex,
-        PreviewShader::MeshNoUVNoColorVertex,PreviewShader::MeshFragment,PreviewShader::GridVertex,PreviewShader::GridFragment};
+        PreviewShader::MeshNoUVNoColorVertex,PreviewShader::MeshFragment,PreviewShader::GridVertex,PreviewShader::GridFragment,
+        PreviewShader::SkinnedMeshVertex,PreviewShader::SkinnedMeshNoUVVertex,PreviewShader::SkinnedMeshNoColorVertex,PreviewShader::SkinnedMeshNoUVNoColorVertex};
     for(std::size_t index=0;index<7;++index) if(!_Shaders[index]) {
         _Shaders[index]=CreatePreviewShader(_Device,kinds[index]);
         if(!_Shaders[index]) return Fail(DeviceError("Create embedded Runtime preview shader"));
@@ -46,7 +48,7 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
     const auto found=_Pipelines.find(key);
     if(found!=_Pipelines.end()) return found->second;
     GRHI::VertexBindingDesc binding;binding.Binding=0;binding.Stride=key.Grid?28:key.Stride;
-    GRHI::VertexAttributeDesc attributes[4];
+    GRHI::VertexAttributeDesc attributes[6];
     attributes[0]={0,0,GRHI::VertexFormat::Float3,key.Grid?0:key.Position};
     std::size_t count=1;
     if(key.Grid) attributes[count++]={1,0,GRHI::VertexFormat::Float4,12};
@@ -54,8 +56,17 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
         attributes[count++]={1,0,GRHI::VertexFormat::Float3,key.Normal};
         if(key.Color>=0) attributes[count++]={2,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.Color)};
         if(key.UV>=0) attributes[count++]={3,0,GRHI::VertexFormat::Float2,static_cast<std::uint32_t>(key.UV)};
+        if(key.BoneIndices>=0) {
+            attributes[count++]={4,0,GRHI::VertexFormat::UInt32x4,static_cast<std::uint32_t>(key.BoneIndices)};
+            attributes[count++]={5,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.BoneWeights)};
+        }
     }
-    const std::size_t shader=key.Grid?5:key.Color<0?(key.UV<0?3:2):(key.UV<0?1:0);
+    const std::size_t variant=key.Color<0?(key.UV<0?3:2):(key.UV<0?1:0);
+    const std::size_t shader=key.Grid?5:variant+(key.BoneIndices>=0?7:0);
+    if(!_Shaders[shader]) {
+        _Shaders[shader]=CreatePreviewShader(_Device,static_cast<PreviewShader>(shader));
+        if(!_Shaders[shader]) {Fail(DeviceError("Create Runtime skinned vertex shader"));return nullptr;}
+    }
     GRHI::GraphicsPipelineDesc description;
     description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[key.Grid?6:4];
     description.ColorFormat=key.Format;description.Primitive=key.Grid&&!key.DebugTriangles?GRHI::PrimitiveType::LineList:GRHI::PrimitiveType::TriangleList;
