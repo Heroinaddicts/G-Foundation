@@ -1,6 +1,7 @@
 #pragma once
 #include <QContextMenuEvent>
 #include <QCheckBox>
+#include <QScrollArea>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 
@@ -12,12 +13,12 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump) {
     auto* scene=scenes->GetActiveScene();
     const auto sceneID=scene->GetInstanceID();
-    auto* lock=inspectorDock->findChild<QToolButton*>("lockButton");
+    auto* lock=inspectorDock->findChild<QToolButton*>("objectLockButton");
     Check(lock,"Inspector lock control missing");
     const auto inspectedID=[&]() -> std::uint64_t {
         QWidget* form=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
         if(!form||!form->isVisible())return 0;
-        QLineEdit* field=form->findChild<QLineEdit*>("objectInstanceIDEdit");
+        QLineEdit* field=inspectorDock->findChild<QLineEdit*>("localIDEdit");
         return field?field->text().toULongLong():0;
     };
     const auto property=[&](const std::string& component,const QString& key) {
@@ -37,6 +38,11 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
         Check(selection->GetSceneObjectSelection()==SceneObjectSelection{sceneID,id}&&selection->GetAssetSelection().empty(),"Hierarchy did not publish exclusive scene identity");
         selection->SetAssetSelection({});
         Check(selection->GetSceneObjectSelection().ObjectID==id,"Empty asset setter cleared node domain");
+        Check(!inspectorDock->findChild<QWidget*>("assetHeader")->isVisible()
+            && !inspectorDock->findChild<QWidget*>("diagnosticsHost")->isVisible(),
+            "Normal node Inspector retained duplicate header or diagnostic rows");
+        Check(!inspectorDock->findChild<QLineEdit*>("objectInstanceIDEdit")
+            && !inspectorDock->findChild<QLineEdit*>("parentNameEdit"),"Removed object diagnostic controls still exist");
     };
     const auto showMenu=[&](std::uint64_t target,bool keyboard) {
         QModelIndex index=target?NodeIndex(hierarchyTree->model(),target):QModelIndex{};
@@ -88,9 +94,9 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     const auto checkDetails=[&](GameSproutRuntime::IGameObject* object,const Preset& preset) {
         Check(object->GetName()==preset.Name&&object->GetComponentCount()==1+preset.Components.size(),"Created preset name/components incorrect");
         QLineEdit* name=inspectorDock->findChild<QLineEdit*>("objectNameEdit");
-        QLineEdit* owner=inspectorDock->findChild<QLineEdit*>("sceneInstanceIDEdit");
-        QLineEdit* parent=inspectorDock->findChild<QLineEdit*>("parentNameEdit");
-        Check(name&&owner&&parent&&!name->isReadOnly()&&owner->isReadOnly()&&parent->isReadOnly()&&name->text()==preset.Name&&owner->text().toULongLong()==sceneID&&parent->text().contains(QString::fromStdString(object->Parent()->GetName())),"Inspector node ownership/name details incorrect");
+        QLineEdit* owner=inspectorDock->findChild<QLineEdit*>("guidEdit");
+        Check(name&&owner&&!name->isReadOnly()&&name->text()==preset.Name&&owner->text().toULongLong()==sceneID,
+            "Compact Inspector name or internal scene binding incorrect");
         std::vector<std::string> types=preset.Components;types.insert(types.begin(),"Transform");
         for(const std::string& type:types)for(const QString& field:fields.at(type))Check(!property(type,field).isNull(),"Component property value missing");
         Check(!inspector->HasPendingChanges(),"Readonly node inspector reported asset draft");
@@ -123,8 +129,8 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     auto* inherited=parent->GetChild(0);selectNode(inherited->GetInstanceID());
     Check(!inherited->IsActiveInHierarchy()&&!NodeIndex(hierarchyTree->model(),inherited->GetInstanceID()).data(Qt::UserRole+2).toBool(),"Inactive parent did not propagate");
     auto* activeSelf=inspectorDock->findChild<QCheckBox*>("objectActiveCheck");
-    auto* activeHierarchy=inspectorDock->findChild<QLineEdit*>("hierarchyActiveEdit");
-    Check(activeSelf&&activeHierarchy&&activeSelf->isChecked()&&activeHierarchy->text()==QStringLiteral("否"),"Inspector did not distinguish local and inherited active state");
+    Check(activeSelf&&activeSelf->isChecked()&&!inspectorDock->findChild<QLineEdit*>("hierarchyActiveEdit"),
+        "Compact Inspector lost local active state or retained a derived-state row");
     const QString previousWorldRow=property("Transform","WorldMatrix.Row0");
     parent->GetTransform()->SetLocalPosition({5,6,7});
     pump([&]{return property("Transform","WorldMatrix.Row0")!=previousWorldRow;});
@@ -157,6 +163,15 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
 
     // 场景根也是合法检查目标，节点和资产选择在两侧刷新后保持互斥。
     selectNode(sceneID);Check(NodeIndex(hierarchyTree->model(),sceneID).data(Qt::UserRole+3).toBool(),"Scene root identity missing");
+    Check(!activeSelf->isVisible(),"Scene root displayed a GameObject active switch");
+    QWidget* rootForm=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
+    Check(rootForm->findChild<QWidget*>("objectHeader")->height()<=50
+        && rootForm->findChild<QScrollArea*>("componentScroll")->y()<70,
+        "Scene root header still consumes space reserved for component properties");
+    if(auto* transform=rootForm->findChild<QWidget*>("GameObjectComponentSection.GameSproutRuntime.Transform"))
+        Check(!transform->isVisible(),"Scene root displayed its fixed internal Transform in Normal mode");
+    Check(!rootForm->findChild<QScrollArea*>("componentScroll")->isVisible(),"Scene root retained an empty component scrollbar");
+    Check(inspectorDock->grab().save("/tmp/gamesprout-scene-root-inspector.png"),"Cannot capture compact Scene root Inspector");
     Check(projectView->NavigateToDirectory(""),"Cannot navigate project root for selection test");tick();
     const auto chooseAsset=[&] {
         const QModelIndex index=FindRow(assetTree,"Sample.png");Check(index.isValid(),"Selection fixture missing");
@@ -203,6 +218,18 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     Check(scene->DestroyGameObject(scenes->GetRuntime()->QueryGameObject(roots[1])),"Cannot delete selected node");
     pump([&]{return selection->GetSceneObjectSelection()==SceneObjectSelection{}&&inspectedID()==0&&hierarchy->GetSelectedObjectID()==0;});
     selectNode(roots[2]);
+    QAction* normalMode=nullptr;QAction* debugMode=nullptr;
+    for (QMenu* menu:inspectorDock->findChildren<QMenu*>()) for (QAction* action:menu->actions()) {
+        if(action->text()==QStringLiteral("普通模式"))normalMode=action;
+        if(action->text()==QStringLiteral("调试模式"))debugMode=action;
+    }
+    Check(normalMode&&debugMode&&debugMode->isEnabled()&&!normalMode->isEnabled(),"Inspector mode menu missing or wrong default");
+    debugMode->trigger();QCoreApplication::processEvents();
+    Check(inspectorDock->findChild<QWidget*>("diagnosticsHost")->isVisible(),"Debug mode did not expose object identity");
+    normalMode->trigger();QCoreApplication::processEvents();
+    Check(!inspectorDock->findChild<QWidget*>("diagnosticsHost")->isVisible(),"Normal mode retained debug identity");
+    for(QToolButton* details:inspectorDock->findChildren<QToolButton*>("detailsButton"))
+        Check(!details->isVisible(),"Normal component Inspector retained a diagnostic row");
     hierarchyDock->setFloating(true);hierarchyDock->resize(360,850);hierarchyDock->show();
     inspectorDock->setFloating(true);inspectorDock->resize(620,1050);inspectorDock->show();QCoreApplication::processEvents();
     QWidget* transformSection=inspectorDock->findChild<QWidget*>("GameObjectComponentSection.GameSproutRuntime.Transform");

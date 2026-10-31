@@ -22,6 +22,9 @@ public:
     IAssetMeta* QueryAsset(const Guid&) const override{return nullptr;}
     bool ReimportAsset(const Guid&) override{return false;}
     bool ApplyImportSettings(const Guid&,const std::string&,const std::string&,std::string&) override{return false;}
+    bool LoadMaterialSource(const Guid&, std::string&, std::string&) const override { return false; }
+    bool SaveMaterialSource(const Guid&, const std::string&, const std::string&, std::string&) override { return false; }
+    bool ExtractMaterial(const Guid&, uint64_t, const std::string&, std::string&, std::string&) override { return false; }
     std::vector<IAssetMeta*> GetAssetMetas() const override{return {};}
     std::vector<IAssetMeta*> GetAssetsInDirectory(const std::string&) const override{return {};}
     bool RegisterAssetListener(IAssetListener*) override{return true;}

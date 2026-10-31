@@ -1,9 +1,11 @@
 #pragma once
 #include "GRHIExport.h"
+#include "MaterialSchemaChecks.h"
 
 inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     const std::function<AssetImportResult(TestMeta &,bool)> & import) {
     std::string error;
+    CheckMaterialSchemas();
     Check(root.mkpath("Assets/Shaders/Includes"),"Cannot create shader fixtures");
     const auto write=[&](const QString & path,const QByteArray & bytes) {Check(AssetArtifactIO::Write(root.filePath("Assets/"+path),bytes,error),error);};
     const auto persist=[&](const TestMeta & meta) {std::string json;Check(meta.SerializeMeta(json),"Cannot serialize shader Meta");write(QString::fromStdString(meta.Path)+".meta",QByteArray::fromStdString(json));};
@@ -32,12 +34,31 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     Check(!failed.Success&&failed.Error.find("Shaders/Test.shader")!=std::string::npos&&library->GetManifest(shader._Guid,retained)&&retained.Generation==debug.Manifest.Generation,"Shader diagnostics or failure preservation invalid");
     write("Shaders/Test.shader",vertex);
 
-    write("Shaders/Sample.frag.shader","Texture2D<float4> tex : register(t0,space2);\nSamplerState samp : register(s0,space2);\ncbuffer Params : register(b0,space3) { float4 tint; };\nfloat4 main(float2 uv : TEXCOORD0) : SV_Target0 { return tex.Sample(samp,uv)*tint; }\n");
+    write("Shaders/Sample.frag.shader",R"schema(/* GameSproutMaterial {"Name":"Custom Lit","Properties":[
+        {"Name":"tint","DisplayName":"颜色","Type":"Color","Default":[1,1,1,1]},
+        {"Name":"tex","DisplayName":"基础贴图","Type":"Texture","Default":null}
+    ]} */
+    Texture2D<float4> tex : register(t0,space2);
+    SamplerState samp : register(s0,space2);
+    cbuffer Params : register(b0,space3) { float4 tint; };
+    float4 main(float2 uv : TEXCOORD0) : SV_Target0 { return tex.Sample(samp,uv)*tint; }
+    )schema");
     TestMeta fragment(eAssetImporterType::Shader,Guid(61,62,63,64),"Shaders/Sample.frag.shader");fragment.Settings["Stage"]="Fragment";
     auto fs=import(fragment,false);Check(fs.Success,"HLSL fragment compilation failed: "+fs.Error);persist(fragment);
     const auto fsInfo=ReadArtifact(library->QueryAsset(fragment._Guid,fs.Manifest.Assets[0].LocalID));
     Check(fsInfo["Resources"]["SamplerCount"].asUInt()==1&&fsInfo["Resources"]["UniformBufferCount"].asUInt()==1,"SDL shader counts invalid");
     Check(fsInfo["Reflection"]["ubos"][0]["block_size"].asUInt()==16,"Uniform byte layout missing");
+    Check(fsInfo["Material"]["Name"]=="Custom Lit" && fsInfo["Material"]["Properties"].size()==2,
+        "Shader artifact omitted authoring material properties");
+    Json::Value material,materialSchema;
+    material["Version"]=1;material["Shader"]["Guid"]=fragment._Guid.GetGuidString();
+    material["Shader"]["LocalID"]=Json::UInt64(fs.Manifest.Assets[0].LocalID);
+    Check(MaterialDefinition::ResolveSchema(library,material,materialSchema,error)
+        && MaterialDefinition::NormalizeValues(materialSchema,material,error)
+        && material["tint"].isArray() && material["tint"].size()==4
+        && material["tint"][0].asDouble()==1 && material["tint"][1].asDouble()==1
+        && material["tint"][2].asDouble()==1 && material["tint"][3].asDouble()==1,
+        "Cannot resolve material properties from the compiled Shader: "+error);
     write("Shaders/Work.compute.shader","RWStructuredBuffer<float4> result : register(u0,space1);\ncbuffer Params : register(b0,space2) {float4 color;};\n[numthreads(8,4,1)] void main(uint3 id : SV_DispatchThreadID) {result[id.x]=color;}\n");
     TestMeta compute(eAssetImporterType::Shader,Guid(65,66,67,68),"Shaders/Work.compute.shader");
     compute.Settings["Stage"]="Compute";

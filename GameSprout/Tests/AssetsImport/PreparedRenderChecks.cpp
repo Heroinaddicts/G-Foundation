@@ -1,5 +1,6 @@
+#include "RuntimeRenderApi.h"
 #include "AssetTestSupport.h"
-#include "../../View/SceneViewUI/EditorRuntimeResources.h"
+#include "../../Module/RuntimeAssets/LibraryRuntimeResources.h"
 #include "GameSproutRuntimeExport.h"
 #include "GRHIExport.h"
 
@@ -22,7 +23,7 @@ int main(int argc, char** argv) {
     GRHI::ITexture* target = nullptr;
     GameSproutRuntime::IGameSproutRuntime* runtime = nullptr;
     GameSproutRuntime::IRuntimeRenderer* renderer = nullptr;
-    EditorRuntimeResources* resources = nullptr;
+    LibraryRuntimeResources* resources = nullptr;
     TestProject project; TestConsole console; TestIDE ide; TestEditor editor;
     FoundationProxy foundation;
     GameSproutEditor::GameSproutModuleApi* api = nullptr;
@@ -86,7 +87,7 @@ int main(int argc, char** argv) {
         Check(AssetArtifactIO::Write(root.filePath("Assets/Green.mat"),QByteArray::fromStdString(AssetArtifactIO::JsonText(material)),error),error);
         pump([&]{return manager->GetAssetMetas().size()==3&&idle();});
         const auto materialReference=FindResource(library,manager,"Green.mat",eAssetType::Material);
-        resources=new EditorRuntimeResources(manager,library);
+        resources=new LibraryRuntimeResources(manager,library);
         GameSproutRuntime::MeshRenderData meshData;
         GameSproutRuntime::TextureRenderData textureData;
         GameSproutRuntime::MaterialRenderData materialData;
@@ -129,10 +130,32 @@ int main(int argc, char** argv) {
         QImage preview(pixels.data(),192,192,QImage::Format_RGBA8888);
         preview.save("/tmp/gamesprout-prepared-render.png");
         const std::uint64_t revision=resources->GetRevision();
+        // 两个色块让 Tiling/Offset 的变化产生可验证的真实 GPU 像素差异。
+        for (int y=0;y<image.height();++y) for (int x=4;x<image.width();++x)
+            image.setPixelColor(x,y,QColor(230,30,25));
+        Check(image.save(root.filePath("Assets/Color.png")),"Cannot update texture fixture");
         Check(manager->ReimportAsset(Guid(texture.Guid)),"Cannot reimport texture");
         pump([&]{return idle()&&resources->GetRevision()>revision;});
+        std::string materialSource;
+        Check(manager->LoadMaterialSource(Guid(materialReference.Guid),materialSource,error),error);
+        Json::Value materialDocument;
+        Check(AssetArtifactIO::Parse(materialSource,materialDocument),"Cannot parse material source");
+        materialDocument["BaseColorTextureST"]=Json::Value(Json::arrayValue);
+        for(double value:{0.0,0.0,0.25,0.5}) materialDocument["BaseColorTextureST"].append(value);
+        Check(manager->SaveMaterialSource(Guid(materialReference.Guid),AssetArtifactIO::JsonText(materialDocument),materialSource,error),error);
+        pump(idle);
         Check(renderer->Render(view),"Renderer did not recover from import revision: "+renderer->GetLastError());
-        std::cout<<"PASS imported OBJ/PNG/material -> ArtifactDB provider -> Runtime -> GRHI GPU pixels, corrupt artifact rejection, reimport cache refresh\n";
+        Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(pixels[center+1]>pixels[center]*2,"Material UV offset did not sample the green region");
+        Check(manager->LoadMaterialSource(Guid(materialReference.Guid),materialSource,error),error);
+        materialDocument["BaseColorTextureST"][2]=0.75;
+        Check(manager->SaveMaterialSource(Guid(materialReference.Guid),AssetArtifactIO::JsonText(materialDocument),materialSource,error),error);
+        pump(idle);
+        Check(renderer->Render(view),renderer->GetLastError());
+        Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(pixels[center]>pixels[center+1]*2 && pixels[center]>pixels[center+2]*2,
+            "Saved UV offset was not passed to the GPU Shader");
+        std::cout<<"PASS imported resources -> Runtime -> GRHI GPU pixels, material save/UV transform and reimport cache refresh\n";
         cleanup();return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<"\n";cleanup();return 1;}
 }

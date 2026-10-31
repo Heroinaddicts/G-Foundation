@@ -1,5 +1,6 @@
 #include "../../Module/Shared/AssetArtifactIO.h"
 #include "../../Module/Shared/AssetValueBinary.h"
+#include "../../Module/AssetsManager/AssetSourceRecord.h"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -35,6 +36,7 @@ int main() {
 
         AssetImportManifest manifest;
         manifest.GuidString=Guid(1,2,3,4).GetGuidString();manifest.SourcePath="Bear.png";manifest.Directory="Artifact";
+        manifest.Generation="current-generation";
         AssetArtifact asset{17,eAssetType::Texture,"Bear","main",manifest.GuidString+"_17.gsasset","hash"};
         asset.DataVersion=2;asset.DataSize=64;asset.DescriptorJson="{\"Encoding\":\"RawBytes\",\"Width\":4,\"Height\":4,\"Format\":\"RGBA8\"}";
         manifest.Assets.push_back(asset);
@@ -44,7 +46,38 @@ int main() {
         Check(restored.Assets[0].DataSize==64&&restored.Assets[0].DescriptorJson==AssetArtifactIO::JsonText(database["Assets"][0]["Descriptor"]),"Database lost data layout");
         auto invalid=database;invalid["Assets"][0]["Descriptor"]["Encoding"]="Unknown";
         Check(!AssetArtifactIO::FromJson(invalid,restored),"Unknown descriptor encoding accepted");
-        std::cout<<"PASS binary resource structure, bounds checks and database descriptors\n";
+        for (const char* field:{"Generation","TextureSearches","Diagnostics"}) {
+            invalid=database;invalid.removeMember(field);
+            Check(!AssetArtifactIO::FromJson(invalid,restored),"Incomplete published manifest accepted");
+        }
+        invalid=database;invalid["Generation"]="";
+        Check(!AssetArtifactIO::FromJson(invalid,restored),"Empty published Generation accepted");
+        invalid=database;invalid["Version"]=1;
+        Check(!AssetArtifactIO::FromJson(invalid,restored),"Removed manifest version accepted");
+        invalid=database;invalid["Assets"][0]["DataVersion"]=1;
+        Check(!AssetArtifactIO::FromJson(invalid,restored),"Removed artifact data version accepted");
+        invalid=database;invalid["Assets"][0]["Path"]="nested/Bear.gsasset";
+        Check(!AssetArtifactIO::FromJson(invalid,restored),"Noncurrent artifact path accepted");
+
+        AssetSourceRecord source;
+        source.GuidString=manifest.GuidString;source.Path="Bear.png";source.Importer=eAssetImporterType::Texture;
+        AssetSourceRecord sourceRead;
+        const auto sourceJson=source.ToJson();
+        Check(AssetSourceRecord::FromJson(sourceJson,sourceRead) && sourceRead.SourceSize==-1
+            && sourceRead.MetaJson.empty(),"Current pending source defaults rejected");
+        for (const char* field:{"SourceSize","SourceModifyTime","MetaModifyTime"}) {
+            invalid=sourceJson;invalid.removeMember(field);
+            Check(!AssetSourceRecord::FromJson(invalid,sourceRead),"Incomplete persisted source record accepted");
+        }
+        Json::Value meta;
+        meta["Version"]=1;meta["Guid"]=source.GuidString;meta["Path"]=source.Path;meta["ImporterType"]="Texture";
+        meta["ImportSettings"]=Json::Value(Json::objectValue);meta["SubAssets"]=Json::Value(Json::arrayValue);
+        invalid=sourceJson;invalid["MetaJson"]=AssetArtifactIO::JsonText(meta);
+        Check(AssetSourceRecord::FromJson(invalid,sourceRead),"Current source Meta snapshot rejected");
+        meta["AssetType"]="Texture";meta.removeMember("ImporterType");
+        invalid["MetaJson"]=AssetArtifactIO::JsonText(meta);
+        Check(!AssetSourceRecord::FromJson(invalid,sourceRead),"Old Meta snapshot accepted from database");
+        std::cout<<"PASS current binary/manifest/source formats, old-format rejection and pending defaults\n";
         return 0;
     } catch (const std::exception & error) { std::cerr<<"FAIL "<<error.what()<<"\n";return 1; }
 }

@@ -8,6 +8,7 @@
 #include "FoundationExport.h"
 #include "../../Module/Shared/AssetArtifactIO.h"
 #include "../../Module/Shared/AssetValueBinary.h"
+#include "../../Module/Shared/AssetMetaFormat.h"
 #include <QGuiApplication>
 #include <QImage>
 #include <QTemporaryDir>
@@ -61,10 +62,57 @@ public:
 class TestIDE final : public IIDEWindow {
 public:
     const std::thread::id Main=std::this_thread::get_id();
-    int Count=0,Loads=0,Unloads=0;
-    void Loading(const std::string &,const std::string &) override {Check(std::this_thread::get_id()==Main,"Loading on worker");++Count;++Loads;}
-    void Unloading() override {Check(std::this_thread::get_id()==Main && Count>0,"Invalid Unloading");--Count;++Unloads;}
+    int Count=0,Loads=0,Unloads=0,ResourceLoads=0;
+    struct ImportPlan {
+        uint64_t Total = 0, Completed = 0;
+        bool Ended = false, Abandoned = false;
+        std::string Path;
+    };
+    struct ImportUpdate { uint64_t Token, Completed; std::string Path; };
+    std::map<uint64_t, ImportPlan> ImportPlans;
+    std::vector<uint64_t> ImportBegins, ImportEnds;
+    std::vector<ImportUpdate> ImportUpdates;
+    uint64_t NextImportToken = 0;
+    int InvalidProgressOperations = 0, AbandonedImportPlans = 0;
+    void Loading(const std::string & title,const std::string &) override {Check(std::this_thread::get_id()==Main,"Loading on worker");++Count;++Loads;if(title=="资源导入")++ResourceLoads;}
+    void Unloading() override {
+        Check(std::this_thread::get_id()==Main && Count>0,"Invalid Unloading");--Count;++Unloads;
+        // Match the real IDE: no Loading owner means its progress tokens are invalidated.
+        if (Count == 0) for (auto & entry : ImportPlans) if (!entry.second.Ended && !entry.second.Abandoned) {
+            entry.second.Abandoned = true; ++AbandonedImportPlans;
+        }
+    }
     void SetLoadingInfo(const std::string &,const std::string &) override {}
+    uint64_t BeginImportProgress(uint64_t total, const std::string & path) override {
+        Check(std::this_thread::get_id() == Main, "Import plan on worker");
+        if (total == 0) return 0;
+        const uint64_t token = ++NextImportToken;
+        ImportPlans.emplace(token, ImportPlan{total, 0, false, false, path});
+        ImportBegins.push_back(token);
+        return token;
+    }
+    bool UpdateImportProgress(uint64_t token, uint64_t completed, const std::string & path) override {
+        Check(std::this_thread::get_id() == Main, "Import progress on worker");
+        const auto found = ImportPlans.find(token);
+        if (found == ImportPlans.end() || found->second.Ended || found->second.Abandoned
+            || completed < found->second.Completed || completed > found->second.Total) {
+            ++InvalidProgressOperations; return false;
+        }
+        found->second.Completed = completed; found->second.Path = path;
+        ImportUpdates.push_back({token, completed, path});
+        return true;
+    }
+    bool EndImportProgress(uint64_t token) override {
+        Check(std::this_thread::get_id() == Main, "Import completion on worker");
+        const auto found = ImportPlans.find(token);
+        if (found == ImportPlans.end() || found->second.Ended || found->second.Abandoned
+            || found->second.Completed != found->second.Total) {
+            ++InvalidProgressOperations; return false;
+        }
+        found->second.Ended = true;
+        ImportEnds.push_back(token);
+        return true;
+    }
     IIDEMenuBar * GetMenuBar() const override {return nullptr;}
     IIDEDocker * CreateDocker(const QString &) override {return nullptr;}
     IIDEDocker * QueryDocker(const QString &) override {return nullptr;}
@@ -161,9 +209,10 @@ public:
     const std::string & GetPath() const override {return Path;}
     IAssetImportSettings * GetImportSettings() const override {return const_cast<IAssetImportSettings *>(&Empty);}
     bool SerializeMeta(std::string & json) const override {
-        Json::Value value;value["Guid"]=_Guid.GetGuidString();value["Path"]=Path;value["ImportSettings"]=Settings;
-        if (_ImporterType==eAssetImporterType::Texture) value["ImporterType"]="Texture";
-        if (_ImporterType==eAssetImporterType::Model) value["ImporterType"]="Model";
+        const char* importer=AssetMetaFormat::ImporterTypeName(_ImporterType);
+        if (!importer) return false;
+        Json::Value value;value["Version"]=1;value["ImporterType"]=importer;
+        value["Guid"]=_Guid.GetGuidString();value["Path"]=Path;value["ImportSettings"]=Settings;
         AssetArtifactIO::Parse(Identities,value["SubAssets"]);json=AssetArtifactIO::JsonText(value);return true;
     }
     bool SetSubAssets(const std::string & json) override {Identities=json;return true;}

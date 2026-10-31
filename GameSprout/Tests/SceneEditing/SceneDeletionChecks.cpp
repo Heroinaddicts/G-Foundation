@@ -127,7 +127,7 @@ static void CheckViewsDeletion(SceneInteractionFixture& fixture) {
     auto* form=fixture.InspectorDock->findChild<QWidget*>("GameObjectInspectorForm");Check(!form||!form->isVisible(),"Inspector retained a destroyed component target");
     Check(scenes->Undo(error),error);fixture.Settle();auto* restoredParent=scene->FindChild("Delete subtree");auto* restored=restoredParent?restoredParent->FindChild("All components"):nullptr;Check(restored,"View deletion Undo lost subtree");
     CheckRestoredComponents(*restoredParent,*restored,*scene,true);fixture.Select(restored);Check(DeletionNodeIndex(nodes->model(),restored->GetInstanceID()).isValid(),"Restored node missing from Hierarchy");
-    auto* inspected=fixture.InspectorDock->findChild<QLineEdit*>("objectInstanceIDEdit");Check(inspected&&inspected->text().toULongLong()==restored->GetInstanceID(),"Inspector could not bind the recreated node");
+    auto* inspected=fixture.InspectorDock->findChild<QLineEdit*>("localIDEdit");Check(inspected&&inspected->text().toULongLong()==restored->GetInstanceID(),"Inspector could not bind the recreated node");
     fixture.Pump([&]{return fixture.Viewport->GetStatistics().VisibleObjects>0;});
     Check(scenes->Undo(error)&&scene->GetMainCamera()==cameraA,"Undo SetMainCamera after Undo Delete failed to resolve Camera A");
     Check(scenes->Redo(error)&&scene->GetMainCamera()==restored->GetComponent<GameSproutRuntime::ICameraComponent>(),"Redo SetMainCamera retained Camera B's destroyed Runtime ID");

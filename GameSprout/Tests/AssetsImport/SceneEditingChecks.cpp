@@ -193,6 +193,17 @@ int main(int argc,char** argv) {
             object->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetMaterial(0)==material,"Reload lost resource identities");
         Check(scenes->SaveScene(error),error);
         Check(ReadScene(root.filePath("Assets/Scenes/Editing.scene"))==first,"File IDs changed after reload/save");
+        // 两次原子保存可能合并为迟到的 watcher 通知；等最终文件版本完成校验再操作 UI。
+        pump([&] {
+            IAssetMeta* savedScene=MetaAt(assets,"Scenes/Editing.scene");
+            auto* pipeline=static_cast<IAssetsPipeline*>(editor.Modules["AssetsPipeline"]);
+            if(!savedScene || savedScene->GetImportState()!=eAssetImportState::Ready || !pipeline->CanReuseAsset(savedScene))return false;
+            for(IAssetMeta* meta:assets->GetAssetMetas())
+                if(meta->GetImportState()==eAssetImportState::Pending)return false;
+            for(QWidget* widget:QApplication::allWidgets())
+                if(widget->objectName()=="loadingOverlay" && widget->isVisible())return false;
+            return true;
+        });
         selection->SetSceneObjectSelection({scene->GetInstanceID(),object->GetInstanceID()});tick();tick();
         QWidget* inspectorWindow=nullptr;
         QTreeView* hierarchyTree=nullptr;
@@ -278,7 +289,8 @@ int main(int argc,char** argv) {
         QMouseEvent move(QEvent::MouseMove,QPointF(moved),QPointF(assetTree->viewport()->mapToGlobal(moved)),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
         QCoreApplication::sendEvent(assetTree->viewport(),&move);
         QCoreApplication::processEvents();
-        Check(dispatchedDrop&&selection->GetSceneObjectSelection().ObjectID==editedObjectID,"Drag switched Inspector away from target");
+        Check(dispatchedDrop,"Drag did not dispatch an accepted resource drop");
+        Check(selection->GetSceneObjectSelection().ObjectID==editedObjectID,"Drag switched Inspector away from target");
         QMouseEvent release(QEvent::MouseButtonRelease,QPointF(moved),QPointF(assetTree->viewport()->mapToGlobal(moved)),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
         QCoreApplication::sendEvent(assetTree->viewport(),&release);tick();
         Check(selection->GetSceneObjectSelection().ObjectID==editedObjectID,"Drag release committed asset selection");

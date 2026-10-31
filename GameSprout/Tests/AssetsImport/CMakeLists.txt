@@ -8,16 +8,30 @@ include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 add_executable(AssetsImportChecks AssetsImportChecks.cpp)
 add_executable(StartupReconcileChecks StartupReconcileChecks.cpp)
+add_executable(WarmStartupChecks WarmStartupChecks.cpp)
 add_executable(ProjectBrowserChecks ProjectBrowserChecks.cpp)
 add_executable(InspectorChecks InspectorChecks.cpp)
+add_executable(MaterialInspectorChecks MaterialInspectorChecks.cpp
+    "${gamesprout_root}/Module/RuntimeAssets/LibraryRuntimeResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/MeshResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/TextureResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/MaterialResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/AnimationResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/ControllerResources.cpp")
 add_executable(ArtifactFormatChecks ArtifactFormatChecks.cpp)
+add_executable(CurrentFormatChecks CurrentFormatChecks.cpp)
 add_executable(ShaderCompilerChecks ShaderCompilerChecks.cpp)
 add_executable(IDEContextMenuChecks IDEContextMenuChecks.cpp)
 add_executable(HierarchySceneChecks HierarchySceneChecks.cpp NodeInspectorChecks.h)
 add_executable(SceneEditingChecks SceneEditingChecks.cpp)
 add_executable(PreparedRenderChecks PreparedRenderChecks.cpp
-    "${gamesprout_root}/View/SceneViewUI/EditorRuntimeResources.cpp")
-foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks ProjectBrowserChecks InspectorChecks ArtifactFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
+    "${gamesprout_root}/Module/RuntimeAssets/LibraryRuntimeResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/MeshResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/TextureResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/MaterialResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/AnimationResources.cpp"
+    "${gamesprout_root}/Module/RuntimeAssets/ControllerResources.cpp")
+foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks WarmStartupChecks ProjectBrowserChecks InspectorChecks MaterialInspectorChecks ArtifactFormatChecks CurrentFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
 target_compile_features(${check_target} PRIVATE cxx_std_20)
 target_include_directories(${check_target} PRIVATE
     "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
@@ -35,7 +49,7 @@ elseif(WIN32)
 else()
     set(assets_test_binary_root "${repository_root}/Bin")
 endif()
-foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks ProjectBrowserChecks InspectorChecks ArtifactFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
+foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks WarmStartupChecks ProjectBrowserChecks InspectorChecks MaterialInspectorChecks ArtifactFormatChecks CurrentFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
 target_compile_definitions(${check_target} PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
 endforeach()
 target_compile_definitions(PreparedRenderChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
@@ -60,6 +74,7 @@ target_link_libraries(ModelTextureChecks PRIVATE ModelTexturePipeline
 set_target_properties(ModelTextureChecks PROPERTIES BUILD_RPATH "${model_texture_module_root}")
 target_link_libraries(ProjectBrowserChecks PRIVATE Qt6::Widgets)
 target_link_libraries(InspectorChecks PRIVATE Qt6::Widgets)
+target_link_libraries(MaterialInspectorChecks PRIVATE Qt6::Widgets GameSproutRuntime::GameSproutRuntimeApi)
 target_link_libraries(IDEContextMenuChecks PRIVATE Qt6::Widgets)
 target_link_libraries(HierarchySceneChecks PRIVATE Qt6::Widgets GameSproutRuntime::GameSproutRuntimeApi)
 set_property(TARGET HierarchySceneChecks APPEND PROPERTY LINK_DEPENDS "$<TARGET_FILE:GameSproutRuntime::GameSproutRuntime>")
@@ -86,11 +101,17 @@ set_tests_properties(IDE.PreparedRendering PROPERTIES ENVIRONMENT "QT_QPA_PLATFO
 set_tests_properties(Assets.PreparedRenderData PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
 add_test(NAME Assets.ShaderCompiler COMMAND ShaderCompilerChecks)
 add_test(NAME Assets.ArtifactFormat COMMAND ArtifactFormatChecks)
+add_test(NAME Assets.CurrentFormat COMMAND CurrentFormatChecks)
+set_tests_properties(Assets.CurrentFormat PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
 add_test(NAME Assets.ImportLifecycle COMMAND AssetsImportChecks)
 add_test(NAME Assets.StartupReconcile COMMAND StartupReconcileChecks)
+add_test(NAME Assets.WarmStartup COMMAND WarmStartupChecks)
+set_tests_properties(Assets.WarmStartup PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
 add_test(NAME Assets.ProjectBrowser COMMAND ProjectBrowserChecks)
 add_test(NAME Assets.ProjectBrowserLate COMMAND ProjectBrowserChecks --late)
 add_test(NAME Assets.Inspector COMMAND InspectorChecks)
+add_test(NAME Assets.MaterialInspector COMMAND MaterialInspectorChecks)
+set_tests_properties(Assets.MaterialInspector PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
 add_test(NAME IDE.ContextMenu COMMAND IDEContextMenuChecks)
 add_test(NAME IDE.HierarchyScene COMMAND HierarchySceneChecks)
 set_tests_properties(IDE.HierarchyScene PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)

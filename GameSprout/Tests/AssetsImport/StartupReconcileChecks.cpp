@@ -123,7 +123,10 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
     const int startupLoadingTotal = ide.Loads;
     if (phase == 1) {
         Check(foundation.Tasks.Submissions == 13, "ScanDirectory returned before all 13 imports were submitted");
-        Check(ide.Loads == 14, "Initial Loading denominator was not registered during the scan");
+        Check(ide.ResourceLoads == 13 && ide.ImportBegins.size() == 1,
+            "Initial resource plan was not registered during the scan");
+        Check(ide.ImportPlans.at(ide.ImportBegins.front()).Total == 13,
+            "Startup barrier was counted as an import resource");
     }
     foundation.Tasks.BeforeSubmission = {};
     Json::Value state = wait(phase == 1 ? 14 : phase == 5 ? 12 : 13, true);
@@ -248,10 +251,10 @@ int main(int argc, char ** argv) {
         for (const Json::Value & record : third["Sources"])
             Check(record["Status"] == "Ready" || record["Status"] == "NotRequired", "Repaired project did not recover after reopening");
         Check(manifest(third,"Modify.txt")["SourceHash"] == manifest(second,"Modify.txt")["SourceHash"]
-            && manifest(third,"Modify.txt")["Generation"] != manifest(second,"Modify.txt")["Generation"], "Timestamp-only modification did not trigger preprocessing");
+            && manifest(third,"Modify.txt")["Generation"] == manifest(second,"Modify.txt")["Generation"], "Timestamp-only modification rebuilt unchanged contents");
         Check(manifest(third,"Retry.png")["Generation"] == manifest(second,"Retry.png")["Generation"], "Recovery rolled back a committed flat artifact");
         Check(manifest(third,"Lost.png")["Generation"] == manifest(second,"Lost.png")["Generation"], "Repeated startup rebuilt an unchanged asset");
-        Check(manifest(third,"InvalidMeta.png")["Generation"] != manifest(first,"InvalidMeta.png")["Generation"], "Changed Meta timestamp did not trigger preprocessing");
+        Check(manifest(third,"InvalidMeta.png")["Generation"] == manifest(first,"InvalidMeta.png")["Generation"], "Restoring identical Meta unnecessarily replaced the good generation");
         Check(root.remove("Assets/Stable.png"), "Cannot delete scan failure fixture");
         const auto protectedFolder = std::filesystem::u8path(root.filePath("Assets/FolderB").toStdString());
         const auto originalPermissions = std::filesystem::status(protectedFolder).permissions();
@@ -277,7 +280,7 @@ int main(int argc, char ** argv) {
         Check(ReadJson(root.filePath("Assets/Stable.png.meta"))["ImportSettings"]["MaxSize"] == 4, "Backup recovery lost import settings");
         Check(manifest(restored,"Stable.png")["Assets"][0]["LocalID"] == manifest(first,"Stable.png")["Assets"][0]["LocalID"], "Backup recovery changed LocalID");
         Check(QDir(root.filePath("Library/.Transactions")).entryList(QDir::Dirs|QDir::NoDotAndDotDot).isEmpty(), "Recovered publication directories were retained");
-        std::cout << "PASS six independent editor launches: database-first reconciliation, timestamp-only changes, atomic backups, orphan cleanup and Meta recovery\n";
+        std::cout << "PASS six independent editor launches: database-first reconciliation, timestamp-only reuse, atomic backups, orphan cleanup and Meta recovery\n";
         return 0;
     } catch (const std::exception & error) {
         std::cerr << "FAIL " << error.what() << "\n";

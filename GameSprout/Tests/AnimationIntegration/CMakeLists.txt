@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.21)
+project(AnimationIntegrationChecks LANGUAGES CXX)
+get_filename_component(gamesprout_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+get_filename_component(repository_root "${gamesprout_root}/.." ABSOLUTE)
+include("${gamesprout_root}/Foundation/FoundationApi.cmake")
+include("${gamesprout_root}/GRHI/GRHI.cmake")
+include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
+if(APPLE)
+    set(module_root "${repository_root}/Bin/GameSproutEditor.app/Contents/MacOS/Logic/Module")
+else()
+    set(module_root "${repository_root}/Bin/Logic/Module")
+endif()
+foreach(name IN ITEMS AssetsPipeline RuntimeAssets SceneManager)
+    add_library(${name} SHARED IMPORTED)
+    set_target_properties(${name} PROPERTIES IMPORTED_LOCATION "${module_root}/${CMAKE_SHARED_LIBRARY_PREFIX}${name}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    if(WIN32)
+        set_target_properties(${name} PROPERTIES IMPORTED_IMPLIB "${module_root}/${name}.lib")
+    endif()
+endforeach()
+
+# Consume independently built modules and the public Runtime SDK; do not add their sources as subdirectories.
+set(GAMESPROUT_TEST_RUNTIME_DIRECTORY "${repository_root}/Bin" CACHE PATH "Directory of the Runtime SDK to test")
+set(GAMESPROUT_TEST_FBX "" CACHE FILEPATH "A skinned FBX with the WomanWalk/Run/Idle/Breathing clips")
+set(GAMESPROUT_TEST_CAPTURE "" CACHE FILEPATH "Optional 1280x720 real Runtime GPU capture")
+add_executable(AnimationIntegrationChecks AnimationIntegrationChecks.cpp)
+target_compile_features(AnimationIntegrationChecks PRIVATE cxx_std_20)
+target_compile_definitions(AnimationIntegrationChecks PRIVATE
+    TEST_RUNTIME_ROOT="${GAMESPROUT_TEST_RUNTIME_DIRECTORY}" TEST_GPU_ROOT="${repository_root}/Bin")
+target_include_directories(AnimationIntegrationChecks PRIVATE "${gamesprout_root}/Module/AssetsPipeline"
+    "${gamesprout_root}/Module/SceneManager" "${gamesprout_root}/Module/Interface" "${gamesprout_root}/GameSproutEditor/Api" "${gamesprout_root}/View/Interface")
+target_link_libraries(AnimationIntegrationChecks PRIVATE AssetsPipeline RuntimeAssets SceneManager Foundation::FoundationApi
+    GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
+set_target_properties(AnimationIntegrationChecks PROPERTIES BUILD_RPATH "${module_root}")
+enable_testing()
+if(GAMESPROUT_TEST_FBX)
+    add_test(NAME Animation.WomanImportToGPU COMMAND AnimationIntegrationChecks
+        "${GAMESPROUT_TEST_FBX}" "${GAMESPROUT_TEST_CAPTURE}")
+    set_tests_properties(Animation.WomanImportToGPU PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen" SKIP_RETURN_CODE 77 TIMEOUT 120)
+endif()

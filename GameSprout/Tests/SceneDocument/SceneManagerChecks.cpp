@@ -50,6 +50,8 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 }
 #include "SceneTransformChecks.h"
 #include "SceneDeletionChecks.h"
+#include "SceneAnimationEditingChecks.h"
+#include "SceneRootMotionEditingChecks.h"
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
@@ -156,6 +158,8 @@ int main(int argc,char** argv) {
         Check(!manager.Undo(error) && !error.empty(),"Undo used a deleted target");
         CheckTransformTransactions(manager,api,root);
         CheckSceneDeletion(manager,api,root);
+        CheckAnimationSceneDeletion(manager,api,root);
+        CheckRootMotionEditing(manager,root);
         manager.UnregisterSceneListener(&listener);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,api);
         std::cout<<"PASS SceneManager: stable IDs, snapshot dirty state, Undo/Redo/rollback, guarded callbacks, atomic safe-path Save/Open\n";

@@ -24,7 +24,7 @@ static std::size_t SceneObjectCount(GameSproutRuntime::IGameObject* object) {
     std::size_t result=1;for(std::size_t index=0;index<object->GetChildCount();++index)result+=SceneObjectCount(object->GetChild(index));return result;
 }
 static void CheckInspectorPosition(SceneInteractionFixture& fixture,GameSproutRuntime::IGameObject& object) {
-    auto* id=fixture.InspectorDock->findChild<QLineEdit*>("objectInstanceIDEdit");
+    auto* id=fixture.InspectorDock->findChild<QLineEdit*>("localIDEdit");
     auto* x=fixture.InspectorDock->findChild<QLineEdit*>("transformPositionXEdit");
     auto* y=fixture.InspectorDock->findChild<QLineEdit*>("transformPositionYEdit");
     auto* z=fixture.InspectorDock->findChild<QLineEdit*>("transformPositionZEdit");
@@ -204,8 +204,11 @@ static void CheckTransformsAndPersistence(SceneInteractionFixture& fixture) {
     // Local rotation and scaling remain representable under a rotated, nonuniform parent.
     SetMode(fixture,"spaceCombo",1);SetMode(fixture,"pivotCombo",1);fixture.Key(Qt::Key_E);
     CheckTool(fixture,"rotateToolButton");
-    auto* readonlyID=fixture.InspectorDock->findChild<QLineEdit*>("objectInstanceIDEdit");Check(readonlyID&&readonlyID->isReadOnly(),"Inspector identity field missing");
-    readonlyID->setFocus();QTest::keyClick(readonlyID,Qt::Key_W);CheckTool(fixture,"rotateToolButton");fixture.Viewport->setFocus();
+    QLineEdit* readonlyResource=nullptr;
+    for(auto* field:fixture.InspectorDock->findChildren<QLineEdit*>("resourceNameEdit"))
+        if(field->isVisible()&&field->isReadOnly()){readonlyResource=field;break;}
+    Check(readonlyResource,"Inspector resource field missing");
+    readonlyResource->setFocus();QTest::keyClick(readonlyResource,Qt::Key_W);CheckTool(fixture,"rotateToolButton");fixture.Viewport->setFocus();
     settings.Tool=SceneGizmoTool::Rotate;settings.Space=SceneGizmoSpace::Local;settings.Pivot=SceneGizmoPivot::Center;
     gizmo=ConfigureGizmo(fixture,*object,settings);const auto ring=RingPoint(fixture,gizmo,2),center=gizmo.GetPivotWorld();
     const auto rotation=GameSproutRuntime::RuntimeMath::ComposeTRS({},AxisRotation(gizmo.GetAxis(2),37),{1,1,1});

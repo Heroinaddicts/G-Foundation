@@ -47,6 +47,7 @@ public:
 };
 
 #include "NodeInspectorChecks.h"
+#include "AnimationInspectorChecks.h"
 
 int main(int argc,char** argv) {
     QApplication application(argc,argv);
@@ -185,7 +186,7 @@ int main(int argc,char** argv) {
         Check(hierarchy->GetSelectedObjectID()==0&&NodeIndex(hierarchyTree->model(),scenes->GetActiveScene()->GetMainCamera()->GetGameObject()->GetInstanceID()).isValid(),"Hierarchy retained old selection after scene switch");
         Check(static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection()==SceneObjectSelection{},"Scene switch retained invalid scene selection");
         QWidget* previousNodePanel=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
-        Check(!previousNodePanel||!previousNodePanel->isVisible()||previousNodePanel->findChild<QLineEdit*>("objectInstanceIDEdit")->text().toULongLong()!=cameraID,"Scene switch retained locked deleted node in Inspector");
+        Check(!previousNodePanel||!previousNodePanel->isVisible()||inspectorDock->findChild<QLineEdit*>("localIDEdit")->text().toULongLong()!=cameraID,"Scene switch retained locked deleted node in Inspector");
         inspectorLock->setChecked(false);tick();
 
         // 同名创建失败不覆盖文件，窗口仍可取消。
@@ -207,7 +208,7 @@ int main(int argc,char** argv) {
         Check(static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection().ObjectID==pendingCameraID,"Node selection did not override pending creation");
         stage="pending scene import preserves newer node selection";
         pump([&]{return FindRow(assetTree,"Pending Choice.scene").isValid()&&idle();});
-        Check(static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection().ObjectID==pendingCameraID&&hierarchy->GetSelectedObjectID()==pendingCameraID&&inspectorDock->findChild<QLineEdit*>("objectInstanceIDEdit")->text().toULongLong()==pendingCameraID,"Pending Scene asset import stole newer node selection");
+        Check(static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection().ObjectID==pendingCameraID&&hierarchy->GetSelectedObjectID()==pendingCameraID&&inspectorDock->findChild<QLineEdit*>("localIDEdit")->text().toULongLong()==pendingCameraID,"Pending Scene asset import stole newer node selection");
 
         std::string path,error;
         Check(!scenes->CreateSceneAsset("../","Escape",path,error)&&!error.empty(),"Parent traversal accepted");
@@ -249,6 +250,10 @@ int main(int argc,char** argv) {
         Check(!scenes->OpenScene("Bad.scene",error)&&scenes->GetActiveScene()->GetInstanceID()==activeID,"Malformed JSON replaced scene");
         Check(scenes->GetActiveScene()->DestroyGameObject(scenes->GetActiveScene()->GetMainCamera()->GetGameObject()),"Cannot delete active main camera");tick();
         Check(!scenes->GetActiveScene()->GetMainCamera(),"Destroyed main camera left dangling reference");
+
+        stage="Animator and SkinnedMeshRenderer Designer Inspector";
+        CheckAnimationInspectorFlow(scenes,static_cast<ISelectionManager*>(editor.Modules["SelectionManager"]),
+            inspectorDock,root,tick,pump);
 
         GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);inspector=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(projectView,&editor);projectView=nullptr;

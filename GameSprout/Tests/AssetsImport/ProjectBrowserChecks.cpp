@@ -1,9 +1,17 @@
 #include "ProjectViewTestSupport.h"
+#include "../../GameSproutRuntime/Api/ResourceReference.h"
+#include <QMetaObject>
+class AvatarOpenProbe final:public IInspectorUI{
+public:GameSproutRuntime::ResourceReference Opened;bool HasPendingChanges()const override{return false;}bool ApplyChanges()override{return true;}void RevertChanges()override{}
+    bool EditModelRig(const GameSproutRuntime::ResourceReference& value)override{Opened=value;return true;}
+protected:bool Initialize(GameSproutEditor::GameSproutViewApi*)override{return true;}bool Launch(GameSproutEditor::GameSproutViewApi*)override{return true;}void Release(GameSproutEditor::GameSproutViewApi*)override{}
+};
 
 int main(int argc,char **argv) {
     QApplication application(argc,argv);
     Foundation::FoundationApi * real=nullptr;
     try {
+        const bool avatarFixture=argc>2&&std::string(argv[1])=="--avatar-fbx";
         const bool late=argc>1&&std::string(argv[1])=="--late";
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create UI project");
         QDir root(temporary.path());Check(root.mkpath("Assets/Art/Subfolder"),"Cannot create folders");
@@ -12,9 +20,10 @@ int main(int argc,char **argv) {
         std::string error;
         Check(AssetArtifactIO::Write(root.filePath("Assets/Readme.txt"),"Project assets test",error),error);
         Check(AssetArtifactIO::Write(root.filePath("Assets/Art/Triangle.obj"),"o Triangle\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",error),error);
+        if(avatarFixture)Check(QFile::copy(QString::fromLocal8Bit(argv[2]),root.filePath("Assets/Art/AvatarModel.fbx")),"Cannot copy Avatar model fixture");
         real=Foundation::GetFoundationApi(TEST_BINARY_ROOT);Check(real&&real->Initialize(argc,argv)&&real->Launch(),"Foundation startup failed");
         TestProject project;project.Root=temporary.path().toStdString();TestConsole console;
-        PreviewIDE ide;PreviewEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
+        AvatarOpenProbe avatarProbe;PreviewIDE ide;PreviewEditor editor;editor.Views["InspectorUI"]=&avatarProbe;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
         GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
         for(const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})editor.Modules[name]=LoadModule(name);
@@ -59,6 +68,17 @@ int main(int argc,char **argv) {
         const auto identity=selected[0];const Guid modelGuid(identity.GuidString);
         IAssetMeta * model=manager->QueryAsset(modelGuid);const auto children=model->GetSubAssets();
         Check(children.size()>=1,"IAssetMeta subresources missing");for(IAsset * asset:children)Check(asset->GetAssetType()!=eAssetType::Model,"Main resource was included as a child");
+        if(avatarFixture){
+            const QModelIndex avatarSource=FindRow(tree,"AvatarModel.fbx");Check(avatarSource.isValid(),"Avatar source fixture missing");tree->expand(avatarSource);QCoreApplication::processEvents();
+            const auto guid=avatarSource.data(Qt::UserRole+1).toString().toStdString();IAssetMeta* avatarMeta=manager->QueryAsset(Guid(guid));uint64_t avatarID=0;
+            for(IAsset* asset:avatarMeta->GetSubAssets())if(asset->GetAssetType()==eAssetType::Avatar)avatarID=asset->GetLocalID();
+            Check(avatarID!=0,"Skinned model fixture did not import its Avatar subresource");QModelIndex avatarIndex;
+            for(int row=0;row<tree->model()->rowCount(avatarSource);++row){auto candidate=tree->model()->index(row,0,avatarSource);if(candidate.data(Qt::UserRole+3).toULongLong()==avatarID)avatarIndex=candidate;}
+            Check(avatarIndex.isValid(),"Avatar child was not displayed");Check(QMetaObject::invokeMethod(tree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,avatarIndex)),"Cannot dispatch Avatar double click");
+            Check(avatarProbe.Opened.Guid==guid&&avatarProbe.Opened.LocalID==avatarID,"Avatar double click did not open its Model Rig inspector");
+            tree->selectionModel()->setCurrentIndex(child,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);
+            std::cout<<"PASS actual Avatar subresource double-click -> Model Rig View API\n";
+        }
         stage="reimport";
         Check(manager->ReimportAsset(modelGuid),"Cannot reimport model");pump(idle);
         selected=ui->GetSelection();Check(selected.size()==1&&selected[0].GuidString==identity.GuidString&&selected[0].LocalID==identity.LocalID,"Refresh lost subresource selection");
