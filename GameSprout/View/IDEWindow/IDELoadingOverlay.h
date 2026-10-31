@@ -3,6 +3,7 @@
 
 #include <QFrame>
 #include <QMetaObject>
+#include <cstdint>
 
 class QMainWindow;
 namespace Ui { class IDELoadingOverlay; }
@@ -16,8 +17,10 @@ public:
     IDELoadingOverlay& operator=(const IDELoadingOverlay&) = delete;
 
     void Begin(const QString& title);
+    void SetTitle(const QString& title);
     void SetDescription(const QString& description);
-    void SetProgress(int completed, int total);
+    void SetProgress(uint64_t completed, uint64_t total);
+    void SetIndeterminateProgress();
     void End();
 
 protected:

@@ -59,12 +59,14 @@ void IDEWindow::Loading(const std::string & title, const std::string & desc) {
         return;
     }
     if (0 == _LoadingRefCount) {
+        _HadImportProgress = !_ImportProgress.empty();
         _LoadingOverlay->Begin(QString::fromStdString(title));
+        IncreaseCompletionBudget();
     }
     _LoadingRefCount++;
-    _TotalCount++;
-    _LoadingOverlay->SetDescription(QString::fromStdString(desc));
-    _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
+    _LoadingTitle = title;
+    _LoadingDescription = desc;
+    RefreshLoadingProgress();
 }
 
 void IDEWindow::Unloading() {
@@ -72,16 +74,43 @@ void IDEWindow::Unloading() {
         return;
     }
     _LoadingRefCount--;
-    _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
     if (0 == _LoadingRefCount) {
+        RestoreCompletionBudget();
         _LoadingOverlay->End();
-        _TotalCount = 0;
-    }
+        _ImportProgress.clear();
+        _HadImportProgress = false;
+    } else RefreshLoadingProgress();
 }
 
 void IDEWindow::SetLoadingInfo(const std::string & title, const std::string & desc) {
-    _LoadingOverlay->Begin(QString::fromStdString(title));
-    _LoadingOverlay->SetDescription(QString::fromStdString(desc));
+    _LoadingTitle = title;
+    _LoadingDescription = desc;
+    RefreshLoadingProgress();
+}
+
+void IDEWindow::BindTaskApi(Foundation::ITaskApi* const taskApi) {
+    if (_TaskApi == taskApi) return;
+    RestoreCompletionBudget();
+    _TaskApi = taskApi;
+    if (_LoadingRefCount > 0) IncreaseCompletionBudget();
+}
+
+void IDEWindow::IncreaseCompletionBudget() {
+    if (!_TaskApi || _CompletionBudgetAdjusted) return;
+    const UInt64 previous = _TaskApi->GetCompletionBudgetMicroseconds();
+    constexpr UInt64 loadingBudget = 12000;
+    if (previous >= loadingBudget) return;
+    if (_TaskApi->SetCompletionBudgetMicroseconds(loadingBudget)) {
+        _SavedCompletionBudgetMicroseconds = previous;
+        _CompletionBudgetAdjusted = true;
+    }
+}
+
+void IDEWindow::RestoreCompletionBudget() {
+    if (_TaskApi && _CompletionBudgetAdjusted)
+        _TaskApi->SetCompletionBudgetMicroseconds(_SavedCompletionBudgetMicroseconds);
+    _CompletionBudgetAdjusted = false;
+    _SavedCompletionBudgetMicroseconds = 0;
 }
 
 void IDEWindow::Show() {
@@ -105,17 +134,20 @@ void IDEWindow::Hide() {
 
 void IDEWindow::Update(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
-    if (_TotalCount > 0) {
-        _LoadingOverlay->SetProgress(_TotalCount - _LoadingRefCount, _TotalCount);
-    }
+    if (_LoadingRefCount > 0) RefreshLoadingProgress();
 }
 
 void IDEWindow::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
+    RestoreCompletionBudget();
+    _TaskApi = nullptr;
     delete _LoadingOverlay;
     _LoadingOverlay = nullptr;
     _LoadingRefCount = 0;
-    _TotalCount = 0;
+    _ImportProgress.clear();
+    _HadImportProgress = false;
+    _LoadingTitle.clear();
+    _LoadingDescription.clear();
     // 先释放包装对象，再释放它们依赖的主窗口，避免重复删除 Qt 子控件。
     for (auto it = _Dockers.rbegin(); it != _Dockers.rend(); ++it) {
         delete it->second;

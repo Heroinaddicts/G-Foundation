@@ -5,6 +5,7 @@
 
 #include <QString>
 #include <QList>
+#include <cstdint>
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -107,12 +108,28 @@ public:
 
     // Main thread only, after Initialize and before Release. Each Loading must
     // be paired with one Unloading, including failure/cancellation paths.
-    // The first title identifies the batch; later calls update its description.
-    // Progress counts completed work items equally; registering more may lower it.
+    // Loading 只管理输入遮罩和任务引用，不作为资源导入进度的分母。
+    // 没有显式导入批次时显示不定进度。
     // Long work must yield to the event loop between steps so the UI can repaint.
     virtual void Loading(const std::string & title, const std::string & desc) = 0;
     virtual void Unloading() = 0;
     virtual void SetLoadingInfo(const std::string & title, const std::string & desc) = 0;
+
+    // 主线程注入借用的 TaskApi；必须存活至解绑或 IDEWindow::Release。
+    // Loading 期间可临时增加完成回调预算，最后一次 Unloading 后恢复。
+    virtual void BindTaskApi(Foundation::ITaskApi* taskApi) { (void)taskApi; }
+
+    // 主线程登记一个已确定总量的导入批次；0 表示无任务或不支持，不增加 Loading 引用。
+    // 多个批次按登记顺序展示；每个批次总量固定，缓存直接复用的资源不计入。
+    virtual uint64_t BeginImportProgress(uint64_t total, const std::string& description) {
+        (void)total; (void)description; return 0;
+    }
+    // completed 是该批次的绝对完成数（失败/拒绝/取消也应结算）。拒绝倒退、超总量和旧 token。
+    virtual bool UpdateImportProgress(uint64_t token, uint64_t completed, const std::string& path) {
+        (void)token; (void)completed; (void)path; return false;
+    }
+    // 只允许结束已全部结算的批次；Release 会直接清理其余批次，旧 token 随后无效。
+    virtual bool EndImportProgress(uint64_t token) { (void)token; return false; }
 };
 
 #endif //__IIDEWindow_h__

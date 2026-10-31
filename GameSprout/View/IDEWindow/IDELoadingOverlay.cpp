@@ -52,12 +52,24 @@ void IDELoadingOverlay::SetDescription(const QString& description) {
     _Ui->descriptionLabel->setText(description);
 }
 
-void IDELoadingOverlay::SetProgress(int completed, int total) {
-    _Ui->progressBar->setValue(total > 0 ? int(qint64(completed) * 100 / total) : 0);
-    _Ui->completedLabel->setText(tr("已完成 %1 / %2").arg(completed).arg(total));
+void IDELoadingOverlay::SetTitle(const QString& title) {
+    _Ui->titleLabel->setText(title);
+}
+
+void IDELoadingOverlay::SetProgress(uint64_t completed, uint64_t total) {
+    _Ui->progressBar->setRange(0, 100);
+    int percentage = total > 0 ? int(static_cast<long double>(completed) * 100 / total) : 0;
+    if (completed < total && percentage >= 100) percentage = 99;
+    _Ui->progressBar->setValue(percentage);
+    _Ui->completedLabel->setText(tr("已完成 %1 / %2").arg(qulonglong(completed)).arg(qulonglong(total)));
     if (_Active) {
         raise();
     }
+}
+
+void IDELoadingOverlay::SetIndeterminateProgress() {
+    _Ui->progressBar->setRange(0, 0);
+    _Ui->completedLabel->setText(tr("正在处理…"));
 }
 
 void IDELoadingOverlay::End() {
