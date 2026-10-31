@@ -23,6 +23,9 @@ public:
 
     // 仅叶子菜单项触发回调；nullptr 清除回调。
     virtual void SetClickCallback(const fMenuClickCallback callback) = 0;
+    virtual void SetEnabled(bool enabled) { (void)enabled; }
+    // Qt PortableText 快捷键，例如 Ctrl+S；定义由对应 View 的 .ui 提供。
+    virtual void SetShortcut(const QString& shortcut) { (void)shortcut; }
 };
 
 class IIDEMenuBar {
@@ -71,7 +74,7 @@ public:
     virtual void Layout(const eDockerLayout layout) = 0;
     // 将 docker 放在本面板右侧/下方，或合并为同一个标签组。
     // 两个面板必须属于同一个 IDEWindow，且不能是同一个面板。
-    // Split 的起点必须已停靠且不在标签组中；Tabify 的起点必须已停靠。
+    // 起点必须已停靠；Split 支持标签组，原组保留在起点一侧，移入面板单独占另一侧。
     virtual bool Split(IIDEDocker* docker, Qt::Orientation orientation) = 0;
     virtual bool Tabify(IIDEDocker* docker) = 0;
     // 显示并选中本标签，不激活整个应用程序窗口。

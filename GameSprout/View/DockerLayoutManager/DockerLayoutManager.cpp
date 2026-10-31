@@ -53,10 +53,14 @@ bool DockerLayoutManager::ResetDefaultLayout() {
     console->Layout(eDockerLayout::Bottom);
     project->SetTitle(QStringLiteral("Project"));
 
-    if (!hierarchy->Split(scene, Qt::Horizontal) ||
+    // 先确定上/下分割，再在上半区拆成 Hierarchy/Scene，保证 Project 横跨这两列。
+    if (!hierarchy->Split(project, Qt::Vertical) ||
+        !hierarchy->Split(scene, Qt::Horizontal) ||
         !scene->Tabify(game) || !project->Tabify(console)) {
         return false;
     }
+    // Inspector 单独位于整棵左右区域的右侧，覆盖上、下两层。
+    inspector->Layout(eDockerLayout::Right);
     // 约 19% / 57% / 24%；下方资源区域约占高度的 40%。
     // Qt 根据窗口实际尺寸和控件最小尺寸分配空间，用户仍可拖动分隔线。
     if (!g_IIDEWindow->ResizeDockers({hierarchy, scene, inspector}, {19, 57, 24}, Qt::Horizontal) ||

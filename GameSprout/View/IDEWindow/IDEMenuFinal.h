@@ -20,6 +20,8 @@ public:
 
     IIDEMenu* CreateChildMenu(const QString& name) override;
     void SetClickCallback(const fMenuClickCallback callback) override;
+    void SetEnabled(bool enabled) override;
+    void SetShortcut(const QString& shortcut) override;
     QAction* GetAction() const { return _Action; }
 
 private:

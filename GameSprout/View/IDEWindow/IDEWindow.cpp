@@ -187,6 +187,9 @@ bool IDEWindow::ResizeDockers(const QList<IIDEDocker*>& dockers,
         if (!native || native->isFloating() || sizes[i] <= 0 || nativeDocks.contains(native)) {
             return false;
         }
+        for (QDockWidget* previous : nativeDocks) {
+            if (_Window->tabifiedDockWidgets(native).contains(previous)) return false;
+        }
         nativeDocks.append(native);
         totalWeight += sizes[i];
     }

@@ -1,5 +1,6 @@
 #include "IDEDockerFinal.h"
 #include "IDEDockerManager.h"
+#include "IDEDockerDragController.h"
 #include "IDEDockerTitleBar.h"
 #include "IDEMenuFinal.h"
 #include "IDEContextMenuManagerFinal.h"
@@ -40,7 +41,9 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
         QAction* close = _MenuUi->DockerClose;
         QObject::connect(close, &QAction::triggered, _Menu, [this]() {
             _Manager->RestoreMaximized();
-            _Dock->close();
+            _Manager->RememberClosedDocker(this);
+            // 面板关闭契约是隐藏并保留内容；浮动后重新停靠的 native close 不能可靠表示此操作。
+            _Dock->hide();
         });
         QMenu* addTab = _MenuUi->DockerAddTab;
         QObject::connect(addTab, &QMenu::aboutToShow, addTab, [this, addTab]() {
@@ -113,6 +116,7 @@ void IDEDockerFinal::Layout(eDockerLayout layout) {
     default: return;
     }
     _Manager->RestoreMaximized();
+    _Manager->ForgetClosedDocker(this);
     _Dock->setFloating(false);
     _Window->removeDockWidget(_Dock);
     _Window->addDockWidget(area, _Dock);
@@ -123,17 +127,10 @@ void IDEDockerFinal::Layout(eDockerLayout layout) {
 bool IDEDockerFinal::Split(IIDEDocker* docker, Qt::Orientation orientation) {
     auto* other = dynamic_cast<IDEDockerFinal*>(docker);
     if (!other || other == this || other->_Window != _Window || _Dock->isFloating() ||
-        (orientation != Qt::Horizontal && orientation != Qt::Vertical) ||
-        !_Window->tabifiedDockWidgets(_Dock).isEmpty()) {
+        (orientation != Qt::Horizontal && orientation != Qt::Vertical)) {
         return false;
     }
-    _Manager->RestoreMaximized();
-    other->_Dock->setFloating(false);
-    _Window->removeDockWidget(other->_Dock);
-    _Window->splitDockWidget(_Dock, other->_Dock, orientation);
-    other->_Dock->show();
-    _Manager->RequestRefresh();
-    return true;
+    return _Manager->DropDocker(other,this,orientation==Qt::Horizontal?DockerDropPosition::Right:DockerDropPosition::Bottom,false);
 }
 
 bool IDEDockerFinal::Tabify(IIDEDocker* docker) {
@@ -141,13 +138,7 @@ bool IDEDockerFinal::Tabify(IIDEDocker* docker) {
     if (!other || other == this || other->_Window != _Window || _Dock->isFloating()) {
         return false;
     }
-    _Manager->RestoreMaximized();
-    other->_Dock->setFloating(false);
-    _Window->removeDockWidget(other->_Dock);
-    _Window->tabifyDockWidget(_Dock, other->_Dock);
-    other->_Dock->show();
-    _Manager->RequestRefresh();
-    return true;
+    return _Manager->DropDocker(other,this,DockerDropPosition::Tabs,false);
 }
 
 void IDEDockerFinal::Activate() {

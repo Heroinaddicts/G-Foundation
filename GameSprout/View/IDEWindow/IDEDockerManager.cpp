@@ -1,6 +1,7 @@
 #include "IDEDockerManager.h"
 #include "IDEDockerFinal.h"
 #include "IDEDockerOptionsButton.h"
+#include "IDEDockerDragController.h"
 
 #include <QAction>
 #include <QDockWidget>
@@ -10,15 +11,19 @@
 #include <QTabBar>
 #include <QTimer>
 #include <QToolButton>
+#include <QLayout>
+#include <QMouseEvent>
 
 IDEDockerManager::IDEDockerManager(QMainWindow* window, QMenu* windowMenu)
     : QObject(window), _Window(window), _WindowMenu(windowMenu) {
     _Window->installEventFilter(this);
     QObject::connect(_Window, &QMainWindow::tabifiedDockWidgetActivated, this,
                      [this]() { RequestRefresh(); });
+    _DragController = new IDEDockerDragController(this);
 }
 
 IDEDockerManager::~IDEDockerManager() {
+    delete _DragController;
     for (const TabBar& entry : _TabBars) {
         delete entry.options;
     }
@@ -28,12 +33,17 @@ void IDEDockerManager::RegisterDocker(IDEDockerFinal* docker) {
     _Dockers.append(docker);
     QDockWidget* dock = docker->GetDockWidget();
     _WindowMenu->addAction(dock->toggleViewAction());
+    // Qt 的原生 toggle action 先隐藏再发 triggered；菜单高亮时先快照，触发后再确认。
+    QObject::connect(dock->toggleViewAction(), &QAction::hovered, this, [this,docker,dock]() {
+        if(!dock->isHidden())RememberClosedDocker(docker,false);
+    });
     QObject::connect(dock->toggleViewAction(), &QAction::triggered, this,
                      [this, docker, dock](bool checked) {
         if (checked) {
             docker->Activate();
         } else {
             RestoreMaximized();
+            RememberClosedDocker(docker);
             dock->hide();
         }
     });
@@ -52,6 +62,13 @@ void IDEDockerManager::RegisterDocker(IDEDockerFinal* docker) {
 void IDEDockerManager::UnregisterDocker(IDEDockerFinal* docker) {
     if (!_Dockers.contains(docker)) {
         return;
+    }
+    _DragController->CancelDrag(docker);
+    _ClosedPlacements.remove(docker);
+    _TabOrders.remove(docker);
+    for(auto it=_TabOrders.begin();it!=_TabOrders.end();++it)it->removeAll(docker);
+    for(auto it=_ClosedPlacements.begin();it!=_ClosedPlacements.end();++it) {
+        it->Peers.removeAll(docker);it->Span.removeAll(docker);
     }
     RestoreMaximized();
     QDockWidget* dock = docker->GetDockWidget();
@@ -79,6 +96,16 @@ void IDEDockerManager::RequestRefresh() {
 }
 
 bool IDEDockerManager::eventFilter(QObject* watched, QEvent* event) {
+    if(event->type()==QEvent::Close) {
+        for(IDEDockerFinal* docker:_Dockers)if(docker->GetDockWidget()==watched){RememberClosedDocker(docker);break;}
+    }
+    if (watched == _Window && event->type() == QEvent::MouseButtonPress) {
+        const auto* mouse = static_cast<QMouseEvent*>(event);
+        const auto cursor = _Window->cursor().shape();
+        if (mouse->button() == Qt::LeftButton && (cursor == Qt::SplitVCursor || cursor == Qt::SplitHCursor)) _NativeResize = true;
+    } else if (watched == _Window && (event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::WindowDeactivate)) {
+        if (_NativeResize) { _NativeResize = false; RequestRefresh(); }
+    }
     if (_PositioningTabs && qobject_cast<QTabBar*>(watched)) {
         return QObject::eventFilter(watched, event);
     }
@@ -101,12 +128,15 @@ IDEDockerFinal* IDEDockerManager::ActiveDocker(QTabBar* bar) const {
     if (bar->currentIndex() < 0) {
         return nullptr;
     }
+    // Qt 重排后可能缓存仍标记 visible 的旧 tabbar；只有实际位于最上层的标签栏参与交互。
+    QWidget* hit=_Window->childAt(bar->geometry().center());
+    if(!hit || (hit!=bar&&!bar->isAncestorOf(hit)))return nullptr;
     // 通过公开的几何关系定位标签组，不读取 Qt 私有 tabData 或内部对象名。
     const QRect barRect = bar->geometry();
     for (IDEDockerFinal* docker : _Dockers) {
         QDockWidget* dock = docker->GetDockWidget();
         if (dock->isFloating() || dock->isHidden() || dock->geometry().left() < 0 ||
-            dock->windowTitle() != bar->tabText(bar->currentIndex())) {
+            dock->geometry().width() <= 0 || dock->windowTitle() != bar->tabText(bar->currentIndex())) {
             continue;
         }
         const QRect rect = dock->geometry();
@@ -118,7 +148,25 @@ IDEDockerFinal* IDEDockerManager::ActiveDocker(QTabBar* bar) const {
     return nullptr;
 }
 
+IDEDockerFinal* IDEDockerManager::DockerForTab(QTabBar* bar, int index) const {
+    if (!bar || bar->parentWidget() != _Window || index < 0 || index >= bar->count()) return nullptr;
+    if (index == bar->currentIndex()) return ActiveDocker(bar);
+    // 用公开的标签激活与几何查询取得稳定身份，不读取 Qt 私有 tabData，也不依赖可重名的标题。
+    const bool updates = _Window->updatesEnabled();
+    const int current = bar->currentIndex();
+    _Window->setUpdatesEnabled(false);
+    bar->setCurrentIndex(index);
+    _Window->layout()->activate();
+    IDEDockerFinal* docker = ActiveDocker(bar);
+    bar->setCurrentIndex(current);
+    _Window->layout()->activate();
+    _Window->setUpdatesEnabled(updates);
+    return docker;
+}
+
 void IDEDockerManager::Refresh() {
+    // 原生分隔条拖动时，不与 QMainWindow 的临时拖拽布局争抢标签栏几何。
+    if (_NativeResize) return;
     for (IDEDockerFinal* docker : _Dockers) {
         QDockWidget* dock = docker->GetDockWidget();
         bool tabbed = false;
@@ -221,6 +269,7 @@ void IDEDockerManager::BeforeActivate(IDEDockerFinal* docker) {
     if (_Maximized && _Maximized != docker) {
         RestoreMaximized();
     }
+    RestoreClosedDocker(docker);
 }
 
 void IDEDockerManager::ToggleMaximize(IDEDockerFinal* docker) {

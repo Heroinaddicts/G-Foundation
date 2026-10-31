@@ -2,6 +2,7 @@
 
 #include <QAction>
 #include <QMenu>
+#include <QKeySequence>
 
 IDEMenuFinal::IDEMenuFinal(QWidget* owner, const QString& name, bool submenu)
     : _Owner(owner) {
@@ -60,6 +61,11 @@ IIDEMenu* IDEMenuFinal::CreateChildMenu(const QString& name) {
 
 void IDEMenuFinal::SetClickCallback(const fMenuClickCallback callback) {
     _Callback = callback;
+}
+void IDEMenuFinal::SetEnabled(bool enabled) { _Action->setEnabled(enabled); }
+void IDEMenuFinal::SetShortcut(const QString& shortcut) {
+    _Action->setShortcut(QKeySequence(shortcut, QKeySequence::PortableText));
+    _Action->setShortcutContext(Qt::ApplicationShortcut);
 }
 
 void IDEMenuFinal::EnsureSubmenu() {

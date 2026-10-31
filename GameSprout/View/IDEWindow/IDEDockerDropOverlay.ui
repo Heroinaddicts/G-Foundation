@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerDropOverlayForm</class>
+ <widget class="QWidget" name="DockerDropOverlay">
+  <property name="focusPolicy"><enum>Qt::NoFocus</enum></property>
+  <property name="styleSheet"><string notr="true">QWidget#DockerDropOverlay { background:rgba(58,126,209,75); border:2px solid rgba(130,188,255,240); border-radius:4px; }
+QLabel#dropHint { color:#f1f6ff; background:rgba(28,48,74,220); border:1px solid #769fcf; border-radius:4px; padding:6px; font-weight:bold; }</string></property>
+  <property name="tabsText" stdset="0"><string>合并为标签</string></property>
+  <property name="reorderText" stdset="0"><string>调整标签顺序</string></property>
+  <property name="leftText" stdset="0"><string>停靠到左侧</string></property>
+  <property name="rightText" stdset="0"><string>停靠到右侧</string></property>
+  <property name="topText" stdset="0"><string>停靠到上方</string></property>
+  <property name="bottomText" stdset="0"><string>停靠到下方</string></property>
+  <property name="rootPrefix" stdset="0"><string>主布局 · </string></property>
+  <layout class="QVBoxLayout" name="previewLayout">
+   <property name="leftMargin"><number>8</number></property><property name="topMargin"><number>8</number></property><property name="rightMargin"><number>8</number></property><property name="bottomMargin"><number>8</number></property>
+   <item><spacer name="topSpace"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
+   <item><widget class="QLabel" name="dropHint">
+    <property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Preferred"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+    <property name="text"><string>停靠预览</string></property><property name="alignment"><set>Qt::AlignCenter</set></property><property name="wordWrap"><bool>true</bool></property>
+   </widget></item>
+   <item><spacer name="bottomSpace"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

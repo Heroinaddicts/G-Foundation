@@ -19,12 +19,11 @@
   <property name="windowTitle">
    <string>GameSprout</string>
   </property>
-  <property name="dockOptions"><set>QMainWindow::AnimatedDocks|QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks</set></property>
+  <property name="styleSheet"><string notr="true">QMainWindow::separator { width:6px; height:6px; background:#202329; }
+QMainWindow::separator:hover { background:#527799; }</string></property>
+  <property name="dockOptions"><set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks</set></property>
   <property name="documentMode"><bool>true</bool></property>
   <property name="dockTabsAtTop" stdset="0"><bool>true</bool></property>
-  <widget class="QWidget" name="centralwidget">
-   <property name="visible"><bool>false</bool></property>
-  </widget>
   <widget class="QMenuBar" name="mainMenuBar">
    <widget class="QMenu" name="DockerWindowMenu">
     <property name="title"><string>窗口</string></property>
