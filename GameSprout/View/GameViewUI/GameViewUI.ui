@@ -8,7 +8,7 @@
    <property name="spacing"><number>4</number></property>
    <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
    <item><layout class="QHBoxLayout" name="toolbarLayout">
-    <item><widget class="QToolButton" name="playButton"><property name="text"><string>播放动画</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+    <item><widget class="QToolButton" name="playButton"><property name="text"><string>播放场景动画</string></property><property name="toolTip"><string>按各个 Animator 的配置播放场景动画，并结束单独动画预览。单独预览 Clip 请使用 Inspector 中的预览控件。</string></property><property name="checkable"><bool>true</bool></property></widget></item>
     <item><widget class="QToolButton" name="stopButton"><property name="text"><string>停止并还原</string></property></widget></item>
     <item><widget class="QToolButton" name="retryButton"><property name="text"><string>重试渲染</string></property></widget></item>
     <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>1</height></size></property></spacer></item>

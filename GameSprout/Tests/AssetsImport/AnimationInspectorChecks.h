@@ -6,6 +6,7 @@
 #include <QMetaObject>
 #include <QTableWidget>
 #include <QGroupBox>
+#include "DirectClipInspectorChecks.h"
 
 class InspectorAnimationResources final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
@@ -31,6 +32,9 @@ public:
         data={};data.Parameters={{"Speed",GameSproutRuntime::AnimatorParameterType::Float,0},{"Go",GameSproutRuntime::AnimatorParameterType::Trigger,0}};
         GameSproutRuntime::AnimatorLayer base;base.Name="Base Layer";
         for(int i=0;i<2;++i){GameSproutRuntime::AnimatorState state;state.Name=i?"Run":"Idle";state.Clip={ref.Guid,std::uint64_t(i+1)};base.States.push_back(state);}
+        GameSproutRuntime::AnimatorTransition idle;idle.To=0;
+        idle.Conditions={{"Speed",GameSproutRuntime::AnimatorCompare::Less,.1}};
+        base.Transitions.push_back(idle);
         data.Layers.push_back(base);auto upper=base;upper.Name="Upper Body";upper.DefaultWeight=0;data.Layers.push_back(upper);return true;
     }
 };
@@ -63,6 +67,15 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
         return inspectorDock->findChild<QWidget*>(formName);
     };
     auto* form=select(character,"AnimatorComponentEditorForm");
+    CheckDirectClipInspector(scenes,character,bone,form,root,tick,pump);
+    // Leaving the inspected object must tear down its temporary Clip playback.
+    Check(scenes->PlayAnimationClip(character->GetInstanceID(),{guid,2},.4f,1,true,error),error);
+    select(geometry,"SkinnedMeshRendererComponentEditorForm");
+    Check(!scenes->GetAnimationClipPreviewState(character->GetInstanceID()).Active
+        &&bone->GetTransform()->GetWorldMatrix()(0,3)==4,"Changing Inspector selection retained a direct Clip preview");
+    form=select(character,"AnimatorComponentEditorForm");
+    auto* previewMode=form->findChild<QComboBox*>("previewModeCombo");
+    Check(previewMode,"Animation preview mode selector missing");previewMode->setCurrentIndex(1);
     auto* play=form->findChild<QPushButton*>("playButton");auto* pause=form->findChild<QPushButton*>("pauseButton");
     auto* stop=form->findChild<QPushButton*>("stopButton");auto* seek=form->findChild<QPushButton*>("seekButton");
     auto* seekSpin=form->findChild<QDoubleSpinBox*>("seekSpin");auto* speed=form->findChild<QDoubleSpinBox*>("speedSpin");
@@ -128,6 +141,7 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
     Check(animator&&bone&&skin&&animator->GetSpeed()==1.5f&&bone->GetTransform()->GetLocalPosition().X==4&&skin->GetAnimatorObjectID()==character->GetInstanceID(),"Reopened Inspector animation scene lost configuration or remapped bindings");
     Check(!animator->GetPlaybackState().Playing&&animator->GetPlaybackState().Time==0,"Reopen restored transient playback state");
     form=select(character,"AnimatorComponentEditorForm");
+    form->findChild<QComboBox*>("previewModeCombo")->setCurrentIndex(1);
     form->findChild<QPushButton*>("playButton")->click();form->findChild<QPushButton*>("pauseButton")->click();
     form->findChild<QDoubleSpinBox*>("seekSpin")->setValue(.5);form->findChild<QPushButton*>("seekButton")->click();
     form->findChild<QPushButton*>("stopButton")->click();
@@ -135,6 +149,7 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
     // Root motion mode is authoring configuration; motion and notifications remain transient.
     animator->SetController({});animator->SetDefaultClip({guid,3});
     Check(scenes->SaveScene(error),error);tick();form=select(character,"AnimatorComponentEditorForm");
+    form->findChild<QComboBox*>("previewModeCombo")->setCurrentIndex(1);
     auto* rootMode=form->findChild<QComboBox*>("rootMotionModeCombo");
     auto* notices=form->findChild<QTableWidget*>("animationNotificationsTable");
     Check(rootMode&&notices&&form->findChild<QLabel*>("rootMotionDeltaLabel")&&form->findChild<QLabel*>("rootMotionRotationLabel"),"Root motion/notification Designer controls missing");

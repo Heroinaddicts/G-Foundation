@@ -1,6 +1,7 @@
 #include "AnimatorComponentEditor.h"
 #include "ResourceField.h"
 #include "AnimatorIKEditor.h"
+#include "AnimatorClipPreviewEditor.h"
 #include "RuntimeResourceApi.h"
 #include "ui_AnimatorComponentEditor.h"
 #include <QTimer>
@@ -21,6 +22,17 @@ Settings Read(const GameSproutRuntime::IAnimatorComponent& value) {
 }
 AnimatorComponentEditor::AnimatorComponentEditor(QWidget* parent):ComponentEditor(parent),_Ui(new Ui::AnimatorComponentEditorForm()) {
     _Ui->setupUi(this);
+    _Ui->controllerPreviewPage->hide();
+    _Ui->ikEditor->hide();
+    QObject::connect(_Ui->previewModeCombo,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){
+        const bool direct=index==0;
+        if(direct&&_Context.Scenes)_Context.Scenes->SetAnimationPreviewPlaying(false);
+        if(!direct)_Ui->clipPreviewEditor->StopPreview();
+        _Ui->clipPreviewEditor->setVisible(direct);
+        _Ui->controllerPreviewPage->setVisible(!direct);
+        _Ui->ikEditor->setVisible(!direct);
+        RefreshPlayback();
+    });
     _Ui->ikEditor->Resolve=[this]{return Animator();};
     _Ui->animationNotificationsTable->horizontalHeader()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
     _Ui->animationNotificationsTable->horizontalHeader()->setSectionResizeMode(1,QHeaderView::ResizeToContents);
@@ -85,6 +97,7 @@ void AnimatorComponentEditor::ContextChanged() {
     _Ui->skeletonResource->SetContextKey(_Context.Key("Animator","Skeleton"));
     _Ui->controllerResource->SetContextKey(_Context.Key("Animator","Controller"));
     _Ui->clipResource->SetContextKey(_Context.Key("Animator","Clip"));_HasController=false;
+    _Ui->clipPreviewEditor->Bind(_Context);
 }
 void AnimatorComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) {
     auto& animator=static_cast<GameSproutRuntime::IAnimatorComponent&>(component);
@@ -92,6 +105,7 @@ void AnimatorComponentEditor::ReadValues(GameSproutRuntime::IComponent& componen
     _Ui->avatarResource->SetValue(animator.GetAvatar());_Ui->clipResource->SetValue(animator.GetDefaultClip());_Ui->speedSpin->setValue(animator.GetSpeed());
     _Ui->rootMotionModeCombo->setCurrentIndex(int(animator.GetRootMotionMode()));
     _Ui->playOnStartCheck->setChecked(animator.GetPlayOnStart());_Ui->loopCheck->setChecked(animator.GetLoop());
+    _Ui->clipPreviewEditor->Bind(_Context);
     RefreshPlayback();
 }
 void AnimatorComponentEditor::CommitSettings() {
@@ -112,6 +126,7 @@ void AnimatorComponentEditor::CommitSettings() {
 void AnimatorComponentEditor::RefreshPlayback() {
     RefreshNotifications();
     auto* animator=Animator();if(!animator)return;
+    if(_Ui->previewModeCombo->currentIndex()==0){_Ui->clipPreviewEditor->Refresh();return;}
     _Ui->ikEditor->SetAvailable(!animator->GetAvatar().Guid.empty());
     const auto controller=animator->GetController();
     auto* runtime=_Context.Scenes?_Context.Scenes->GetRuntime():nullptr;

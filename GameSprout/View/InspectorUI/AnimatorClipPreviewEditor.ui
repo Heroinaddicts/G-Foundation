@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AnimatorClipPreviewEditorForm</class>
+ <widget class="QWidget" name="AnimatorClipPreviewEditorForm">
+  <layout class="QVBoxLayout" name="previewLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item><layout class="QFormLayout" name="clipSettingsLayout">
+    <item row="0" column="0"><widget class="QLabel" name="directClipLabel"><property name="text"><string>预览动画</string></property></widget></item>
+    <item row="0" column="1"><widget class="ResourceField" name="directClipResource"/></item>
+    <item row="1" column="0"><widget class="QLabel" name="relatedClipLabel"><property name="text"><string>同源动画</string></property></widget></item>
+    <item row="1" column="1"><widget class="QComboBox" name="relatedClipCombo"><property name="toolTip"><string>快速切换同一个源文件中的动画。其他动画可从 Project 拖入上方字段。</string></property></widget></item>
+    <item row="2" column="0"><widget class="QLabel" name="clipSpeedLabel"><property name="text"><string>预览倍率</string></property></widget></item>
+    <item row="2" column="1"><widget class="QDoubleSpinBox" name="clipSpeedSpin"><property name="maximum"><double>100</double></property><property name="decimals"><number>3</number></property><property name="singleStep"><double>0.1</double></property><property name="value"><double>1</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+    <item row="3" column="1"><widget class="QCheckBox" name="clipLoopCheck"><property name="text"><string>循环预览</string></property><property name="checked"><bool>true</bool></property></widget></item>
+   </layout></item>
+   <item><widget class="QSlider" name="clipTimeSlider"><property name="maximum"><number>10000</number></property><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="toolTip"><string>拖动预览时间，松开后恢复之前的播放状态。</string></property></widget></item>
+   <item><layout class="QHBoxLayout" name="clipTimeLayout">
+    <item><widget class="QDoubleSpinBox" name="clipSeekSpin"><property name="maximum"><double>86400</double></property><property name="decimals"><number>3</number></property><property name="suffix"><string> s</string></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+    <item><widget class="QPushButton" name="clipSeekButton"><property name="text"><string>定位时间</string></property></widget></item>
+   </layout></item>
+   <item><layout class="QHBoxLayout" name="clipButtonsLayout">
+    <item><widget class="QPushButton" name="clipPlayButton"><property name="text"><string>播放</string></property></widget></item>
+    <item><widget class="QPushButton" name="clipPauseButton"><property name="text"><string>暂停</string></property></widget></item>
+    <item><widget class="QPushButton" name="clipStopButton"><property name="text"><string>还原</string></property></widget></item>
+   </layout></item>
+   <item><widget class="QLabel" name="clipPlaybackLabel"><property name="text"><string>尚未预览</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="clipErrorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+   <item><widget class="QLabel" name="clipPreviewHintLabel"><property name="text"><string>直接预览：绕过 Controller，不触发动画事件或根位移；还原后恢复编辑姿态。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+  </layout>
+ </widget>
+ <customwidgets><customwidget><class>ResourceField</class><extends>QWidget</extends><header>ResourceField.h</header></customwidget></customwidgets>
+ <resources/>
+ <connections/>
+</ui>
