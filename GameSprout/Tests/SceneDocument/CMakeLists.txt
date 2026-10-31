@@ -73,4 +73,5 @@ target_sources(SceneDocumentChecks PRIVATE "${gamesprout_root}/Module/SceneManag
 target_sources(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneAnimationPreview.cpp")
+    "${gamesprout_root}/Module/SceneManager/SceneAnimationPreview.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneSession.cpp")

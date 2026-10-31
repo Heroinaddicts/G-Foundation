@@ -162,6 +162,7 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     _ActivePath.swap(savedPath);_BaselineText.swap(savedBaseline);_LastStateText.swap(savedState);
     _DiskHash.swap(savedHash);
     _Unsaved=false;_StatePending=false;
+    RememberActiveScene();
     NotifyStateChanged();
     return true;
 }

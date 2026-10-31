@@ -55,6 +55,8 @@ private:
     void NotifyStateChanged();
     void NotifyListeners(bool active);
     void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={});
+    bool RestoreLastScene();
+    void RememberActiveScene() const;
     bool Ready(std::string& error) const;
     bool Capture(Json::Value& document,std::string& text,std::string& error) const;
     void RefreshState(bool force=false);

@@ -53,6 +53,7 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 #include "SceneAnimationEditingChecks.h"
 #include "SceneRootMotionEditingChecks.h"
 #include "SceneClipPreviewChecks.h"
+#include "SceneSessionChecks.h"
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
@@ -164,6 +165,7 @@ int main(int argc,char** argv) {
         CheckDirectClipPreview(manager,api,root);
         manager.UnregisterSceneListener(&listener);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,api);
+        CheckSceneSessionRestoration();
         std::cout<<"PASS SceneManager: stable IDs, snapshot dirty state, Undo/Redo/rollback, guarded callbacks, atomic safe-path Save/Open\n";
         return 0;
     } catch(const std::exception& exception) {std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;}

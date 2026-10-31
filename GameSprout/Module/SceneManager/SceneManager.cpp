@@ -25,7 +25,7 @@ bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
 bool SceneManager::Launch(GameSproutEditor::GameSproutModuleApi*) {
     if(!_Runtime) return false;
     if (_RuntimeAssets) _Runtime->SetResourceProvider(_RuntimeAssets->GetResourceProvider());
-    if(!GetActiveScene()) {
+    if(!GetActiveScene()&&!RestoreLastScene()) {
         GameSproutRuntime::IScene* scene=nullptr;
         SceneDocument::ObjectIDs ids;
         std::string error;
@@ -54,6 +54,7 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
         if (!_ActivePath.empty()) _BaselineText=text;
     }
     _Unsaved=_ActivePath.empty();_StatePending=false;
+    RememberActiveScene();
     // 先让 View 切到新身份，再释放旧场景；View 不保存旧节点裸指针。
     NotifySceneChanged();
     if(previous && previous!=scene) _Runtime->DestroyScene(previous);
