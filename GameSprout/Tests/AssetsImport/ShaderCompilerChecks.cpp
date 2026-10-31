@@ -7,7 +7,7 @@ int main(int argc,char ** argv) {
         // Load only the compiler module: no AssetsManager, LibraryManager, DB,
         // TaskApi or IDEWindow participates in this test.
         auto * compiler=static_cast<IShaderCompiler *>(LoadModule("ShaderCompiler"));
-        Check(GameSprout::GameSproutEditorFinal::Initialize(compiler,nullptr),"Compiler initialize failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(compiler,nullptr),"Compiler initialize failed");
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create compiler test directory");
         QDir root(temporary.path());Check(root.mkpath("Assets/Includes")&&root.mkpath("Work"),"Cannot create compiler test directories");
         std::string error;
@@ -43,7 +43,7 @@ int main(int argc,char ** argv) {
         request.Targets={{eShaderCodeFormat::SPIRV,eShaderPlatform::Vulkan}};
         request.Source="float4 main(uint id:SV_VertexID):SV_Position {return MissingFunction();}";
         Check(!compiler->Compile(request,result)&&result.Codes.empty()&&result.Error.find("Direct.shader")!=std::string::npos,"Diagnostics did not identify original shader");
-        GameSprout::GameSproutEditorFinal::Release(compiler,nullptr);
+        GameSproutEditor::GameSproutEditorFinal::Release(compiler,nullptr);
         std::cout<<"PASS standalone SDL/DXC compiler, SPIR-V/MSL/DXIL, parallel calls, cancellation, Metal target and diagnostics\n";
         return 0;
     } catch(const std::exception & error) {std::cerr<<"FAIL "<<error.what()<<"\n";return 1;}

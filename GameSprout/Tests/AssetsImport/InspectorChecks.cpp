@@ -26,21 +26,21 @@ int main(int argc,char ** argv) {
         PreviewIDE ide;PreviewEditor editor;editor.IDE=&ide;
         editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
-        GameSprout::GameSproutApi api(&foundation,&editor);
+        GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
         for (const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})
             editor.Modules[name]=LoadModule(name);
-        for (const auto & entry:editor.Modules) GameSprout::GameSproutEditorFinal::Before(entry.second,&api);
-        for (const auto & entry:editor.Modules) Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second,&api),"Module init failed");
+        for (const auto & entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,&api);
+        for (const auto & entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,&api),"Module init failed");
         auto * browser=LoadProjectView();
         auto * inspector=static_cast<IInspectorUI *>(LoadView("InspectorUI"));
-        for (GameSprout::IGameSproutView * view:{static_cast<GameSprout::IGameSproutView *>(browser),static_cast<GameSprout::IGameSproutView *>(inspector)}) {
-            GameSprout::GameSproutEditorFinal::Before(view,&editor);
-            Check(GameSprout::GameSproutEditorFinal::Initialize(view,&editor),"View init failed");
+        for (GameSproutEditor::IGameSproutView * view:{static_cast<GameSproutEditor::IGameSproutView *>(browser),static_cast<GameSproutEditor::IGameSproutView *>(inspector)}) {
+            GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
+            Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View init failed");
         }
-        for (const auto & entry:editor.Modules) if (entry.first!="Project") Check(GameSprout::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(browser,&editor),"Browser launch failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(inspector,&editor),"Inspector launch failed");
+        for (const auto & entry:editor.Modules) if (entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(browser,&editor),"Browser launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(inspector,&editor),"Inspector launch failed");
         auto * manager=static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
         auto * selection=static_cast<ISelectionManager *>(editor.Modules["SelectionManager"]);
         std::string stage="startup";
@@ -50,10 +50,10 @@ int main(int argc,char ** argv) {
             const auto start=std::chrono::steady_clock::now();
             do {
                 real->Update();QCoreApplication::processEvents();
-                GameSprout::GameSproutEditorFinal::Update(manager,&api);
-                GameSprout::GameSproutEditorFinal::Update(selection,&api);
-                GameSprout::GameSproutEditorFinal::Update(browser,&editor);
-                GameSprout::GameSproutEditorFinal::Update(inspector,&editor);
+                GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);
+                GameSproutEditor::GameSproutEditorFinal::Update(selection,&api);
+                GameSproutEditor::GameSproutEditorFinal::Update(browser,&editor);
+                GameSproutEditor::GameSproutEditorFinal::Update(inspector,&editor);
                 if (done()) return;
                 QThread::msleep(2);
             } while (std::chrono::steady_clock::now()-start<std::chrono::seconds(30));
@@ -64,7 +64,7 @@ int main(int argc,char ** argv) {
             for (IAssetMeta * meta:manager->GetAssetMetas()) if (meta->GetImportState()==eAssetImportState::Pending) return false;
             return true;
         };
-        GameSprout::GameSproutEditorFinal::Finished(manager,&api);
+        GameSproutEditor::GameSproutEditorFinal::Finished(manager,&api);
         pump([&]{return manager->GetAssetMetas().size()==3&&idle();});
         QWidget * content=ide.InspectorDock.Content;
         auto * tree=ide.Dock.Content->findChild<QTreeView *>("assetTree");
@@ -174,12 +174,12 @@ int main(int argc,char ** argv) {
         pump([&]{return selection->GetAssetSelection().empty()&&!inspector->HasPendingChanges()&&idle();});
         Check(!apply->isEnabled(),"Deleted resource still editable");
         inspector->Hide();inspector->Show();Check(content->isVisible(),"Inspector did not reopen");
-        GameSprout::GameSproutEditorFinal::Release(inspector,&editor);
-        GameSprout::GameSproutEditorFinal::Release(browser,&editor);
-        GameSprout::GameSproutEditorFinal::Release(selection,&api);
-        GameSprout::GameSproutEditorFinal::Release(manager,&api);
-        GameSprout::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
-        GameSprout::GameSproutEditorFinal::Release(library,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);
+        GameSproutEditor::GameSproutEditorFinal::Release(browser,&editor);
+        GameSproutEditor::GameSproutEditorFinal::Release(selection,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(manager,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(library,&api);
         Check(ide.Counter.Count==0,"Inspector loading imbalance");real->Release();
         std::cout<<"PASS real Inspector: selection, texture draft/apply/revert, stale/save failures, switch/cancel, lock, subresources and rename/delete\n";
         return 0;

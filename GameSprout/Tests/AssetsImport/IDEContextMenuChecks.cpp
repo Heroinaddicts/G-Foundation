@@ -16,9 +16,9 @@ public:
     std::vector<IAssetMeta*> GetAssetsInDirectory(const std::string&) const override { return {}; }
     bool RegisterAssetListener(IAssetListener*) override { return true; }
     void UnregisterAssetListener(IAssetListener*) override {}
-    bool Initialize(GameSprout::GameSproutApi*) override { return true; }
-    bool Launch(GameSprout::GameSproutApi*) override { return true; }
-    void Release(GameSprout::GameSproutApi*) override {}
+    bool Initialize(GameSproutEditor::GameSproutModuleApi*) override { return true; }
+    bool Launch(GameSproutEditor::GameSproutModuleApi*) override { return true; }
+    void Release(GameSproutEditor::GameSproutModuleApi*) override {}
 };
 
 static QAction* FindAction(QMenu* menu, const QString& text) {
@@ -47,8 +47,8 @@ int main(int argc, char** argv) {
     try {
         ide = static_cast<IIDEWindow*>(LoadView("IDEWindow"));
         editor.IDE = ide;
-        Check(GameSprout::GameSproutEditorFinal::Initialize(ide, &editor), "IDE initialization failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(ide, &editor), "IDE launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(ide, &editor), "IDE initialization failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(ide, &editor), "IDE launch failed");
         IIDEDocker* docker = ide->CreateDocker("ContextTest");
         auto* content = new QWidget();
         auto* label = new QLabel("Content", content);
@@ -115,9 +115,9 @@ int main(int argc, char** argv) {
 
         editor.Modules["AssetsManager"] = &assets;
         project = LoadProjectView();
-        GameSprout::GameSproutEditorFinal::Before(project, &editor);
-        Check(GameSprout::GameSproutEditorFinal::Initialize(project, &editor), "Project initialization failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(project, &editor), "Project launch failed");
+        GameSproutEditor::GameSproutEditorFinal::Before(project, &editor);
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(project, &editor), "Project initialization failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(project, &editor), "Project launch failed");
         QDockWidget* projectDock = dockWidget->parentWidget()->findChild<QDockWidget*>("ProjectAssets");
         Check(projectDock != nullptr, "Project Docker missing");
         auto* assetTree = projectDock->findChild<QTreeView*>("assetTree");
@@ -136,8 +136,8 @@ int main(int argc, char** argv) {
         Check(projectMenu->isVisible(), "Project folder area menu missing");
         projectMenu->hide();
         FindAction(projectMenu, "Refresh")->trigger();
-        GameSprout::GameSproutEditorFinal::Update(project, &editor);
-        GameSprout::GameSproutEditorFinal::Release(project, &editor);
+        GameSproutEditor::GameSproutEditorFinal::Update(project, &editor);
+        GameSproutEditor::GameSproutEditorFinal::Release(project, &editor);
         project = nullptr;
 
         // 内容控件先销毁，Docker 保留并挂载新内容，过滤器与菜单仍应可用。
@@ -146,14 +146,14 @@ int main(int argc, char** argv) {
         Check(docker->AttachWidget(content), "Cannot replace destroyed content");
         RightClick(content);
         Check(menu->isVisible(), "Menu failed after content recreation");
-        GameSprout::GameSproutEditorFinal::Release(ide, &editor);
+        GameSproutEditor::GameSproutEditorFinal::Release(ide, &editor);
         ide = nullptr;
         QCoreApplication::processEvents();
         std::cout << "PASS Docker context menus: nested registration/callbacks, child and viewport events, native input menus, isolation, Project UI and cleanup\n";
         return 0;
     } catch (const std::exception& error) {
-        if (project) GameSprout::GameSproutEditorFinal::Release(project, &editor);
-        if (ide) GameSprout::GameSproutEditorFinal::Release(ide, &editor);
+        if (project) GameSproutEditor::GameSproutEditorFinal::Release(project, &editor);
+        if (ide) GameSproutEditor::GameSproutEditorFinal::Release(ide, &editor);
         std::cerr << "FAIL " << error.what() << "\n";
         return 1;
     }

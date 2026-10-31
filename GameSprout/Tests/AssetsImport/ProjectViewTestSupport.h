@@ -41,22 +41,23 @@ public:
     IIDEDocker * CreateDocker(const QString & name) override {return name=="Inspector"?&InspectorDock:&Dock;}
     IIDEDocker * QueryDocker(const QString & name) override {return name=="Inspector"?&InspectorDock:&Dock;}
     bool ResizeDockers(const QList<IIDEDocker *> &,const QList<int> &,Qt::Orientation) override {return true;}
-    bool Initialize(GameSprout::GameSproutEditor *) override {return true;}
-    bool Launch(GameSprout::GameSproutEditor *) override {return true;}
-    void Release(GameSprout::GameSproutEditor *) override {}
+    bool Initialize(GameSproutEditor::GameSproutViewApi *) override {return true;}
+    bool Launch(GameSproutEditor::GameSproutViewApi *) override {return true;}
+    void Release(GameSproutEditor::GameSproutViewApi *) override {}
 };
-class PreviewEditor final : public GameSprout::GameSproutEditor {
+class PreviewEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    PreviewEditor():GameSproutEditor(nullptr) {}
-    std::map<std::string,GameSprout::IGameSproutModule *> Modules;
+    PreviewEditor():GameSproutViewApi(nullptr) {}
+    std::map<std::string,GameSproutEditor::IGameSproutModule *> Modules;
     IIDEWindow * IDE=nullptr;
-    GameSprout::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}
-    GameSprout::IGameSproutView * FindGameSproutView(const std::string & name) const override {return name=="IDEWindow"?IDE:nullptr;}
+    std::map<std::string,GameSproutEditor::IGameSproutView *> Views;
+    GameSproutEditor::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}
+    GameSproutEditor::IGameSproutView * FindGameSproutView(const std::string & name) const override {if(name=="IDEWindow")return IDE;const auto found=Views.find(name);return found==Views.end()?nullptr:found->second;}
 };
-GameSprout::IGameSproutView * LoadView(const std::string & name) {
+GameSproutEditor::IGameSproutView * LoadView(const std::string & name) {
 #if defined(_WIN32)
     HMODULE handle=LoadLibraryW(std::filesystem::path(std::string(TEST_BINARY_ROOT)+"/Logic/View/"+name+".dll").c_str());
-    auto entry=reinterpret_cast<GameSprout::IGameSproutView *(*)()>(GetProcAddress(handle,"GetView"));
+    auto entry=reinterpret_cast<GameSproutEditor::IGameSproutView *(*)()>(GetProcAddress(handle,"GetView"));
 #else
 #if defined(__APPLE__)
     const char * suffix=".dylib";
@@ -65,7 +66,7 @@ GameSprout::IGameSproutView * LoadView(const std::string & name) {
 #endif
     void * handle=dlopen((std::string(TEST_BINARY_ROOT)+"/Logic/View/lib"+name+suffix).c_str(),RTLD_NOW|RTLD_LOCAL);
     Check(handle!=nullptr,"Cannot load ProjectAssetsUI");
-    auto entry=reinterpret_cast<GameSprout::IGameSproutView *(*)()>(dlsym(handle,"GetView"));
+    auto entry=reinterpret_cast<GameSproutEditor::IGameSproutView *(*)()>(dlsym(handle,"GetView"));
 #endif
     Check(entry!=nullptr,"ProjectAssetsUI entry missing");return entry();
 }

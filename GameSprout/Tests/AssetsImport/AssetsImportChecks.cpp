@@ -12,13 +12,13 @@ int main(int argc,char **argv) {
         TestIDE ide;TestProject project;project.Root=temporary.path().toStdString();TestConsole console;
         TestEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide;
-        GameSprout::GameSproutApi api(&foundation,&editor);
+        GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
         std::vector<std::string> names{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator"};
         for (const std::string & name:names) editor.Modules[name]=LoadModule(name);
-        for (const auto & entry:editor.Modules) GameSprout::GameSproutEditorFinal::Before(entry.second,&api);
-        for (const auto & entry:editor.Modules) Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second,&api),"Module Initialize: "+entry.first);
-        for (const auto & entry:editor.Modules) if (entry.first!="Project" && entry.first!="AssetsManager") Check(GameSprout::GameSproutEditorFinal::Launch(entry.second,&api),"Module Launch: "+entry.first);
-        Check(GameSprout::GameSproutEditorFinal::Launch(&project,&api),"Project launch");
+        for (const auto & entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,&api);
+        for (const auto & entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,&api),"Module Initialize: "+entry.first);
+        for (const auto & entry:editor.Modules) if (entry.first!="Project" && entry.first!="AssetsManager") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module Launch: "+entry.first);
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project,&api),"Project launch");
         auto * library=static_cast<ILibraryManager *>(editor.Modules["LibraryManager"]);
         auto * pipeline=static_cast<IAssetsPipeline *>(editor.Modules["AssetsPipeline"]);
         auto * manager=static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
@@ -144,11 +144,11 @@ int main(int argc,char **argv) {
         Check(hasMaterial&&hasMesh&&hasMTL&&hasTexture,"OBJ lost MTL/texture dependencies");
         std::cout<<"PASS OBJ triangulation, external MTL and texture reference/dependency tracking\n";
         // Scan through the real AssetsManager and watcher layer.
-        Check(GameSprout::GameSproutEditorFinal::Launch(manager,&api),"AssetsManager launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(manager,&api),"AssetsManager launch failed");
         Check(ide.Count > 0,"AssetsManager Launch did not block the editor");
-        GameSprout::GameSproutEditorFinal::Finished(manager,&api);
+        GameSproutEditor::GameSproutEditorFinal::Finished(manager,&api);
         pump([&]{
-            GameSprout::GameSproutEditorFinal::Update(manager,&api);
+            GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);
             if (manager->GetAssetMetas().empty() || ide.Count != 0) return false;
             ILDBTable * table = library->GetLDBSession()->GetTable("AssetSources");
             if (!table) return false;
@@ -171,36 +171,36 @@ int main(int argc,char **argv) {
         material["Texture"]["LocalID"]=Json::UInt64(textureOutput.Assets[0].LocalID);
         Check(AssetArtifactIO::Write(root.filePath("Assets/Linked.mat"),QByteArray::fromStdString(AssetArtifactIO::JsonText(material)),error),"Cannot create material fixture");
         std::string materialGuid,materialDirectory;
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas()) if(meta->GetPath()=="Linked.mat") {
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas()) if(meta->GetPath()=="Linked.mat") {
             AssetImportManifest output;if(library->GetManifest(meta->_Guid,output)&&ide.Count==0) {materialGuid=meta->_Guid.GetGuidString();materialDirectory=output.Generation;return true;}
         }return false;});
         Check(library->FindDependents("Test.png")==std::vector<std::string>{materialGuid},"Reverse dependency index missing");
         auto * settings=static_cast<ITextureImportSettings *>(manager->QueryAsset(Guid(liveGuidString))->GetImportSettings());
         Check(settings->SetMaxSize(2),"Cannot change texture settings");
         Check(manager->ReimportAsset(Guid(liveGuidString)),"Cannot request setting reimport");
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
         Check(library->GetManifest(Guid(materialGuid),current),"Material disappeared");materialDirectory=current.Generation;
         image.fill(QColor(120,10,50,255));Check(image.save(png),"Cannot modify source texture");
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
         Check(library->GetManifest(Guid(materialGuid),current),"Material disappeared");materialDirectory=current.Generation;
         std::cout<<"PASS settings/source changes invalidate dependents; force rebuild retains LocalID\n";
         std::cerr<<"CHECK file rename\n";
         Check(QFile::rename(png,root.filePath("Assets/Moved.png")),"Cannot rename source");
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);IAssetMeta * meta=manager->QueryAsset(Guid(liveGuidString));AssetImportManifest output;return meta&&meta->GetPath()=="Moved.png"&&library->GetManifest(meta->_Guid,output)&&output.SourcePath=="Moved.png"&&ide.Count==0;});
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);IAssetMeta * meta=manager->QueryAsset(Guid(liveGuidString));AssetImportManifest output;return meta&&meta->GetPath()=="Moved.png"&&library->GetManifest(meta->_Guid,output)&&output.SourcePath=="Moved.png"&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);AssetImportManifest output;return library->GetManifest(Guid(materialGuid),output)&&output.Generation!=materialDirectory&&ide.Count==0;});
         Check(library->FindDependents("Moved.png")==std::vector<std::string>{materialGuid}&&library->FindDependents("Test.png").empty(),"Rename did not migrate dependency index");
         Check(QFileInfo::exists(root.filePath("Assets/Moved.png.meta"))&&!QFileInfo::exists(root.filePath("Assets/Test.png.meta")),"Rename lost Meta migration");
         std::cerr<<"CHECK nested create\n";
         Check(root.mkpath("Assets/FolderA"),"Cannot create nested folder");
         Check(image.save(root.filePath("Assets/FolderA/Nested.png")),"Nested PNG fixture");
         std::string nestedGuid;
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetPath()=="FolderA/Nested.png"){AssetImportManifest output;if(library->GetManifest(meta->_Guid,output)){nestedGuid=meta->_Guid.GetGuidString();return ide.Count==0;}}return false;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetPath()=="FolderA/Nested.png"){AssetImportManifest output;if(library->GetManifest(meta->_Guid,output)){nestedGuid=meta->_Guid.GetGuidString();return ide.Count==0;}}return false;});
         std::cerr<<"CHECK folder rename\n";
         Check(root.rename("Assets/FolderA","Assets/FolderB"),"Cannot rename folder");
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);IAssetMeta * meta=manager->QueryAsset(Guid(nestedGuid));AssetImportManifest output;return meta&&meta->GetPath()=="FolderB/Nested.png"&&library->GetManifest(meta->_Guid,output)&&output.SourcePath=="FolderB/Nested.png"&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);IAssetMeta * meta=manager->QueryAsset(Guid(nestedGuid));AssetImportManifest output;return meta&&meta->GetPath()=="FolderB/Nested.png"&&library->GetManifest(meta->_Guid,output)&&output.SourcePath=="FolderB/Nested.png"&&ide.Count==0;});
         std::cerr<<"CHECK folder delete\n";
         Check(QDir(root.filePath("Assets/FolderB")).removeRecursively(),"Cannot remove folder");
-        pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);return manager->QueryAsset(Guid(nestedGuid))==nullptr&&ide.Count==0;});
+        pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);return manager->QueryAsset(Guid(nestedGuid))==nullptr&&ide.Count==0;});
         Check(!library->GetManifest(Guid(nestedGuid),current),"Deleted nested asset retained active library index");
         std::cout<<"PASS file/folder rename preserves GUID/Meta; recursive removal clears library index\n";
         // Optional real animated FBX supplied on the command line.
@@ -209,7 +209,7 @@ int main(int argc,char **argv) {
             const QDir modelDirectory(QString::fromUtf8(argv[1]));
             Check(QFile::copy(modelDirectory.filePath("Bear_Animated.fbx"),root.filePath("Assets/Bear.fbx")),"Cannot copy real FBX");
             Check(QFile::copy(modelDirectory.filePath("T_Bear.png"),root.filePath("Assets/T_Bear.png")),"Cannot copy model texture");
-            pump([&]{GameSprout::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetPath()=="Bear.fbx") {AssetImportManifest output;if(library->GetManifest(meta->_Guid,output)) {int meshes=0,clips=0,skeletons=0;for(const auto & artifact:output.Assets){meshes+=artifact.Type==eAssetType::Mesh;clips+=artifact.Type==eAssetType::AnimationClip;skeletons+=artifact.Type==eAssetType::Skeleton;}Check(meshes==1&&clips==13&&skeletons==1,"FBX lost mesh/skeleton/animations");bearManifest=output;return ide.Count==0;}}return false;},60000);
+            pump([&]{GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetPath()=="Bear.fbx") {AssetImportManifest output;if(library->GetManifest(meta->_Guid,output)) {int meshes=0,clips=0,skeletons=0;for(const auto & artifact:output.Assets){meshes+=artifact.Type==eAssetType::Mesh;clips+=artifact.Type==eAssetType::AnimationClip;skeletons+=artifact.Type==eAssetType::Skeleton;}Check(meshes==1&&clips==13&&skeletons==1,"FBX lost mesh/skeleton/animations");bearManifest=output;return ide.Count==0;}}return false;},60000);
             bool animationMoves=false;
             for(const AssetArtifact & artifact:bearManifest.Assets) {
                 IAsset * imported=library->QueryAsset(Guid(bearManifest.GuidString),artifact.LocalID);
@@ -237,19 +237,19 @@ int main(int argc,char **argv) {
         const QString activeGeneration=QString::fromStdString(library->GetLibraryRoot()+"/"+current.Directory+"/"+current.Assets[0].Path);
         const QString orphan=root.filePath("Library/Artifact/"+QString::fromStdString(Guid(99,98,97,96).GetGuidString())+"_999.gsasset");
         Check(AssetArtifactIO::Write(orphan,"orphan",error),"Cannot create orphan cache fixture");
-        GameSprout::GameSproutEditorFinal::Finished(library,&api);
+        GameSproutEditor::GameSproutEditorFinal::Finished(library,&api);
         pump([&]{return ide.Count==0&&!QFileInfo::exists(orphan);});
         Check(QFileInfo::exists(activeGeneration),"GC removed a referenced artifact");
         std::cout<<"PASS orphan cache cleanup preserves active generation\n";
-        GameSprout::GameSproutEditorFinal::Release(manager,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(manager,&api);
         bool callbackAfterRelease=false;
         pipeline->ImportAsset(&texture,[&](const AssetImportResult &){callbackAfterRelease=true;},true);
         Check(ide.Count==1,"Pending task has no Loading");
-        GameSprout::GameSproutEditorFinal::Release(pipeline,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(pipeline,&api);
         Check(ide.Count==0&&ide.Loads==ide.Unloads,"Shutdown Loading imbalance");
         for(int i=0;i<100;++i){real->Update();QThread::msleep(2);}
         Check(!callbackAfterRelease,"Released task owner received a callback");
-        GameSprout::GameSproutEditorFinal::Release(library,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(library,&api);
         std::cout<<"PASS release during outstanding import suppresses callback and balances Loading\n";
         real->Release();
         std::cout<<"All asset lifecycle checks passed.\n";

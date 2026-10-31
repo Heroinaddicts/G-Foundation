@@ -16,25 +16,25 @@ int main(int argc,char **argv) {
         TestProject project;project.Root=temporary.path().toStdString();TestConsole console;
         PreviewIDE ide;PreviewEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
-        GameSprout::GameSproutApi api(&foundation,&editor);
+        GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
         for(const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})editor.Modules[name]=LoadModule(name);
-        for(const auto & entry:editor.Modules)GameSprout::GameSproutEditorFinal::Before(entry.second,&api);
-        for(const auto & entry:editor.Modules)Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second,&api),"Module initialization failed");
+        for(const auto & entry:editor.Modules)GameSproutEditor::GameSproutEditorFinal::Before(entry.second,&api);
+        for(const auto & entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,&api),"Module initialization failed");
         IProjectAssetsUI * ui=LoadProjectView();
-        GameSprout::GameSproutEditorFinal::Before(ui,&editor);
-        Check(GameSprout::GameSproutEditorFinal::Initialize(ui,&editor),"UI initialization failed");
-        for(const auto & entry:editor.Modules)if(entry.first!="Project")Check(GameSprout::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
-        Check(GameSprout::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
+        GameSproutEditor::GameSproutEditorFinal::Before(ui,&editor);
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(ui,&editor),"UI initialization failed");
+        for(const auto & entry:editor.Modules)if(entry.first!="Project")Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
         auto * manager=static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
         Recorder recorder;Check(manager->RegisterAssetListener(&recorder),"Cannot register asset listener");
         bool launched=false;
-        if(!late){Check(GameSprout::GameSproutEditorFinal::Launch(ui,&editor),"UI launch failed");launched=true;}
+        if(!late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"UI launch failed");launched=true;}
         std::string stage="startup";
         auto pump=[&](const std::function<bool()> & done) {
             const auto start=std::chrono::steady_clock::now();
-            do {real->Update();QCoreApplication::processEvents();GameSprout::GameSproutEditorFinal::Update(manager,&api);
-                GameSprout::GameSproutEditorFinal::Update(editor.Modules["SelectionManager"],&api);
-                if(launched)GameSprout::GameSproutEditorFinal::Update(ui,&editor);
+            do {real->Update();QCoreApplication::processEvents();GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);
+                GameSproutEditor::GameSproutEditorFinal::Update(editor.Modules["SelectionManager"],&api);
+                if(launched)GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
                 if(done())return;QThread::msleep(2);
             }while(std::chrono::steady_clock::now()-start<std::chrono::seconds(35));
             for(IAssetMeta * meta:manager->GetAssetMetas()) std::cerr<<"UI TIMEOUT "<<meta->_Guid.GetGuidString()<<" "<<meta->GetPath()<<" state="<<int(meta->GetImportState())<<"\n";
@@ -42,14 +42,14 @@ int main(int argc,char **argv) {
             throw std::runtime_error("UI operation timed out: "+stage);
         };
         auto idle=[&]{if(ide.Counter.Count!=0)return false;for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetImportState()==eAssetImportState::Pending)return false;return true;};
-        GameSprout::GameSproutEditorFinal::Finished(manager,&api);pump([&]{return manager->GetAssetMetas().size()>=5&&idle();});
-        if(late){Check(GameSprout::GameSproutEditorFinal::Launch(ui,&editor),"Late UI launch failed");launched=true;}
+        GameSproutEditor::GameSproutEditorFinal::Finished(manager,&api);pump([&]{return manager->GetAssetMetas().size()>=5&&idle();});
+        if(late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"Late UI launch failed");launched=true;}
         auto * tree=ide.Dock.Content->findChild<QTreeView *>("assetTree");
         auto * search=ide.Dock.Content->findChild<QLineEdit *>("searchEdit");
         auto * breadcrumb=ide.Dock.Content->findChild<QComboBox *>("breadcrumbCombo");
         Check(tree&&search&&breadcrumb,"Designer controls missing");
         Check(FindRow(tree,"Art").isValid()&&FindRow(tree,"Root.png").isValid()&&tree->model()->rowCount()==3,"Initial event/snapshot synchronization failed");
-        Check(ui->NavigateToDirectory("Art"),"Cannot enter folder");GameSprout::GameSproutEditorFinal::Update(ui,&editor);
+        Check(ui->NavigateToDirectory("Art"),"Cannot enter folder");GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
         const QModelIndex source=FindRow(tree,"Triangle.obj");Check(source.isValid(),"Folder query did not populate resources");
         tree->expand(source);QCoreApplication::processEvents();
         Check(tree->model()->rowCount(source)>=1,"Model subresources did not expand");
@@ -65,9 +65,9 @@ int main(int argc,char **argv) {
         stage="added";
         Check(image.save(root.filePath("Assets/Art/Added.png")),"Cannot create live asset");
         pump([&]{return idle()&&FindRow(tree,"Added.png").isValid();});
-        search->setText("Triangle");GameSprout::GameSproutEditorFinal::Update(ui,&editor);
+        search->setText("Triangle");GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
         Check(tree->model()->rowCount()==1&&FindRow(tree,"Triangle.obj").isValid(),"Search filter incorrect");
-        search->clear();GameSprout::GameSproutEditorFinal::Update(ui,&editor);
+        search->clear();GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
         tree->expand(FindRow(tree,"Triangle.obj"));QCoreApplication::processEvents();
         Check(ide.Dock.Host.grab().save("/tmp/gamesprout-project-assets-ui.png"),"Cannot render UI preview");
         stage="folder rename";
@@ -95,11 +95,11 @@ int main(int argc,char **argv) {
         Check(manager->ReimportAsset(manager->GetAssetsInDirectory("")[0]->_Guid),"Cannot reimport after listener removal");pump(idle);
         Check(recorder.Events.size()==count,"Unregistered listener received callbacks");
         ui->Hide();ui->Show();Check(ide.Dock.Content->isVisible(),"Hidden panel did not reopen");
-        GameSprout::GameSproutEditorFinal::Release(ui,&editor);
-        GameSprout::GameSproutEditorFinal::Release(editor.Modules["SelectionManager"],&api);
-        GameSprout::GameSproutEditorFinal::Release(manager,&api);
-        GameSprout::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
-        GameSprout::GameSproutEditorFinal::Release(editor.Modules["LibraryManager"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(ui,&editor);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["SelectionManager"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(manager,&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["LibraryManager"],&api);
         Check(ide.Counter.Count==0,"UI task loading imbalance");real->Release();
         std::cout<<"PASS real ProjectAssetsUI: "<<(late?"late snapshot":"startup events")<<", directory/search/subassets, selection, rename/removal and error recovery\n";
         return 0;

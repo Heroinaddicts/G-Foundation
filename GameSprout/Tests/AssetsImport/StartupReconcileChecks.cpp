@@ -83,14 +83,14 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
     foundation.Real = real;
     foundation.Tasks.Real = real->TaskApi();
     foundation.Tasks.IDE = &ide;
-    GameSprout::GameSproutApi api(&foundation, &editor);
+    GameSproutEditor::GameSproutModuleApi api(&foundation, &editor);
     for (const std::string & name : {"LocalDatabase", "LibraryManager", "ShaderCompiler", "AssetsPipeline", "AssetsManager", "GuidCreator"})
         editor.Modules[name] = LoadModule(name);
-    for (const auto & entry : editor.Modules) GameSprout::GameSproutEditorFinal::Before(entry.second, &api);
-    for (const auto & entry : editor.Modules) Check(GameSprout::GameSproutEditorFinal::Initialize(entry.second, &api), "Module Initialize: " + entry.first);
+    for (const auto & entry : editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second, &api);
+    for (const auto & entry : editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second, &api), "Module Initialize: " + entry.first);
     for (const auto & entry : editor.Modules) if (entry.first != "Project")
-        Check(GameSprout::GameSproutEditorFinal::Launch(entry.second, &api), "Module Launch: " + entry.first);
-    Check(GameSprout::GameSproutEditorFinal::Launch(&project, &api), "Project launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second, &api), "Module Launch: " + entry.first);
+    Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project, &api), "Project launch failed");
     auto * manager = static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
     auto * library = static_cast<ILibraryManager *>(editor.Modules["LibraryManager"]);
     auto * pipeline = static_cast<IAssetsPipeline *>(editor.Modules["AssetsPipeline"]);
@@ -99,7 +99,7 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
         for (;;) {
             real->Update();
             QCoreApplication::processEvents();
-            GameSprout::GameSproutEditorFinal::Update(manager, &api);
+            GameSproutEditor::GameSproutEditorFinal::Update(manager, &api);
             const Json::Value state = Snapshot(library);
             bool settled = state["Sources"].size() >= expected && ide.Count == 0;
             for (const Json::Value & source : state["Sources"])
@@ -119,7 +119,7 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
     if (phase == 1) foundation.Tasks.BeforeSubmission = [&] {
         Check(manager->GetAssetMetas().size() == 14, "Task submitted before the full GUID registry was available");
     };
-    GameSprout::GameSproutEditorFinal::Finished(manager, &api);
+    GameSproutEditor::GameSproutEditorFinal::Finished(manager, &api);
     const int startupLoadingTotal = ide.Loads;
     if (phase == 1) {
         Check(foundation.Tasks.Submissions == 13, "ScanDirectory returned before all 13 imports were submitted");
@@ -143,9 +143,9 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv) {
     }
     WriteJson(root.filePath("phase-" + QString::number(phase) + ".json"), state);
     if (phase == 2) SimulateInterruptedPublications(library, state);
-    GameSprout::GameSproutEditorFinal::Release(manager, &api);
-    GameSprout::GameSproutEditorFinal::Release(pipeline, &api);
-    GameSprout::GameSproutEditorFinal::Release(library, &api);
+    GameSproutEditor::GameSproutEditorFinal::Release(manager, &api);
+    GameSproutEditor::GameSproutEditorFinal::Release(pipeline, &api);
+    GameSproutEditor::GameSproutEditorFinal::Release(library, &api);
     Check(ide.Count == 0 && ide.Loads == ide.Unloads, "Restart Loading/Unloading imbalance");
     real->Release();
     return 0;

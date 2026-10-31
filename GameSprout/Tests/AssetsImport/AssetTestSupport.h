@@ -20,21 +20,21 @@
 #include <stdexcept>
 #include <thread>
 
-namespace GameSprout {
+namespace GameSproutEditor {
 // Exercise the same protected lifecycle access used by the production editor.
 class GameSproutEditorFinal {
 public:
-    static void Before(IGameSproutModule * module,GameSproutApi * api) {module->BeforeInitialize(api);}
-    static bool Initialize(IGameSproutModule * module,GameSproutApi * api) {return module->Initialize(api)&&module->TriggerInitialized(api);}
-    static bool Launch(IGameSproutModule * module,GameSproutApi * api) {return module->Launch(api)&&module->TriggerLaunched(api);}
-    static void Finished(IGameSproutModule * module,GameSproutApi * api) {module->LaunchFinished(api);}
-    static void Update(IGameSproutModule * module,GameSproutApi * api) {module->Update(api);}
-    static void Release(IGameSproutModule * module,GameSproutApi * api) {module->Release(api);}
-    static void Before(IGameSproutView * view,GameSproutEditor * editor) {view->BeforeInitialize(editor);}
-    static bool Initialize(IGameSproutView * view,GameSproutEditor * editor) {return view->Initialize(editor)&&view->TriggerInitialized(editor);}
-    static bool Launch(IGameSproutView * view,GameSproutEditor * editor) {return view->Launch(editor)&&view->TriggerLaunched(editor);}
-    static void Update(IGameSproutView * view,GameSproutEditor * editor) {view->Update(editor);}
-    static void Release(IGameSproutView * view,GameSproutEditor * editor) {view->Release(editor);}
+    static void Before(IGameSproutModule * module,GameSproutModuleApi * api) {module->BeforeInitialize(api);}
+    static bool Initialize(IGameSproutModule * module,GameSproutModuleApi * api) {return module->Initialize(api)&&module->TriggerInitialized(api);}
+    static bool Launch(IGameSproutModule * module,GameSproutModuleApi * api) {return module->Launch(api)&&module->TriggerLaunched(api);}
+    static void Finished(IGameSproutModule * module,GameSproutModuleApi * api) {module->LaunchFinished(api);}
+    static void Update(IGameSproutModule * module,GameSproutModuleApi * api) {module->Update(api);}
+    static void Release(IGameSproutModule * module,GameSproutModuleApi * api) {module->Release(api);}
+    static void Before(IGameSproutView * view,GameSproutViewApi * editor) {view->BeforeInitialize(editor);}
+    static bool Initialize(IGameSproutView * view,GameSproutViewApi * editor) {return view->Initialize(editor)&&view->TriggerInitialized(editor);}
+    static bool Launch(IGameSproutView * view,GameSproutViewApi * editor) {return view->Launch(editor)&&view->TriggerLaunched(editor);}
+    static void Update(IGameSproutView * view,GameSproutViewApi * editor) {view->Update(editor);}
+    static void Release(IGameSproutView * view,GameSproutViewApi * editor) {view->Release(editor);}
 };
 }
 
@@ -43,9 +43,9 @@ class TestProject final : public IProject {
 public:
     std::string Root;
     const std::string & GetProjectRoot() const override {return Root;}
-    bool Initialize(GameSprout::GameSproutApi *) override {return true;}
-    bool Launch(GameSprout::GameSproutApi *) override {return true;}
-    void Release(GameSprout::GameSproutApi *) override {}
+    bool Initialize(GameSproutEditor::GameSproutModuleApi *) override {return true;}
+    bool Launch(GameSproutEditor::GameSproutModuleApi *) override {return true;}
+    void Release(GameSproutEditor::GameSproutModuleApi *) override {}
 };
 class TestConsole final : public IConsole {
 public:
@@ -54,9 +54,9 @@ public:
         if (qEnvironmentVariableIsSet("GAMESPROUT_TEST_VERBOSE")) std::cerr << message << "\n";
         if (level==eConsoleLog::Error) {Errors.push_back(message);std::cerr<<message<<"\n";}
     }
-    bool Initialize(GameSprout::GameSproutApi *) override {return true;}
-    bool Launch(GameSprout::GameSproutApi *) override {return true;}
-    void Release(GameSprout::GameSproutApi *) override {}
+    bool Initialize(GameSproutEditor::GameSproutModuleApi *) override {return true;}
+    bool Launch(GameSproutEditor::GameSproutModuleApi *) override {return true;}
+    void Release(GameSproutEditor::GameSproutModuleApi *) override {}
 };
 class TestIDE final : public IIDEWindow {
 public:
@@ -69,17 +69,17 @@ public:
     IIDEDocker * CreateDocker(const QString &) override {return nullptr;}
     IIDEDocker * QueryDocker(const QString &) override {return nullptr;}
     bool ResizeDockers(const QList<IIDEDocker *> &,const QList<int> &,Qt::Orientation) override {return false;}
-    bool Initialize(GameSprout::GameSproutEditor *) override {return true;}
-    bool Launch(GameSprout::GameSproutEditor *) override {return true;}
-    void Release(GameSprout::GameSproutEditor *) override {}
+    bool Initialize(GameSproutEditor::GameSproutViewApi *) override {return true;}
+    bool Launch(GameSproutEditor::GameSproutViewApi *) override {return true;}
+    void Release(GameSproutEditor::GameSproutViewApi *) override {}
 };
-class TestEditor final : public GameSprout::GameSproutEditor {
+class TestEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    TestEditor():GameSproutEditor(nullptr) {}
-    std::map<std::string,GameSprout::IGameSproutModule *> Modules;
+    TestEditor():GameSproutViewApi(nullptr) {}
+    std::map<std::string,GameSproutEditor::IGameSproutModule *> Modules;
     TestIDE * IDE=nullptr;
-    GameSprout::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}
-    GameSprout::IGameSproutView * FindGameSproutView(const std::string & name) const override {return name=="IDEWindow"?IDE:nullptr;}
+    GameSproutEditor::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}
+    GameSproutEditor::IGameSproutView * FindGameSproutView(const std::string & name) const override {return name=="IDEWindow"?IDE:nullptr;}
 };
 class TaskProxy final : public Foundation::ITaskApi {
 public:
@@ -127,12 +127,12 @@ public:
     void LogSync(int level,const char * content,bool console,const char * file,int line) override {Real->LogSync(level,content,console,file,line);}
 };
 
-GameSprout::IGameSproutModule * LoadModule(const std::string & name) {
+GameSproutEditor::IGameSproutModule * LoadModule(const std::string & name) {
 #if defined(_WIN32)
     const std::string filename=std::string(TEST_BINARY_ROOT)+"/Logic/Module/"+name+".dll";
     HMODULE module=LoadLibraryW(std::filesystem::path(filename).c_str());
     Check(module!=nullptr,"Cannot load "+filename);
-    auto entry=reinterpret_cast<GameSprout::IGameSproutModule *(*)()>(GetProcAddress(module,"GetModule"));
+    auto entry=reinterpret_cast<GameSproutEditor::IGameSproutModule *(*)()>(GetProcAddress(module,"GetModule"));
 #else
 #if defined(__APPLE__)
     const char * suffix=".dylib";
@@ -143,7 +143,7 @@ GameSprout::IGameSproutModule * LoadModule(const std::string & name) {
     void * module=dlopen(filename.c_str(),RTLD_NOW|RTLD_LOCAL);
     const char * error=module?nullptr:dlerror();
     Check(module!=nullptr,"Cannot load "+filename+": "+(error?error:""));
-    auto entry=reinterpret_cast<GameSprout::IGameSproutModule *(*)()>(dlsym(module,"GetModule"));
+    auto entry=reinterpret_cast<GameSproutEditor::IGameSproutModule *(*)()>(dlsym(module,"GetModule"));
 #endif
     Check(entry!=nullptr,"Missing module entry");return entry();
 }
@@ -162,6 +162,8 @@ public:
     IAssetImportSettings * GetImportSettings() const override {return const_cast<IAssetImportSettings *>(&Empty);}
     bool SerializeMeta(std::string & json) const override {
         Json::Value value;value["Guid"]=_Guid.GetGuidString();value["Path"]=Path;value["ImportSettings"]=Settings;
+        if (_ImporterType==eAssetImporterType::Texture) value["ImporterType"]="Texture";
+        if (_ImporterType==eAssetImporterType::Model) value["ImporterType"]="Model";
         AssetArtifactIO::Parse(Identities,value["SubAssets"]);json=AssetArtifactIO::JsonText(value);return true;
     }
     bool SetSubAssets(const std::string & json) override {Identities=json;return true;}
