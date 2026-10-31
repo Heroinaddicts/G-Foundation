@@ -15,6 +15,7 @@ get_filename_component(GAMESPROUT_OUTPUT_DIRECTORY
 # Public APIs and independently built binaries only.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../Foundation/FoundationSDK.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../GameSproutRuntime/GameSproutRuntime.cmake")
 
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
@@ -142,6 +143,19 @@ add_custom_target(GameSproutDeployFoundation
     VERBATIM
 )
 add_dependencies(GameSproutEditor GameSproutDeployFoundation)
+
+# Runtime is an independent SDK binary shared by the editor and game shells.
+add_custom_target(GameSproutDeployRuntime
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:GameSproutEditor>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:GameSproutRuntime::GameSproutRuntime>"
+        "$<TARGET_FILE_DIR:GameSproutEditor>/$<TARGET_FILE_NAME:GameSproutRuntime::GameSproutRuntime>"
+    DEPENDS "$<TARGET_FILE:GameSproutRuntime::GameSproutRuntime>"
+    COMMENT "Copying GameSproutRuntime into GameSproutEditor"
+    VERBATIM
+)
+add_dependencies(GameSproutEditor GameSproutDeployRuntime)
 
 include(GNUInstallDirs)
 install(TARGETS GameSproutEditor

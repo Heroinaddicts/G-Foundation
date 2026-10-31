@@ -1,0 +1,60 @@
+场景源文件 V1
+
+.scene 是 Assets 内可编辑的 JSON 源文件。AssetsManager 管理其 .meta 和 GUID，
+AssetsPipeline 导入为 Library/Artifact 内的二进制产物；SceneManager 不生成 Meta。
+
+顶层字段：Version=1、Name、Objects，以及可选 MainCameraID（0 表示未指定）。
+RootActive 默认 true，RootComponents 可记录场景根自身的七类组件，根 Transform 必须为单位变换。
+RootMainCamera=true 表示根上的 Camera 是主相机，此时 MainCameraID 必须为 0。
+NextObjectID 保存节点文件 ID 分配高水位，新增节点单调分配，删除后重开也不复用。
+NextObjectID 缺省使用已有最大 ID+1；0 表示 uint64 ID 空间耗尽。
+Objects 每项包含 ID、Name、Components；ParentID 默认 0，Active 默认 true。
+ID 是本场景文件内稳定的节点标识，不能使用每次创建后变化的 Runtime InstanceID。
+ParentID=0 代表直接位于场景根下。文件可以先写子节点，再写父节点。
+
+当前支持的组件 Type：
+GameSproutRuntime.Transform
+GameSproutRuntime.RectTransform
+GameSproutRuntime.Image
+GameSproutRuntime.Canvas
+GameSproutRuntime.Mesh
+GameSproutRuntime.MeshRenderer
+GameSproutRuntime.Camera
+
+资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
+未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
+MainCameraID 指向包含 Camera 组件的节点。
+
+启动先建立未保存的 Untitled 场景，默认有 Main Camera。
+Project/Create/Scene 仅创建文件并交给已有资源流程导入，不自动切换场景。
+双击 Scene 源资产时加载候选场景，校验及创建成功后切换；失败保留当前场景。
+HierarchyUI 只存节点 ID 和展示数据，通过 Runtime 事件刷新，不另外维护运行节点树。
+
+Hierarchy 右键可在场景根或指定父节点下创建节点：空对象、Camera、Mesh、UI Canvas、
+UI Image、UI Empty。节点和组件由 Runtime 工厂创建，同父重名自动编号。
+SelectionManager 用 SceneID/ObjectID 共享节点选择，与 Project 的资源选择互斥。
+Inspector 按对象身份解析组件，事件发生时重新查询 Runtime。
+
+保存与属性编辑
+SceneDocument 的 ObjectIDs 将 Runtime InstanceID 映射为稳定文件 ID，文件中不保存 Runtime 身份。
+属性与变换历史同样以稳定文件 ID 定位目标；0 表示当前场景根，不能删除场景根。
+DeleteObject 记录被删子树完整节点/组件数据、父级文件 ID、兄弟位置与内部主相机。
+Undo 只重建此子树，保留稳定文件 ID，分配新的 Runtime 身份，不重建场景或未删节点。
+Redo 检查子树未被历史之外的操作改动，避免旧快照覆盖新节点或属性；失败保留历史位置。
+序列化按深度优先顺序写入对象，保留每组兄弟顺序、所有可编辑组件属性、资源 GUID/LocalID、主相机及根状态。
+Mesh Bounds 等从加载结果派生的数据不保存。Missing 资源的合法身份仍保留，不要求资源当前存在。
+EditObject 保存只捕获值的 apply/revert 操作，执行前在活动场景按 ID 查询目标。
+成功后记录属性撤销历史；失败或抛异常尝试恢复原值，不改变历史位置。目标已删除时 Undo 安全失败。
+当前场景切换后清空撤销历史；节点删除可撤销/重做，节点创建暂未加入 Undo。
+SaveScene 要求已有当前路径；SaveSceneAs 可首次创建新文件，不静默覆盖别的已有场景。
+路径必须位于已有 Assets 子目录中，禁止符号链接；使用 QSaveFile 原子替换，不允许直接写回退。
+保存成功后才更新当前路径和基线，资源 watcher 自然接收源文件变化，不直接生成 Meta/Artifact。
+打开和成功保存时另存原始文件字节 SHA256。覆盖当前路径前、提交前均核对磁盘，外部修改（含格式变化）
+或文件消失时拒绝覆盖，提示重新打开或另存为新文件；另存到新路径不受旧路径冲突影响。
+HasUnsavedChanges 比较当前完整快照与保存基线，也能发现尚未派发 Runtime 事件的外部 setter。
+常规 Update 仅在本批 Runtime 事件发生后比较快照；迟到事件不会把刚保存的相同数据重新标脏。
+OnSceneStateChanged 通知属性/历史/保存状态变化，不触发场景切换及选择清空。
+编辑/Undo/Redo/Save/Open 不能从 Runtime 更新、遍历或事件回调重入执行。
+
+SceneView 通过独立编辑器相机调用 Runtime Renderer 与 GRHI；SceneManager 只管理场景数据和编辑事务。
+尚未接入播放模式隔离或资源实例化。
