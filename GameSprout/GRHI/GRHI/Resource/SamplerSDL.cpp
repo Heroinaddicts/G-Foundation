@@ -3,13 +3,14 @@
 
 namespace GRHI {
 SamplerSDL::SamplerSDL(DeviceSDL* owner, uint64_t id, SDL_GPUSampler* native)
-    : ISampler(id), Owner(owner), Native(native) {}
+    : ISampler(id), Owner(owner), Native(native) { Owner->RegisterResource(static_cast<ISampler*>(this),this,id,ResourceKindSDL::Sampler); }
 
 SamplerSDL::~SamplerSDL() {
     Release();
 }
 
 void SamplerSDL::Release() {
+    Owner->RemoveResource(static_cast<ISampler*>(this));
     if (Native) {
         SDL_ReleaseGPUSampler(Owner->Native(), Native);
         Native = nullptr;

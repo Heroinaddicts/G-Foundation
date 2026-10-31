@@ -7,7 +7,7 @@ Shader 格式自动选择，调用方不指定后端。
 
 ## 构建与验证
 
-先独立构建带 GRHI 显卡扩展的本地 SDL3，再配置 GRHI。当前目录会自动查找相邻的 `../../SDL/build`，
+先独立构建带 GRHI 显卡扩展的本地 SDL3，再配置 GRHI。当前目录会自动查找相邻的 `../../../SDL/build`，
 也可以通过 `SDL3_DIR` 指定已构建或安装的 SDL CMake 包：
 
 ```sh
@@ -63,10 +63,17 @@ API 为主线程使用的单例。重复获取共享同一个实例，由一个�
   不可用时返回失败，不静默改用其他显卡。字符串 ID 可以保存到设置文件，但每次
   启动必须重新匹配，不保证跨重启、驱动更新或硬件变化永久有效。
 - 设备层接受 Metal 的 MSL/metallib、DX12 的 DXBC/DXIL、Vulkan 的 SPIR-V 格式；
-  后续 Shader 资源必须提供匹配的目标产物。目前尚未实现 Shader 加载或绘制。
+  Shader 资源必须提供匹配的目标产物。已支持纹理/采样器、图形 Shader/Pipeline、
+  过程顶点 Draw、顶点/索引缓冲区、Uniform 和带深度测试的 DrawIndexed。
 - 最近一次设备创建失败原因通过 `GetLastError()` 返回；创建成功时清空。
 - `Release()` 可重复调用；释放后设备拒绝创建 Surface，调用方仍需删除设备包装对象。
-- `SurfaceSDL` 当前仅为接口骨架，尚未建立原生窗口包装、GPU 关联或绘制流程。
+- `SurfaceSDL` 包装宿主原生窗口，建立 SDL GPU 呈现连接；支持多个独立 Surface。
+  `Draw(texture)` 保留等比例图片显示；底层 AcquireFrame/RenderPass/Submit 可用于三维场景。
+  原生窗口仍由宿主管理，Surface 创建/获取画面/销毁须在窗口线程，宿主须晚于 Surface 销毁。
+  macOS 请求高像素密度绘制目标，frame.Width/Height 是实际 drawable 像素。
+  Foreign NSView 的子视图尺寸变化不会可靠产生 SDL 窗口尺寸事件，因此 GRHI 私有 Cocoa
+  桥在每次 AcquireFrame 前同步 SDL 子 Metal 层的 backing 像素尺寸与 contentsScale；
+  不修改宿主 NSView 或 NSWindow 几何，不依赖 Qt，也不需要宿主手动通知 resize。
 - `GRHI_GPU_DEBUG` 默认关闭，可显式开启。本地 SDL 默认 blit 采样器中未初始化
   的属性字段已修复，macOS 开启验证的运行测试通过。
 
@@ -78,7 +85,7 @@ API 为主线程使用的单例。重复获取共享同一个实例，由一个�
 
 ## 本地 SDL 扩展
 
-SDL 源码改动位于相邻的 `../../SDL` 仓库，需与 GRHI 一起保留。这是私有扩展，
+SDL 源码改动位于相邻的 `../../../SDL` 仓库，需与 GRHI 一起保留。这是私有扩展，
 不是上游标准 SDL API。CMake 会检查扩展头文件和导出符号，避免误用原版运行库。
 
 - `SDL_GetGPUAdapters(&count)`：返回 SDL 分配的统一物理设备信息数组，调用方
@@ -96,3 +103,32 @@ Vulkan 显式枚举要求能取得 device UUID/LUID，缺少相关能力的设�
 Windows 的 DX12/Vulkan 均在 SDL 内按物理标识选卡，GRHI 统一使用 `DeviceSDL`。
 运行时部署 `GRHI.dll` 和 `SDL3.dll` 到同一目录，动态加载器会在该目录查找依赖，
 支持 UTF-8 传入的路径。MinGW 与 MSVC 均使用 `GRHI.dll` 这一运行库名称。
+
+## 三维绘制与验证
+
+- `CreateBuffer` 返回 immutable 顶点/索引数据；`Vertex | Index` 允许一次上传预处理
+  Mesh 的整块 bytes，再以不同字节 offset 绑定顶点和索引。未提供的数据初始化为零。
+- Pipeline 声明 binding/stride 和 Float2/3/4 attribute location。当前是 per-vertex 输入，
+  binding/location 小于 16，stride 为 4 的倍数且不超过 2048；索引支持 UInt16/UInt32。
+- `ShaderCode::UniformBufferCount` 每阶段最多 4。SetVertexUniform/SetFragmentUniform
+  在调用期间复制 std140 数据：长度为 16 字节倍数、每槽最多 16 KiB。切 Pipeline 后
+  重新绑定所需输入、uniform、纹理和采样器；Shader 元数据必须与编译产物一致。
+- 深度纹理使用 `D32_Float + DepthStencilTarget`，通过独立 DepthTargetView 交给 Pass；
+  默认清为 1。Pipeline 的 DepthFormat 必须与 Pass 匹配，DepthTest/Write/Compare 独立设置。
+  当前不包含 stencil、MSAA、storage、可变 Buffer 写入、instance-rate 顶点布局或计算管线。
+- 命令先记录 CPU 描述，Submit 统一检查资源身份、目标、绑定和索引/顶点范围后编码 SDL。
+  Release/delete 后失效的资源不会进入绘制；失败的离屏命令取消。SDL 不允许取消已取得
+  的窗口帧，因此此情况仅提交空的获取命令以释放帧，不编码无效绘制。
+- Device 必须晚于所有子资源/Surface 销毁。资源至少存活到引用命令提交或取消；接口不接管
+  调用方对象。GPU 可能继续执行，原生资源的延后释放由 SDL 处理。
+- `ReadTexture` 是显式同步验证入口：提交/取消本设备全部命令后读取普通颜色纹理，返回
+  紧密排列 RGBA bytes（BGRA 会转换通道顺序），保留 sRGB 编码；不支持深度或 Surface 帧。
+  它等待 GPU fence，不能用于每帧呈现路径。
+
+`GRHI_BUILD_TESTS=ON` 提供真实 Metal 离屏测试：复合 Buffer 上传、UInt16/UInt32 索引、
+非索引绘制、矩阵/片元 uniform、深度遮挡、旧图片纹理采样流程及颜色读回；也验证错设备、
+失效资源、越界范围、缺少绑定和非法命令状态被拒绝且不会修改目标。测试 Shader 当前提供
+Metal 源码，非 Apple 平台将明确跳过 GPU fixture，不能视为已经完成 Vulkan/DX 的真机验收。
+
+Editor 的真实 Qt/NSView 集成另已验证：Scene 子窗由 880×536 变为 1060×656、DPR=2 时，
+SurfaceFrame 由 1760×1072 更新为 2120×1312；同时通过真实三角形绘制与宿主提前销毁验证。

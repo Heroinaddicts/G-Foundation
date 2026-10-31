@@ -92,6 +92,7 @@ namespace GRHI {
 
     void DeviceSDL::Release() {
         if (_Device != nullptr) {
+            if (!_Resources.empty() || !_Commands.empty()) { Fail("Release resources and submit/cancel commands before releasing the device."); return; }
             SDL_WaitForGPUIdle(_Device);
             SDL_DestroyGPUDevice(_Device);
             _Device = nullptr;

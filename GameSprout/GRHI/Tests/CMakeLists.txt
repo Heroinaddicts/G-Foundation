@@ -1,0 +1,5 @@
+add_executable(GRHI3DChecks GRHI3DChecks.cpp)
+target_link_libraries(GRHI3DChecks PRIVATE GRHI::GRHIApi)
+add_dependencies(GRHI3DChecks GRHI)
+add_test(NAME GRHI.Real3DAndValidation COMMAND GRHI3DChecks "$<TARGET_FILE_DIR:GRHI>")
+set_tests_properties(GRHI.Real3DAndValidation PROPERTIES SKIP_RETURN_CODE 77)

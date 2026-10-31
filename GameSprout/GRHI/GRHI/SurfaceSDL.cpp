@@ -1,6 +1,9 @@
 #include "SurfaceSDL.h"
 #include "CommandBufferSDL.h"
 #include "Renderer/TextureRendererSDL.h"
+#if defined(SDL_PLATFORM_MACOS)
+#include "SurfaceCocoa.h"
+#endif
 
 namespace GRHI {
 SurfaceSDL* SurfaceSDL::CreateSurfaceSDL(DeviceSDL* device, GRHIWindowHandle handle) {
@@ -8,6 +11,9 @@ SurfaceSDL* SurfaceSDL::CreateSurfaceSDL(DeviceSDL* device, GRHIWindowHandle han
     if (!device->OnMainThread()) { device->Fail("Surface creation requires the device/window main thread."); return nullptr; }
     SDL_PropertiesID props = SDL_CreateProperties();
     if (!props) { device->FailSDL(); return nullptr; }
+    if (!SDL_SetBooleanProperty(props,SDL_PROP_WINDOW_CREATE_HIGH_PIXEL_DENSITY_BOOLEAN,true)) {
+        device->FailSDL();SDL_DestroyProperties(props);return nullptr;
+    }
     bool configured = false;
 #if defined(SDL_PLATFORM_MACOS)
     configured = SDL_SetPointerProperty(props, SDL_PROP_WINDOW_CREATE_COCOA_VIEW_POINTER, handle);
@@ -29,7 +35,7 @@ SurfaceSDL* SurfaceSDL::CreateSurfaceSDL(DeviceSDL* device, GRHIWindowHandle han
         device->Fail("Cannot configure a linear-output/sRGB swapchain: " + std::string(SDL_GetError()));
         SDL_ReleaseWindowFromGPUDevice(device->Native(), window); SDL_DestroyWindow(window); return nullptr;
     }
-    try { return new SurfaceSDL(device, window); }
+    try { return new SurfaceSDL(device, window,handle); }
     catch (...) { SDL_ReleaseWindowFromGPUDevice(device->Native(), window); SDL_DestroyWindow(window); throw; }
 }
 void SurfaceSDL::Release() {
@@ -57,6 +63,14 @@ AcquireFrameResult SurfaceSDL::AcquireFrame(ICommandBuffer* value, SurfaceFrame&
     if (!_Window || !_Device->OnMainThread() || !command || !command->OnThread() || command->Active || !command->Error.empty() || command->Surfaces.count(this)) {
         _Device->Fail("Invalid surface, command, thread, active pass or duplicate frame acquisition."); return AcquireFrameResult::Failed;
     }
+#if defined(SDL_PLATFORM_MACOS)
+    bool drawableAvailable=false;
+    std::string syncError;
+    if(!SyncCocoaSurfaceDrawable(_HostHandle,_Window,drawableAvailable,syncError)) {
+        command->Fail(syncError);return AcquireFrameResult::Failed;
+    }
+    if(!drawableAvailable)return AcquireFrameResult::Unavailable;
+#endif
     // Reserve bookkeeping before acquiring; allocation must not strand an acquired frame.
     command->FrameTokens.reserve(command->FrameTokens.size() + 1);
     command->Surfaces.insert(this);

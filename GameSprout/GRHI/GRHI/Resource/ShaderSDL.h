@@ -8,7 +8,7 @@ class DeviceSDL;
 // Owns the native resource; the Device must outlive this wrapper.
 class ShaderSDL final : public IShader {
 public:
-    ShaderSDL(DeviceSDL* owner, uint64_t id, SDL_GPUShader* native, ShaderStage stage, uint32_t samplers);
+    ShaderSDL(DeviceSDL* owner, uint64_t id, SDL_GPUShader* native, ShaderStage stage, uint32_t samplers, uint32_t uniforms);
     ~ShaderSDL() override;
     void Release() override;
     ShaderStage GetStage() const override;
@@ -16,5 +16,6 @@ public:
     SDL_GPUShader* Native;
     const ShaderStage Stage;
     const uint32_t SamplerCount;
+    const uint32_t UniformCount;
 };
 }

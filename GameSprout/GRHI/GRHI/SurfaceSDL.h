@@ -14,9 +14,10 @@ public:
     bool Draw(ITexture*, const Color&) override;
     AcquireFrameResult AcquireFrame(ICommandBuffer*, SurfaceFrame&) override;
 private:
-    SurfaceSDL(DeviceSDL* device, SDL_Window* window) : _Device(device), _Window(window) {}
+    SurfaceSDL(DeviceSDL* device, SDL_Window* window,GRHIWindowHandle handle) : _Device(device), _Window(window),_HostHandle(handle) {}
     DeviceSDL* const _Device;
     SDL_Window* _Window;
+    const GRHIWindowHandle _HostHandle;
     TextureRendererSDL* _Renderer = nullptr;
 };
 }

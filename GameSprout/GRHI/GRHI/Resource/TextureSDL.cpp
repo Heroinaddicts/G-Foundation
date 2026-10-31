@@ -4,7 +4,9 @@
 
 namespace GRHI {
 TextureSDL::TextureSDL(DeviceSDL* owner, uint64_t id, SDL_GPUTexture* native, const TextureDesc& desc)
-    : ITexture(id), Owner(owner), Native(native), Desc(desc) {}
+    : ITexture(id), Owner(owner), Native(native), Desc(desc) {
+    Owner->RegisterResource(static_cast<ITexture*>(this),this,id,ResourceKindSDL::Texture);
+}
 
 TextureSDL::~TextureSDL() {
     Release();
@@ -16,6 +18,7 @@ SDL_GPUTextureFormat ToSDL(TextureFormat format) {
     case TextureFormat::RGBA8_UNorm_sRGB: return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB;
     case TextureFormat::BGRA8_UNorm: return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
     case TextureFormat::BGRA8_UNorm_sRGB: return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB;
+    case TextureFormat::D32_Float: return SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     default: return SDL_GPU_TEXTUREFORMAT_INVALID;
     }
 }
@@ -25,11 +28,13 @@ TextureFormat FromSDL(SDL_GPUTextureFormat format) {
     case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB: return TextureFormat::RGBA8_UNorm_sRGB;
     case SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM: return TextureFormat::BGRA8_UNorm;
     case SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM_SRGB: return TextureFormat::BGRA8_UNorm_sRGB;
+    case SDL_GPU_TEXTUREFORMAT_D32_FLOAT: return TextureFormat::D32_Float;
     default: return TextureFormat::Unknown;
     }
 }
 
 void TextureSDL::Release() {
+    Owner->RemoveResource(static_cast<ITexture*>(this));
     if (Token) { Owner->RemoveTarget(Token); Token = 0; }
     if (Native) { SDL_ReleaseGPUTexture(Owner->Native(), Native); Native = nullptr; }
 }
@@ -37,13 +42,16 @@ void TextureSDL::Release() {
 uint32_t TextureSDL::GetWidth() const { return Desc.Width; }
 uint32_t TextureSDL::GetHeight() const { return Desc.Height; }
 TextureFormat TextureSDL::GetFormat() const { return Desc.Format; }
-ColorTargetView TextureSDL::GetColorTargetView() const { return {Token}; }
+ColorTargetView TextureSDL::GetColorTargetView() const { return {(Desc.Usage&TextureUsage::ColorTarget)!=TextureUsage::None ? Token : 0}; }
+DepthTargetView TextureSDL::GetDepthTargetView() const { return {(Desc.Usage&TextureUsage::DepthStencilTarget)!=TextureUsage::None ? Token : 0}; }
 
 ITexture* DeviceSDL::CreateTexture(const TextureDesc& desc, const TextureInitialData* initial) {
     ClearError();
     const auto format = ToSDL(desc.Format);
     const auto usage = static_cast<unsigned>(desc.Usage);
-    if (!_Device || !desc.Width || !desc.Height || format == SDL_GPU_TEXTUREFORMAT_INVALID || !usage || (usage & ~3u)) {
+    const bool depth=desc.Format==TextureFormat::D32_Float;
+    if (!_Device || !desc.Width || !desc.Height || format == SDL_GPU_TEXTUREFORMAT_INVALID || !usage || (usage & ~7u) ||
+        (depth ? usage!=4u || initial!=nullptr : (usage&4u)!=0)) {
         Fail("Invalid texture description or released device."); return nullptr;
     }
     SDL_GPUTextureCreateInfo info{};
@@ -54,6 +62,7 @@ ITexture* DeviceSDL::CreateTexture(const TextureDesc& desc, const TextureInitial
     info.sample_count = SDL_GPU_SAMPLECOUNT_1;
     if ((desc.Usage & TextureUsage::Sampled) != TextureUsage::None) info.usage |= SDL_GPU_TEXTUREUSAGE_SAMPLER;
     if ((desc.Usage & TextureUsage::ColorTarget) != TextureUsage::None) info.usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+    if ((desc.Usage & TextureUsage::DepthStencilTarget) != TextureUsage::None) info.usage |= SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
     if (!SDL_GPUTextureSupportsFormat(_Device, format, info.type, info.usage)) {
         Fail("Texture format/usage combination is unsupported."); return nullptr;
     }
@@ -79,7 +88,7 @@ ITexture* DeviceSDL::CreateTexture(const TextureDesc& desc, const TextureInitial
     try {
         texture = new TextureSDL(this, NextID(), native, desc);
         native = nullptr;
-        if ((desc.Usage & TextureUsage::ColorTarget) != TextureUsage::None)
+        if ((desc.Usage & (TextureUsage::ColorTarget|TextureUsage::DepthStencilTarget)) != TextureUsage::None)
             texture->Token = AddTarget({texture->Native, desc.Format, desc.Width, desc.Height, nullptr});
         if (initial) {
             SDL_GPUTransferBufferCreateInfo transferInfo{};

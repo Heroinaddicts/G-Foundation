@@ -15,6 +15,7 @@ public:
     uint32_t GetHeight() const override;
     TextureFormat GetFormat() const override;
     ColorTargetView GetColorTargetView() const override;
+    DepthTargetView GetDepthTargetView() const override;
     DeviceSDL* const Owner;
     SDL_GPUTexture* Native;
     const TextureDesc Desc;

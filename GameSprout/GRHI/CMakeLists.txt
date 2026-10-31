@@ -8,6 +8,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(GRHI VERSION 0.1 LANGUAGES CXX)
 endif()
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
 
 # SDL is built independently; only its prebuilt shared target is consumed here.
 find_package(SDL3 3.2 CONFIG REQUIRED COMPONENTS SDL3-shared
@@ -36,6 +39,9 @@ file(GLOB_RECURSE grhi_api_files CONFIGURE_DEPENDS
 file(GLOB_RECURSE grhi_implementation_files CONFIGURE_DEPENDS
     LIST_DIRECTORIES false "${CMAKE_CURRENT_SOURCE_DIR}/GRHI/*"
 )
+if(NOT APPLE)
+    list(FILTER grhi_implementation_files EXCLUDE REGEX "[.]mm$")
+endif()
 set(grhi_project_files
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/GRHI.cmake"
@@ -75,6 +81,10 @@ add_library(GRHI::GRHI ALIAS GRHI)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/GRHI.cmake")
 target_link_libraries(GRHI PUBLIC GRHI::GRHIApi PRIVATE SDL3::SDL3-shared)
+if(APPLE)
+    target_link_libraries(GRHI PRIVATE "-framework Cocoa" "-framework QuartzCore")
+    set_target_properties(GRHI PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
+endif()
 
 target_compile_features(GRHI PUBLIC cxx_std_20)
 # Matches GRHIExport.h; consumers must not inherit the export definition.
@@ -137,3 +147,9 @@ foreach(grhi_directory IN LISTS grhi_empty_directories)
     get_filename_component(grhi_parent_group "${grhi_relative_directory}" DIRECTORY)
     source_group("${grhi_parent_group}" FILES "${grhi_directory}")
 endforeach()
+
+option(GRHI_BUILD_TESTS "Build GRHI API and real GPU checks" OFF)
+if(GRHI_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(Tests)
+endif()

@@ -29,6 +29,7 @@ namespace GRHI {
     inline const std::string DefaultDeviceAdapterID{};
 
     class ITexture;
+    class IBuffer;
     class ISampler;
     class IShader;
     class IGraphicsPipeline;
@@ -43,14 +44,16 @@ namespace GRHI {
         RGBA8_UNorm,      // 每像素 4 字节，依次为 R、G、B、A，各通道 8 位，线性编码。
         RGBA8_UNorm_sRGB, // RGBA 排列，RGB 使用 sRGB 编码，适合通常的彩色图片。
         BGRA8_UNorm,      // 每像素 4 字节，依次为 B、G、R、A，各通道 8 位，线性编码。
-        BGRA8_UNorm_sRGB  // BGRA 排列，RGB 使用 sRGB 编码，也可能用于窗口画面。
+        BGRA8_UNorm_sRGB, // BGRA 排列，RGB 使用 sRGB 编码，也可能用于窗口画面。
+        D32_Float        // 单通道 32 位浮点深度，仅作深度目标。
     };
 
     // 纹理允许的使用方式，可通过 | 组合；实际组合还须得到设备支持。
     enum class TextureUsage : uint8_t {
         None = 0,           // 没有用途，不能据此创建可用纹理。
         Sampled = 1 << 0,   // Shader 可以读取、采样这张纹理，例如读取图片颜色。
-        ColorTarget = 1 << 1 // 可以作为绘制输出，例如把场景画进这张纹理。
+        ColorTarget = 1 << 1, // 可以作为绘制输出，例如把场景画进这张纹理。
+        DepthStencilTarget = 1 << 2 // D32_Float 深度目标；当前不提供 stencil。
     };
 
     // 合并用途，例如 Sampled | ColorTarget 表示既可采样又可接收绘制结果。
@@ -82,6 +85,13 @@ namespace GRHI {
         // DataSize 至少为 (Height - 1) * 有效 RowPitch + 一行像素字节数。
         size_t RowPitch = 0;
     };
+
+    enum class BufferUsage : uint8_t { None = 0, Vertex = 1 << 0, Index = 1 << 1 };
+    constexpr BufferUsage operator|(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
+    constexpr BufferUsage operator&(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b)); }
+    struct BufferDesc { size_t Size = 0; BufferUsage Usage = BufferUsage::Vertex; };
+    // CreateBuffer 返回前复制数据；未提供/未覆盖的部分初始化为零。
+    struct BufferInitialData { const void* Data = nullptr; size_t DataSize = 0; };
 
     // 采样位置落在像素之间时，如何从纹理像素取得颜色。
     enum class FilterMode : uint8_t {
@@ -127,9 +137,10 @@ namespace GRHI {
         size_t DataSize = 0;        // 代码的字节数，二进制不能用 strlen 计算。
         const char* EntryPoint = "main"; // 编译结果中需要执行的入口函数名称。
         // 纹理与采样器配对的槽位数量，从 0 连续编号。
-        // 必须匹配该编译产物；首版不支持 uniform / storage 资源。
+        // 必须匹配该编译产物；当前不支持 storage 资源。
         // 首版仅片元阶段支持采样；顶点阶段的 SamplerCount 必须为 0。
         uint32_t SamplerCount = 0;
+        uint32_t UniformBufferCount = 0; // 每阶段从 0 连续编号，当前最多 4 个。
     };
 
     // 一个逻辑 Shader 阶段的创建描述，可同时携带多个平台的编译结果。
@@ -177,6 +188,12 @@ namespace GRHI {
         PremultipliedAlpha
     };
 
+    enum class VertexFormat : uint8_t { Float2, Float3, Float4 };
+    struct VertexBindingDesc { uint32_t Binding = 0; uint32_t Stride = 0; };
+    struct VertexAttributeDesc { uint32_t Location = 0; uint32_t Binding = 0; VertexFormat Format = VertexFormat::Float3; uint32_t Offset = 0; };
+    enum class IndexFormat : uint8_t { UInt16, UInt32 };
+    enum class CompareOp : uint8_t { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always };
+
     // 绘制时使用的一组固定规则，与要绘制的具体图片资源分开创建。
     struct GraphicsPipelineDesc {
         IShader* VertexShader = nullptr;   // 顶点 Shader，必须是 Vertex 阶段。
@@ -186,8 +203,15 @@ namespace GRHI {
         CullMode Cull = CullMode::None;                      // 三角形剔除方式。
         FrontFace Winding = FrontFace::CounterClockwise;     // 三角形的正面定义。
         BlendMode Blend = BlendMode::Opaque;                 // 颜色混合方式。
-        // 首版单颜色目标、无深度测试、无顶点输入。
-        // 顶点 Shader 通过顶点编号生成顶点，无需 IBuffer。
+        // 空布局允许顶点 Shader 仅通过顶点编号生成顶点，兼容图片绘制。
+        const VertexBindingDesc* VertexBindings = nullptr;
+        size_t VertexBindingCount = 0;
+        const VertexAttributeDesc* VertexAttributes = nullptr;
+        size_t VertexAttributeCount = 0;
+        TextureFormat DepthFormat = TextureFormat::Unknown;
+        bool DepthTest = false;
+        bool DepthWrite = false;
+        CompareOp DepthCompare = CompareOp::LessEqual;
     };
 
     // 浮点颜色；本 API 的清屏颜色按线性值提供，常规范围为 [0, 1]。
@@ -205,7 +229,7 @@ namespace GRHI {
         float Y = 0.0f;        // 矩形上边距。
         float Width = 0.0f;    // 矩形宽度，设置时必须大于 0。
         float Height = 0.0f;   // 矩形高度，设置时必须大于 0。
-        float MinDepth = 0.0f; // 深度映射范围下限；首版无深度测试，通常保持 0。
+        float MinDepth = 0.0f; // 深度映射范围下限，通常保持 0。
         float MaxDepth = 1.0f; // 深度映射范围上限，通常保持 1。
     };
 
@@ -214,6 +238,7 @@ namespace GRHI {
     struct ColorTargetView {
         uint64_t Token = 0;
     };
+    struct DepthTargetView { uint64_t Token = 0; };
 
     // 向 Surface 获取本次绘制的窗口画面时，区分可绘制、暂时跳过和真实错误。
     enum class AcquireFrameResult : uint8_t {
@@ -250,6 +275,10 @@ namespace GRHI {
         LoadOp Load = LoadOp::Clear;   // 开始时清屏、保留或忽略原内容。
         StoreOp Store = StoreOp::Store; // 结束时是否保留结果；窗口呈现时使用 Store。
         Color ClearColor;              // 仅 Load 为 Clear 时使用。
+        DepthTargetView DepthTarget;   // Token 为 0 时无深度目标。
+        LoadOp DepthLoad = LoadOp::Clear;
+        StoreOp DepthStore = StoreOp::DontCare;
+        float ClearDepth = 1.0f;
     };
 
     // 所有资源由创建它的 Device 分配 ID，并由调用方 delete。
@@ -275,13 +304,15 @@ namespace GRHI {
         const uint64_t _Guid; // 当前 Device 内的运行时资源标识，创建后不变。
     };
 
-    // GPU 数据缓冲区的公共接口；首版保留类型，尚未开放创建和读写功能。
+    // GPU 数据缓冲区；允许同一块原始 bytes 同时绑定为顶点和索引数据。
     class IBuffer : public IResource {
     public:
         // 通过 IBuffer* 删除时，由具体实现释放缓冲区。
         virtual ~IBuffer() {}
         // 初始化缓冲区的资源 ID；具体 GPU 内存由 Device 的实现负责分配。
         explicit IBuffer(const uint64_t guid) : IResource(guid) {}
+        virtual size_t GetSize() const = 0;
+        virtual BufferUsage GetUsage() const = 0;
     };
 
     // GPU 上的二维像素资源，可以存放图片，也可以按用途作为离屏绘制目标。
@@ -303,6 +334,8 @@ namespace GRHI {
         // 仅 ColorTarget 用途的纹理可取得有效视图，其他纹理返回无效视图。
         // 视图有效至纹理 Release 或销毁，不得用于引用此纹理的同一 Pass 采样。
         virtual ColorTargetView GetColorTargetView() const = 0;
+        // 仅 DepthStencilTarget 用途可取得有效视图；D32_Float 没有 stencil 分量。
+        virtual DepthTargetView GetDepthTargetView() const = 0;
     };
 
     // 独立的纹理采样规则对象，不存储图片像素。
@@ -361,12 +394,20 @@ namespace GRHI {
         // slot 从 0 开始，须小于片元 Shader 的 SamplerCount；texture 须支持 Sampled。
         // texture、sampler 须有效且属于当前 Device，不得采样本 Pass 的输出纹理。
         virtual void SetFragmentTextureSampler(uint32_t slot, ITexture* texture, ISampler* sampler) = 0;
+        // SetPipeline 后重新绑定本次 Draw 所需的资源。offset 为字节偏移。
+        virtual void SetVertexBuffer(uint32_t binding, IBuffer* buffer, size_t offset = 0) = 0;
+        virtual void SetIndexBuffer(IBuffer* buffer, IndexFormat format = IndexFormat::UInt32, size_t offset = 0) = 0;
+        // 数据按 std140 布局，字节数为 16 的倍数，单槽不超过 16 KiB；返回前复制。
+        virtual void SetVertexUniform(uint32_t slot, const void* data, size_t size) = 0;
+        virtual void SetFragmentUniform(uint32_t slot, const void* data, size_t size) = 0;
         // 记录一次非索引绘制；须先绑定管线及 Shader 需要的全部采样槽位。
         // vertexCount：每个实例使用的顶点数，画覆盖屏幕的大三角形时为 3。
         // instanceCount：绘制多少个实例，显示单张图片时为 1。
         // firstVertex / firstInstance：顶点和实例的起始编号，通常都为 0。
         // 这里只记录命令，调用 Device::Submit 后才安排 GPU 执行。
         virtual void Draw(uint32_t vertexCount, uint32_t instanceCount = 1,uint32_t firstVertex = 0, uint32_t firstInstance = 0) = 0;
+        virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0,
+                                 int32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
     };
 
     // 由 Device 管理的一次性命令对象，不允许调用方 delete。
@@ -469,6 +510,11 @@ namespace GRHI {
         // 初始像素在返回前复制到 GRHI 持有的内存并安排上传；之后的绘制可直接使用。
         // initialData 为空时内容未定义，读取前须先写入或清屏。
         virtual ITexture* CreateTexture(const TextureDesc& desc, const TextureInitialData* initialData = nullptr) = 0;
+        // immutable 初始上传；当前 SDL 后端单缓冲区不超过 UINT32_MAX 字节。
+        virtual IBuffer* CreateBuffer(const BufferDesc& desc, const BufferInitialData* initialData = nullptr) = 0;
+        // 显式同步截图入口。只读取本 Device 的普通 RGBA8/BGRA8 纹理，返回紧密排列的 RGBA bytes。
+        // 须先提交/取消本设备全部命令；失败清空 pixels。此调用等待 GPU，不能放到每帧热路径。
+        virtual bool ReadTexture(ITexture* texture, std::vector<uint8_t>& pixels) = 0;
         // 按 desc 创建过滤和 UV 寻址规则；可与多张图片搭配使用。
         // 失败返回 nullptr，成功对象由调用方 delete，描述仅在调用期间借用。
         virtual ISampler* CreateSampler(const SamplerDesc& desc) = 0;

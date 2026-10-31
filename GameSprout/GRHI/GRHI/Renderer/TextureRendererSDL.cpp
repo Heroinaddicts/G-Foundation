@@ -72,7 +72,7 @@ bool TextureRendererSDL::EnsurePipeline(TextureFormat format) {
 }
 
 bool TextureRendererSDL::Draw(ISurface& surface, ITexture* value, const Color& clearColor) {
-    auto* texture = dynamic_cast<TextureSDL*>(value);
+    auto* texture = _Device->Resource<TextureSDL>(value,ResourceKindSDL::Texture);
     if (!texture || texture->Owner != _Device || !texture->Native ||
         (texture->Desc.Usage & TextureUsage::Sampled) == TextureUsage::None ||
         !std::isfinite(clearColor.R) || !std::isfinite(clearColor.G) ||
