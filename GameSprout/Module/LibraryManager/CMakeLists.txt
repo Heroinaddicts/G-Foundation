@@ -28,10 +28,12 @@ file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hxx"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.inl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.txt"
 )
 # Exclude generated files from standalone builds inside the source tree.
 list(FILTER module_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen)/")
 list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(REMOVE_DUPLICATES module_files)
 
 add_library(LibraryManager SHARED ${module_files})
 target_compile_features(LibraryManager PRIVATE cxx_std_20)

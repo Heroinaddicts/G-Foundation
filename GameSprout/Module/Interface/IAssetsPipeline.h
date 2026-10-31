@@ -84,6 +84,15 @@ public:
     // 主线程调用。内部在提交 TaskApi 前 Loading，完成回调执行后 Unloading。
     // 提交失败、任务取消和模块释放也由内部配对；调用方不要为本次导入重复调用。
     virtual void ImportAsset(IAssetMeta * meta, const fImportCallback & callback, bool force = false) = 0;
+    // 主线程启动扫描使用；仅复用最近成功且所有文件版本均未变化的结果。
+    // 不提交任务、不写数据库；false 时仍由 ImportAsset 完整校验/导入。
+    virtual bool CanReuseAsset(IAssetMeta * meta) const { (void)meta; return false; }
+    // 本次扫描已确定的待校验/导入数量。只登记进度，不延迟任务提交。
+    virtual uint64_t BeginImportBatch(uint64_t count) { (void)count; return 0; }
+    virtual void EndImportBatch(uint64_t batch) { (void)batch; }
+    // Main-thread source declaration edges also cover first imports that failed
+    // before a manifest could be committed. Used by AssetsManager invalidation.
+    virtual std::vector<std::string> FindSourceDependents(const std::string&) const { return {}; }
     // Prevent an obsolete task from committing after source deletion/rename/change.
     virtual void Invalidate(const Guid & guid) = 0;
 };

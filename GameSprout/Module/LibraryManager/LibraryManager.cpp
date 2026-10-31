@@ -53,9 +53,11 @@ void LibraryManager::BeforeInitialize(GameSproutModuleApi * const api) {
         // Never reinterpret a corrupt existing database as a new project database.
         _LDBSession = QFileInfo::exists(QString::fromStdString(databasePath + "/data.mdb"))
             ? g_ILocalDatabase->OpenLDB(databasePath) : g_ILocalDatabase->CreateLDB(databasePath);
-        return _LDBSession && _LDBSession->CreateTable("Manifests") && _LDBSession->CreateTable("Dependents")
-            && _LDBSession->CreateTable("ModelTextureDependents")
-            && _LDBSession->CreateTable("Publications") && RecoverPublications();
+        if (!_LDBSession || !_LDBSession->CreateTable("Manifests") || !_LDBSession->CreateTable("Dependents")
+            || !_LDBSession->CreateTable("ModelTextureDependents")
+            || !_LDBSession->CreateTable("Publications") || !RecoverPublications()) return false;
+        LoadImportValidation();
+        return true;
     });
 }
 
@@ -80,6 +82,8 @@ void LibraryManager::Release(GameSproutModuleApi *) {
     _TaskOwner = Foundation::InvalidTaskOwnerId;
     while (_CleanupTasks > 0) { --_CleanupTasks; if (_IDE) _IDE->Unloading(); }
     while (!_Loaded.empty()) ClearLoaded(_Loaded.begin()->first);
+    _ImportValidations.clear();
+    _ImportValidationReady = false;
     delete _LDBSession;
     _LDBSession = nullptr;
     delete _Lock; _Lock = nullptr;
@@ -162,10 +166,12 @@ bool LibraryManager::RemoveAsset(const Guid & guid, std::string & error, const s
     // Source backup/removal and the Library indexes publish in one main-thread transaction.
     std::vector<LDBWriteOperation> operations = additionalWrites;
     operations.push_back({"Manifests", guid.GetGuidString(), {}, true});
+    if (_ImportValidationReady) operations.push_back({"ImportValidation", guid.GetGuidString(), {}, true});
     if (GetManifest(guid, previous) && !BuildIndexOperations(&previous, nullptr, operations)) {
         error = "Invalid dependency index"; return false;
     }
     if (!_LDBSession->WriteBatch(operations)) { error = "Cannot remove artifact index"; return false; }
+    _ImportValidations.erase(guid.GetGuidString());
     ClearLoaded(guid.GetGuidString());
     return true;
 }

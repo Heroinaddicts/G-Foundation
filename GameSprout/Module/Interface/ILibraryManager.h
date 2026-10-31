@@ -21,6 +21,16 @@ public:
     virtual std::vector<std::string> FindDependents(const std::string & sourcePath) const = 0;
     // Borrowed until the next commit/removal for this GUID or Library release.
     virtual IAsset * QueryAsset(const Guid & guid, uint64_t localID) = 0;
+
+    // 主线程同步调用。快速校验缓存独立于 Manifest，缺失时走完整导入校验。
+    // Get 只读取启动时加载的内存快照，不开启新的数据库事务。
+    virtual bool GetImportValidation(const Guid &, std::string & validationJson) const {
+        validationJson.clear();
+        return false;
+    }
+    // 只接受当前已发布 Generation 的校验结果；相同内容不重复写库。
+    virtual bool SaveImportValidation(const Guid &, const std::string &,
+        const std::string &) { return false; }
 };
 
 #endif //__ILibraryManager_h__

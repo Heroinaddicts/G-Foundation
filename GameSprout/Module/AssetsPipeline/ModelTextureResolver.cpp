@@ -20,7 +20,8 @@ std::string NormalizeModelTexturePath(const std::string& path) {
     QString normalized=QString::fromStdString(path);normalized.replace('\\','/');return normalized.toStdString();
 }
 ModelTextureResolution ResolveModelTexture(const std::string& assetsRoot,const std::string& sourcePath,
-    const std::string& filename,const std::string& relativeFilename,const std::vector<std::string>& materialDirectories) {
+    const std::string& filename,const std::string& relativeFilename,const std::vector<std::string>& materialDirectories,
+    const std::function<void(const std::string&)>& beforeSearchDirectory) {
     const QString root=QFileInfo(QString::fromStdString(assetsRoot)).canonicalFilePath();
     if(root.isEmpty()||!QFileInfo(root).isDir())return {{},"Assets directory is unavailable"};
     const QDir assets(root);
@@ -63,6 +64,9 @@ ModelTextureResolution ResolveModelTexture(const std::string& assetsRoot,const s
     }
     bool outside=false;QSet<QString> searched;
     for(const auto& candidate:candidates) {
+        // 缺失目录也记录，后续新增 Textures/.fbm 必须使快速校验失效。
+        const QString lexical=QDir::cleanPath(QFileInfo(candidate.Directory).absoluteFilePath());
+        if(beforeSearchDirectory && Inside(lexical,root)) beforeSearchDirectory(lexical.toStdString());
         const QString directory=QFileInfo(candidate.Directory).canonicalFilePath();
         if(directory.isEmpty())continue;
         if(!Inside(directory,root)){outside=true;continue;}

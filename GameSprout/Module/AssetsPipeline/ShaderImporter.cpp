@@ -1,7 +1,11 @@
 #include "AssetImportJob.h"
 #include "IShaderCompiler.h"
+#include "../Shared/MaterialDefinition.h"
 
 bool ImportShader(AssetImportJob & job) {
+    Json::Value materialSchema;
+    std::string materialError;
+    if (!MaterialDefinition::ParseShaderSchema(job.SourceBytes,materialSchema,materialError)) return job.Fail(materialError);
     if(!job.Request.Compiler) return job.Fail("ShaderCompiler module is unavailable");
     ShaderCompileRequest request;
     request.SourceRoot=job.Request.AssetsRoot;request.SourcePath=job.Request.SourcePath;
@@ -35,6 +39,7 @@ bool ImportShader(AssetImportJob & job) {
     }
     Json::Value descriptor;
     if(!AssetArtifactIO::Parse(result.ReflectionJson,descriptor) || !descriptor.isObject()) return job.Fail("ShaderCompiler returned invalid reflection");
+    descriptor["Material"]=materialSchema;
     descriptor["Settings"]=job.Settings;descriptor["ToolchainFingerprint"]=job.Request.Compiler->GetToolchainHash();
     descriptor["Variants"]=Json::Value(Json::arrayValue);
     QByteArray payload;

@@ -1,0 +1,115 @@
+RuntimeAssets boundary
+======================
+Editor Module service. Owns LibraryRuntimeResources and resource revision tracking.
+Views receive IRuntimeAssets::GetResourceProvider(); no source decoding, ArtifactDB
+queries or file IO are required in Scene/Game rendering views. Runtime receives
+prepared CPU values only and never includes these Module implementation files.
+
+Provider reads the current headerless Artifact contract and decodes Model,
+Skeleton, AnimationClip, Humanoid Avatar, AvatarMask and AnimatorController into Runtime's public value types.
+Mesh keeps its independent palette NodePath/InverseBindMatrix mapping. Scene nodes,
+clip tracks and mesh palette indices are separate domains.
+
+Controller source (.controller, Version 1)
+---------------------------------------
+Parameters: {Name,Type(Float/Int/Bool/Trigger),DefaultValue}.
+Layers: 1..32 uniquely named records. Each has BlendingMode (Override/Additive),
+DefaultWeight [0,1], optional Mask and ReferenceClip {Guid,LocalID}, ReferenceTime
+(seconds), States, Transitions and DefaultState. The base layer is Override/1 with
+no Mask or additive reference. Unsynchronized layers have independent playback and FSM state.
+SyncedLayer names an independent source layer in authoring data and compiles to its index.
+Synchronized layers share the source graph and phase, have no independent States/Transitions,
+and may provide state-named MotionOverrides. IKPass controls the per-layer IK callback;
+SyncedLayerAffectsTiming is supported for synchronized Override layers.
+Layer States: {Name,Clip:{Guid,LocalID},Speed,Loop}, or
+{Name,BlendParameter,Motions:[{Clip,Threshold,Speed}],Speed,Loop} for sorted 1D blending.
+DefaultState is a state name. Transitions contain From (state name or AnyState),
+To,Conditions:[{Parameter,Compare,Value}],HasExitTime,ExitTime,Duration(seconds),
+TargetOffset(normalized),CanTransitionToSelf. Array order is priority order.
+Normal authoring defaults are filled before validation; unknown fields fail.
+The Pipeline resolves state names to indices and emits AnimatorController3 as
+BinaryValueLE1. This is validated current data, not a source JSON file header.
+Runtime/GRHI do not parse authoring JSON or know Qt graph/table widgets.
+
+Current supported execution: Generic skeleton TRS, layered Override/Additive, conditional FSM,
+AnyState, exit-time crossings, timed CrossFade, Float/Int/Bool/Trigger and 1D blend.
+Transform and portable Humanoid AvatarMask, human retargeting, hand/foot IK, LookAt,
+synchronized layers, root motion and clip/state notifications are supported.
+Sub-state machines, 2D/Direct trees and morph tracks still require separate features. Unsupported controller fields are rejected;
+unsupported BlendShape clips report a loading error instead of discarding tracks.
+
+Standalone .anim Version 1 has Duration,SampleRate,Tracks (unique node paths),
+Frames:[{Time,Poses:[{Translation:[3],Rotation:[4],Scale:[3]}]}]. Samples must span
+0..Duration monotonically. Offline compilation emits exactly the same little-endian
+float TRS sample layout used by FBX clips. SourceAvatar is authored only in
+.anim.meta ImportSettings.SourceAvatar; it is not a field of the frame document.
+Admission captures the small Meta reference without parsing the animation frames.
+
+Save controller source uses optimistic expected JSON and current reference/type
+validation. It never modifies .meta identity or controller runtime instance state.
+Creation is exclusive and does not overwrite a source or sidecar. After source
+creation normal AssetsManager directory watching registers/imports the new asset.
+
+Root motion and event import contract
+------------------------------------
+Model ImportSettings.AnimationClips contains per-Take entries:
+  Name: exact source animation Take name (unknown or ambiguous names fail import)
+  ExtractRootMotion: false by default
+  RootMotionNode: stable source node path; no name-based root guessing
+  Events: sorted {Time, Name, Payload} list, seconds within the imported clip
+Native .anim uses the same settings in ImportSettings.ClipOptions, without Name.
+For a multitrack .anim, root extraction requires a source Parents array matching
+Tracks, with -1 for roots and parent indices for other tracks. A single Generic
+track can use its implicit -1 parent. Humanoid root extraction requires an explicit
+complete parent chain matching the SourceAvatar Skeleton. Events have one authoring source: Meta settings.
+
+Prepared clips use Format=AnimationClip2. Original TRS samples are retained.
+RootMotion={NodePath, Offset, Count} describes a trailing stream of seven float32
+values per sample: Translation XYZ and Quaternion XYZW, sharing Frames' times.
+Offset always follows the original sample stream; Count is zero or FrameCount.
+Empty motion uses empty NodePath and Count=0. There is no JSON file header.
+Events remain small ArtifactDB descriptors and become typed runtime data at load.
+The provider rejects missing/outdated format markers; current algorithm versions
+rebuild caches rather than migrate old payloads (Model 7, AnimationClip 5).
+
+Extraction evaluates the selected node's complete parent chain in model/wrapper
+space, respecting converted model units. The rigid trajectory is G(t)*inverse(G(0)),
+with an exact identity first sample. Full XYZ translation and full rotation are
+supported. Shear, reflections and zero-scale selected world transforms are rejected.
+Runtime decides whether to strip/apply motion; disabled mode displays original poses.
+
+AvatarMask source (.mask, Version 1)
+---------------------------------
+Mode: Transform or Humanoid. Transform uses a concrete Skeleton {Guid,LocalID}; DefaultWeight and RootMotionWeight
+(default 0, finite [0,1]); Nodes: sparse {Path,Weight} array (default empty).
+Weights inherit along the Skeleton Parent tree, with DefaultWeight at each root.
+Paths must identify real source Skeleton nodes; unknown/duplicate paths, cycles,
+wrong resource types and non-finite values are rejected during offline import.
+Prepared AvatarMask2 stores the validated sparse definition as BinaryValueLE1.
+Transform Controller masks must use the same Skeleton; Runtime additionally
+checks that Skeleton against the Animator's assigned Skeleton. Additive pose uses
+Skeleton rest, or a non-looping ReferenceClip sample with nonzero scales.
+
+IRuntimeAssets Create/Load/SaveAvatarMaskSource owns file paths, exclusive creation,
+source snapshots, external modification conflicts, validation and reimport. Views
+only edit typed values. New masks from a Model/Skeleton begin as full-body masks.
+Workers receive copied PreparedResources descriptors and paths captured by the
+Module on the main thread. They never access Library or LMDB. Pending animation
+dependencies retain the original Loading/progress entry; their completion callback
+immediately resumes dependents with fresh snapshots. No Update-time polling.
+Importer versions: AnimatorController 5, AvatarMask 4. Only current data is read.
+
+Humanoid model rig and portable masks
+Model Rig editing uses typed LoadModelRigSource / SaveModelRigSource and an optimistic
+ImportSettings snapshot. HumanBones map named anatomical roles to stable source paths;
+HumanReferencePose overrides also use paths, never transient runtime IDs or node indices.
+The Module validates required roles, hierarchy, positive-scale reference TRS, anatomical
+axes and body scale before writing Model metadata and submitting Pipeline work.
+SuggestHumanoidMapping returns a draft only; incomplete mapping never imports as Generic.
+
+AvatarMask2 distinguishes Transform from Humanoid. Transform masks remain strictly bound
+to one Skeleton. Humanoid masks contain semantic Body/Head/limb/finger weights, no Skeleton
+or transform paths, and apply through each target Avatar's role mapping. Root motion is
+always independent. Creating a mask from a Humanoid Model selects portable Humanoid mode;
+Generic Models and Skeleton resources create Transform masks. No type inference from an
+unknown or mismatched Skeleton is performed.

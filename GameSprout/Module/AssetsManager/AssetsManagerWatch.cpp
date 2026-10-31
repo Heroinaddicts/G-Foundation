@@ -42,6 +42,8 @@ void AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) 
 }
 
 void AssetsManager::ReloadMeta(const std::string & sourcePath) {
+    // .meta 通知可能早于源目录的改名/删除通知；源已消失时不能在旧路径恢复侧文件。
+    if (!QFileInfo::exists(QString::fromStdString(sourcePath))) return;
     const auto byPath=_AssetGuidsByPath.find(RelativePath(sourcePath));
     if (byPath==_AssetGuidsByPath.end()) return;
     IAssetMeta * meta=QueryAsset(Guid(byPath->second));

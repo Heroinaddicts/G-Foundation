@@ -19,6 +19,9 @@ public:
     bool RemoveAsset(const Guid & guid, std::string & error, const std::vector<LDBWriteOperation> & additionalWrites = {}) override;
     std::vector<std::string> FindDependents(const std::string & sourcePath) const override;
     IAsset * QueryAsset(const Guid & guid, uint64_t localID) override;
+    bool GetImportValidation(const Guid & guid, std::string & validationJson) const override;
+    bool SaveImportValidation(const Guid & guid, const std::string & generation,
+        const std::string & validationJson) override;
 
     ILDBSession * GetLDBSession() const override {
         return _LDBSession;
@@ -34,6 +37,7 @@ private:
 
 private:
     void StartGarbageCollection();
+    void LoadImportValidation();
     bool RecoverPublications();
     bool PublishFlatImport(const std::string & stage, AssetImportManifest & manifest, std::string & error);
     Foundation::ITaskApi * _Tasks = nullptr;
@@ -45,6 +49,8 @@ private:
     bool _PublicationBlocked = false;
     std::string _LibraryRoot;
     ILDBSession * _LDBSession = nullptr;
+    bool _ImportValidationReady = false;
+    std::map<std::string, std::string> _ImportValidations;
     std::map<std::string, std::vector<IAsset *>> _Loaded;
     void ClearLoaded(const std::string & guid);
     bool BuildIndexOperations(const AssetImportManifest * oldManifest,

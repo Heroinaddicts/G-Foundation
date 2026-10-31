@@ -17,6 +17,7 @@
 #include "IConsole.h"
 #include "IGuidCreator.h"
 #include "IIDEWindow.h"
+#include "../Shared/AssetMetaFormat.h"
 
 #include "SafeSystem.hpp"
 #include "SafeString.hpp"
@@ -132,39 +133,7 @@ inline eAssetImporterType GetAssetImporterType(const std::string & extension) {
 }
 
 inline const char * GetAssetImporterTypeName(const eAssetImporterType type) {
-    switch (type) {
-    case eAssetImporterType::Texture: return "Texture";
-    case eAssetImporterType::Audio: return "Audio";
-    case eAssetImporterType::Mesh: return "Mesh";
-    case eAssetImporterType::Model: return "Model";
-    case eAssetImporterType::Material: return "Material";
-    case eAssetImporterType::Shader: return "Shader";
-    case eAssetImporterType::ComputeShader: return "ComputeShader";
-    case eAssetImporterType::ShaderInclude: return "ShaderInclude";
-    case eAssetImporterType::Font: return "Font";
-    case eAssetImporterType::Video: return "Video";
-    case eAssetImporterType::Text: return "Text";
-    case eAssetImporterType::Script: return "Script";
-    case eAssetImporterType::Scene: return "Scene";
-    case eAssetImporterType::AnimationClip: return "AnimationClip";
-    case eAssetImporterType::AnimatorController: return "AnimatorController";
-    case eAssetImporterType::AnimatorOverrideController: return "AnimatorOverrideController";
-    case eAssetImporterType::AvatarMask: return "AvatarMask";
-    case eAssetImporterType::AudioMixer: return "AudioMixer";
-    case eAssetImporterType::PhysicsMaterial: return "PhysicsMaterial";
-    case eAssetImporterType::PhysicsMaterial2D: return "PhysicsMaterial2D";
-    case eAssetImporterType::RenderTexture: return "RenderTexture";
-    case eAssetImporterType::Cubemap: return "Cubemap";
-    case eAssetImporterType::SpriteAtlas: return "SpriteAtlas";
-    case eAssetImporterType::TerrainData: return "TerrainData";
-    case eAssetImporterType::TerrainLayer: return "TerrainLayer";
-    case eAssetImporterType::ShaderVariantCollection: return "ShaderVariantCollection";
-    case eAssetImporterType::DataAsset: return "DataAsset";
-    case eAssetImporterType::LightingSettings: return "LightingSettings";
-    case eAssetImporterType::LightmapParameters: return "LightmapParameters";
-    case eAssetImporterType::Folder: return "Folder";
-    default: return nullptr;
-    }
+    return AssetMetaFormat::ImporterTypeName(type);
 }
 
 class IImportSettingConverter {
@@ -201,11 +170,9 @@ public:
     }
 
     bool SetSubAssets(const std::string & json) override {
-        Json::CharReaderBuilder reader;
-        std::istringstream input(json);
         Json::Value value;
         std::string error;
-        if (!Json::parseFromStream(reader, input, &value, &error) || !value.isArray()) return false;
+        if (!AssetArtifactIO::Parse(json, value) || !AssetMetaFormat::ValidateSubAssets(value, error)) return false;
         _SubAssets = value;
         return true;
     }

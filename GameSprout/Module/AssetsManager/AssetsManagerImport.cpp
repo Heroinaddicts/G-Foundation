@@ -1,6 +1,7 @@
 #include "AssetsManager.h"
 #include "../Shared/AssetArtifactIO.h"
 #include <QDateTime>
+#include <QElapsedTimer>
 
 std::vector<IAssetMeta *> AssetsManager::GetAssetMetas() const {
     std::vector<IAssetMeta *> result;
@@ -16,9 +17,9 @@ std::string AssetsManager::RelativePath(const std::string & absolutePath) const 
     if (path.startsWith(lexicalRoot + "/")) path = root + path.mid(lexicalRoot.size());
     return QDir(root).relativeFilePath(path).toStdString();
 }
-void AssetsManager::ImportAsset(IAssetMeta * meta, bool force) {
+void AssetsManager::ImportAsset(IAssetMeta * meta, bool force, bool sourceRecorded) {
     if (!meta || _ConflictingGuids.count(meta->_Guid.GetGuidString())) return;
-    if (!RecordPendingSource(meta)) return;
+    if (!sourceRecorded && !RecordPendingSource(meta)) return;
     if (meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script) return;
     const std::string guid = meta->_Guid.GetGuidString();
     _Pipeline->Invalidate(meta->_Guid);
@@ -120,7 +121,10 @@ void AssetsManager::ImportDependents(const std::string & relativePath) {
     std::set<std::string> visited{relativePath};
     while (!paths.empty()) {
         const std::string path = paths.front(); paths.pop_front();
-        for (const std::string & owner : _Library->FindDependents(path)) {
+        auto dependents=_Library->FindDependents(path);
+        const auto declarations=_Pipeline->FindSourceDependents(path);
+        dependents.insert(dependents.end(),declarations.begin(),declarations.end());
+        for (const std::string & owner : dependents) {
             const auto asset = _Assets.find(owner);
             if (asset != _Assets.end() && visited.insert(asset->second->GetPath()).second) {
                 ImportAsset(asset->second);
@@ -145,6 +149,8 @@ void AssetsManager::WatcherDir(const std::string & path) {
 
 void AssetsManager::ScanDirectory(const std::string & path) {
     if (!_SourceDatabaseReady) return;
+    QElapsedTimer elapsed;
+    elapsed.start();
     std::vector<FoundationUtils::SafeSystem::File::FileInfo> infos;
     FoundationUtils::SafeSystem::File::EnumerateDirectory(path, "*", infos, true, {}, {"meta", "META"});
     if (!QFileInfo(QString::fromStdString(path)).isReadable()) _ScanFailed = true;
@@ -180,6 +186,10 @@ void AssetsManager::ScanDirectory(const std::string & path) {
     }
     // All comparisons and submissions finish before this function returns.
     // Update() never drains an import queue or starts a second scan.
+    struct ImportCandidate { IAssetMeta * Meta; };
+    std::vector<ImportCandidate> imports;
+    std::vector<AssetSourceRecord> records;
+    size_t reused = 0;
     for (const auto & info : infos) {
         if (!info._IsDirectory && ToLower(info._Externsion) == "meta") continue;
         const QFileInfo file = fileInfo(info);
@@ -191,22 +201,52 @@ void AssetsManager::ScanDirectory(const std::string & path) {
         if (_ConflictingGuids.count(known->second)) {
             AssetSourceRecord failed = DescribeSource(meta);
             failed.Status = "Failed";failed.Error = "Duplicate asset GUID";
-            SaveSourceRecord(failed);
+            records.push_back(std::move(failed));
             continue;
         }
         const auto previous = _SourceRecords.find(known->second);
-        const AssetSourceRecord current = DescribeSource(meta);
-        const bool force = previous != _SourceRecords.end()
+        AssetSourceRecord current = DescribeSource(meta);
+        const bool fileInfoChanged = previous != _SourceRecords.end()
             && (previous->second.SourceSize != current.SourceSize
                 || previous->second.SourceModifyTime != current.SourceModifyTime
-                || previous->second.MetaModifyTime != current.MetaModifyTime
-                || previous->second.Status == "Failed");
+                || previous->second.MetaModifyTime != current.MetaModifyTime);
         if (previous != _SourceRecords.end() && previous->second.Path != current.Path && !meta->SaveMeta()) {
             RecordSourceError(previous->second.Path, "Cannot update moved Meta");
             _ScanFailed = true;
             continue;
         }
-        ImportAsset(meta, force);
-        if (!_ReconcileOnScan) ImportDependents(meta->GetPath());
+        if (meta->_ImporterType == eAssetImporterType::Folder || meta->_ImporterType == eAssetImporterType::Script) {
+            records.push_back(std::move(current));
+            continue;
+        }
+        if (!fileInfoChanged && previous != _SourceRecords.end() && previous->second.Status == "Ready"
+            && previous->second.Path == current.Path && previous->second.Importer == current.Importer
+            && previous->second.MetaJson == current.MetaJson && previous->second.SettingsHash == current.SettingsHash
+            && _Pipeline->CanReuseAsset(meta)) {
+            ++reused;
+            continue;
+        }
+        // 移动资源可能刚写回 Meta 的相对路径，批量保存前重新取得最终观察值。
+        if (previous != _SourceRecords.end() && previous->second.Path != current.Path) current = DescribeSource(meta);
+        current.SourceHash.clear();
+        records.push_back(std::move(current));
+        imports.push_back({meta});
     }
+    // 一次同步事务登记本次真正需要处理的资源，提交完成后才启动工作线程。
+    // imports 仅存在于本次调用中，不由 Update 延迟派发。
+    if (!SaveSourceRecords(records)) { _ScanFailed = true; return; }
+    const uint64_t batch = _Pipeline->BeginImportBatch(imports.size());
+    struct BatchRegistration {
+        IAssetsPipeline * Pipeline;
+        uint64_t Batch;
+        ~BatchRegistration() { Pipeline->EndImportBatch(Batch); }
+    } registration{_Pipeline, batch};
+    for (const auto & candidate : imports) {
+        // 时间/身份或失败状态只表示需要完整验证，是否重建由内容、设置和产物校验决定。
+        // 用户显式 ReimportAsset 仍单独传 force=true，启动扫描不覆盖这条语义。
+        ImportAsset(candidate.Meta, false, true);
+        if (!_ReconcileOnScan) ImportDependents(candidate.Meta->GetPath());
+    }
+    GameSproutConsoleLog(g_IConsole, eConsoleLog::Trace,
+        "Assets scan: {} reused, {} imports submitted, {} ms", reused, imports.size(), elapsed.elapsed());
 }

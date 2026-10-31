@@ -17,6 +17,11 @@ public:
     bool ReimportAsset(const Guid & guid) override;
     bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
         const std::string & expectedSettingsJson, std::string & error) override;
+    bool LoadMaterialSource(const Guid & guid, std::string & json, std::string & error) const override;
+    bool SaveMaterialSource(const Guid & guid, const std::string & json,
+        const std::string & expectedJson, std::string & error) override;
+    bool ExtractMaterial(const Guid & guid, uint64_t localID, const std::string & relativeMatPath,
+        std::string & outputGuid, std::string & error) override;
     std::vector<IAssetMeta *> GetAssetMetas() const override;
     std::vector<IAssetMeta *> GetAssetsInDirectory(const std::string & path) const override;
     bool RegisterAssetListener(IAssetListener * listener) override;
@@ -72,7 +77,7 @@ private:
     static void OnFolderRename(const Foundation::FileSystemWatcherEvent & event, const std::string & name, const std::string & extension, void * const context);
 
 private:
-    void ImportAsset(IAssetMeta * meta, bool force = false);
+    void ImportAsset(IAssetMeta * meta, bool force = false, bool sourceRecorded = false);
     void ImportDependents(const std::string & relativePath);
     void ReloadMeta(const std::string & sourcePath);
     std::string RelativePath(const std::string & absolutePath) const;

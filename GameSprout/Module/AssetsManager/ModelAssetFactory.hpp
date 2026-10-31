@@ -2,6 +2,8 @@
 
 #include "AssetFactoryCommon.hpp"
 #include "ImportSettingsJson.hpp"
+#include "../Shared/AnimationImportSettingsJson.h"
+#include "../Shared/HumanoidDefinition.h"
 
 class ModelImportSettings : public IModelImportSettings, public IImportSettingConverter {
 public:
@@ -29,13 +31,18 @@ public:
         result["KeepCPUCopy"] = _KeepCPUCopy;
         result["UseFileScale"] = _UseFileScale;
         result["ImportAnimation"] = _ImportAnimation;
+        result["AnimationClips"]=Json::Value(Json::arrayValue);
+        for(const auto& clip:_AnimationClips)result["AnimationClips"].append(AnimationImportSettingsJson::Write(clip,true));
         if (!AssetSettingsJson::WriteEnum(result["AnimationType"], _AnimationType, AnimationTypeNames)) {
             return false;
         }
+        const auto human=HumanoidDefinition::SettingsJson(_HumanoidSettings);
+        for(const auto& name:human.getMemberNames())result[name]=human[name];
         result["ImportMaterials"] = _ImportMaterials;
         result["ImportBlendShapes"] = _ImportBlendShapes;
         result["ImportCameras"] = _ImportCameras;
         result["ImportLights"] = _ImportLights;
+        result["MaterialRemaps"] = _MaterialRemaps;
         value.swap(result);
         return true;
     }
@@ -45,6 +52,18 @@ public:
             return false;
         }
         ModelImportSettings settings;
+        std::string humanError;
+        if(!HumanoidDefinition::ReadSettings(value,settings._HumanoidSettings,humanError))return false;
+        const Json::Value remaps = value.get("MaterialRemaps", Json::Value(Json::objectValue));
+        if (!remaps.isObject()) return false;
+        for (const std::string & key : remaps.getMemberNames()) {
+            const auto & reference = remaps[key];
+            if (key.empty() || !reference.isObject() || !reference["Guid"].isString()
+                || !Guid(reference["Guid"].asString()).IsValid() || !reference["LocalID"].isUInt64()
+                || reference["LocalID"].asUInt64() == 0) return false;
+        }
+        settings._MaterialRemaps = remaps;
+        if(value.isMember("AnimationClips")&&!AnimationImportSettingsJson::ReadModel(value["AnimationClips"],settings._AnimationClips))return false;
         if (!AssetSettingsJson::Read(value, "ScaleFactor", settings._ScaleFactor)
             || !AssetSettingsJson::ReadEnum(value, "NormalsMode", settings._NormalsMode, NormalsModeNames)
             || !AssetSettingsJson::ReadEnum(value, "TangentsMode", settings._TangentsMode, TangentsModeNames)
@@ -66,6 +85,19 @@ public:
         }
         *this = settings;
         return true;
+    }
+
+    const std::vector<AnimationClipImportOptions>& GetAnimationClips() const override {return _AnimationClips;}
+    bool SetAnimationClips(const std::vector<AnimationClipImportOptions>& clips) override {
+        Json::Value value(Json::arrayValue);for(const auto& clip:clips){if(!AnimationImportSettingsJson::Validate(clip,true))return false;value.append(AnimationImportSettingsJson::Write(clip,true));}
+        std::vector<AnimationClipImportOptions> checked;if(!AnimationImportSettingsJson::ReadModel(value,checked))return false;_AnimationClips=std::move(checked);return true;
+    }
+
+    const ModelHumanoidImportSettings& GetHumanoidSettings() const override {return _HumanoidSettings;}
+    bool SetHumanoidSettings(const ModelHumanoidImportSettings& settings) override {
+        ModelHumanoidImportSettings checked;std::string error;
+        if(!HumanoidDefinition::ReadSettings(HumanoidDefinition::SettingsJson(settings),checked,error))return false;
+        _HumanoidSettings=std::move(checked);return true;
     }
 
     // 导出数据使用的缩放倍率，必须大于零。
@@ -262,11 +294,14 @@ private:
     bool _KeepCPUCopy = false;
     bool _UseFileScale = true;
     bool _ImportAnimation = true;
+    std::vector<AnimationClipImportOptions> _AnimationClips;
     eModelAnimationType _AnimationType = eModelAnimationType::Generic;
+    ModelHumanoidImportSettings _HumanoidSettings;
     bool _ImportMaterials = true;
     bool _ImportBlendShapes = true;
     bool _ImportCameras = false;
     bool _ImportLights = false;
+    Json::Value _MaterialRemaps{Json::objectValue};
 };
 
 class ModelMeta : public AssetMetaWithSettings<ModelImportSettings> {

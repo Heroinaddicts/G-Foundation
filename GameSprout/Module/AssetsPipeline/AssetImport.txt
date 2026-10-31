@@ -30,7 +30,9 @@ TaskApi 所在的 Foundation 动态库须保持加载，直到所有工作任务
 Meta 位于源文件旁，例如 Assets/Characters/Bear.fbx.meta。
 Meta.Path 是相对 Assets 的路径：Characters/Bear.fbx。
 ImporterType 表示源文件导入器；产物 Type 才是 Mesh/Texture/AnimationClip 等资源类型。
-读取旧 Meta 时兼容原 AssetType 键；新保存使用 ImporterType。
+Meta 只接受当前 Version=1 格式：Guid、ImporterType、Path、ImportSettings、SubAssets 均为必需字段。
+当前格式校验同时用于扫描、工作任务、快速缓存判断和数据库恢复；已有的无效 Meta 原样保留并报错。
+AssetType 旧字段不再接受；格式无效时报告错误，不迁移、不覆盖原文件。设置对象内部的正常默认值保留。
 ImportSettings 是 Meta 的子对象；SubAssets 保存 Type/SourceKey/Name/LocalID。
 GUID 标识源文件，LocalID 标识其中一个资源。单资源图片也使用非零 LocalID。
 删除子资源后保留身份登记，避免旧 ID 被不同资源复用。
@@ -49,18 +51,31 @@ AssetSources 由 AssetsManager 管理，记录 GUID、Assets 相对路径、导�
 资源不存在时暂记删除候选，等全目录 GUID 匹配结束再确认，避免把移动误当删除。
 随后使用 SafeSystem::File::EnumerateDirectory 同步枚举 Assets，排除所有大小写的 meta 后缀。
 枚举、监听注册和逐文件的 Meta/数据库判断都在主线程进行。
-for 循环内立即恢复/创建 Meta、登记 GUID、对比和保存单个文件的记录；
-同一次 ScanDirectory 内，先登记本次枚举的全部 Meta，再逐文件比对并直接调用
-Pipeline::ImportAsset；扫描返回前所有初始任务均已 Loading 并提交，依赖 GUID 也已齐全。
+同一次 ScanDirectory 内，先恢复/创建本次枚举的全部 Meta 并登记 GUID，再逐文件比对。
+最近 Ready 且源、Meta 身份、依赖、产物、导入器/工具链版本均未变化时直接复用，
+不提交任务、不写 Pending/Ready，也不重新读取源/依赖/产物内容计算哈希。
+真正需要处理的记录先用一次主线程同步 WriteBatch 登记，再在本次调用内逐文件
+调用 Pipeline::ImportAsset；扫描返回前所有初始任务均已 Loading 并提交，依赖 GUID 已齐全。
 只枚举一次目录，不在 Update 做第二次补扫，不使用 _Dirty/待扫描目录/延迟提交队列，
 也不在 AssetsManager 中限制每帧提交数量或执行数量；实际执行并发由 TaskApi 管理。
-不再收集整批文件提交统一哈希任务；每个资源的哈希和缓存验证由其 ImportAsset 完成，
-复用同一次源文件读取的内容，不访问数据库。
-时间戳相同的资源仍通过各自的 Pipeline 任务验证内容与产物，命中缓存时不会重新解码。
+每个资源仍在扫描返回前提交自己的 ImportAsset，工作线程通过模块拥有的共享文件指纹缓存
+读取源/依赖/产物：同一路径同一原生版本的哈希只计算一次，并发请求等待该文件的生产者。
+IO 与分块哈希在缓存锁外执行；锁仅保护索引和完成状态，不访问数据库。
+大文件只缓存指纹，最多保留 32MiB 小文件字节和 16384 个指纹条目，按 LRU 淘汰。
+字节副本已淘汰时，解码所需 payload 可以补读，但不重复计算相同版本的内容哈希。
+成功匹配持久化校验记录后，将已确认的源和产物哈希预热到共享缓存。
+模块 Release 仅关闭缓存和失效条目；缓存对象在 Foundation 工作线程 join 后随模块销毁。
+ImportValidation 表单独缓存最近成功校验的文件身份、大小、纳秒 mtime/ctime，以及
+最终 Meta/Manifest 身份和模型贴图搜索目录版本；不改变 Manifest 或产物格式。
+任一观察不匹配、没有校验记录或之前失败时，由各自 Pipeline 任务完整校验内容与产物。
+文件长度和 mtime 相同但 ctime/文件身份变化也会失效，避免漏掉恢复修改时间后的写入。
+显式强制重导入仍走完整流程；读取期间文件版本变化标记过期并重试，IO 错误保持失败。
 运行时目录变化在持有者线程回调中直接 ScanDirectory，单文件变化也直接提交 Pipeline。
 AssetsManager::Update 只派发资源事件，不执行扫描或导入调度。
-按 GUID 对比和更新记录；源/Meta 时间戳或大小变化按约定重新预处理，失败记录下次重试。
-时间戳相同仍检查内容/设置哈希、子资源身份、依赖及产物有效性。
+按 GUID 对比和更新记录；源/Meta 时间戳或大小变化只触发完整验证。
+内容、设置、身份、依赖和产物均相同时保留原 Generation，不重新解码/编译。
+失败记录也完整验证；显式 ReimportAsset/应用设置仍可 force 重建，保留 LocalID。
+快速校验仍检查设置、子资源身份、依赖及产物文件版本；完整校验路径继续验证内容哈希。
 资源与 Meta 一起离线移动时保留 GUID/子资源 ID，并修正 Meta 的相对 Path。
 Meta 缺失时先按路径查活动表，再查备份表，历史身份唯一才恢复完整 Meta；不覆盖已有 Meta。
 删除时用一次 WriteBatch 写 AssetSourceBackups、删除 AssetSources 和 Library 活动/依赖索引。
@@ -79,9 +94,12 @@ Library/.Transactions/<发布UUID>：发布时暂存旧文件和恢复日志，�
 启动先恢复中断发布：未提交的恢复旧文件；已提交的保留新文件并清理残留临时文件。
 本次只支持当前格式，不读取、迁移或清理历史版本的产物及索引。
 开发项目需要从空 Library 重新生成；Assets 及其 Meta 不属于缓存。
+已发布 Manifest 必须包含非空 Generation、TextureSearches 数组和 Diagnostics 字符串，产物路径固定为 GUID_LocalID.gsasset。
+源记录及备份也只读取当前版本；不从 Library 的旧清单补建源记录。设置内部默认值、缓存重建及缺失 Meta 恢复保留。
 Editor.lock 防止两个编辑器进程同时打开同一 Library。
 缓存比较源 SHA256、设置、导入器版本、目标及依赖指纹，并校验产物文件 SHA256。
-依赖指纹包含源内容与其 Meta 的 GUID/导入设置/子资源登记。
+依赖指纹由源内容 SHA256 与规范化 Meta 的 GUID/导入设置/子资源登记组合，
+不要求每个依赖者重读相同文件字节。
 导入器算法发生不兼容变化时，应递增 AssetImportManifest::ImporterVersion。
 当前 Portable 表示通用数据格式；Shader 的具体平台能力由 Variants 标注，
 不代表一份 MetalLib 可用于 Windows/iOS 等其他目标。
@@ -188,3 +206,41 @@ Metallib 因缺少 Metal Toolchain 跳过成功用例，仍验证失败时不返
 以及重启后回滚未提交替换、保留已提交替换并清理恢复目录。
 ArtifactFormatChecks 覆盖结构数据往返、截断/非法数据拒绝和 DB 加载描述保存；
 导入测试直接检查 Texture/Mesh 文件字节数，确保文件头没有额外 JSON 或容器字节。
+
+导入进度
+ScanDirectory 在待处理集合确定后调用 BeginImportBatch，一次登记该轮固定分母；
+缓存直接复用项不进入分母。所有任务仍在本次扫描内提交，EndImportBatch 只结束登记。
+每项成功、失败、拒绝、取消都结算一次；过期重试作为后续批次，不修改原批次总量。
+单文件导入自动建立一项批次。批次 token 区分并行登记，界面按登记顺序显示。
+Loading/Unloading 仅负责遮罩和完成回调预算，启动屏障、GC 不计入资源处理数量。
+取消/Release 先结算进度再解除遮罩，防止最后一次 Unloading 提前清掉活动 token。
+没有资源批次但仍有初始化任务时显示不定进度，而不显示虚假的完成百分比。
+
+数据库刷盘策略仍为可靠模式，参见 ../LibraryManager/LibraryDurability.txt。
+
+Humanoid Rig and synchronized layers
+-----------------------------------
+Unity source references: Modules/Animation/AvatarBuilder.cpp IsValidHumanDescription
+(required roles and unique mappings), HumanDescription.h (reference Skeleton pose),
+AnimatorController.cpp layer compilation (shared stateMachineIndex, IKPass, timing).
+
+Model ImportSettings AnimationType defaults to Generic. Humanoid explicitly requires
+HumanBones[{Bone,Path}] with all required roles. HumanReferencePose entries store
+{Path,Translation,Rotation,Scale}; paths survive source node reordering, and removed
+paths fail validation. Empty overrides use the imported Skeleton reference pose.
+HumanScale=0 derives body scale. Mapping suggestions are authoring assistance only;
+worker import never guesses missing bones or silently falls back to Generic.
+
+HumanoidAvatar1 is the model's existing Avatar subresource: concrete Skeleton,
+validated full reference pose, anatomical axes and body scale. Model.Avatar and each
+imported animation SourceAvatar identify that profile. GenericAvatar1 is retained as
+a rig-inspection subresource, but cannot be loaded as a Humanoid profile. Native .anim.meta ImportSettings
+can name SourceAvatar explicitly; importing it requires the profile/Skeleton prepared
+snapshots, with producer hashes and current metadata verified off-thread.
+
+AnimatorController3 source identifies SyncedLayer by layer name; offline compilation
+resolves indices. Synchronized layers own no state machine, only per-state motion
+overrides. Chains, cycles, missing states and independent sync graphs are rejected.
+IKPass is an explicit layer setting. Only synchronized Override layers may affect
+source timing. Generic defaults remain false/no sync. Runtime owns retargeting, IK
+and timing evaluation; Module never imports runtime implementation sources.

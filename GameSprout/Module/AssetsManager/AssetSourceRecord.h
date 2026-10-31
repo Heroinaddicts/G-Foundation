@@ -2,6 +2,7 @@
 
 #include "IAssetsManager.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetMetaFormat.h"
 
 // Current source observations belong to AssetsManager. Successful generations stay
 // in LibraryManager's separate Manifests table, including after an import failure.
@@ -41,19 +42,28 @@ struct AssetSourceRecord {
             || !AssetArtifactIO::RelativePath(value["Path"].asString())
             || !value["ImporterType"].isUInt() || value["ImporterType"].asUInt() > UINT16_MAX
             || !value["SourceHash"].isString() || !value["SettingsHash"].isString()
+            || !value["SourceSize"].isInt64() || !value["SourceModifyTime"].isInt64() || !value["MetaModifyTime"].isInt64()
             || !value["MetaJson"].isString() || !value["Status"].isString() || !value["Error"].isString()) return false;
         const std::string status = value["Status"].asString();
         if (status != "Pending" && status != "Ready" && status != "Failed" && status != "NotRequired") return false;
+        const std::string metaText = value["MetaJson"].asString();
+        if (!metaText.empty()) {
+            Json::Value meta;
+            std::string error;
+            const char* importer = AssetMetaFormat::ImporterTypeName(static_cast<eAssetImporterType>(value["ImporterType"].asUInt()));
+            if (!AssetArtifactIO::Parse(metaText, meta) || !AssetMetaFormat::Validate(meta, error)
+                || !importer
+                || meta["Guid"] != value["Guid"]
+                || meta["ImporterType"].asString() != importer) return false;
+        }
         record.GuidString = value["Guid"].asString();
         record.Path = value["Path"].asString();
         record.Importer = static_cast<eAssetImporterType>(value["ImporterType"].asUInt());
         record.SourceHash = value["SourceHash"].asString();
         record.SettingsHash = value["SettingsHash"].asString();
-        for (const char * key : {"SourceSize", "SourceModifyTime", "MetaModifyTime"})
-            if (value.isMember(key) && !value[key].isInt64()) return false;
-        record.SourceSize = value.get("SourceSize", Json::Int64(-1)).asInt64();
-        record.SourceModifyTime = value.get("SourceModifyTime", Json::Int64(-1)).asInt64();
-        record.MetaModifyTime = value.get("MetaModifyTime", Json::Int64(-1)).asInt64();
+        record.SourceSize = value["SourceSize"].asInt64();
+        record.SourceModifyTime = value["SourceModifyTime"].asInt64();
+        record.MetaModifyTime = value["MetaModifyTime"].asInt64();
         record.MetaJson = value["MetaJson"].asString();
         record.Status = status;
         record.Error = value["Error"].asString();

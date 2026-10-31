@@ -17,6 +17,7 @@ enable_language(C)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutRuntime/GameSproutRuntime.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Gui)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui)
@@ -47,6 +48,7 @@ target_compile_features(AssetsPipeline PRIVATE c_std_99 cxx_std_20)
 target_link_libraries(AssetsPipeline PRIVATE
     Foundation::FoundationApi
     GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Gui
 )

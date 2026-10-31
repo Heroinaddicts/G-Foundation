@@ -89,26 +89,21 @@ public:
         result["Version"] = 1;
         result["SubAssets"] = _SubAssets;
         result["Path"] = GetPath();
+        std::string error;
+        if (!AssetMetaFormat::Validate(result, error)) return false;
         value.swap(result);
         return true;
     }
 
     bool ConvertFromJson(const Json::Value & value) override {
-        if (!value.isObject() || !value.isMember("Guid") || !value["Guid"].isString()) return false;
+        std::string error;
+        if (!AssetMetaFormat::Validate(value, error)) return false;
         const Guid guid(value["Guid"].asString());
-        if (!guid.IsValid() || guid != _Guid) return false;
-        const char * typeKey = value.isMember("ImporterType") ? "ImporterType" : "AssetType";
-        if (value.isMember(typeKey)) {
-            const char * typeName = GetAssetImporterTypeName(_ImporterType);
-            if (nullptr == typeName || !value[typeKey].isString()
-                || value[typeKey].asString() != typeName) return false;
-        }
-        if (value.isMember("Path") && !value["Path"].isString()) return false;
-
-        if (value.isMember("SubAssets") && !value["SubAssets"].isArray()) return false;
+        const char * typeName = GetAssetImporterTypeName(_ImporterType);
+        if (guid != _Guid || !typeName || value["ImporterType"].asString() != typeName) return false;
         Settings * settings = new Settings();
         try {
-            if (value.isMember("ImportSettings") && !settings->ConvertFromJson(value["ImportSettings"])) {
+            if (!settings->ConvertFromJson(value["ImportSettings"])) {
                 delete settings;
                 return false;
             }
@@ -119,7 +114,7 @@ public:
         // 定位路径由当前扫描位置决定，不能被复制或移动前的 JSON 旧路径覆盖。
         delete _Settings;
         _Settings = settings;
-        _SubAssets = value.get("SubAssets", Json::Value(Json::arrayValue));
+        _SubAssets = value["SubAssets"];
         return true;
     }
 

@@ -1,0 +1,53 @@
+材质编辑数据约定
+
+.shader 仍是 HLSL，继续使用 DXC / SDL_shadercross / SPIRV-Cross。
+可在源文件本身写一个 GameSproutMaterial 块注释；DXC 会忽略该注释。
+
+/* GameSproutMaterial {
+    "Name": "GameSprout/Custom",
+    "Properties": [
+        { "Name": "Tint", "DisplayName": "颜色", "Type": "Color", "Default": [1,1,1,1] },
+        { "Name": "Amount", "DisplayName": "强度", "Type": "Range", "Min": 0, "Max": 1, "Default": 0.5 },
+        { "Name": "MainTexture", "DisplayName": "贴图", "Type": "Texture", "Default": null }
+    ]
+} */
+
+Property 的 Name 是稳定内部名称，对应材质源文件根字段；DisplayName 用于界面。
+类型：Float、Int、Range、Color、Vector、Texture、Toggle、Enum。
+Color/Vector 为四个有限数值；Int 为32位整数；Toggle 为布尔值。
+浮点参数及Range边界须在float32可表示范围内，HDR颜色可超过1。
+Range 必须有有限的 Min/Max；Enum 使用不重复的 Options 字符串数组，值为从0开始的整数索引。
+Texture 使用 null 或 {"Guid":"...","LocalID":123}。
+每个 Texture 隐含 <Name>ST 字段：[scaleX,scaleY,offsetX,offsetY]，默认为 [1,1,0,0]。
+可选 Group、Tooltip 文本和 Hidden、HDR 布尔标记。
+同一 Schema 的内部名称不能重复，也不能占用 Version/Name/Shader/ExternalMaterial/Textures/UnresolvedTextures。
+没有声明的 Shader 提供空属性面板；不会从 GPU float4 猜测颜色等编辑语义。
+
+Shader 产物的 ArtifactDB Descriptor.Material 保存编辑属性定义。
+GPU 绑定槽、常量缓冲偏移等仍由 Descriptor.Reflection 保存，两者职责独立。
+产物文件仍只包含编译代码，参数描述不会作为 JSON 文件头写入代码段。
+
+.mat 是可编辑的源文档：
+{
+    "Version": 1,
+    "Name": "示例材质",
+    "Shader": "GameSprout/Preview",
+    "BaseColor": [1,1,1,1],
+    "BaseColorTexture": null,
+    "BaseColorTextureST": [1,1,0,0],
+    "Metallic": 0,
+    "Roughness": 0.5,
+    "DoubleSided": false
+}
+
+Shader 缺省时使用内置 GameSprout/Preview，也可填写 Shader 的 {Guid,LocalID} 引用。
+自定义材质的参数名称与对应 Shader 的 Properties.Name 一致。
+缺省参数使用 Shader.Default；未知源字段保留，不在编辑过程中丢弃。
+保存会校验参数类型、数值范围和引用，失败保留原文档。
+材质源文档及材质结构产物的读取上限均为16 MiB，拒绝损坏版本及不匹配的产物尺寸。
+Pipeline 依据同一 schema 校验并生成结构二进制产物，Shader和贴图引用作为依赖登记。
+工作线程通过源文件快照读取 Shader 声明，不调用主线程的 Library/数据库接口。
+
+当前 Runtime 预览支持 BaseColor、BaseColorTexture、BaseColorTextureST、DoubleSided；其余自定义参数
+可编辑、持久化并参与导入，任意用户 Shader 的运行时绑定仍需后续 Renderer 接入。
+FBX内嵌材质可查看；提取独立.mat后编辑，重映射信息保存在模型的.meta导入设置中。

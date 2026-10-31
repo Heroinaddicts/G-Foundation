@@ -1,4 +1,5 @@
 #include "AssetsManager.h"
+#include "../Shared/AssetMetaFormat.h"
 #include <filesystem>
 #include <QUuid>
 
@@ -32,20 +33,6 @@ bool AssetsManager::OpenSourceDatabase() {
         });
     if (!read || !valid) return false;
 
-    // Migrate projects created before the independent source inventory existed.
-    for (const std::string & guid : _Library->GetManifestGuids()) {
-        if (records.count(guid)) continue;
-        AssetImportManifest manifest;
-        if (!_Library->GetManifest(Guid(guid), manifest)) continue;
-        AssetSourceRecord record;
-        record.GuidString = guid;
-        record.Path = manifest.SourcePath;
-        record.Importer = GetAssetImporterType(QFileInfo(QString::fromStdString(record.Path)).suffix().toStdString());
-        record.SourceHash = manifest.SourceHash;
-        record.SettingsHash = manifest.SettingsHash;
-        record.Status = "Ready";
-        records.emplace(guid, std::move(record));
-    }
     std::map<std::string, int64_t> backupTimes;
     _BackupSourcesByPath.clear();
     bool backupsValid = true;
@@ -53,6 +40,7 @@ bool AssetsManager::OpenSourceDatabase() {
         [&](const std::string &, const void * data, int length) {
             Json::Value value; AssetSourceRecord record;
             if (!AssetArtifactIO::Parse(std::string(static_cast<const char *>(data), size_t(length)), value)
+                || !value.isObject() || value["Version"] != 1
                 || !value["BackupTime"].isInt64() || !AssetSourceRecord::FromJson(value["Record"], record)) {
                 backupsValid = false; return false;
             }
@@ -196,7 +184,9 @@ void AssetsManager::RestoreMissingMeta(const std::string & path) {
     }
     if (previous->MetaJson.empty()) return;
     Json::Value meta;
-    if (!AssetArtifactIO::Parse(previous->MetaJson, meta) || meta["Guid"] != previous->GuidString) return;
+    std::string error;
+    if (!AssetArtifactIO::Parse(previous->MetaJson, meta) || !AssetMetaFormat::Validate(meta, error)
+        || meta["Guid"] != previous->GuidString) return;
     const std::string content = AssetArtifactIO::JsonText(meta);
     QFile file(QString::fromStdString(path + ".meta"));
     // Create only: an external tool may have written a sidecar since the existence check.
@@ -297,9 +287,9 @@ bool AssetsManager::ArchiveSourceRecord(const std::string & guid, const std::str
     // an orphan Meta, but cannot destroy the only recovery copy before it is backed up.
     const QString path = QDir(QString::fromStdString(_AssetsRoot)).filePath(QString::fromStdString(record.Path));
     if (SourceIsMissing(path)) {
-        QFile sidecar(path + ".meta"); Json::Value value;
+        QFile sidecar(path + ".meta"); Json::Value value; std::string sidecarError;
         if (sidecar.open(QIODevice::ReadOnly) && AssetArtifactIO::Parse(sidecar.readAll().toStdString(), value)
-            && value["Guid"] == guid) {
+            && AssetMetaFormat::Validate(value, sidecarError) && value["Guid"] == guid) {
             sidecar.close();
             if (!QFile::remove(path + ".meta")) GameSproutConsoleLog(g_IConsole, eConsoleLog::Warning, "Cannot remove orphan Meta: {}", path.toStdString());
         }

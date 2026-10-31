@@ -1,5 +1,8 @@
 #include "AssetImportJob.h"
 #include "ModelTextureResolver.h"
+#include "AnimationClipPreparation.h"
+#include "../Shared/HumanoidDefinition.h"
+#include "../Shared/AnimationImportSettingsJson.h"
 #include "ThirdParty/ufbx/ufbx.h"
 #include <QDataStream>
 #include <QVector3D>
@@ -83,6 +86,11 @@ void Diagnostic(AssetImportJob& job,const std::string& warning) {
 
 bool Mesh(AssetImportJob & job, ufbx_mesh * mesh, const std::string & key, double scale) {
     if (mesh->cache_deformers.count) return job.Fail("Vertex cache deformation is not supported by this runtime asset format");
+    if(mesh->skin_deformers.count) {
+        size_t truncated=0;
+        for(const auto& vertex:mesh->skin_deformers[0]->vertices)if(vertex.num_weights>4)++truncated;
+        if(truncated)Diagnostic(job,"Mesh '"+Name(mesh->name)+"': "+std::to_string(truncated)+" vertices use more than four influences; retained largest four and normalized weights");
+    }
     if (mesh->skin_deformers.count > 1) return job.Fail("Multiple skin deformers are not supported");
     const ufbx_skin_deformer * skin = mesh->skin_deformers.count ? mesh->skin_deformers[0] : nullptr;
     if (skin && skin->skinning_method != UFBX_SKINNING_METHOD_LINEAR) return job.Fail("Dual-quaternion skinning requires a compatible runtime deformation format");
@@ -259,7 +267,8 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
     if (!(scale > 0) || !std::isfinite(scale)) return job.Fail("Invalid model scale");
     if (job.Settings.get("MeshCompression", "Off").asString() != "Off") return job.Fail("Quantized mesh compression is not implemented for the portable format");
     if (job.Settings.get("GenerateLightmapUVs", false).asBool()) return job.Fail("Lightmap UV generation requires a UV unwrapper");
-    if (job.Settings.get("AnimationType", "Generic").asString() == "Humanoid") return job.Fail("Humanoid retargeting requires a bone mapping; use Generic for source animation");
+    if(job.Settings.get("AnimationType","Generic").asString()=="Humanoid"&&!scene->bones.count)return job.Fail("Humanoid model requires a skeleton and explicit human bone mapping");
+    if (job.Settings.isMember("MaterialRemaps") && !job.Settings["MaterialRemaps"].isObject()) return job.Fail("MaterialRemaps must be an object");
     std::map<uint32_t,uint64_t> meshes, materials;
     for (ufbx_mesh * mesh : scene->meshes) {
         const std::string key = "mesh/" + (mesh->instances.count ? NodePath(mesh->instances[0]) : Name(mesh->name));
@@ -269,11 +278,13 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
     if (job.Settings.get("ImportMaterials", true).asBool()) for (ufbx_material * material : scene->materials) {
         const std::string key = NamedKey("material/", material->element, scene->elements);
         Json::Value data;
+        data["Shader"] = "GameSprout/Preview";
+        data["DoubleSided"] = material->features.double_sided.enabled;
         const auto color = material->pbr.base_color.has_value ? material->pbr.base_color.value_vec3 : material->fbx.diffuse_color.value_vec3;
         const double opacity=material->pbr.opacity.has_value?material->pbr.opacity.value_real:1.0;
         data["BaseColor"] = Array({color.x,color.y,color.z,opacity});
-        data["Roughness"] = material->pbr.roughness.value_real;
-        data["Metallic"] = material->pbr.metalness.value_real;
+        data["Roughness"] = material->pbr.roughness.has_value ? material->pbr.roughness.value_real : 0.5;
+        data["Metallic"] = material->pbr.metalness.has_value ? material->pbr.metalness.value_real : 0.0;
         data["Textures"] = Json::Value(Json::arrayValue);
         data["UnresolvedTextures"] = Json::Value(Json::arrayValue);
         for (const auto & mapping : material->textures) {
@@ -329,6 +340,30 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
                 ref["Asset"] = Ref(meta["Guid"].asString(),mainID);
             }
             data["Textures"].append(ref);
+            const std::string channel = Name(mapping.material_prop);
+            if (!data.isMember("BaseColorTexture") && (channel == "DiffuseColor" || channel == "BaseColor"
+                || channel == "base_color" || channel == "baseColor")) data["BaseColorTexture"] = ref["Asset"];
+        }
+        const Json::Value & remaps = job.Settings["MaterialRemaps"];
+        if (remaps.isMember(key)) {
+            const Json::Value & reference = remaps[key];
+            if (!reference.isObject() || !reference["Guid"].isString() || !Guid(reference["Guid"].asString()).IsValid()
+                || !reference["LocalID"].isUInt64() || !reference["LocalID"].asUInt64()
+                || reference["Guid"].asString() == job.Request.GuidString) return job.Fail("Invalid external material mapping: " + key);
+            const auto found = job.Request.SourcePaths.find(reference["Guid"].asString());
+            if (found == job.Request.SourcePaths.end() || QFileInfo(QString::fromStdString(found->second)).suffix().compare("mat", Qt::CaseInsensitive) != 0)
+                return job.Fail("Mapped external material is missing: " + key + "; GUID=" + reference["Guid"].asString());
+            QByteArray bytes;
+            if (!job.AddDependency(found->second, &bytes)) return false;
+            Json::Value source, meta;
+            QFile metaFile(QDir(QString::fromStdString(job.Request.AssetsRoot)).filePath(QString::fromStdString(found->second)) + ".meta");
+            if (!AssetArtifactIO::Parse(bytes.toStdString(), source) || !source.isObject() || source["Version"] != 1
+                || source.isMember("ExternalMaterial") || !metaFile.open(QIODevice::ReadOnly)
+                || !AssetArtifactIO::Parse(metaFile.readAll().toStdString(), meta) || metaFile.error() != QFileDevice::NoError
+                || meta["ImporterType"] != "Material" || meta["Guid"] != reference["Guid"]
+                || ExternalMainID(meta, eAssetType::Material) != reference["LocalID"].asUInt64())
+                return job.Fail("Invalid mapped external material identity: " + key + "; path=" + found->second);
+            data["ExternalMaterial"] = reference;
         }
         materials[material->typed_id] = job.ID(eAssetType::Material,key,Name(material->name));
         if (!job.Emit(eAssetType::Material,key,Name(material->name),data)) return false;
@@ -381,11 +416,33 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
     if (scene->bones.count) {
         Json::Value skeleton; skeleton["Nodes"] = model["Nodes"];
         if (!job.Emit(eAssetType::Skeleton,"skeleton","Skeleton",skeleton)) return false;
-        Json::Value avatar; avatar["AnimationType"] = job.Settings.get("AnimationType","Generic");
-        avatar["Skeleton"] = Ref(job.Request.GuidString,job.ID(eAssetType::Skeleton,"skeleton","Skeleton"));
+        Json::Value avatar;avatar["Format"]="GenericAvatar1";
+        const auto skeletonID=job.ID(eAssetType::Skeleton,"skeleton","Skeleton");
+        avatar["Skeleton"] = Ref(job.Request.GuidString,skeletonID);
+        model["Skeleton"]=avatar["Skeleton"];
+        if(job.Settings.get("AnimationType","Generic").asString()=="Humanoid") {
+            ModelHumanoidImportSettings settings;GameSproutRuntime::SkeletonData hierarchy;
+            GameSproutRuntime::HumanoidAvatarData human;std::string error;
+            if(!HumanoidDefinition::ReadSettings(job.Settings,settings,error))return job.Fail(error);
+            for(const auto& entry:model["Nodes"]) {
+                GameSproutRuntime::SkeletonNode node;node.Path=entry["Path"].asString();node.Name=entry["Name"].asString();node.Parent=entry["Parent"].asInt();
+                if(!HumanoidDefinition::Pose(entry["Transform"],node.Transform))return job.Fail("Humanoid source skeleton has invalid or reflected reference TRS");
+                hierarchy.Nodes.push_back(node);
+            }
+            if(!HumanoidDefinition::Prepare(settings,hierarchy,{job.Request.GuidString,skeletonID},human,error))return job.Fail("Invalid Humanoid Avatar: "+error);
+            avatar=HumanoidDefinition::WriteAvatar(human);
+            model["Avatar"]=Ref(job.Request.GuidString,job.ID(eAssetType::Avatar,"avatar","Avatar"));
+        }
         if (!job.Emit(eAssetType::Avatar,"avatar","Avatar",avatar)) return false;
-        model["Skeleton"] = avatar["Skeleton"];
     }
+    std::vector<AnimationClipImportOptions> clipOptions;
+    if(job.Settings.isMember("AnimationClips")&&!AnimationImportSettingsJson::ReadModel(job.Settings["AnimationClips"],clipOptions))return job.Fail("Invalid model AnimationClips import settings");
+    for(const auto& configured:clipOptions) {
+        std::size_t matches=0;for(ufbx_anim_stack* stack:scene->anim_stacks)if(Name(stack->name)==configured.Name)++matches;
+        if(matches!=1)return job.Fail("Configured animation Take is missing or ambiguous: "+configured.Name);
+    }
+    std::vector<std::int32_t> animationParents;
+    for(ufbx_node* node:scene->nodes)animationParents.push_back(node->parent?static_cast<std::int32_t>(node->parent->typed_id):-1);
     model["Animations"] = Json::Value(Json::arrayValue);
     if (job.Settings.get("ImportAnimation",true).asBool() && job.Settings.get("AnimationType","Generic").asString() != "None")
         for (ufbx_anim_stack * stack : scene->anim_stacks) {
@@ -393,13 +450,13 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
             const double duration = stack->time_end - stack->time_begin;
             const double rate = scene->settings.frames_per_second > 0 ? scene->settings.frames_per_second : 30;
             if (!(duration >= 0) || !std::isfinite(duration) || !std::isfinite(rate) || rate > 1000 || duration * rate > 1000000) return job.Fail("Animation sample count exceeds supported limits");
-            const uint32_t frames = uint32_t(std::ceil(duration * rate)) + 1;
+            const uint32_t frames = duration>0 ? uint32_t(std::max(1.0,std::ceil(duration * rate - 1e-7))) + 1 : 1;
             QByteArray payload;
             QDataStream output(&payload,QIODevice::WriteOnly);
             output.setByteOrder(QDataStream::LittleEndian); output.setFloatingPointPrecision(QDataStream::SinglePrecision);
             for (uint32_t frame=0; frame<frames; ++frame) {
                 if (job.Cancelled()) return false;
-                const double time = std::min(duration,double(frame)/rate);
+                const double time = frame+1==frames ? duration : double(frame)/rate;
                 output << float(time);
                 for (ufbx_node * node : scene->nodes) {
                     const auto t = ufbx_evaluate_transform(stack->anim,node,stack->time_begin+time);
@@ -413,12 +470,16 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
             }
             Json::Value data;
             data["Duration"] = duration; data["SampleRate"] = rate; data["FrameCount"] = frames;
+            if(model.isMember("Avatar"))data["SourceAvatar"]=model["Avatar"];
             data["Tracks"] = Json::Value(Json::arrayValue);
             for (ufbx_node * node : scene->nodes) data["Tracks"].append(NodePath(node));
             data["BlendShapeTracks"] = Json::Value(Json::arrayValue);
             if (job.Settings.get("ImportBlendShapes", true).asBool())
                 for (ufbx_blend_channel * channel : scene->blend_channels) data["BlendShapeTracks"].append(BlendKey(channel));
             data["Layout"] = "float32:Time;per-track:Translation3,RotationQuaternion4,Scale3;per-blend-track:Weight1";
+            AnimationClipImportOptions options;
+            for(const auto& configured:clipOptions)if(configured.Name==Name(stack->name))options=configured;
+            if(!PrepareAnimationClip(job,data,payload,options,animationParents))return false;
             const std::string key = NamedKey("animation/", stack->element, scene->elements);
             if (!job.Emit(eAssetType::AnimationClip,key,Name(stack->name),data,payload)) return false;
             model["Animations"].append(Ref(job.Request.GuidString,job.ID(eAssetType::AnimationClip,key,Name(stack->name))));
@@ -450,6 +511,8 @@ bool ImportModel(AssetImportJob & job) {
         catch (...) { return job.Fail("Cannot load external model dependency"); }
     };
     options.generate_missing_normals = true;
+    // Convert FBX scale-inheritance rules to ordinary runtime TRS helper nodes.
+    options.inherit_mode_handling = UFBX_INHERIT_MODE_HANDLING_HELPER_NODES;
     options.target_axes = ufbx_axes_right_handed_y_up;
     options.target_unit_meters = job.Settings.get("UseFileScale",true).asBool() ? 1.0 : 0.0;
     options.space_conversion = UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY;

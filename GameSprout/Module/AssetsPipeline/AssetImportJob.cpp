@@ -1,18 +1,10 @@
 #include "AssetImportJob.h"
 #include "ModelTextureResolver.h"
+#include "AnimationResourceValidation.h"
 #include <QUuid>
 #include "../Shared/AssetValueBinary.h"
+#include "../Shared/AssetMetaFormat.h"
 #include "IShaderCompiler.h"
-
-namespace {
-bool ReadSource(const QString & path, QByteArray & bytes, std::string & error) {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) { error = "Cannot read " + path.toStdString() + ": " + file.errorString().toStdString(); return false; }
-    bytes = file.readAll();
-    if (file.error() != QFileDevice::NoError) { error = "Read failed: " + path.toStdString(); return false; }
-    return true;
-}
-}
 
 AssetImportJob::~AssetImportJob() {
     if (!Stage.empty()) QDir(QString::fromStdString(Stage)).removeRecursively();
@@ -51,8 +43,8 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
     const std::string typedKey = std::to_string(static_cast<uint16_t>(type)) + ":" + key;
     if (!ProducedKeys.insert(typedKey).second) return Fail("Duplicate imported object identity: " + key);
     const uint64_t id = ID(type, key, name);
-    const bool structured = type == eAssetType::Model || type == eAssetType::Skeleton
-        || type == eAssetType::Avatar || type == eAssetType::Material
+    const bool structured = type == eAssetType::AnimatorController || type == eAssetType::Model || type == eAssetType::Skeleton
+        || type == eAssetType::Avatar || type == eAssetType::AvatarMask || type == eAssetType::Material
         || metadata["Format"] == "GameSproutDocument";
     QByteArray bytes;
     Json::Value descriptor;
@@ -80,52 +72,103 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
     return true;
 }
 
+bool AssetImportJob::ReadFile(const std::string & path, QByteArray * bytes, std::string & hash) {
+    AssetFileFingerprint fingerprint;
+    bool changed = false;
+    if (!Request.Fingerprints->Read(path, bytes, fingerprint, Result.Error, changed, Context)) {
+        if (changed) { Result.Superseded = true; Result.Retry = true; }
+        return false;
+    }
+    const auto previous = ReadVersions.find(path);
+    if (previous != ReadVersions.end() && previous->second != fingerprint.Version) {
+        Result.Superseded = true; Result.Retry = true;
+        return Fail("File changed during import: " + path);
+    }
+    ReadVersions[path] = fingerprint.Version;
+    hash = std::move(fingerprint.Hash);
+    return true;
+}
+
 bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray * output) {
     if (!AssetArtifactIO::RelativePath(relativePath)) return Fail("Invalid dependency path: " + relativePath);
     const QDir root(QString::fromStdString(Request.AssetsRoot));
     const QFileInfo info(root.filePath(QString::fromStdString(relativePath)));
     if (!info.isFile() || !info.canonicalFilePath().startsWith(root.canonicalPath() + "/")) return Fail("Missing or external dependency: " + relativePath);
-    QByteArray bytes;
-    if (!ReadSource(info.absoluteFilePath(), bytes, Result.Error)) return false;
-    QByteArray fingerprint = bytes;
+    std::string sourceHash;
+    if (!ReadFile(info.absoluteFilePath().toStdString(), output, sourceHash)) return false;
+    // 依赖由集中维护的源内容 hash 与规范化 Meta 身份组合，不重新读取共享贴图。
+    QByteArray fingerprint("GameSprout.Dependency.2");
+    fingerprint.append('\0');
+    fingerprint.append(QByteArray::fromStdString(sourceHash));
     const QString metaPath = info.absoluteFilePath() + ".meta";
-    if (QFileInfo::exists(metaPath)) {
+    AssetFileStamp metaVersion;
+    if (!ReadAssetFileStamp(metaPath.toStdString(), metaVersion)) return Fail("Cannot inspect dependency Meta: " + relativePath);
+    if (metaVersion.Exists) {
         QByteArray metaBytes;
         Json::Value meta;
-        if (!ReadSource(metaPath, metaBytes, Result.Error) || !AssetArtifactIO::Parse(metaBytes.toStdString(), meta)
-            || !meta.isObject() || !meta["ImportSettings"].isObject()) return Fail("Invalid dependency Meta: " + relativePath);
+        std::string metaHash;
+        std::string metaError;
+        if (!ReadFile(metaPath.toStdString(), &metaBytes, metaHash) || !AssetArtifactIO::Parse(metaBytes.toStdString(), meta)
+            || !AssetMetaFormat::Validate(meta, metaError)) return Fail("Invalid dependency Meta: " + relativePath + "; " + metaError);
         Json::Value identity;
         identity["Guid"] = meta["Guid"];
-        identity["ImporterType"] = meta.get("ImporterType", meta.get("AssetType", ""));
+        identity["ImporterType"] = meta["ImporterType"];
         identity["ImportSettings"] = meta["ImportSettings"];
-        identity["SubAssets"] = meta.get("SubAssets", Json::Value(Json::arrayValue));
+        identity["SubAssets"] = meta["SubAssets"];
         fingerprint.append('\0');
         fingerprint.append(QByteArray::fromStdString(AssetArtifactIO::JsonText(identity)));
-        const QFileInfo metaInfo(metaPath);
-        DependencyStamps.emplace(metaPath.toStdString(), std::make_pair(metaInfo.size(), metaInfo.lastModified()));
+    } else {
+        const auto previous = ReadVersions.find(metaPath.toStdString());
+        if (previous != ReadVersions.end() && previous->second != metaVersion) {
+            Result.Superseded = true; Result.Retry = true;
+            return Fail("Dependency Meta changed during import: " + relativePath);
+        }
+        ReadVersions[metaPath.toStdString()] = metaVersion;
     }
-    DependencyStamps.emplace(info.absoluteFilePath().toStdString(), std::make_pair(info.size(), info.lastModified()));
     const std::string hash = AssetArtifactIO::Hash(fingerprint);
     for (const auto & existing : Result.Manifest.Dependencies) if (existing.Path == relativePath) {
         if (existing.Hash != hash) { Result.Superseded = true; Result.Retry = true; return Fail("Dependency changed during import: " + relativePath); }
-        if (output) *output = bytes;
         return true;
     }
     Result.Manifest.Dependencies.push_back({relativePath, hash});
-    if (output) *output = bytes;
     return true;
 }
 
-bool ModelTextureSearchesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest) {
+bool ModelTextureSearchesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest,
+    std::map<std::string, AssetFileStamp> * observations, bool * observationsAvailable) {
     if(request.Importer!=eAssetImporterType::Model)return true;
     std::vector<std::string> materialDirectories;
     for(const auto& dependency:manifest.Dependencies) {
         if(QFileInfo(QString::fromStdString(dependency.Path)).suffix().compare("mtl",Qt::CaseInsensitive)==0)
             materialDirectories.push_back(QFileInfo(QString::fromStdString(dependency.Path)).path().toStdString());
     }
+    // 一次完整查找共用目录版本，不能用第二张贴图的新版本覆盖第一张贴图的旧观察。
+    std::map<std::string, AssetFileStamp> directories;
+    bool inspected = true, changed = false;
+    const auto observe = [&](const std::string & path) {
+        AssetFileStamp stamp;
+        if (!ReadAssetFileStamp(path, stamp)) { inspected = false; return; }
+        const auto previous = directories.find(path);
+        if (previous != directories.end() && previous->second != stamp) changed = true;
+        else directories.emplace(path, stamp);
+    };
     for(const auto& search:manifest.TextureSearches) {
-        const auto resolved=ResolveModelTexture(request.AssetsRoot,request.SourcePath,search.Filename,search.RelativeFilename,materialDirectories);
+        const auto resolved=ResolveModelTexture(request.AssetsRoot,request.SourcePath,search.Filename,search.RelativeFilename,
+            materialDirectories, observations ? observe : std::function<void(const std::string&)>{});
         if(resolved.Path!=search.ResolvedPath||resolved.Reason!=search.Reason)return false;
+    }
+    if (observations) {
+        if (changed) return false;
+        if (!inspected && observationsAvailable) *observationsAvailable = false;
+        for (const auto & directory : directories) {
+            AssetFileStamp current;
+            if (!ReadAssetFileStamp(directory.first, current)) {
+                if (observationsAvailable) *observationsAvailable = false;
+                continue;
+            }
+            if (current != directory.second) return false;
+        }
+        *observations = std::move(directories);
     }
     return true;
 }
@@ -135,10 +178,15 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if (context.IsCancellationRequested()) return job.Fail("Import cancelled");
     if (!Guid(job.Request.GuidString).IsValid() || !AssetArtifactIO::RelativePath(job.Request.SourcePath)) return job.Fail("Invalid source identity");
     Json::Value meta;
-    if (!AssetArtifactIO::Parse(job.Request.MetaJson, meta) || !meta.isObject() || !meta["ImportSettings"].isObject()) return job.Fail("Invalid Meta snapshot");
+    std::string metaError;
+    const char * importerName = AssetMetaFormat::ImporterTypeName(job.Request.Importer);
+    if (!AssetArtifactIO::Parse(job.Request.MetaJson, meta) || !AssetMetaFormat::Validate(meta, metaError)
+        || meta["Guid"].asString() != job.Request.GuidString
+        || meta["Path"].asString() != job.Request.SourcePath
+        || !importerName || meta["ImporterType"].asString() != importerName)
+        return job.Fail("Invalid Meta snapshot: " + metaError);
     job.Settings = meta["ImportSettings"];
-    job.Identities = meta.get("SubAssets", Json::Value(Json::arrayValue));
-    if (!job.Identities.isArray()) return job.Fail("Invalid subasset identities");
+    job.Identities = meta["SubAssets"];
     for (const Json::Value & entry : job.Identities) {
         if (!entry["LocalID"].isUInt64() || entry["LocalID"].asUInt64() == 0 || !entry["Type"].isUInt()
             || !entry["SourceKey"].isString() || !job.UsedIDs.insert(entry["LocalID"].asUInt64()).second
@@ -150,12 +198,13 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if (!source.isFile() || !source.canonicalFilePath().startsWith(root.canonicalPath() + "/")) return job.Fail("Source is missing or outside Assets");
     job.SourceSize = source.size();
     job.SourceModified = source.lastModified();
-    if (!ReadSource(source.absoluteFilePath(), job.SourceBytes, job.Result.Error)) return false;
     auto & manifest = job.Result.Manifest;
+    const bool mayReuse = !job.Request.Force && job.Request.HasPrevious;
+    if (!job.ReadFile(source.absoluteFilePath().toStdString(), mayReuse ? nullptr : &job.SourceBytes, manifest.SourceHash)) return false;
+    const auto sourceVersions = job.ReadVersions;
     manifest.GuidString = job.Request.GuidString;
     manifest.SourcePath = job.Request.SourcePath;
-    manifest.SourceHash = AssetArtifactIO::Hash(job.SourceBytes);
-    if(job.Request.Importer==eAssetImporterType::Model)manifest.ImporterVersion=3;
+    manifest.ImporterVersion = AssetImportAlgorithmVersion(job.Request.Importer);
     manifest.SettingsHash = AssetArtifactIO::Hash(QByteArray::fromStdString(
         std::to_string(static_cast<uint16_t>(job.Request.Importer)) + ":" + AssetArtifactIO::JsonText(job.Settings)));
     if(job.Request.Importer==eAssetImporterType::Shader || job.Request.Importer==eAssetImporterType::ComputeShader) {
@@ -167,7 +216,8 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
         && job.Request.Previous.SourceHash == manifest.SourceHash && job.Request.Previous.SettingsHash == manifest.SettingsHash
         && job.Request.Previous.ToolchainHash == manifest.ToolchainHash
         && job.Request.Previous.ImporterVersion == manifest.ImporterVersion && job.Request.Previous.Target == manifest.Target;
-    if(cached&&!ModelTextureSearchesCurrent(job.Request,job.Request.Previous))cached=false;
+    if(cached&&!AnimationCachedInputsCurrent(job))cached=false;
+    if(cached&&!ModelTextureSearchesCurrent(job.Request,job.Request.Previous,&job.SearchDirectoryVersions,&job.ValidationAvailable))cached=false;
     if (cached) {
         // A manually changed identity registry must never be overwritten by a cache hit.
         for (const auto & asset : job.Request.Previous.Assets) {
@@ -182,17 +232,25 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
             if (!job.AddDependency(dependency.Path) || job.Result.Manifest.Dependencies.back().Hash != dependency.Hash) { cached = false; break; }
         }
         for (const auto & asset : job.Request.Previous.Assets) {
-            QByteArray bytes;
-            std::string ignored;
-            if (!ReadSource(QString::fromStdString(job.Request.LibraryRoot + "/" + job.Request.Previous.Directory + "/" + asset.Path), bytes, ignored)
-                || static_cast<uint64_t>(bytes.size()) != asset.DataSize
-                || AssetArtifactIO::Hash(bytes) != asset.Hash) { cached = false; break; }
+            std::string hash;
+            const std::string path = job.Request.LibraryRoot + "/" + job.Request.Previous.Directory + "/" + asset.Path;
+            if (!job.ReadFile(path, nullptr, hash) || job.ReadVersions.at(path).Size != asset.DataSize
+                || hash != asset.Hash) { cached = false; break; }
         }
     }
+    if (job.Result.Superseded) return false;
     job.Result.Error.clear();
     manifest.Dependencies.clear();
-    if (!cached) job.DependencyStamps.clear();
+    if (!cached) { job.ReadVersions = sourceVersions; job.SearchDirectoryVersions.clear(); }
     if (cached) { job.Result.Manifest = job.Request.Previous; job.Result.Diagnostics=job.Request.Previous.Diagnostics; job.Result.Success = true; job.Result.Cached = true; return true; }
+    if (mayReuse) {
+        std::string sourceHash;
+        if (!job.ReadFile(source.absoluteFilePath().toStdString(), &job.SourceBytes, sourceHash)) return false;
+        if (sourceHash != manifest.SourceHash) {
+            job.Result.Superseded = true; job.Result.Retry = true;
+            return job.Fail("Source changed before decoding");
+        }
+    }
     const QString stage = QDir(QString::fromStdString(job.Request.LibraryRoot)).filePath("Staging/" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     if (!QDir().mkpath(stage)) return job.Fail("Cannot create import stage");
     job.Stage = stage.toStdString();
@@ -214,7 +272,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     // yet be present in the main-thread reverse index while this first import runs.
     const auto dependencies = manifest.Dependencies;
     for (const auto & dependency : dependencies) if (!job.AddDependency(dependency.Path)) return false;
-    if(!ModelTextureSearchesCurrent(job.Request,manifest)) {
+    if(!ModelTextureSearchesCurrent(job.Request,manifest,&job.SearchDirectoryVersions,&job.ValidationAvailable)) {
         job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Texture lookup changed during import");
     }
     manifest.SubAssetsJson = AssetArtifactIO::JsonText(job.Identities);

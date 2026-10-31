@@ -3,9 +3,13 @@
 
 #include "Define.h"
 #include "IGuidCreator.h"
+#include "AnimationImportSettings.h"
 
 #include <string>
 #include <vector>
+
+struct ModelHumanoidImportSettings;
+namespace GameSproutRuntime {struct ResourceReference;}
 
 class IAssetImportSettings {
 public:
@@ -176,9 +180,14 @@ public:
     virtual bool GetImportAnimation() const = 0;
     virtual void SetImportAnimation(const bool value) = 0;
 
+    virtual const std::vector<AnimationClipImportOptions>& GetAnimationClips() const = 0;
+    virtual bool SetAnimationClips(const std::vector<AnimationClipImportOptions>& clips) = 0;
+
     // 不导入骨骼动画、通用骨骼，或人形骨骼。
     virtual eModelAnimationType GetAnimationType() const = 0;
     virtual void SetAnimationType(const eModelAnimationType value) = 0;
+    virtual const ModelHumanoidImportSettings& GetHumanoidSettings() const = 0;
+    virtual bool SetHumanoidSettings(const ModelHumanoidImportSettings& settings) = 0;
 
     // 是否提取材质。
     virtual bool GetImportMaterials() const = 0;
@@ -377,6 +386,10 @@ public:
 class IAnimationClipImportSettings : public INativeAssetImportSettings {
 public:
     virtual ~IAnimationClipImportSettings() {}
+    virtual const AnimationClipImportOptions& GetClipOptions() const = 0;
+    virtual bool SetClipOptions(const AnimationClipImportOptions& options) = 0;
+    virtual const GameSproutRuntime::ResourceReference& GetSourceAvatar() const = 0;
+    virtual bool SetSourceAvatar(const GameSproutRuntime::ResourceReference& reference) = 0;
 };
 
 class IAnimatorControllerImportSettings : public INativeAssetImportSettings {
@@ -528,6 +541,17 @@ public:
     // 外部修改造成冲突时返回 false；验证/保存失败不替换原设置。
     virtual bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
         const std::string & expectedSettingsJson, std::string & error) = 0;
+    // 主线程：独立 .mat 的源文档。返回规范化 JSON 快照，参数保存到源文件。
+    virtual bool LoadMaterialSource(const Guid & guid, std::string & json, std::string & error) const = 0;
+    // expectedJson 为开始编辑时的源快照；有外部修改时拒绝覆盖。
+    // true 表示源文件已保存；异步导入成功与否通过 Meta 状态和资源事件查询。
+    virtual bool SaveMaterialSource(const Guid & guid, const std::string & json,
+        const std::string & expectedJson, std::string & error) = 0;
+    // relativeMatPath 相对 Assets，父目录必须存在，禁止覆盖文件或 Meta。
+    // 新材质使用新 GUID，保留 localID；原模型的 GUID + localID 通过映射继续有效。
+    // true 表示源文件和模型映射已保存，异步导入失败时保留源数据并报告 Failed。
+    virtual bool ExtractMaterial(const Guid & guid, uint64_t localID, const std::string & relativeMatPath,
+        std::string & outputGuid, std::string & error) = 0;
     // Borrowed until source removal or module release; main thread only.
     virtual std::vector<IAssetMeta *> GetAssetMetas() const = 0;
     // path 相对 Assets；空字符串表示根目录。只返回直接子项，目录在前。

@@ -96,6 +96,8 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
         || value["Directory"] != "Artifact"
         || !value["SourceHash"].isString() || !value["SettingsHash"].isString() || !value["ToolchainHash"].isString()
         || !value["Target"].isString() || !value["ImporterVersion"].isUInt()
+        || !value["Generation"].isString() || value["Generation"].asString().empty()
+        || !value["TextureSearches"].isArray() || !value["Diagnostics"].isString()
         || !value["Assets"].isArray() || !value["Dependencies"].isArray()
         || !value["SubAssets"].isArray()) return false;
     AssetImportManifest result;
@@ -107,15 +109,16 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
     result.Target = value["Target"].asString();
     result.ImporterVersion = value["ImporterVersion"].asUInt();
     result.Directory = value["Directory"].asString();
-    if (value.isMember("Generation") && !value["Generation"].isString()) return false;
-    result.Generation = value.get("Generation", "").asString();
+    result.Generation = value["Generation"].asString();
     result.SubAssetsJson = JsonText(value["SubAssets"]);
     std::set<uint64_t> ids;
     for (const Json::Value & item : value["Assets"]) {
         if (!item.isObject() || !item["LocalID"].isUInt64() || item["LocalID"].asUInt64() == 0
             || !ids.insert(item["LocalID"].asUInt64()).second || !item["Type"].isUInt()
             || item["Type"].asUInt() > 65535 || !item["Name"].isString() || !item["SourceKey"].isString()
-            || !item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
+            || !item["Path"].isString()
+            || item["Path"].asString() != result.GuidString + "_" + std::to_string(item["LocalID"].asUInt64()) + ".gsasset"
+            || !item["Hash"].isString()) return false;
         AssetArtifact asset{item["LocalID"].asUInt64(), static_cast<eAssetType>(item["Type"].asUInt()),
             item["Name"].asString(), item["SourceKey"].asString(), item["Path"].asString(), item["Hash"].asString()};
         if (!item["DataVersion"].isUInt() || item["DataVersion"].asUInt() != 2
@@ -129,16 +132,13 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
         if (!item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
         result.Dependencies.push_back({item["Path"].asString(), item["Hash"].asString()});
     }
-    const Json::Value searches=value.get("TextureSearches",Json::Value(Json::arrayValue));
-    if(!searches.isArray())return false;
+    const Json::Value& searches=value["TextureSearches"];
     for(const auto& item:searches) {
         if(!item.isObject()||!item["Filename"].isString()||!item["RelativeFilename"].isString()||!item["ResolvedPath"].isString()||!item["Reason"].isString()
             ||(!item["ResolvedPath"].asString().empty()&&!RelativePath(item["ResolvedPath"].asString())))return false;
         result.TextureSearches.push_back({item["Filename"].asString(),item["RelativeFilename"].asString(),item["ResolvedPath"].asString(),item["Reason"].asString()});
     }
-    const Json::Value diagnostics=value.get("Diagnostics","");
-    if(!diagnostics.isString())return false;
-    result.Diagnostics=diagnostics.asString();
+    result.Diagnostics=value["Diagnostics"].asString();
     manifest = std::move(result);
     return true;
 }
