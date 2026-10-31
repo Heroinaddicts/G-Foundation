@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>HierarchyContextMenu</class>
+ <widget class="QMenu" name="HierarchyContextMenu">
+  <widget class="QMenu" name="menuCreate">
+   <property name="title"><string>Create (Scene Root)</string></property>
+   <addaction name="actionEmpty"/><addaction name="actionCamera"/><addaction name="actionMesh"/>
+   <addaction name="separator"/>
+   <addaction name="actionCanvas"/><addaction name="actionImage"/><addaction name="actionUIEmpty"/>
+  </widget>
+  <widget class="QMenu" name="menuCreateChild">
+   <property name="title"><string>Create Child (Context Node)</string></property>
+   <property name="createChild" stdset="0"><bool>true</bool></property>
+   <addaction name="actionEmpty"/><addaction name="actionCamera"/><addaction name="actionMesh"/>
+   <addaction name="separator"/>
+   <addaction name="actionCanvas"/><addaction name="actionImage"/><addaction name="actionUIEmpty"/>
+  </widget>
+  <action name="actionEmpty"><property name="text"><string>Empty</string></property><property name="nodeKind" stdset="0"><number>0</number></property><property name="nodeName" stdset="0"><string>GameObject</string></property></action>
+  <action name="actionCamera"><property name="text"><string>Camera</string></property><property name="nodeKind" stdset="0"><number>1</number></property><property name="nodeName" stdset="0"><string>Camera</string></property></action>
+  <action name="actionMesh"><property name="text"><string>Mesh</string></property><property name="nodeKind" stdset="0"><number>2</number></property><property name="nodeName" stdset="0"><string>Mesh</string></property></action>
+  <action name="actionCanvas"><property name="text"><string>UI Canvas</string></property><property name="nodeKind" stdset="0"><number>3</number></property><property name="nodeName" stdset="0"><string>Canvas</string></property></action>
+  <action name="actionImage"><property name="text"><string>UI Image</string></property><property name="nodeKind" stdset="0"><number>4</number></property><property name="nodeName" stdset="0"><string>Image</string></property></action>
+  <action name="actionUIEmpty"><property name="text"><string>UI Empty</string></property><property name="nodeKind" stdset="0"><number>5</number></property><property name="nodeName" stdset="0"><string>UI Object</string></property></action>
+  <action name="actionRefresh"><property name="text"><string>Refresh</string></property></action>
+  <action name="actionDelete"><property name="text"><string>Delete</string></property><property name="toolTip"><string>删除节点及其子节点，可撤销。</string></property></action>
+  <addaction name="menuCreate"/>
+  <addaction name="menuCreateChild"/>
+  <addaction name="separator"/>
+  <addaction name="actionDelete"/>
+  <addaction name="separator"/>
+  <addaction name="actionRefresh"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

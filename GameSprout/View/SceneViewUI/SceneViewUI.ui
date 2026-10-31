@@ -1,6 +1,68 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<ui version="4.0">
- <class>SceneViewUIWindow</class>
- <widget class="QMainWindow" name="SceneViewUIWindow">
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>SceneViewUIWindow</class>
+ <widget class="QWidget" name="SceneViewUIWindow">
+  <property name="minimumSize"><size><width>320</width><height>240</height></size></property>
+  <property name="styleSheet"><string>QWidget#SceneViewUIWindow,QWidget#sceneViewport { background:#202329; color:#dce2e9; }
+QLabel { color:#b9c6d6; } QCheckBox { color:#e0e5eb; }
+QCheckBox::indicator { width:14px; height:14px; border:1px solid #8293a9; border-radius:3px; background:#20252e; }
+QCheckBox::indicator:checked { border:2px solid #c8dbf5; background:#5b8dcb; }
+QToolButton { color:#edf3fb; background:#35465c; border:1px solid #667d99; border-radius:3px; padding:4px 8px; } QToolButton:hover { background:#435e80; }
+QToolButton:checked { color:#fff7cb; background:#50688b; border-color:#d7b95a; }
+QScrollArea#toolScrollArea,QWidget#toolContents { background:#252a32; border:0; }
+QComboBox,QDoubleSpinBox { color:#e8edf4; background:#303843; border:1px solid #566477; border-radius:3px; padding:3px; }
+QComboBox QAbstractItemView { color:#e8edf4; background:#303843; selection-background-color:#455e80; }
+QLabel#inputHelpLabel { color:#9caabe; padding:3px; } QLabel#statusLabel { color:#b9cbe0; padding:3px; }</string></property>
+  <layout class="QVBoxLayout" name="mainLayout"><property name="spacing"><number>3</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>3</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+   <item><widget class="QScrollArea" name="toolScrollArea">
+    <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+    <property name="minimumSize"><size><width>0</width><height>96</height></size></property>
+    <property name="maximumSize"><size><width>16777215</width><height>96</height></size></property>
+    <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+    <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAlwaysOff</enum></property>
+    <property name="horizontalScrollBarPolicy"><enum>Qt::ScrollBarAsNeeded</enum></property>
+    <property name="sizeAdjustPolicy"><enum>QAbstractScrollArea::AdjustIgnored</enum></property>
+    <property name="widgetResizable"><bool>true</bool></property>
+    <widget class="QWidget" name="toolContents">
+     <property name="geometry"><rect><x>0</x><y>0</y><width>1020</width><height>78</height></rect></property>
+     <layout class="QVBoxLayout" name="toolRowsLayout">
+      <property name="sizeConstraint"><enum>QLayout::SetMinimumSize</enum></property>
+      <property name="spacing"><number>4</number></property>
+      <property name="leftMargin"><number>5</number></property><property name="topMargin"><number>3</number></property><property name="rightMargin"><number>5</number></property><property name="bottomMargin"><number>3</number></property>
+      <item><layout class="QHBoxLayout" name="toolbarLayout">
+       <property name="spacing"><number>5</number></property>
+       <item><widget class="QToolButton" name="viewToolButton"><property name="text"><string>视图 Q</string></property><property name="toolTip"><string>视图工具 Q：导航场景，不修改对象。</string></property><property name="checkable"><bool>true</bool></property><attribute name="buttonGroup"><string notr="true">transformToolGroup</string></attribute></widget></item>
+       <item><widget class="QToolButton" name="moveToolButton"><property name="text"><string>移动 W</string></property><property name="toolTip"><string>移动工具 W：拖动轴、平面或中心句柄。</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property><attribute name="buttonGroup"><string notr="true">transformToolGroup</string></attribute></widget></item>
+       <item><widget class="QToolButton" name="rotateToolButton"><property name="text"><string>旋转 E</string></property><property name="toolTip"><string>旋转工具 E：拖动彩色轴环或视平面外环。</string></property><property name="checkable"><bool>true</bool></property><attribute name="buttonGroup"><string notr="true">transformToolGroup</string></attribute></widget></item>
+       <item><widget class="QToolButton" name="scaleToolButton"><property name="text"><string>缩放 R</string></property><property name="toolTip"><string>缩放工具 R：拖动轴或中心方块；局部模式适合旋转过的对象。</string></property><property name="checkable"><bool>true</bool></property><attribute name="buttonGroup"><string notr="true">transformToolGroup</string></attribute></widget></item>
+       <item><widget class="QComboBox" name="spaceCombo"><property name="toolTip"><string>坐标轴方向：世界坐标或对象的局部坐标。</string></property><item><property name="text"><string>世界 World</string></property></item><item><property name="text"><string>局部 Local</string></property></item></widget></item>
+       <item><widget class="QComboBox" name="pivotCombo"><property name="toolTip"><string>操作中心：对象原点或几何包围盒中心。</string></property><item><property name="text"><string>原点 Pivot</string></property></item><item><property name="text"><string>中心 Center</string></property></item></widget></item>
+       <item><widget class="QCheckBox" name="gridCheck"><property name="text"><string>Grid</string></property><property name="checked"><bool>true</bool></property></widget></item>
+       <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>12</width><height>20</height></size></property></spacer></item>
+      </layout></item>
+      <item><layout class="QHBoxLayout" name="snapToolbarLayout">
+       <property name="spacing"><number>5</number></property>
+       <item><widget class="QCheckBox" name="snapCheck"><property name="text"><string>吸附</string></property><property name="toolTip"><string>持续开启吸附；也可在拖动时按住 Ctrl / Cmd 临时吸附。</string></property></widget></item>
+       <item><widget class="QLabel" name="moveSnapLabel"><property name="text"><string>位移</string></property><property name="buddy"><cstring>moveSnapSpin</cstring></property></widget></item>
+       <item><widget class="QDoubleSpinBox" name="moveSnapSpin"><property name="toolTip"><string>平移吸附步长，单位为米。</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
+       <item><widget class="QLabel" name="rotateSnapLabel"><property name="text"><string>角度</string></property><property name="buddy"><cstring>rotateSnapSpin</cstring></property></widget></item>
+       <item><widget class="QDoubleSpinBox" name="rotateSnapSpin"><property name="toolTip"><string>旋转吸附步长，单位为度。</string></property><property name="decimals"><number>1</number></property><property name="minimum"><double>0.100000000000000</double></property><property name="maximum"><double>180.000000000000000</double></property><property name="singleStep"><double>1.000000000000000</double></property><property name="value"><double>15.000000000000000</double></property></widget></item>
+       <item><widget class="QLabel" name="scaleSnapLabel"><property name="text"><string>倍率</string></property><property name="buddy"><cstring>scaleSnapSpin</cstring></property></widget></item>
+       <item><widget class="QDoubleSpinBox" name="scaleSnapSpin"><property name="toolTip"><string>缩放倍率增量；0.1 表示按 1.0、1.1、1.2 倍变化。</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>10.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>0.100000000000000</double></property></widget></item>
+       <item><widget class="QToolButton" name="resetCameraButton"><property name="text"><string>重置视角</string></property></widget></item>
+       <item><widget class="QToolButton" name="focusSelectionButton"><property name="text"><string>聚焦 F</string></property></widget></item>
+       <item><widget class="QToolButton" name="retryRenderButton"><property name="text"><string>重试渲染</string></property></widget></item>
+       <item><spacer name="snapToolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>12</width><height>20</height></size></property></spacer></item>
+      </layout></item>
+     </layout>
+    </widget>
+   </widget></item>
+   <item><widget class="SceneViewport" name="sceneViewport"><property name="focusPolicy"><enum>Qt::StrongFocus</enum></property><property name="contextMenuPolicy"><enum>Qt::PreventContextMenu</enum></property><property name="mouseTracking"><bool>true</bool></property><property name="minimumSize"><size><width>160</width><height>120</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>1</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
+   <item><widget class="QLabel" name="inputHelpLabel"><property name="text"><string>左键选取 · Q 视图 / W 移动 / E 旋转 / R 缩放 · Ctrl/Cmd 吸附 · Esc 取消拖动 · Delete/Backspace 删除
+右键观察 + WASD/QE · Shift 加速 · Alt+左键环绕 · 中键平移 · 滚轮推拉 · F 聚焦</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>等待原生渲染窗口显示…</string></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  </layout>
  </widget>
+ <customwidgets><customwidget><class>SceneViewport</class><extends>QWidget</extends><header>SceneViewport.h</header></customwidget></customwidgets>
+ <resources/><connections/>
+ <buttongroups><buttongroup name="transformToolGroup"><property name="exclusive"><bool>true</bool></property></buttongroup></buttongroups>
 </ui>

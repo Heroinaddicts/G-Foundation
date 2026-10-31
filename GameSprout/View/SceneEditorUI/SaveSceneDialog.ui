@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>SaveSceneDialog</class><widget class="QDialog" name="SaveSceneDialog"><property name="windowTitle"><string>保存场景</string></property><property name="minimumSize"><size><width>460</width><height>0</height></size></property><property name="styleSheet"><string>QDialog { background:#292c31; color:#e0e2e6; } QLabel { color:#e0e2e6; } QLineEdit { background:#1d1f23; color:#ffffff; border:1px solid #59616d; border-radius:3px; padding:6px; } QPushButton { background:#39424f; color:#ffffff; border:1px solid #637287; border-radius:3px; padding:6px 16px; } QPushButton:hover { background:#46566b; } QLabel#errorLabel { color:#ffb3b3; }</string></property>
+<layout class="QVBoxLayout" name="mainLayout"><item><widget class="QLabel" name="pathLabel"><property name="text"><string>保存到 Assets 内的相对路径</string></property></widget></item>
+<item><widget class="QLineEdit" name="pathEdit"><property name="placeholderText"><string>例如 Scenes/Main.scene（目录需已存在）</string></property></widget></item>
+<item><widget class="QLabel" name="errorLabel"><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="wordWrap"><bool>true</bool></property><property name="text"><string/></property><property name="visible"><bool>false</bool></property></widget></item>
+<item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Save|QDialogButtonBox::Cancel</set></property></widget></item>
+</layout></widget><resources/><connections/></ui>

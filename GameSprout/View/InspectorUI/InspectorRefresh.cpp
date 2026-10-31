@@ -1,6 +1,7 @@
 #include "InspectorUI.h"
 #include "ImportSettingsInspector.h"
 #include "AssetInfoInspector.h"
+#include "GameObjectInspector.h"
 #include "AssetDisplayNames.h"
 #include "ui_InspectorUI.h"
 #include "../../Module/Shared/AssetArtifactIO.h"
@@ -11,6 +12,10 @@ void InspectorUI::Clear(const QString & message) {
     _Ui->assetNameLabel->setText("Inspector");
     _Ui->typeLabel->clear();_Ui->stateLabel->clear();
     _Ui->pathEdit->clear();_Ui->guidEdit->clear();_Ui->localIDEdit->clear();
+    _Ui->pathEditLabel->setText(QStringLiteral("路径"));
+    _Ui->guidEditLabel->setText(QStringLiteral("GUID"));
+    _Ui->localIDEditLabel->setText(QStringLiteral("LocalID"));
+    if (_SceneInfo) _SceneInfo->Clear();
     _Ui->emptyLabel->setText(message);
     _Ui->contentStack->setCurrentIndex(0);
     UpdateButtons();
@@ -18,17 +23,39 @@ void InspectorUI::Clear(const QString & message) {
 
 void InspectorUI::Refresh() {
     _Dirty=false;
-    auto desired=_Ui->lockButton->isChecked() && !_Inspected.empty() ? _Inspected : _Selection->GetAssetSelection();
-    const bool changed=desired!=_Inspected;
+    if (_Ui->lockButton->isChecked() && _LockedSceneMissing) {
+        Clear(QStringLiteral("锁定的节点已删除或场景已切换。解锁后可查看其他选择。"));
+        return;
+    }
+    auto desired=_Selection->GetAssetSelection();
+    SceneObjectSelection desiredScene=_Selection->GetSceneObjectSelection();
+    if (_Ui->lockButton->isChecked()) {
+        if (_InspectedScene.ObjectID) { desiredScene=_InspectedScene;desired.clear(); }
+        else if (!_Inspected.empty()) { desired=_Inspected;desiredScene={}; }
+    }
+    const bool changed=desired!=_Inspected || desiredScene!=_InspectedScene;
     const bool previousExists=_Inspected.size()==1 && _Assets->QueryAsset(Guid(_Inspected.front().GuidString));
     if (changed && previousExists && !ResolvePendingChanges()) {
         _Selection->SetAssetSelection(_Inspected);
         return;
     }
     _Inspected=desired;
+    _InspectedScene=desiredScene;
     if (changed) _OperationError.clear();
+    if (desiredScene.ObjectID) {
+        auto * object=ResolveSceneObject(desiredScene);
+        if (!object) {
+            _LockedSceneMissing=_Ui->lockButton->isChecked();
+            _InspectedScene={};_Inspected.clear();
+            Clear(_LockedSceneMissing ? QStringLiteral("锁定的节点已删除或场景已切换。解锁后可查看其他选择。") : QStringLiteral("节点已删除或场景已切换。"));
+            return;
+        }
+        RefreshSceneObject(*object);
+        return;
+    }
+    if (changed && _SceneInfo) _SceneInfo->Clear();
     if (desired.size()!=1) {
-        Clear(desired.empty() ? QStringLiteral("选择一个资源以查看属性。") : QStringLiteral("已选择 %1 项。当前版本请单选资源查看与编辑属性。").arg(desired.size()));
+        Clear(desired.empty() ? QStringLiteral("选择一个资源或场景节点以查看属性。") : QStringLiteral("已选择 %1 项。当前版本请单选资源查看与编辑属性。").arg(desired.size()));
         return;
     }
     const auto & selected=desired.front();
@@ -40,6 +67,9 @@ void InspectorUI::Refresh() {
         Clear(QStringLiteral("无法读取资源设置。"));return;
     }
     const QString path=QString::fromStdString(meta->GetPath());
+    _Ui->pathEditLabel->setText(QStringLiteral("路径"));
+    _Ui->guidEditLabel->setText(QStringLiteral("GUID"));
+    _Ui->localIDEditLabel->setText(QStringLiteral("LocalID"));
     _Ui->assetNameLabel->setText(QFileInfo(path).fileName());
     _Ui->pathEdit->setText("Assets/"+path);
     _Ui->guidEdit->setText(QString::fromStdString(selected.GuidString));

@@ -15,6 +15,7 @@ endif()
 # Foundation's entry point propagates its API and Utils include paths.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutRuntime/GameSproutRuntime.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
@@ -44,10 +45,12 @@ target_link_libraries(SceneViewUI PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Foundation::FoundationApi
     GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi
 )
 target_include_directories(SceneViewUI PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Interface"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../Module/Interface"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutEditor/Api"
 )
 # Let AUTOUIC also find forms stored in subdirectories.

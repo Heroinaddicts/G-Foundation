@@ -20,6 +20,8 @@ void ProjectAssetsUI::RegisterContextMenus() {
                 if (action->menu()) registerItems(action->menu(), menu);
                 else if (action->objectName() == QStringLiteral("actionRefresh")) {
                     menu->SetClickCalback(&ProjectAssetsUI::RefreshMenu);
+                } else if (_Scenes && action->objectName() == QStringLiteral("actionScene")) {
+                    menu->SetClickCalback(&ProjectAssetsUI::CreateSceneMenu);
                 }
                 // 尚未实现的资源操作保持禁用，不绑定占位回调。
             }

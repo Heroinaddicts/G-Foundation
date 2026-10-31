@@ -10,7 +10,7 @@
 std::vector<ProjectAssetSelection> ProjectAssetsUI::GetSelection() const {
     std::vector<ProjectAssetSelection> result;
     if (!_Window || !_Ui) return result;
-    for (const QModelIndex & index:_Ui->assetTree->selectionModel()->selectedRows(0)) {
+    if (!_ResetSelection) for (const QModelIndex & index:_Ui->assetTree->selectionModel()->selectedRows(0)) {
         const std::string guid=index.data(ProjectAssetsModel::GuidRole).toString().toStdString();
         if (!Guid(guid).IsValid()) continue;
         result.push_back({guid,index.data(ProjectAssetsModel::LocalIDRole).toString().toULongLong(),index.data(ProjectAssetsModel::SubAssetRole).toBool()});
@@ -31,16 +31,22 @@ bool ProjectAssetsUI::NavigateToDirectory(const std::string & path) {
             }
         if(guid.isEmpty()) return false;
     }
-    _ResetSelection = target != _CurrentPath;
+    _ResetSelection = target != _CurrentPath || !_SynchronizingSelection;
     _CurrentPath=target;_CurrentFolderGuid=guid;
     _FolderSelected=!guid.isEmpty();
     _Ui->searchEdit->clear();
     _Dirty=true;
+    if (_Selection && !_SynchronizingSelection) {
+        if (guid.isEmpty()) {
+            _Selection->SetAssetSelection({});
+            _Selection->SetSceneObjectSelection({});
+        } else _Selection->SetAssetSelection({{guid.toStdString(),0,false}});
+    }
     return true;
 }
 
 void ProjectAssetsUI::PublishSelection() {
-    if (_Selection && !_Rebuilding) _Selection->SetAssetSelection(GetSelection());
+    if (_Selection && !_Rebuilding && !_Ui->assetTree->IsPointerSelecting()) _Selection->SetAssetSelection(GetSelection());
 }
 
 void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSelection> & selection) {
@@ -51,7 +57,9 @@ void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSele
         IAssetMeta * meta=_Assets->QueryAsset(Guid(selection.front().GuidString));
         if (meta) {
             const QString parent=QFileInfo(QString::fromStdString(meta->GetPath())).path();
+            _SynchronizingSelection=true;
             NavigateToDirectory(parent=="." ? "" : parent.toStdString());
+            _SynchronizingSelection=false;
         }
     }
     _FolderSelected=false;
@@ -61,6 +69,7 @@ void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSele
 void ProjectAssetsUI::Refresh() {
     if (!_Window || !_Assets) return;
     const auto metas=_Assets->GetAssetMetas();
+    SelectPendingCreatedScene(metas);
     QMap<QString,QString> folders;
     folders.insert("","");
     for(IAssetMeta * meta:metas) if(meta->_ImporterType==eAssetImporterType::Folder)
@@ -139,7 +148,8 @@ void ProjectAssetsUI::Refresh() {
     _ResetSelection=false;_Dirty=false;_RestoreExternalSelection=false;
     UpdateStatus();
     // The guard still suppresses transient empty selections during model reset.
-    if (_Selection) _Selection->SetAssetSelection(GetSelection());
+    if (_Selection && !_Selection->GetSceneObjectSelection().ObjectID)
+        _Selection->SetAssetSelection(GetSelection());
 }
 
 void ProjectAssetsUI::UpdateStatus() {

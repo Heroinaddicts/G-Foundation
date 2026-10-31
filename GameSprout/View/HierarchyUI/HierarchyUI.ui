@@ -1,6 +1,39 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>HierarchyUIWindow</class>
- <widget class="QMainWindow" name="HierarchyUIWindow">
+ <widget class="QWidget" name="HierarchyUIWindow">
+  <property name="minimumSize"><size><width>190</width><height>180</height></size></property>
+  <property name="inactiveColor" stdset="0"><color><red>139</red><green>146</green><blue>157</blue></color></property>
+  <property name="styleSheet"><string notr="true">QWidget#HierarchyUIWindow { background:#25272b; color:#e0e2e6; }
+QTreeView { background:#25272b; alternate-background-color:#292c31; color:#e0e2e6; border:0; outline:0; selection-background-color:#3a526d; selection-color:#ffffff; }
+QTreeView::item { height:25px; padding-right:5px; }
+QTreeView::item:hover { background:#343b46; }
+QTreeView::item:selected { background:#3a526d; color:#ffffff; }
+QLineEdit { background:#1d1f23; color:#e0e2e6; border:1px solid #454a53; border-radius:3px; padding:4px; min-height:21px; }
+QLineEdit:focus { border-color:#7fa8d2; }
+QLabel { color:#adb4bf; padding:2px; }</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>4</number></property>
+   <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
+   <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>搜索场景节点…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
+   <item><widget class="QTreeView" name="hierarchyTree">
+    <property name="headerHidden"><bool>true</bool></property>
+    <property name="alternatingRowColors"><bool>true</bool></property>
+    <property name="uniformRowHeights"><bool>true</bool></property>
+    <property name="expandsOnDoubleClick"><bool>false</bool></property>
+    <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
+    <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+    <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
+    <property name="dragEnabled"><bool>false</bool></property>
+    <property name="acceptDrops"><bool>false</bool></property>
+   </widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>正在读取场景…</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  </layout>
+  <action name="actionRefresh">
+   <property name="text"><string>Refresh</string></property>
+   <property name="panelText" stdset="0"><string>刷新节点树</string></property>
+  </action>
  </widget>
+ <resources/>
+ <connections/>
 </ui>

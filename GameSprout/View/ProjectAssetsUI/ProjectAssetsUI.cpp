@@ -1,11 +1,13 @@
 #include "ProjectAssetsUI.h"
 #include "ProjectAssetsModel.h"
+#include "ISceneManager.h"
 #include "ui_ProjectAssetsUI.h"
 #include <QApplication>
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QItemSelectionModel>
 #include <QScrollBar>
+#include <QDialog>
 
 ProjectAssetsUI::~ProjectAssetsUI() { Release(nullptr); }
 
@@ -15,6 +17,7 @@ void ProjectAssetsUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * edi
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Assets,AssetsManager);
     GetGameSproutModule(editor,_Selection,SelectionManager);
+    GetGameSproutModule(editor,_Scenes,SceneManager);
 }
 
 bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
@@ -49,9 +52,14 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
             [this](const QModelIndex & index,const QModelIndex &) {
                 if (!_Rebuilding && index.isValid()) NavigateToDirectory(index.data(ProjectAssetsModel::PathRole).toString().toStdString());
             });
+        QObject::connect(_Ui->folderTree,&QTreeView::clicked,_Dispatch,[this](const QModelIndex& index) {
+            if (!_Rebuilding && index.isValid()) NavigateToDirectory(index.data(ProjectAssetsModel::PathRole).toString().toStdString());
+        });
+        _Ui->assetTree->ClickCommitted=[this] { PublishSelection(); };
         QObject::connect(_Ui->assetTree,&QTreeView::doubleClicked,_Dispatch,[this](const QModelIndex & index) {
             const QModelIndex first=index.siblingAtColumn(0);
             if (first.data(ProjectAssetsModel::FolderRole).toBool()) NavigateToDirectory(first.data(ProjectAssetsModel::PathRole).toString().toStdString());
+            else OpenSceneAsset(first);
         });
         QObject::connect(_Ui->folderTree,&QTreeView::expanded,_Dispatch,[this](const QModelIndex & index) {
             if (!_Rebuilding) _ExpandedFolders.insert(index.data(ProjectAssetsModel::KeyRole).toString());
@@ -69,6 +77,7 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
         QObject::connect(_Ui->assetTree->selectionModel(),&QItemSelectionModel::selectionChanged,_Dispatch,[this] {
             if (!_Rebuilding) { _FolderSelected=false;UpdateStatus();PublishSelection(); }
         });
+        InstallContextCapture();
     } catch (...) { Release(nullptr); throw; }
     return true;
 }
@@ -94,12 +103,15 @@ bool ProjectAssetsUI::Launch(GameSproutEditor::GameSproutViewApi *) {
 }
 
 void ProjectAssetsUI::LaunchFinished(GameSproutEditor::GameSproutViewApi *) { _Dirty = true; }
-void ProjectAssetsUI::Update(GameSproutEditor::GameSproutViewApi *) { if (_Dirty && _Window) Refresh(); }
+void ProjectAssetsUI::Update(GameSproutEditor::GameSproutViewApi *) {
+    if (_Dirty && _Window && !_Ui->assetTree->IsPointerSelecting()) Refresh();
+}
 void ProjectAssetsUI::Show() { if (_Window) _Window->show(); if (_Docker) _Docker->Activate(); }
 void ProjectAssetsUI::Hide() { if (_Window) _Window->hide(); }
 void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->_Dirty=true; }
 
 void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
+    delete _CreateSceneDialog;_CreateSceneDialog=nullptr;
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _SelectionSubscribed=false;_Selection=nullptr;
@@ -110,5 +122,7 @@ void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
     _FolderModel=nullptr;_AssetModel=nullptr;
     delete _Ui;_Ui=nullptr;
     _Assets=nullptr;
+    _Scenes=nullptr;_PendingCreatedScenePath.clear();_HasContextDirectory=false;
+    _SynchronizingSelection=false;
     if (g_Self==this) g_Self=nullptr;
 }

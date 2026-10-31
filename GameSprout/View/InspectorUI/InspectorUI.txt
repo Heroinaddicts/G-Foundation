@@ -1,4 +1,4 @@
-Inspector 资源设置面板
+Inspector 资源与场景节点面板
 
 选择与显示
 - SelectionManager 保存资源身份快照并在主线程 Update 合并通知，不持有 Meta/IAsset。
@@ -9,6 +9,21 @@ Inspector 资源设置面板
 - Model 按模型、骨骼/动画、材质分页；暂未实现的压缩/Humanoid/光照 UV 等能力受限。
 - 其他原生源资源设置和子资源信息仍为只读。多选仅显示数量。
 - 未实现纹理/模型/动画预览，也未读取完整产物 payload；资源删除后不继续使用旧指针。
+
+场景节点
+- Hierarchy 与 Project 共用 SelectionManager，非空节点/资源选择互斥；锁定检查目标不改变共享选择。
+- Inspector 仅保存 SceneID/ObjectID，刷新时通过 SceneManager/Runtime 重新查询，不保存节点或组件指针。
+- 展示对象名称、父节点、运行时身份、自身启用状态和层级启用状态，场景根也可检查。
+- Transform、RectTransform、Image、Canvas、Mesh、MeshRenderer、Camera 各自有可折叠信息分组；未知组件显示稳定类型标识。
+- 对象名、启用状态和七类组件的普通属性可编辑，经 SceneManager.EditObject 校验、回读并记录 Undo/Redo。
+- Mesh/Texture/Material 资源字段支持拖入、按类型选择、定位和清空；GUID/LocalID 由完整 Manifest 解析，Missing 身份保留。
+- 派生值与调试数据保留在默认折叠的 Details；矩阵、Bounds、运行 ID、层级启用状态只读。
+- 订阅 Runtime 变化，组件修改/添加/移除、父级变换/改名/启用、主相机变化均刷新显示。
+- 锁定节点删除或切换场景后清除失效身份并显示空状态，解锁前不跟随其他选择。
+- 从未应用的资源草稿切换到节点时，仍提供应用、放弃、取消；取消恢复共享资源选择。
+- 材质槽支持增加、删除与排序；整体替换数组以支持撤销。Camera 可设为主相机。
+- File/Save Scene 与 Save Scene As 保存完整节点及组件属性、资源引用；稳定文件 ID 与 Runtime InstanceID 分离。
+- 当前未提供 Add Component、节点创建/删除的 Undo，也未接入 GRHI 渲染。
 
 设置编辑
 - TextureInspector 内部保留 JSON 设置草稿，不持有或提前修改 ITextureImportSettings。
@@ -25,6 +40,7 @@ Inspector 资源设置面板
 
 文件组织
 - InspectorUI 负责 View 生命周期；InspectorRefresh 负责检查目标与内容，InspectorEditing 负责提交与切换。
+- InspectorScene 负责运行节点解析；GameObjectInspector 与 ComponentInfoSection 各自拥有 .h/.cpp/.ui。
 - Texture/Model/Audio/Text/Font/Video/Shader Inspector 与 AssetInfoInspector 各自拥有 .h/.cpp/.ui。
 - ShaderInspector 同时处理普通 Shader 和固定 Compute 阶段，普通 Shader 不允许选择 Compute。
 - 所有控件、布局、范围、枚举、样式及对话框在 .ui 定义。AssetInfoInspector 负责只读属性树。

@@ -15,6 +15,7 @@ endif()
 # Foundation's entry point propagates its API and Utils include paths.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutRuntime/GameSproutRuntime.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
@@ -44,6 +45,7 @@ target_link_libraries(InspectorUI PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Foundation::FoundationApi
     GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi
 )
 target_include_directories(InspectorUI PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

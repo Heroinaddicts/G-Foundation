@@ -7,6 +7,10 @@
 class QWidget;
 class QObject;
 class ProjectAssetsModel;
+class ISceneManager;
+class QDialog;
+class QModelIndex;
+class QTreeView;
 namespace Ui { class ProjectAssetsUIWindow; }
 
 class ProjectAssetsUI : public IProjectAssetsUI, public IAssetListener, public ISelectionListener {
@@ -34,7 +38,13 @@ private:
     void UpdateStatus();
     void PublishSelection();
     void RegisterContextMenus();
+    void InstallContextCapture();
+    void RememberContextDirectory(QTreeView* tree, const QModelIndex& index);
+    void ShowCreateSceneDialog();
+    void OpenSceneAsset(const QModelIndex& index);
+    void SelectPendingCreatedScene(const std::vector<IAssetMeta*>& metas);
     static void RefreshMenu();
+    static void CreateSceneMenu();
     QWidget * _Window = nullptr;
     QObject * _Dispatch = nullptr;
     Ui::ProjectAssetsUIWindow * _Ui = nullptr;
@@ -42,18 +52,24 @@ private:
     ProjectAssetsModel * _AssetModel = nullptr;
     IAssetsManager * _Assets = nullptr;
     ISelectionManager * _Selection = nullptr;
+    ISceneManager * _Scenes = nullptr;
+    QDialog * _CreateSceneDialog = nullptr;
     IIDEDocker * _Docker = nullptr;
     bool _Attached = false;
     bool _Subscribed = false;
     bool _SelectionSubscribed = false;
     bool _FolderSelected = false;
     bool _RestoreExternalSelection = false;
+    bool _SynchronizingSelection = false;
     std::vector<ProjectAssetSelection> _ExternalSelection;
     bool _Dirty = true;
     bool _Rebuilding = false;
     bool _ResetSelection = false;
     QString _CurrentPath;
     QString _CurrentFolderGuid;
+    QString _ContextDirectory;
+    QString _PendingCreatedScenePath;
+    bool _HasContextDirectory = false;
     std::set<QString> _ExpandedFolders{"root"};
     std::set<QString> _ExpandedAssets;
 };

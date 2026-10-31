@@ -2,7 +2,7 @@
 <ui version="4.0">
  <class>ProjectAssetsUIWindow</class>
  <widget class="QWidget" name="ProjectAssetsUIWindow">
-  <property name="minimumSize"><size><width>360</width><height>180</height></size></property>
+  <property name="minimumSize"><size><width>360</width><height>0</height></size></property>
   <property name="errorColor" stdset="0"><color><red>255</red><green>151</green><blue>151</blue></color></property>
   <property name="pendingColor" stdset="0"><color><red>188</red><green>207</green><blue>231</blue></color></property>
   <property name="styleSheet"><string notr="true">QWidget#ProjectAssetsUIWindow { background:#25272b; color:#e0e2e6; }
@@ -18,7 +18,7 @@ QToolButton { color:#e0e2e6; background:#30343a; border:1px solid #454a53; borde
 QToolButton:hover { background:#424a56; } QToolButton:disabled { color:#777e89; }
 QSplitter::handle { background:#42464e; width:3px; }
 QLabel { color:#adb4bf; padding:2px; }</string></property>
-  <layout class="QVBoxLayout" name="mainLayout">
+  <layout class="QVBoxLayout" name="mainLayout" stretch="0,1,0">
    <property name="spacing"><number>4</number></property>
    <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
    <item><layout class="QHBoxLayout" name="navigationLayout" stretch="0,0,1,1">
@@ -28,13 +28,15 @@ QLabel { color:#adb4bf; padding:2px; }</string></property>
     <item><widget class="QLineEdit" name="searchEdit"><property name="minimumSize"><size><width>140</width><height>0</height></size></property><property name="placeholderText"><string>搜索当前目录及子目录…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
    </layout></item>
    <item><widget class="QSplitter" name="splitter">
+    <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property>
     <property name="orientation"><enum>Qt::Horizontal</enum></property><property name="childrenCollapsible"><bool>false</bool></property>
-    <widget class="QTreeView" name="folderTree"><property name="minimumSize"><size><width>140</width><height>0</height></size></property><property name="headerHidden"><bool>true</bool></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="uniformRowHeights"><bool>true</bool></property><property name="animated"><bool>false</bool></property></widget>
-    <widget class="QTreeView" name="assetTree"><property name="alternatingRowColors"><bool>true</bool></property><property name="uniformRowHeights"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property><property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="allColumnsShowFocus"><bool>true</bool></property></widget>
+    <widget class="QTreeView" name="folderTree"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Ignored"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>140</width><height>48</height></size></property><property name="headerHidden"><bool>true</bool></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="uniformRowHeights"><bool>true</bool></property><property name="animated"><bool>false</bool></property></widget>
+    <widget class="ProjectAssetTreeView" name="assetTree"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Ignored"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>0</width><height>48</height></size></property><property name="dragEnabled"><bool>true</bool></property><property name="dragDropMode"><enum>QAbstractItemView::DragOnly</enum></property><property name="defaultDropAction"><enum>Qt::CopyAction</enum></property><property name="alternatingRowColors"><bool>true</bool></property><property name="uniformRowHeights"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property><property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="allColumnsShowFocus"><bool>true</bool></property></widget>
    </widget></item>
-   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>正在读取资源…</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="sizePolicy"><sizepolicy hsizetype="Preferred" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="text"><string>正在读取资源…</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
   </layout>
  </widget>
+ <customwidgets><customwidget><class>ProjectAssetTreeView</class><extends>QTreeView</extends><header>ProjectAssetTreeView.h</header></customwidget></customwidgets>
  <resources><include location="ProjectAssetsIcons.qrc"/></resources>
  <connections/>
 </ui>

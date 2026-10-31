@@ -8,6 +8,10 @@ class ProjectAssetsModel : public QStandardItemModel {
 public:
     enum Role { GuidRole = Qt::UserRole + 1, PathRole, LocalIDRole, FolderRole, SubAssetRole, KeyRole, PlaceholderRole };
     explicit ProjectAssetsModel(QObject * parent);
+    Qt::ItemFlags flags(const QModelIndex& index) const override;
+    QStringList mimeTypes() const override;
+    QMimeData* mimeData(const QModelIndexList& indexes) const override;
+    Qt::DropActions supportedDragActions() const override;
     void BuildFolders(const std::vector<IAssetMeta *> & metas);
     void BuildAssets(const std::vector<IAssetMeta *> & metas);
     void LoadSubAssets(const QModelIndex & index, IAssetsManager * assets);

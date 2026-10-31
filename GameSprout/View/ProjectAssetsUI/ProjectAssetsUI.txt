@@ -21,7 +21,9 @@ Presentation
 - ProjectAssetsUI.ui owns widgets, layouts, styles and status colors. C++ binds models and behavior.
 - The left tree displays folders. The right tree displays immediate children, or recursive search
   results under the current folder. Double-click folders or use the ancestor selector to navigate.
-- This version uses type icons. Thumbnails, Favorites, Packages and asset drag/drop are not included.
+- This version uses type icons. Thumbnails, Favorites and Packages are not included.
+- Asset dragging uses versioned GUID/LocalID identity MIME. Source rows resolve the real imported resource through its complete Manifest. Folders/placeholders cannot be assigned.
+- Pointer selection is deferred until a click completes; a drag preserves the inspected scene object and never moves source files.
 
 Verification
 - GameSprout/Tests/AssetsImport/ProjectBrowserChecks.cpp loads the real UI and asset modules with

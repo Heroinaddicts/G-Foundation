@@ -3,6 +3,8 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <algorithm>
+#include <set>
+#include "../Shared/AssetDragPayload.h"
 
 namespace {
 QString ImporterName(eAssetImporterType type) {
@@ -94,6 +96,25 @@ QIcon Icon(const QString & type) {
 }
 
 ProjectAssetsModel::ProjectAssetsModel(QObject * parent) : QStandardItemModel(parent) {}
+
+Qt::ItemFlags ProjectAssetsModel::flags(const QModelIndex& index) const {
+    Qt::ItemFlags result=QStandardItemModel::flags(index) & ~Qt::ItemIsDropEnabled & ~Qt::ItemIsDragEnabled;
+    if(index.isValid() && index.column()==0 && !index.data(FolderRole).toBool() &&
+        !index.data(PlaceholderRole).toBool() && Guid(index.data(GuidRole).toString().toStdString()).IsValid())result|=Qt::ItemIsDragEnabled;
+    return result;
+}
+QStringList ProjectAssetsModel::mimeTypes() const {return {AssetDragPayload::MimeType()};}
+Qt::DropActions ProjectAssetsModel::supportedDragActions() const {return Qt::CopyAction;}
+QMimeData* ProjectAssetsModel::mimeData(const QModelIndexList& indexes) const {
+    std::vector<ProjectAssetSelection> values;
+    std::set<QString> keys;
+    for(const QModelIndex& selected:indexes) {
+        const QModelIndex index=selected.siblingAtColumn(0);
+        if(!(flags(index)&Qt::ItemIsDragEnabled) || !keys.insert(index.data(KeyRole).toString()).second)continue;
+        values.push_back({index.data(GuidRole).toString().toStdString(),index.data(LocalIDRole).toULongLong(),index.data(SubAssetRole).toBool()});
+    }
+    return AssetDragPayload::Encode(values);
+}
 
 QStandardItem * ProjectAssetsModel::EnsureFolder(const QString & path) {
     if (_Folders.contains(path)) return _Folders.value(path);

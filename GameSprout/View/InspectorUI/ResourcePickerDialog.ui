@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ResourcePickerDialog</class>
+ <widget class="QDialog" name="ResourcePickerDialog">
+  <property name="windowTitle"><string>选择资源</string></property>
+  <property name="minimumSize"><size><width>640</width><height>420</height></size></property>
+  <property name="styleSheet"><string>QDialog { background:#25272b; color:#e0e2e6; }
+QLabel { color:#e0e2e6; } QLabel#errorLabel { color:#ffb4ae; }
+QLineEdit,QTreeWidget { background:#1d1f23; color:#e0e2e6; border:1px solid #454a53; padding:5px; selection-background-color:#3a526d; selection-color:white; }
+QTreeWidget { alternate-background-color:#292c31; } QHeaderView::section { background:#30343a; color:#cbd0d8; padding:5px; border:0; }
+QPushButton { background:#3a4d63; color:#f1f4f8; border:1px solid #64788f; border-radius:3px; padding:6px 16px; } QPushButton:disabled { color:#858b95; background:#30343a; }</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item><widget class="QLabel" name="expectedTypeLabel"><property name="text"><string>资源类型</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+   <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>按资源名或源文件路径搜索…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
+   <item><widget class="QTreeWidget" name="resourceTree"><property name="rootIsDecorated"><bool>false</bool></property><property name="alternatingRowColors"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><column><property name="text"><string>资源</string></property></column><column><property name="text"><string>源文件</string></property></column><column><property name="text"><string>LocalID</string></property></column></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

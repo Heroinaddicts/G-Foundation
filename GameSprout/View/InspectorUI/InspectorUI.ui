@@ -9,7 +9,7 @@
       </size>
     </property>
     <property name="styleSheet">
-      <string>QWidget#InspectorUIWindow,QWidget#propertyBody,QWidget#TextureInspectorForm,QWidget#AssetInfoInspectorForm { background:#25272b; color:#e0e2e6; }
+      <string>QWidget#InspectorUIWindow,QWidget#propertyBody,QWidget#TextureInspectorForm,QWidget#AssetInfoInspectorForm,QWidget#GameObjectInspectorForm,QWidget#componentHost,QWidget#scenePage,QWidget#sceneHost { background:#25272b; color:#e0e2e6; }
 QLabel,QCheckBox,QGroupBox { color:#e0e2e6; }
 QLabel#assetNameLabel { font-size:16px; font-weight:bold; }
 QLabel#typeLabel,QLabel#stateLabel { color:#b8c7d8; }
@@ -60,7 +60,7 @@ QTabBar::tab:selected { color:#ffffff; background:#3a526d; }</string>
                 <bool>true</bool>
               </property>
               <property name="toolTip">
-                <string>锁定当前检查目标，选择其他资源时保持当前显示。</string>
+                <string>锁定当前检查目标，选择其他资源或场景节点时保持当前显示。</string>
               </property>
             </widget>
           </item>
@@ -209,6 +209,24 @@ QTabBar::tab:selected { color:#ffffff; background:#3a526d; }</string>
                       </item>
                     </layout>
                   </widget>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="scenePage">
+            <layout class="QVBoxLayout" name="sceneLayout">
+              <property name="leftMargin"><number>0</number></property>
+              <property name="topMargin"><number>0</number></property>
+              <property name="rightMargin"><number>0</number></property>
+              <property name="bottomMargin"><number>0</number></property>
+              <item>
+                <widget class="QWidget" name="sceneHost">
+                  <layout class="QVBoxLayout" name="sceneHostLayout">
+                    <property name="leftMargin"><number>0</number></property>
+                    <property name="topMargin"><number>0</number></property>
+                    <property name="rightMargin"><number>0</number></property>
+                    <property name="bottomMargin"><number>0</number></property>
+                  </layout>
                 </widget>
               </item>
             </layout>

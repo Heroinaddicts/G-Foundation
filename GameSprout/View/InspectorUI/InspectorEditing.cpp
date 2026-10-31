@@ -13,6 +13,8 @@ bool InspectorUI::HasPendingChanges() const {
 }
 void InspectorUI::UpdateButtons() {
     if (!_Window) return;
+    _Ui->applyButton->setVisible(!_InspectedScene.ObjectID);
+    _Ui->revertButton->setVisible(!_InspectedScene.ObjectID);
     const bool modified=HasPendingChanges();
     Json::Value draft;
     std::string error;
