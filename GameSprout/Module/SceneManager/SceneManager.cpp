@@ -42,6 +42,7 @@ GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
 }
 void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
+    ClearAnimationClipPreview();
     _TransformEdit={};_AnimationPreviewPlaying=false;
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
@@ -61,12 +62,18 @@ void SceneManager::Update(GameSproutEditor::GameSproutModuleApi*) {
     if(!_Runtime) return;
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;
     _Timer.start();
-    _Runtime->Update(_AnimationPreviewPlaying?elapsed:0.0f);
+    const auto clip=GetAnimationClipPreviewState(_ClipPreviewObjectID);
+    if(!clip.Active&&_ClipPreviewObjectID)ClearAnimationClipPreview();
+    // 预览期间仍允许创建节点；新增 Animator 也不能随选中 Clip 的时钟自动运行。
+    if(clip.Active)PauseControllerAnimators(_ClipPreviewObjectID);
+    _Runtime->Update((_AnimationPreviewPlaying||(clip.Active&&clip.Playing))?elapsed:0.0f);
+    if(_ClipPreviewObjectID&&!GetAnimationClipPreviewState(_ClipPreviewObjectID).Active)ClearAnimationClipPreview();
     if(_TransformEdit.Active&&!TransformTarget(true)) {std::string error;CancelTransformEdit(error);}
     if (_StatePending) RefreshState();
 }
 void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Listeners.clear();
+    ClearAnimationClipPreview();
     if(_TransformEdit.Active){std::string error;CancelTransformEdit(error);}
     _TransformEdit={};
     if(_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
@@ -118,7 +125,10 @@ void SceneManager::NotifyListeners(bool active) {
     _Notifying=false;
 }
 void SceneManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
+    if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ClipPreviewObjectID)
+        _ClipPreviewObjectID=0;
     if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
+        _ClipPreviewObjectID=0;_AnimationPreviewPlaying=false;
         _TransformEdit={};
         _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_History.clear();_HistoryPosition=0;
         _BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_Unsaved=false;_StatePending=false;NotifySceneChanged();

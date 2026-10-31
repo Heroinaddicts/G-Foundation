@@ -72,4 +72,5 @@ set_tests_properties(SceneDocument.EditingAndPersistence PROPERTIES TIMEOUT 30)
 target_sources(SceneDocumentChecks PRIVATE "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp")
 target_sources(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp")
+    "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneAnimationPreview.cpp")

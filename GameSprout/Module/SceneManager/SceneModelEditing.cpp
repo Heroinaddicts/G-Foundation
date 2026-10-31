@@ -26,28 +26,3 @@ GameSproutRuntime::IGameObject* SceneManager::InstantiateModel(
     if (object) scene->DestroyGameObject(object);
     RefreshState(true);return nullptr;
 }
-
-void SceneManager::SetAnimationPreviewPlaying(bool playing) {
-    if (!_Runtime||_Runtime->IsExecuting()||!GetActiveScene()||_TransformEdit.Active) return;
-    _AnimationPreviewPlaying=playing;
-    _Timer.restart();
-    std::vector<GameSproutRuntime::IGameObject*> nodes{GetActiveScene()};
-    while (!nodes.empty()) {
-        auto* object=nodes.back();nodes.pop_back();
-        if (auto* animator=object->GetComponent<GameSproutRuntime::IAnimatorComponent>()) {
-            if (playing) animator->Resume();
-            else animator->Pause();
-        }
-        for (std::size_t i=0;i<object->GetChildCount();++i) nodes.push_back(object->GetChild(i));
-    }
-}
-void SceneManager::ResetAnimationPreview() {
-    if (!_Runtime||_Runtime->IsExecuting()||!GetActiveScene()) return;
-    _AnimationPreviewPlaying=false;_Timer.restart();
-    std::vector<GameSproutRuntime::IGameObject*> nodes{GetActiveScene()};
-    while (!nodes.empty()) {
-        auto* object=nodes.back();nodes.pop_back();
-        if (auto* animator=object->GetComponent<GameSproutRuntime::IAnimatorComponent>()) animator->Stop();
-        for (std::size_t i=0;i<object->GetChildCount();++i) nodes.push_back(object->GetChild(i));
-    }
-}

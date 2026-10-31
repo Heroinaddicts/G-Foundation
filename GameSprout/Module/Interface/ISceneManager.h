@@ -67,4 +67,12 @@ public:
     // 主线程，先订阅再查询；不回放历史，不持有监听者，销毁前必须注销。
     virtual bool RegisterSceneListener(ISceneListener* listener) = 0;
     virtual void UnregisterSceneListener(ISceneListener* listener) = 0;
+    // 临时 Clip 预览只驱动指定 Animator，不运行 Controller，不修改场景配置或撤销记录。
+    // 单次仅保留一个对象的预览；切换失败保留原预览，停止后恢复编辑姿态。
+    virtual bool PlayAnimationClip(uint64_t, const GameSproutRuntime::ResourceReference&, float seconds,
+        float speed, bool loop, std::string& error) {error="当前场景服务不支持直接预览动画。";return false;}
+    virtual bool SetAnimationClipPreviewPlaying(uint64_t, bool, std::string& error) {error="没有活动的动画预览。";return false;}
+    virtual bool SeekAnimationClipPreview(uint64_t, float, std::string& error) {error="没有活动的动画预览。";return false;}
+    virtual void StopAnimationClipPreview(uint64_t) {}
+    virtual GameSproutRuntime::AnimationClipPlaybackState GetAnimationClipPreviewState(uint64_t) const {return {};}
 };

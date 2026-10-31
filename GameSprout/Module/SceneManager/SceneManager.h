@@ -18,6 +18,12 @@ public:
     void SetAnimationPreviewPlaying(bool playing) override;
     bool IsAnimationPreviewPlaying() const override {return _AnimationPreviewPlaying;}
     void ResetAnimationPreview() override;
+    bool PlayAnimationClip(uint64_t objectID,const GameSproutRuntime::ResourceReference& clip,float seconds,
+        float speed,bool loop,std::string& error) override;
+    bool SetAnimationClipPreviewPlaying(uint64_t objectID,bool playing,std::string& error) override;
+    bool SeekAnimationClipPreview(uint64_t objectID,float seconds,std::string& error) override;
+    void StopAnimationClipPreview(uint64_t objectID) override;
+    GameSproutRuntime::AnimationClipPlaybackState GetAnimationClipPreviewState(uint64_t objectID) const override;
     bool EditObject(uint64_t objectID,const std::string& label,const fSceneEditOperation& apply,
                     const fSceneEditOperation& revert,std::string& error) override;
     bool DeleteObject(uint64_t objectID,std::string& error) override;
@@ -53,6 +59,9 @@ private:
     bool Capture(Json::Value& document,std::string& text,std::string& error) const;
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
+    GameSproutRuntime::IAnimatorComponent* PreviewAnimator(uint64_t objectID) const;
+    void ClearAnimationClipPreview();
+    void PauseControllerAnimators(uint64_t exceptObjectID);
     struct Edit {
         enum class Kind {Property,Deletion,Creation};
         Kind Type=Kind::Property;
@@ -80,6 +89,7 @@ private:
     IProject* _Project = nullptr;
     IRuntimeAssets* _RuntimeAssets = nullptr;
     bool _AnimationPreviewPlaying = false;
+    std::uint64_t _ClipPreviewObjectID = 0;
     std::uint64_t _ActiveID = 0;
     std::string _ActivePath;
     QElapsedTimer _Timer;
