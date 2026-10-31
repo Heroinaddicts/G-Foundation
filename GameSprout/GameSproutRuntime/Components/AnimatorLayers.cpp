@@ -88,6 +88,7 @@ bool AnimatorComponent::LayerPose(std::uint32_t index,const std::vector<Transfor
     return true;
 }
 bool AnimatorComponent::ApplyPose(){
+    if(_ClipPlayback.Active)return true;
     if(!_ControllerData||!_SkeletonData||_Layers.empty())return false;
     std::vector<TransformPose> output;for(const auto& node:_SkeletonData->Nodes)output.push_back(node.Transform);
     for(std::uint32_t index=0;index<_Layers.size();++index){if(_Layers[index].Weight==0)continue;
@@ -105,6 +106,7 @@ bool AnimatorComponent::ApplyPose(){
 }
 void AnimatorComponent::Update(float delta){
     _RootMotionDelta={};_MotionEventCount=0;_ConsumedTriggers.clear();
+    if(_ClipPlayback.Active){UpdateClipPlayback(delta);return;}
     if(!Ensure()||!_Playing)return;
     for(auto& layer:_Layers){layer.MotionDelta={};layer.HasRootMotion=false;}
     for(std::uint32_t index=0;index<_Layers.size();++index)if(_ControllerData->Layers[index].SyncedLayerIndex<0&&!UpdateLayer(index,delta))return;

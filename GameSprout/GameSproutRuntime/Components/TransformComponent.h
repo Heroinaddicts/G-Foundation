@@ -17,6 +17,7 @@ public:
     bool SetLocalMatrix(const Mat4& value);
     // Evaluation changes the displayed pose, never the serialized authoring TRS.
     bool SetEvaluatedPose(std::uint64_t animatorID, const Mat4& matrix);
+    bool CanSetEvaluatedPose(std::uint64_t animatorID) const {return animatorID&&!IsSceneRoot()&&(!_PoseOwner||_PoseOwner==animatorID);}
     void ClearEvaluatedPose(std::uint64_t animatorID);
 
 private:

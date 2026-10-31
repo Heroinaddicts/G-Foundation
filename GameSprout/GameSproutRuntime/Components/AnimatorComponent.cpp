@@ -10,15 +10,21 @@ namespace {bool Same(const GameSproutRuntime::ResourceReference& a,const GameSpr
 namespace GameSproutRuntime {
 AnimatorComponent::AnimatorComponent(IGameObject* object):BuiltinComponent<IAnimatorComponent>(object,"GameSproutRuntime.Animator"){}
 Runtime& AnimatorComponent::Owner()const{return dynamic_cast<ObjectAccess*>(_GameObject)->State().Owner;}
-void AnimatorComponent::ClearPoses(){for(auto id:_Applied){auto* object=Owner().QueryGameObject(id);if(object)if(auto* transform=dynamic_cast<TransformComponent*>(object->GetTransform()))transform->ClearEvaluatedPose(_GameObject->GetInstanceID());}_Applied.clear();_Pose.clear();for(auto& layer:_Layers){layer.Pose.clear();layer.FrozenPose.clear();layer.PoseCoverage.clear();layer.FrozenCoverage.clear();layer.Frozen=false;}
-    if(auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform()))transform->ClearEvaluatedPose(_GameObject->GetInstanceID());
-    _RootMotionDelta={};_AccumulatedMotion={};}
-void AnimatorComponent::OnRelease(){ClearPoses();Owner().ForgetAnimatorReferences(_GameObject->GetInstanceID());}
+void AnimatorComponent::ClearPoses(bool retainClipPose){
+    if(!retainClipPose){
+        for(auto id:_Applied){auto* object=Owner().QueryGameObject(id);if(object)if(auto* transform=dynamic_cast<TransformComponent*>(object->GetTransform()))transform->ClearEvaluatedPose(_GameObject->GetInstanceID());}
+        _Applied.clear();
+        if(auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform()))transform->ClearEvaluatedPose(_GameObject->GetInstanceID());
+    }
+    _Pose.clear();for(auto& layer:_Layers){layer.Pose.clear();layer.FrozenPose.clear();layer.PoseCoverage.clear();layer.FrozenCoverage.clear();layer.Frozen=false;}
+    _RootMotionDelta={};_AccumulatedMotion={};
+}
+void AnimatorComponent::OnRelease(){_ClipPlayback={};ClearPoses();Owner().ForgetAnimatorReferences(_GameObject->GetInstanceID());}
 void AnimatorComponent::ForgetObject(std::uint64_t id){
     bool changed=false;for(auto& binding:_Bindings)if(binding.ObjectID==id){binding.ObjectID=0;changed=true;}
     if(changed){Stop();_Error="Animator skeleton node was deleted";NotifyComponentChanged(_GameObject,this);}
 }
-void AnimatorComponent::ConfigurationChanged(){for(auto& goal:_IKGoals)goal={};_LookAt={};++_SignalVersion;_Layers.clear();ClearPoses();_Generation=0;_SkeletonData=nullptr;_ControllerData=nullptr;_Playing=false;_Stopped=false;_Error.clear();NotifyComponentChanged(_GameObject,this);}
+void AnimatorComponent::ConfigurationChanged(){_ClipPlayback={};for(auto& goal:_IKGoals)goal={};_LookAt={};++_SignalVersion;_Layers.clear();ClearPoses();_Generation=0;_SkeletonData=nullptr;_ControllerData=nullptr;_Playing=false;_Stopped=false;_Error.clear();NotifyComponentChanged(_GameObject,this);}
 void AnimatorComponent::SetAvatar(const ResourceReference& ref){if(!Same(_Avatar,ref)){_Avatar=ref;ConfigurationChanged();}}
 void AnimatorComponent::SetSkeleton(const ResourceReference& ref){if(!Same(_Skeleton,ref)){_Skeleton=ref;ConfigurationChanged();}}
 void AnimatorComponent::SetController(const ResourceReference& ref){if(!Same(_Controller,ref)){_Controller=ref;ConfigurationChanged();}}
@@ -39,7 +45,7 @@ bool AnimatorComponent::ResolveBone(const std::string& path,std::uint64_t& id)co
 bool AnimatorComponent::Ensure(){
     auto& resources=Owner().GetAnimationResources();const auto generation=resources.GetGeneration();
     if(_Generation==generation&&_SkeletonData&&_ControllerData)return true;
-    ++_SignalVersion;_Layers.clear();ClearPoses();_SkeletonData=nullptr;_ControllerData=nullptr;_Error.clear();
+    ++_SignalVersion;_Layers.clear();ClearPoses(_ClipPlayback.Active);_SkeletonData=nullptr;_ControllerData=nullptr;_Error.clear();
     _SkeletonData=resources.Skeleton(_Skeleton,_Error);if(!_SkeletonData)return false;
     _AvatarData=nullptr;if(!_Avatar.Guid.empty()){_AvatarData=resources.Avatar(_Avatar,_Error);if(!_AvatarData||_AvatarData->Skeleton!=_Skeleton){_Error="Target Avatar does not match Animator Skeleton";return false;}}
     if(!_Controller.Guid.empty())_ControllerData=resources.Controller(_Controller,_Error);
@@ -101,15 +107,21 @@ bool AnimatorComponent::SetLayerWeight(std::uint32_t index,float weight){
 }
 bool AnimatorComponent::Play(const std::string& name,float normalized,std::uint32_t index){
     if(!std::isfinite(normalized)||normalized<0||!Ensure()||index>=_Layers.size())return false;
-    index=SourceLayer(index);const int state=StateIndex(index,name);if(state<0){_Error="Animator state does not exist: "+name;return false;}
+    StopClip();index=SourceLayer(index);const int state=StateIndex(index,name);if(state<0){_Error="Animator state does not exist: "+name;return false;}
     const double duration=Duration(index,state);if(duration<0)return false;
     std::vector<TransformPose> checked;if(!StatePose(index,state,normalized*duration,checked))return false;
     ++_SignalVersion;for(std::uint32_t i=0;i<_Layers.size();++i)if(SourceLayer(i)==index)ExitStates(i);auto& layer=_Layers[index];layer.Current=state;layer.Next=-1;layer.Time=normalized*duration;
     _Playing=true;_Stopped=false;layer.Frozen=false;_Error.clear();
     SynchronizeLayers(index);if(ApplyPose()){EnterState(index,layer.Current);return true;}_Playing=false;ClearPoses();return false;
 }
-void AnimatorComponent::Resume(){if(Ensure()){_Playing=true;_Stopped=false;}}
+void AnimatorComponent::Resume(){StopClip();if(Ensure()){_Playing=true;_Stopped=false;}}
 void AnimatorComponent::Stop(){
+    _ClipPlayback={};
+    // Direct playback can observe a resource revision while the Controller is
+    // frozen. Its old immutable definitions have then been invalidated.
+    if(_Generation!=Owner().GetAnimationResources().GetGeneration()){
+        _Layers.clear();_ControllerData=nullptr;_SkeletonData=nullptr;_AvatarData=nullptr;_Generation=0;
+    }
     for(auto& goal:_IKGoals)goal={};_LookAt={};
     ++_SignalVersion;for(std::uint32_t i=0;i<_Layers.size();++i){ExitStates(i);auto& layer=_Layers[i];layer.Time=0;layer.Next=-1;layer.Frozen=false;}
     _Playing=false;_Stopped=true;ClearPoses();

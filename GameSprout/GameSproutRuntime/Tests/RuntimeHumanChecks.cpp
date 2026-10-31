@@ -111,6 +111,10 @@ int main(int argc,char** argv){if(argc!=2)return 2;auto* runtime=Export(argv[1])
         goal.PositionWeight=std::numeric_limits<float>::quiet_NaN();Check(!animator->SetIKGoal(GameSproutRuntime::AvatarIKGoal::LeftHand,goal),"IK accepted NaN weight");
         animator->ClearIKGoals();Check((Position(first.Nodes[hand])-moved).Length()<.005f,"Clear IK did not restore pure animation preview");
         IKListener listener;listener.Runtime=runtime;listener.Player=&first;runtime->RegisterListener(&listener);listener.Changes=0;
+        Check(animator->PlayClip({Guid,10},.5f),animator->GetLastError());
+        Check((Position(first.Nodes[hand])-moved).Length()<.005f,"Direct human Clip did not retarget independently of Controller/IK");
+        runtime->Update(.1f);Check(listener.Calls==0&&listener.Events.empty()&&listener.RootCalls==0&&listener.Changes==0,"Direct human Clip dispatched callbacks or authored changes");
+        animator->StopClip();Check(!first.Nodes[hand]->GetTransform()->IsAnimationDriven(),"Direct human Clip did not restore authoring pose");
         Check(animator->Play("Move"),animator->GetLastError());runtime->Update(.1f);Check(listener.Calls==1&&listener.Changes==0&&(Position(first.Nodes[hand])-GameSproutRuntime::Vector3{-1,3.3f,.3f}).Length()<.01f,"OnAnimatorIK did not solve same Update without dirtying scene");
         listener.Stop=true;runtime->Update(.1f);Check(!animator->GetPlaybackState().Playing&&animator->GetIKGoal(GameSproutRuntime::AvatarIKGoal::LeftHand).PositionWeight==0,"Stop in IK callback did not cancel safely");
         listener.Stop=false;listener.Destroy=true;Check(animator->Play("Move"),animator->GetLastError());const auto destroyed=first.Object->GetInstanceID();runtime->Update(.1f);Check(!runtime->QueryGameObject(destroyed),"Destroy in IK callback was not safely flushed");runtime->UnregisterListener(&listener);
@@ -144,7 +148,10 @@ int main(int argc,char** argv){if(argc!=2)return 2;auto* runtime=Export(argv[1])
         play(GameSproutRuntime::RootMotionMode::Disabled);Check(Near(Position(moving.Object).Z,0)&&Near(Position(moving.Nodes[0]).Z,-1),"Disabled human root did not retain source motion retargeted to target frame");
         play(GameSproutRuntime::RootMotionMode::ExtractOnly);Check(Near(Position(moving.Object).Z,0)&&Near(Position(moving.Nodes[0]).Z,0)&&Near(moving.Animator->GetRootMotionDelta().Translation.Z,-1),"Human extracted root did not rotate frame and scale with stature");
         rootListener.RootCalls=0;play(GameSproutRuntime::RootMotionMode::ApplyToObject);Check(Near(Position(moving.Object).Z,-1)&&Near(Position(moving.Nodes[0]).Z,-1)&&rootListener.RootCalls==1,"Human root applied twice or dispatched more than once");
-        rootListener.SolveRoot=true;play(GameSproutRuntime::RootMotionMode::ApplyToObject);Check(Near(Position(moving.Object).Z,-.25f)&&moving.Object->GetTransform()->GetLocalPosition().Z==0,"Solved human motion was not applied once without authoring changes");runtime->UnregisterListener(&rootListener);
+        rootListener.SolveRoot=true;play(GameSproutRuntime::RootMotionMode::ApplyToObject);Check(Near(Position(moving.Object).Z,-.25f)&&moving.Object->GetTransform()->GetLocalPosition().Z==0,"Solved human motion was not applied once without authoring changes");
+        const int rootCalls=rootListener.RootCalls;Check(moving.Animator->PlayClip({Guid,13},.25f),moving.Animator->GetLastError());runtime->Update(.1f);
+        Check(Near(Position(moving.Object).Z,0)&&Near(Position(moving.Nodes[0]).Z,0)&&rootListener.RootCalls==rootCalls,"Direct human Clip retained/applied root motion or dispatched root callbacks");
+        moving.Animator->StopClip();Check(!moving.Object->GetTransform()->IsAnimationDriven(),"Stopping direct Clip retained wrapper root-motion pose");runtime->UnregisterListener(&rootListener);
         auto generic=Make(*scene,resources);generic.Animator->SetAvatar({});GameSproutRuntime::AnimatorIKGoal unsupported;unsupported.PositionWeight=1;
         Check(!generic.Animator->SetIKGoal(GameSproutRuntime::AvatarIKGoal::LeftHand,unsupported),"Generic Animator accepted active humanoid IK");
         GameSproutRuntime::AnimatorLookAt unsupportedLook;unsupportedLook.Weight=1;Check(!generic.Animator->SetLookAt(unsupportedLook),"Generic Animator accepted active LookAt");

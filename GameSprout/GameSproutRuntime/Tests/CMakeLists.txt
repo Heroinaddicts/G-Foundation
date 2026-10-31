@@ -100,3 +100,12 @@ endif()
 add_test(NAME Runtime.HumanoidIKAndSynchronization COMMAND RuntimeHumanChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.HumanoidIKAndSynchronization PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeClipPlaybackChecks RuntimeClipPlaybackChecks.cpp)
+target_link_libraries(RuntimeClipPlaybackChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeClipPlaybackChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.DirectClipPlayback COMMAND RuntimeClipPlaybackChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.DirectClipPlayback PROPERTIES TIMEOUT 30)

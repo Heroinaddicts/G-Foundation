@@ -40,9 +40,14 @@ public:
     std::string GetLayerName(std::uint32_t) const override;
     float GetLayerWeight(std::uint32_t) const override;
     bool SetLayerWeight(std::uint32_t,float) override;
+    bool PlayClip(const ResourceReference&,float,float,bool) override;
+    bool SetClipPlaybackPlaying(bool) override;
+    bool SeekClip(float) override;
+    void StopClip() override;
+    AnimationClipPlaybackState GetClipPlaybackState() const override {return _ClipPlayback;}
     bool Play(const std::string&,float,std::uint32_t) override;
     bool CrossFade(const std::string&,float,float,std::uint32_t) override;
-    void Pause() override {_Playing=false;_Stopped=true;_RootMotionDelta={};++_SignalVersion;}
+    void Pause() override {_Playing=false;_Stopped=true;_ClipPlayback.Playing=false;_RootMotionDelta={};++_SignalVersion;}
     void Resume() override;
     void Stop() override;
     bool Seek(float,std::uint32_t) override;
@@ -64,7 +69,9 @@ private:
     Runtime& Owner() const;
     void ConfigurationChanged();
     bool Ensure();
-    void ClearPoses();
+    void ClearPoses(bool retainClipPose=false);
+    bool ApplyClipPlayback(AnimationClipPlaybackState&);
+    void UpdateClipPlayback(float);
     bool ApplyPose();
     bool ApplyHumanIK(std::vector<TransformPose>&,bool callbacks);
     bool SampleClip(const AnimationClipData&,double,bool,std::vector<TransformPose>&,std::vector<float>&);
@@ -123,6 +130,7 @@ private:
     std::uint64_t _Generation=0;
     float _Speed=1;
     bool _PlayOnStart=true,_Loop=true,_Playing=false,_Stopped=false;
+    AnimationClipPlaybackState _ClipPlayback;
     std::string _Error;
 };
 }

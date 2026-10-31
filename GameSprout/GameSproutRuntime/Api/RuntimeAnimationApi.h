@@ -58,6 +58,15 @@ public:
     virtual AnimatorPlaybackState GetPlaybackState(std::uint32_t layer = 0) const = 0;
     virtual const std::string& GetLastError() const = 0;
     virtual bool ResolveBone(const std::string& path, std::uint64_t& objectID) const = 0;
+    // Temporarily sample one Clip without Controller transitions/layers, IK callbacks,
+    // notifications or root motion. Controller state and authoring settings are retained.
+    // Failure retains the previous valid clip pose; seconds are clamped/wrapped to duration.
+    virtual bool PlayClip(const ResourceReference&, float seconds = 0, float speed = 1, bool loop = true) = 0;
+    virtual bool SetClipPlaybackPlaying(bool) = 0;
+    virtual bool SeekClip(float seconds) = 0;
+    // Restore authoring transforms and leave the Controller paused until Play/Resume.
+    virtual void StopClip() = 0;
+    virtual AnimationClipPlaybackState GetClipPlaybackState() const = 0;
 protected:
     using IComponent::IComponent;
 };

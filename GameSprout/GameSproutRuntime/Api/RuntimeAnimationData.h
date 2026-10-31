@@ -125,6 +125,12 @@ struct AnimatorControllerData {
     std::vector<AnimatorLayer> Layers;
 };
 struct AnimationNodeBinding { std::string Path; std::uint64_t ObjectID = 0; };
+// Transient single-clip pose playback, independent of the authored Controller.
+struct AnimationClipPlaybackState {
+    ResourceReference Clip;
+    bool Active = false, Playing = false, Loop = true;
+    float Time = 0, Duration = 0, Speed = 1;
+};
 struct AnimatorPlaybackState {
     // Synchronized layers report shared group logical seconds and identical normalized phase.
     std::string CurrentState;
