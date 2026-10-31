@@ -49,6 +49,8 @@ private:
     void ClearLoaded(const std::string & guid);
     bool BuildIndexOperations(const AssetImportManifest * oldManifest,
         const AssetImportManifest * newManifest, std::vector<LDBWriteOperation> & operations);
+    bool BuildTextureSearchIndexOperations(const AssetImportManifest* oldManifest,
+        const AssetImportManifest* newManifest,std::vector<LDBWriteOperation>& operations);
 };
 
 #endif //__LibraryManager_h__

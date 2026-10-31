@@ -127,6 +127,12 @@ runtime 资源加载器、平台纹理压缩及 GPU 上传尚需接入。
       双四元数、多 Skin、MeshCompression、Lightmap UV 自动展开。
       Calculate 切线为基础 UV 导数算法；尚未实现 MikkTSpace/动画曲线压缩/
       复杂材质图转换/GPU 顶点缓存重排。源相机/灯光属性动画尚未导出。
+      外部贴图路径无条件统一Windows分隔符；只按完整文件名搜索模型旁、.fbm、
+      本级及祖先Textures目录、FBX相对/项目内绝对路径，不遍历整个Assets或猜测PSD对应异名PNG。
+      找不到、项目外或存在歧义的贴图记录UnresolvedTextures和导入警告，Mesh/材质槽继续产出。
+      已定位文件的IO/Meta损坏仍报告失败；外部图片解码由Texture导入器负责。
+      TextureSearches记录查找结果，缓存和发布前重新验证；补图、删除、改名通过
+      ModelTextureDependents反向索引重新导入，缓存命中也保留诊断。Model导入器版本为3。
 音频：PCM/Vorbis/ADPCM、采样率、单声道与其响度规范化；LoadType 等记录给 runtime。
 视频：H264/H265/VP8、限制尺寸、翻转、可选音轨，或者保留源媒体不转码。
 字体：QRawFont 解码，指定字符或默认 ASCII 图集；尚无动态字体整形和 SDF 生成。

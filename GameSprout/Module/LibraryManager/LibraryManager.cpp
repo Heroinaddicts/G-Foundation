@@ -1,6 +1,7 @@
 #include "LibraryManager.h"
 #include "../Shared/AssetArtifactIO.h"
 #include <QUuid>
+#include <algorithm>
 #include <set>
 
 namespace {
@@ -53,6 +54,7 @@ void LibraryManager::BeforeInitialize(GameSproutModuleApi * const api) {
         _LDBSession = QFileInfo::exists(QString::fromStdString(databasePath + "/data.mdb"))
             ? g_ILocalDatabase->OpenLDB(databasePath) : g_ILocalDatabase->CreateLDB(databasePath);
         return _LDBSession && _LDBSession->CreateTable("Manifests") && _LDBSession->CreateTable("Dependents")
+            && _LDBSession->CreateTable("ModelTextureDependents")
             && _LDBSession->CreateTable("Publications") && RecoverPublications();
     });
 }
@@ -127,7 +129,7 @@ bool LibraryManager::BuildIndexOperations(const AssetImportManifest * oldManifes
             operations.push_back(Put("Dependents", key, value));
         }
     }
-    return true;
+    return BuildTextureSearchIndexOperations(oldManifest,newManifest,operations);
 }
 
 bool LibraryManager::CommitImport(const std::string & stage, AssetImportManifest & manifest, std::string & error) {
@@ -178,6 +180,14 @@ std::vector<std::string> LibraryManager::FindDependents(const std::string & sour
         && AssetArtifactIO::Parse(std::string(bytes.begin(), bytes.end()), value)
         && value["Path"] == sourcePath && value["Guids"].isArray()) {
         for (const Json::Value & owner : value["Guids"]) if (owner.isString()) owners.push_back(owner.asString());
+    }
+    // 查找名称也建立反向索引，补图/重命名会重新解析之前缺失或存在歧义的引用。
+    const std::string filename=QFileInfo(QString::fromStdString(sourcePath)).fileName().toCaseFolded().toStdString();
+    table=_LDBSession->GetTable("ModelTextureDependents");bytes.clear();value=Json::Value();
+    if(table&&table->Get(AssetArtifactIO::Hash(QByteArray::fromStdString(filename)),bytes)
+        &&AssetArtifactIO::Parse(std::string(bytes.begin(),bytes.end()),value)
+        &&value["Filename"]==filename&&value["Guids"].isArray()) {
+        for(const auto& owner:value["Guids"])if(owner.isString()&&std::find(owners.begin(),owners.end(),owner.asString())==owners.end())owners.push_back(owner.asString());
     }
     return owners;
 }

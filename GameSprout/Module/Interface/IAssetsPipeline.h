@@ -41,6 +41,13 @@ struct AssetDependency {
     std::string Hash;
 };
 
+struct AssetTextureSearch {
+    std::string Filename;
+    std::string RelativeFilename;
+    std::string ResolvedPath; // Relative to Assets; empty when no unambiguous texture was found.
+    std::string Reason;
+};
+
 struct AssetImportManifest {
     std::string GuidString;
     std::string SourcePath;
@@ -54,6 +61,8 @@ struct AssetImportManifest {
     std::string SubAssetsJson = "[]";
     std::vector<AssetArtifact> Assets;
     std::vector<AssetDependency> Dependencies;
+    std::vector<AssetTextureSearch> TextureSearches;
+    std::string Diagnostics; // Nonfatal import warnings, retained on cache hits.
 };
 
 struct AssetImportResult {

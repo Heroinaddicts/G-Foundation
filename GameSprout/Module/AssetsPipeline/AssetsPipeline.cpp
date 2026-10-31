@@ -105,6 +105,9 @@ void AssetsPipeline::ImportAsset(IAssetMeta * meta, const fImportCallback & call
                         }
                     }
                 }
+                if(result.Success&&!ModelTextureSearchesCurrent(request,result.Manifest)) {
+                    result.Success=false;result.Superseded=true;result.Retry=true;result.Error="Texture lookup changed before commit";
+                }
                 if (result.Success) {
                     QFileInfo current(QString::fromStdString(request.AssetsRoot + "/" + request.SourcePath));
                     if (!current.isFile() || current.size() != job->SourceSize || current.lastModified() != job->SourceModified) {

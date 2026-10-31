@@ -63,7 +63,7 @@ void AssetsManager::ImportAsset(IAssetMeta * meta, bool force) {
             }
             owner->RecordImportResult(current, result);
             if(!result.Diagnostics.empty())
-                GameSproutConsoleLog(g_IConsole,eConsoleLog::Warning,"Shader compiler diagnostics for {}:\n{}",current->GetPath(),result.Diagnostics);
+                GameSproutConsoleLog(g_IConsole,eConsoleLog::Warning,"Import diagnostics for {}:\n{}",current->GetPath(),result.Diagnostics);
             if (after != before) owner->ImportDependents(current->GetPath());
             GameSproutConsoleLog(g_IConsole,eConsoleLog::Trace,"{} {}: {} resources",
                 result.Cached ? "缓存命中" : "预处理完成", current->GetPath(), result.Manifest.Assets.size());

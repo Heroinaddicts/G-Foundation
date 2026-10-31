@@ -1,4 +1,5 @@
 #include "AssetImportJob.h"
+#include "ModelTextureResolver.h"
 #include <QUuid>
 #include "../Shared/AssetValueBinary.h"
 #include "IShaderCompiler.h"
@@ -115,6 +116,20 @@ bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray 
     return true;
 }
 
+bool ModelTextureSearchesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest) {
+    if(request.Importer!=eAssetImporterType::Model)return true;
+    std::vector<std::string> materialDirectories;
+    for(const auto& dependency:manifest.Dependencies) {
+        if(QFileInfo(QString::fromStdString(dependency.Path)).suffix().compare("mtl",Qt::CaseInsensitive)==0)
+            materialDirectories.push_back(QFileInfo(QString::fromStdString(dependency.Path)).path().toStdString());
+    }
+    for(const auto& search:manifest.TextureSearches) {
+        const auto resolved=ResolveModelTexture(request.AssetsRoot,request.SourcePath,search.Filename,search.RelativeFilename,materialDirectories);
+        if(resolved.Path!=search.ResolvedPath||resolved.Reason!=search.Reason)return false;
+    }
+    return true;
+}
+
 bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     job.Context = &context;
     if (context.IsCancellationRequested()) return job.Fail("Import cancelled");
@@ -140,6 +155,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     manifest.GuidString = job.Request.GuidString;
     manifest.SourcePath = job.Request.SourcePath;
     manifest.SourceHash = AssetArtifactIO::Hash(job.SourceBytes);
+    if(job.Request.Importer==eAssetImporterType::Model)manifest.ImporterVersion=3;
     manifest.SettingsHash = AssetArtifactIO::Hash(QByteArray::fromStdString(
         std::to_string(static_cast<uint16_t>(job.Request.Importer)) + ":" + AssetArtifactIO::JsonText(job.Settings)));
     if(job.Request.Importer==eAssetImporterType::Shader || job.Request.Importer==eAssetImporterType::ComputeShader) {
@@ -151,6 +167,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
         && job.Request.Previous.SourceHash == manifest.SourceHash && job.Request.Previous.SettingsHash == manifest.SettingsHash
         && job.Request.Previous.ToolchainHash == manifest.ToolchainHash
         && job.Request.Previous.ImporterVersion == manifest.ImporterVersion && job.Request.Previous.Target == manifest.Target;
+    if(cached&&!ModelTextureSearchesCurrent(job.Request,job.Request.Previous))cached=false;
     if (cached) {
         // A manually changed identity registry must never be overwritten by a cache hit.
         for (const auto & asset : job.Request.Previous.Assets) {
@@ -175,7 +192,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     job.Result.Error.clear();
     manifest.Dependencies.clear();
     if (!cached) job.DependencyStamps.clear();
-    if (cached) { job.Result.Manifest = job.Request.Previous; job.Result.Success = true; job.Result.Cached = true; return true; }
+    if (cached) { job.Result.Manifest = job.Request.Previous; job.Result.Diagnostics=job.Request.Previous.Diagnostics; job.Result.Success = true; job.Result.Cached = true; return true; }
     const QString stage = QDir(QString::fromStdString(job.Request.LibraryRoot)).filePath("Staging/" + QUuid::createUuid().toString(QUuid::WithoutBraces));
     if (!QDir().mkpath(stage)) return job.Fail("Cannot create import stage");
     job.Stage = stage.toStdString();
@@ -197,7 +214,11 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     // yet be present in the main-thread reverse index while this first import runs.
     const auto dependencies = manifest.Dependencies;
     for (const auto & dependency : dependencies) if (!job.AddDependency(dependency.Path)) return false;
+    if(!ModelTextureSearchesCurrent(job.Request,manifest)) {
+        job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Texture lookup changed during import");
+    }
     manifest.SubAssetsJson = AssetArtifactIO::JsonText(job.Identities);
+    manifest.Diagnostics=job.Result.Diagnostics;
     job.Result.Success = true;
     return true;
 }

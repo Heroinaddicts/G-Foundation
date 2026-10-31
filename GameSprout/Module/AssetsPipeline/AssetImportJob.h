@@ -47,6 +47,7 @@ struct AssetImportJob {
 };
 
 bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context);
+bool ModelTextureSearchesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest);
 bool ImportTexture(AssetImportJob & job);
 bool ImportTextureBytes(AssetImportJob & job, QByteArray bytes, const std::string & key,
     const std::string & name, const Json::Value & settings);

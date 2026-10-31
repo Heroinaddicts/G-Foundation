@@ -1,4 +1,5 @@
 #include "AssetImportJob.h"
+#include "ModelTextureResolver.h"
 #include "ThirdParty/ufbx/ufbx.h"
 #include <QDataStream>
 #include <QVector3D>
@@ -37,10 +38,16 @@ std::string NodePath(const ufbx_node * node) {
     return NodePath(node->parent) + "/" + own + "#" + std::to_string(ordinal);
 }
 uint64_t ExternalMainID(const Json::Value & meta, eAssetType type) {
-    if (meta["SubAssets"].isArray()) for (const Json::Value & entry : meta["SubAssets"]) {
-        if (entry.get("Type", 0).asUInt() == static_cast<uint16_t>(type) && entry.get("SourceKey", "").asString() == "main"
-            && entry["LocalID"].isUInt64() && entry["LocalID"].asUInt64() != 0) return entry["LocalID"].asUInt64();
+    if(!meta["SubAssets"].isArray())return 0;
+    uint64_t found=0;std::set<uint64_t> used;
+    for (const Json::Value & entry : meta["SubAssets"]) {
+        if(!entry.isObject()||!entry["Type"].isUInt()||!entry["SourceKey"].isString()||!entry["LocalID"].isUInt64()
+            ||!entry["LocalID"].asUInt64()||!used.insert(entry["LocalID"].asUInt64()).second)return 0;
+        if (entry["Type"].asUInt() == static_cast<uint16_t>(type) && entry["SourceKey"].asString() == "main") {
+            if(found)return 0;found=entry["LocalID"].asUInt64();
+        }
     }
+    if(found)return found;
     const QByteArray hash = QCryptographicHash::hash(QByteArray::fromStdString(std::to_string(static_cast<uint16_t>(type)) + ":main:0"), QCryptographicHash::Sha256);
     uint64_t id = 0;
     for (int i = 0; i < 8; ++i) id = (id << 8) | static_cast<unsigned char>(hash[i]);
@@ -63,6 +70,16 @@ std::string BlendKey(const ufbx_blend_channel * channel) {
     return Name(channel->name) + "#" + std::to_string(channel->typed_id);
 }
 QVector3D Vector(ufbx_vec3 value) { return QVector3D(value.x, value.y, value.z); }
+void Diagnostic(AssetImportJob& job,const std::string& warning) {
+    std::size_t position=job.Result.Diagnostics.find(warning);
+    while(position!=std::string::npos) {
+        const auto end=position+warning.size();
+        if((position==0||job.Result.Diagnostics[position-1]=='\n')&&(end==job.Result.Diagnostics.size()||job.Result.Diagnostics[end]=='\n'))return;
+        position=job.Result.Diagnostics.find(warning,position+1);
+    }
+    if(!job.Result.Diagnostics.empty())job.Result.Diagnostics+='\n';
+    job.Result.Diagnostics+=warning;
+}
 
 bool Mesh(AssetImportJob & job, ufbx_mesh * mesh, const std::string & key, double scale) {
     if (mesh->cache_deformers.count) return job.Fail("Vertex cache deformation is not supported by this runtime asset format");
@@ -253,10 +270,12 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
         const std::string key = NamedKey("material/", material->element, scene->elements);
         Json::Value data;
         const auto color = material->pbr.base_color.has_value ? material->pbr.base_color.value_vec3 : material->fbx.diffuse_color.value_vec3;
-        data["BaseColor"] = Array({color.x,color.y,color.z,material->pbr.opacity.value_real});
+        const double opacity=material->pbr.opacity.has_value?material->pbr.opacity.value_real:1.0;
+        data["BaseColor"] = Array({color.x,color.y,color.z,opacity});
         data["Roughness"] = material->pbr.roughness.value_real;
         data["Metallic"] = material->pbr.metalness.value_real;
         data["Textures"] = Json::Value(Json::arrayValue);
+        data["UnresolvedTextures"] = Json::Value(Json::arrayValue);
         for (const auto & mapping : material->textures) {
             ufbx_texture * texture = mapping.texture;
             if (texture->type != UFBX_TEXTURE_FILE) return job.Fail("Layered/procedural textures must be baked before model import");
@@ -272,31 +291,42 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
                 ref["Asset"] = Ref(job.Request.GuidString,id);
             } else {
                 const QDir root(QString::fromStdString(job.Request.AssetsRoot));
-                const QString parent = QFileInfo(root.filePath(QString::fromStdString(job.Request.SourcePath))).absolutePath();
-                const QString resolved = QDir::fromNativeSeparators(QString::fromStdString(Name(texture->filename)));
-                QString filename = QDir::fromNativeSeparators(QString::fromStdString(Name(texture->relative_filename)));
-                bool relativeToMaterial = false;
-                if (QFileInfo(QString::fromStdString(job.Request.SourcePath)).suffix().compare("obj", Qt::CaseInsensitive) == 0
-                    && QDir::isRelativePath(filename)) {
-                    for (const AssetDependency & dependency : job.Result.Manifest.Dependencies) {
-                        if (QFileInfo(QString::fromStdString(dependency.Path)).suffix().compare("mtl", Qt::CaseInsensitive) != 0) continue;
-                        const QString materialDirectory = QFileInfo(root.filePath(QString::fromStdString(dependency.Path))).absolutePath();
-                        const QString candidate = QDir::cleanPath(QDir(materialDirectory).filePath(filename));
-                        if (QFileInfo(candidate).isFile()) { filename = candidate; relativeToMaterial = true; break; }
+                const auto filename=NormalizeModelTexturePath(Name(texture->filename));
+                const auto relativeFilename=NormalizeModelTexturePath(Name(texture->relative_filename));
+                std::vector<std::string> materialDirectories;
+                if(QFileInfo(QString::fromStdString(job.Request.SourcePath)).suffix().compare("obj",Qt::CaseInsensitive)==0)
+                    for(const auto& dependency:job.Result.Manifest.Dependencies)
+                        if(QFileInfo(QString::fromStdString(dependency.Path)).suffix().compare("mtl",Qt::CaseInsensitive)==0)
+                            materialDirectories.push_back(QFileInfo(QString::fromStdString(dependency.Path)).path().toStdString());
+                const auto resolved=ResolveModelTexture(job.Request.AssetsRoot,job.Request.SourcePath,filename,relativeFilename,materialDirectories);
+                bool recorded=false;
+                for(const auto& search:job.Result.Manifest.TextureSearches)
+                    if(search.Filename==filename&&search.RelativeFilename==relativeFilename){
+                        if(search.ResolvedPath!=resolved.Path||search.Reason!=resolved.Reason) {
+                            job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Texture search changed during import: "+filename);
+                        }
+                        recorded=true;break;
                     }
+                if(!recorded)job.Result.Manifest.TextureSearches.push_back({filename,relativeFilename,resolved.Path,resolved.Reason});
+                if(resolved.Path.empty()) {
+                    Json::Value missing;
+                    missing["Channel"]=Name(mapping.material_prop);missing["SourcePath"]=relativeFilename.empty()?filename:relativeFilename;missing["Reason"]=resolved.Reason;
+                    data["UnresolvedTextures"].append(std::move(missing));
+                    Diagnostic(job,"Model '"+job.Request.SourcePath+"', material '"+Name(material->name)+"', channel '"+Name(mapping.material_prop)+
+                        "': "+resolved.Reason+"; texture='"+filename+"', relative='"+relativeFilename+"'. Imported without this texture.");
+                    continue;
                 }
-                if (!relativeToMaterial) {
-                    if (QDir::isAbsolutePath(resolved) && QFileInfo(resolved).isFile()
-                        && QFileInfo(resolved).canonicalFilePath().startsWith(root.canonicalPath() + "/")) filename = resolved;
-                    else if (filename.isEmpty() || !QDir::isRelativePath(filename)) filename = QFileInfo(resolved).fileName();
-                }
-                const QString relative = root.relativeFilePath(QDir(parent).filePath(filename));
-                if (!job.AddDependency(relative.toStdString())) return false;
+                const QString relative=QString::fromStdString(resolved.Path);
+                // 只有缺失/不可确定的引用可降级。成功定位的依赖仍严格校验IO与Meta，不能吞掉真实损坏。
+                if (!job.AddDependency(resolved.Path)) return false;
                 QFile metaFile(root.filePath(relative) + ".meta");
                 Json::Value meta;
                 if (!metaFile.open(QIODevice::ReadOnly) || !AssetArtifactIO::Parse(metaFile.readAll().toStdString(),meta)
+                    || metaFile.error()!=QFileDevice::NoError || meta["ImporterType"]!="Texture"
                     || !meta["Guid"].isString() || !Guid(meta["Guid"].asString()).IsValid()) return job.Fail("Texture dependency has no valid Meta: " + relative.toStdString());
-                ref["Asset"] = Ref(meta["Guid"].asString(),ExternalMainID(meta,eAssetType::Texture));
+                const auto mainID=ExternalMainID(meta,eAssetType::Texture);
+                if(!mainID)return job.Fail("Texture dependency has invalid subasset identity: "+resolved.Path);
+                ref["Asset"] = Ref(meta["Guid"].asString(),mainID);
             }
             data["Textures"].append(ref);
         }

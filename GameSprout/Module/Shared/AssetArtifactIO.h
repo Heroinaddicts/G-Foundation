@@ -80,6 +80,13 @@ inline Json::Value ToJson(const AssetImportManifest & manifest) {
         item["Hash"] = dependency.Hash;
         value["Dependencies"].append(item);
     }
+    value["TextureSearches"] = Json::Value(Json::arrayValue);
+    for(const auto& search:manifest.TextureSearches) {
+        Json::Value item;
+        item["Filename"]=search.Filename;item["RelativeFilename"]=search.RelativeFilename;
+        item["ResolvedPath"]=search.ResolvedPath;item["Reason"]=search.Reason;value["TextureSearches"].append(std::move(item));
+    }
+    value["Diagnostics"]=manifest.Diagnostics;
     return value;
 }
 inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) {
@@ -122,6 +129,16 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
         if (!item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
         result.Dependencies.push_back({item["Path"].asString(), item["Hash"].asString()});
     }
+    const Json::Value searches=value.get("TextureSearches",Json::Value(Json::arrayValue));
+    if(!searches.isArray())return false;
+    for(const auto& item:searches) {
+        if(!item.isObject()||!item["Filename"].isString()||!item["RelativeFilename"].isString()||!item["ResolvedPath"].isString()||!item["Reason"].isString()
+            ||(!item["ResolvedPath"].asString().empty()&&!RelativePath(item["ResolvedPath"].asString())))return false;
+        result.TextureSearches.push_back({item["Filename"].asString(),item["RelativeFilename"].asString(),item["ResolvedPath"].asString(),item["Reason"].asString()});
+    }
+    const Json::Value diagnostics=value.get("Diagnostics","");
+    if(!diagnostics.isString())return false;
+    result.Diagnostics=diagnostics.asString();
     manifest = std::move(result);
     return true;
 }
