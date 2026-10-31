@@ -1,0 +1,154 @@
+GameSproutRuntime 第一阶段公共协议
+
+范围
+已实现独立 Runtime 工厂、场景和节点树、组件工厂、生命周期、变换和节点事件。
+Transform、RectTransform、Image、Canvas、Mesh、MeshRenderer、Camera 为实际内部组件。
+Canvas 是普通 GameObject 挂载 ICanvasComponent，没有独立 Canvas 对象类型。
+已实现独立 3D Renderer，宿主传入 GRHI Device/目标与预处理资源提供者；不依赖 Qt、Foundation 或 Editor。
+尚未接入 Canvas 自动布局/UI 绘制、动画蒙皮或物理。旧无参数 Render 不推测窗口或相机。
+Tests 的 Object/Image/ExportFixture 只是测试替身，不属于发布的 Runtime 实现。
+
+组件创建
+调用方只调用 IGameObject::AddComponent<IImageComponent>() 等接口，不创建实现对象。
+模板把 typeid(接口) 交给 Runtime，内部工厂创建 ImageComponent 等实现并返回接口。
+工厂注册和对象组件容器都按接口类型匹配，使用 type_info 值相等，不依赖 RTTI 地址。
+同接口第一版只允许一个组件，重复添加返回已有对象。未知类型返回 nullptr。
+登记与归属完成后调用 OnCreate；构造/初始化失败回滚且清理；销毁前 OnRelease 一次。
+工厂、登记、回滚和 Update 调度已实现；内置组件按接口匹配，外部不能注册任意实现。
+序列化使用 GetTypeName 的稳定类型标识，不保存 type_info/hash_code。
+接口与模块使用同一套头文件、兼容编译器/标准库和 RTTI 配置。
+
+所有权与节点树
+Runtime 持有场景，场景持有对象，对象持有组件；外部指针只借用，不自行 delete。
+所有节点/组件接口在所属宿主线程调用，不以智能指针或引用计数替代线程规则。
+IObject 继续作为私有继承的内部约束；并不自动赋予其他内部类基类转换权限。
+场景是特殊根，不能挂到普通对象下。AddChild 只允许同一场景内重挂载并检测循环。
+RemoveChild 解除关系后挂到场景根；销毁对象使用 IScene::DestroyGameObject，包含子树。
+SetSiblingIndex 同步调整当前父节点内的顺序，超界放到末尾，不修改父节点/变换/组件。
+场景根、待销毁节点、Runtime 更新/遍历/事件回调期间拒绝，不排队；同位置返回 true 不发事件。
+顺序实际改变通过 SiblingOrderChanged 通知，ParentID 与 OldParentID 相同。
+回调/遍历中请求的重挂载、移除与销毁在最外层调用结束后统一执行，执行后相关借用指针失效。
+创建对象立即分配可用接口，但其挂载在遍历结束后执行；添加组件立即登记，当前遍历快照不包含新项。
+延迟操作返回 true 表示请求已接受；执行时再次校验，约束失效通过 OperationFailed 事件报告。
+Update 拒绝负数、非有限时间和重入调用，更新活跃节点；跳过待销毁节点与待移除组件。
+组件回调异常不打断其他组件，通知回调异常不打断其他监听者；调用方不能在回调中 delete Runtime。
+删除通过迭代完成，不递归销毁整棵子树。所有内存显式释放，不使用智能指针。
+Transform 固有、唯一、不能移除；场景根固定为单位变换。
+保留世界变换的重挂载遇到不可逆矩阵或 TRS 无法表达的剪切时拒绝，保持原层级。
+
+几何数据与空间
+Vector2/3/4、Mat3/4、Quaternion、Color、Rect、Bounds、Plane、Ray、Viewport 各自独立头文件。
+Math/TransformMath.h 公开有限值检查、TRS组合、仿射求逆、TRS分解；RuntimeMath.h仅是内部转发。
+这些是 CPU 几何数据，不直接代表 Shader 缓冲布局：例如 Vector3 为 12 字节，
+Shader 的 float3 字段可能有不同对齐要求，上传结构必须依照反射布局显式打包。
+Mat4 列连续存储，下标为 (行, 列)，使用列向量，内存最后一列存平移。
+局部矩阵 = T * R * S；世界矩阵 = ParentWorld * Local；裁剪坐标 = P * V * M * position。
+Quaternion 存 XYZW，单位四元数表示旋转，默认 (0,0,0,1)。角度统一弧度。
+世界空间：右手系、Y 向上、前方 -Z、1 单位 = 1 米。相机同样朝局部 -Z 观察。
+模型资源顶点与对象局部变换都应在导入阶段统一；不要在 Runtime 每帧重复换基。
+
+坐标约定转换
+CoordinateSystem 声明手性、向上轴、前向轴和每单位米数；上/前轴必须正交。
+CoordinateConversion::TryCreate 生成源到目标的换基 C 与其逆矩阵；失败不修改输出。
+ConvertPosition 包含单位缩放；ConvertDirection 只转换方向轴，不缩放长度。
+ConvertNormal 对本工具的正交换基适用；模型自身非均匀缩放需另用逆转置法线矩阵。
+ConvertRotation 对单位四元数换基并处理反射；不要任意逐项翻转四元数分量。
+ConvertTransform 返回 C * M * inverse(C)，用于局部节点、骨骼等两端空间都变更的变换。
+ConvertBounds 转中心和非负半尺寸；ConvertPlane 转法线和距离；ConvertRay 不缩放方向，
+射线参数距离要使用 ConvertDistance；这些约定的原点重合，不处理任意坐标原点偏移。
+ReversesWinding=true 时，导入器需要交换每个三角形的两个索引，并同步处理切线 W 的手性。
+转换工具只提供数据与标记，不会自行修改网格或导入数据库。
+
+投影、屏幕与 UV
+规范相机投影采用 NDC X/Y [-1,1]、Y 向上、深度 [0,1]，先输出裁剪坐标再由 GPU 透视除法。
+TryMakePerspective、TryMakeOrthographic、TryMakeLookAt 校验参数，失败保留原输出。
+AdaptProjection 用于实际图形后端所需的深度范围/Y 修正；适配一次，不能按平台盲目重复翻转。
+Y 翻转影响图元绕序时应同步前面/剔除约定。具体 SDL/GRHI 接入时验证。
+Viewport 屏幕原点在左上，X 向右/Y 向下，单位物理像素；NdcToScreen/ScreenToNdc 负责换算。
+屏幕连续坐标边界映射到 [左,左+宽] 与 [上,上+高]，不额外加半像素；宿主负责逻辑像素/DPI。
+UI 布局 X 右/Y 上，Canvas 管理布局单位到屏幕像素/世界米的映射。
+Runtime 贴图 UV 约定左上 (0,0)，U 向右/V 向下；资源管线与后端适配应统一遵守。
+纹理 UV 翻转与世界坐标换基是独立问题，不由 CoordinateConversion 隐式处理。
+Color 使用线性 RGB，默认白色；sRGB 采样解码和输出编码由纹理/渲染设置负责。
+
+资源引用
+ResourceReference 保存 GUID 字符串与 LocalID，不保存贴图像素、Meta 指针或 GRHI 对象。
+图像的色调、UV 等实例参数归组件；Renderer 根据资源提供者读取产物并持有自己的 GPU 缓存。
+
+显式 3D RenderView
+包含 RuntimeRenderApi.h，调用 Runtime::CreateRenderer(device,provider)，返回 Renderer 由使用者 delete。
+Renderer 借用 Runtime、Device、provider；先删除 Renderer，再删除这三个依赖。全部在宿主线程调用。
+RenderView 明确指定 Scene、Surface 或离屏 ColorTarget（二选一）及观察相机 View/Projection/Position。
+Renderer 从实际目标像素宽高计算投影，不采用 Scene::GetMainCamera 替换 Editor 临时观察相机。
+不推进 Update，不创建相机节点，不修改场景/Undo；回调/遍历/重入中拒绝 Render。
+隐藏 Surface 的 Unavailable 是成功跳过，Statistics.Width/Height=0，不遗留未提交命令。
+Mesh/Renderer/Transform 从 Runtime 唯一节点树提取；禁用层级、不可见 Renderer 和奇异变换安全跳过。
+当前无对象 Layer 属性，所有网格按默认 Layer 0 使用 Camera.CullingMask；Grid 独立于游戏节点。
+深度 D32、固定方向光+环境光、BaseColor/顶点色/纹理、材质槽与 Section 索引绘制已经接入。
+非均匀缩放使用世界矩阵逆转置法线；负缩放同步改变剔除绕序，双面材质关闭剔除。
+当前材质是简单不透明预览，不含 PBR、透明排序、阴影或自定义 Shader 资源执行。
+MeshRenderData 的 float32/UInt32 原始字节直接上传，不重排顶点；按 stride/offset 创建布局。
+UV/Color 缺省 -1 使用独立顶点 Shader 入口，不读取不存在的属性；无 UV 时忽略纹理采样。
+MeshComponent 的加载后 Bounds 是派生缓存，不发场景修改事件、不保存；改资源或加载失败时清理。
+Provider 只返回已预处理 typed 数据，不能返回 FBX/PNG 源文件。GetRevision 变化后重新加载资源/GPU缓存。
+合法但 Missing 的绑定不使用占位模型冒充，加载失败跳过该对象/材质分段并保留 GetLastError 诊断。
+Render 返回 true 表示本帧提交或成功跳过；仍应读取非空诊断，了解被跳过的资源。
+空材质槽使用默认白色，无纹理使用 1x1 白采样；这不代替缺失的已绑定资源。
+Grid 是世界 Y=0、X/Z 各 [-50,50] 米参考线；多 View 复用按尺寸缓存的深度目标，最多保留四种尺寸。
+内置 Renderer/Shaders/Preview.hlsl 统一右手 Y-up/-Z-forward、深度 [0,1]、列主序 P*V*M。
+离线 SDL_shadercross 生成 SPIRV/MSL/DXIL 并嵌入发布 DLL；正常运行不依赖 ShaderCompiler/Slang/编译工具。
+RuntimeGenerateShaders 显式重新生成，或运行 GenerateShaders.py --shadercross 工具路径。
+Runtime.RendererGPU 使用实际 GRHI/Metal 离屏像素验证矩阵/纹理/sRGB、四种属性布局、depth、法线、负/零缩放、grid/resize与缓存。
+
+临时调试几何与Mesh拾取
+RenderView.DebugDraw 同步借用 DebugDrawList；世界坐标 Lines/Triangles 各自带线性 Tint 和 DepthTest。
+调试几何不创建节点、不修改场景或资产，沿用公开坐标规范。最多1,048,576个顶点，输入先完整校验。
+实际使用彩色顶点Buffer与内置HLSL绘制：深度测试批次在前，关闭深度的overlay在后；同层先填充再线框。
+调试图元始终不写深度，支持普通Alpha混合，线宽当前为后端标准1像素。
+GetRenderedCamera 返回最近成功提交帧的显式Camera/ViewProjection、SceneID和实际物理像素宽高。
+Render失败或Surface不可用后快照失效，宿主不得继续使用旧尺寸计算鼠标射线。
+Raycast 接收世界射线，归一化Direction，精确测试Mesh section中的三角形，返回最近命中的节点ID/世界距离/位置/几何法线/三角形索引。
+CPU位置与索引仅在资源首次载入或Revision变化时解包缓存，完整交错Bytes上传GPU后释放；查询不会重复解码源资源。
+相交在对象局部空间以double计算，不再次归一化逆变换后的方向，保持非均匀父缩放下世界距离可比较。
+返回法线按世界三角形绕序计算，保留镜像变换的符号；拾取为双面，不依赖物理Collider。
+跳过非激活层级、Visible=false、奇异变换及缺失Mesh/Material/Texture分段；当前默认Layer0受mask最低位控制。
+GetWorldBounds 先对已绑定Mesh被section引用的顶点求本地AABB，再变换8角得到保守世界AABB；中心等于模型矩阵乘本地中心，适用于聚焦非激活/不可见对象及稳定的Center操作轴。
+AppendSelectionOutline 将实际Mesh边按顶点索引去重后追加到调试列表，失败不改变已有列表。
+这些查询借用同一Runtime/Device/provider，在宿主线程调用，回调/遍历/Render内拒绝重入。
+当前拾取直接遍历候选三角形，没有BVH；线框生成针对单个选中对象，不把调试数据存入场景。
+Runtime.RendererGPU同时覆盖最近/精确拾取、父旋转与镜像非均匀缩放、资源删除与不可见过滤、真实GPU工具overlay/深度遮挡。
+
+验证
+cmake -S GameSprout/GameSproutRuntime -B /tmp/gamesprout-runtime-build -DGAMESPROUT_RUNTIME_BUILD_TESTS=ON
+cmake --build /tmp/gamesprout-runtime-build
+ctest --test-dir /tmp/gamesprout-runtime-build --output-on-failure
+也可单独配置 Tests/CMakeLists.txt，只消费公共 Api 目标，不构建 Runtime 实现。
+
+动态加载入口
+GameSproutRuntimeExport.h 的 inline Export(dlPath) 接受 UTF-8 动态库目录。
+按平台寻找 GameSproutRuntime.dll、libGameSproutRuntime.dylib 或 libGameSproutRuntime.so，
+通过 CreateGameSproutRuntime 符号创建 IGameSproutRuntime。工厂为 C 链接、noexcept。
+导出使用 GAMESPROUT_RUNTIME_API/GAMESPROUT_RUNTIME_CALL，匹配 CMake 的
+GAMESPROUT_RUNTIME_EXPORTS，避免和 Foundation/GRHI 宏冲突。
+路径无效、库不存在、工厂符号缺失、工厂返回空指针时返回 nullptr；失败释放本次库引用。
+成功时保持库加载到进程结束，不缓存工厂创建的对象、不进行热卸载。
+调用方停止使用相关场景/对象/组件后，在宿主线程 delete 返回的 Runtime 对象。
+正式动态库已导出 CreateGameSproutRuntime，每次调用创建独立实例，不共享场景状态。
+Runtime.DynamicExport 使用独立测试动态库验证成功、失败、中文/相对路径、多实例与析构。
+
+Editor 共享节点树
+GameObject::GetInstanceID 返回所属 Runtime 内单调递增的运行身份，销毁后不复用。
+QueryGameObject 用运行 ID 查询节点，销毁后返回 nullptr；此 ID 与资产 GUID/LocalID 独立。
+IRuntimeListener 接收创建、销毁、重挂载、改名、启用状态、组件增删及属性变化。
+事件独立保存场景/节点/父节点 ID、旧父节点 ID、名称和组件稳定类型，不借用销毁对象。
+事件在 Update 尾部固定批次派发；回调产生的事件下轮派发，不回放注册前排队的事件。
+先订阅再查询初始树，在所属线程释放监听者前注销，允许回调中注销/注册监听者。
+Editor 的 Hierarchy/Inspector 通过公共 API 查询和响应事件；Scene 工具在同一批运行对象上预览变换，由 SceneManager 合并拖拽撤销记录。
+Runtime.Implementation 通过真实动态库验证多实例、层级/组件、TRS、相机、延迟命令与事件。
+
+场景主相机
+IScene::SetMainCamera(ICameraComponent*) 设置本场景主相机，nullptr 取消选择。
+GetMainCamera 返回借用组件指针；只能选择当前场景内仍有效的相机，跨场景选择失败且保留原值。
+相机组件、相机对象或其祖先被删除后，场景自动清除主相机；不保存失效的组件地址。
+主相机变化通过场景根节点的 MainCameraChanged 事件通知 Editor，实际派发仍在 Update 尾部。
+源 .scene 的 MainCameraID 使用文件内部对象 ID，实例化时映射到实际相机组件，不能直接当 InstanceID 使用。
