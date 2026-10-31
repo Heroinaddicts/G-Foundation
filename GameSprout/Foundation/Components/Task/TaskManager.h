@@ -26,6 +26,8 @@ namespace Foundation {
         ) override;
         bool CancelTask(UInt64 taskId) override;
         ITaskGroup* CreateTaskGroup() override;
+        UInt64 GetCompletionBudgetMicroseconds() const override;
+        bool SetCompletionBudgetMicroseconds(UInt64 budget) override;
 
     private:
         friend class TaskGroup;
@@ -59,6 +61,8 @@ namespace Foundation {
         int _WorkerCount = 0;
         bool _AcceptingTasks = false;
         FoundationApi* _Foundation = nullptr;
+        // Only the Foundation Update thread reads or changes this budget.
+        UInt64 _CompletionBudgetMicroseconds = 1000;
     };
 }
 

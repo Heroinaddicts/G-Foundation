@@ -146,6 +146,17 @@ namespace Foundation {
         virtual ITaskGroup* CreateTaskGroup() {
             return nullptr;
         }
+
+        // 与 FoundationApi::Update() 在同一线程调用。预算只限制一轮完成回调
+        // 派发，不中断正在执行的单个回调，也不改变后台任务的并发规则。
+        virtual UInt64 GetCompletionBudgetMicroseconds() const {
+            return 1000;
+        }
+        // 0 无效，失败时保留原预算。默认实现供不支持预算调整的测试替身使用。
+        virtual bool SetCompletionBudgetMicroseconds(UInt64 budget) {
+            (void)budget;
+            return false;
+        }
     };
 }
 

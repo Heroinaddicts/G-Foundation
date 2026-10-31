@@ -16,6 +16,18 @@ compiles the Excel headers. It does not validate SSH or a complete library build
 Session destruction occurs after producer threads have joined; concurrent derived
 destruction is not supported by this check or guaranteed by the dispatch registry.
 
+The Task completion budget check uses the real TaskManager with isolated workers,
+without starting network or database services. It verifies default and expanded
+budgets, invalid-budget rejection, Update-thread callbacks and TaskGroup dispatch:
+
+```sh
+c++ -std=c++20 -DFOUNDATION_MACOS -I FoundationApi -I Utils -I Components/Interface \
+  Tests/TaskCompletionBudget.cpp Components/Task/TaskManager.cpp \
+  Components/Task/TaskGroup.cpp ../../Bin/libFoundationUtils.a -lpthread -liconv \
+  -o build/TaskCompletionBudget.check
+./build/TaskCompletionBudget.check
+```
+
 To also verify dispatch across a hidden-symbol macOS dynamic library, build the
 fixture before running the executable (keep the library loaded until Sessions
 and dispatches are gone):

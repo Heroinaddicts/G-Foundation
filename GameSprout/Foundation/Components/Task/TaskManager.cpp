@@ -102,6 +102,7 @@ namespace Foundation {
         _NextTaskId = 1;
         _NextOwnerId = 1;
         _AcceptingTasks = false;
+        _CompletionBudgetMicroseconds = 1000;
         return true;
     }
 
@@ -211,10 +212,22 @@ namespace Foundation {
             else if (completedGroup) {
                 completedGroup->CompleteEmpty(invokeCallback);
             }
-            if (FoundationUtils::SafeSystem::Time::GetMicroSecond() - beginTick > 1000) {
+            if (FoundationUtils::SafeSystem::Time::GetMicroSecond() - beginTick >= _CompletionBudgetMicroseconds) {
                 break;
             }
         }
+    }
+
+    UInt64 TaskManager::GetCompletionBudgetMicroseconds() const {
+        return _CompletionBudgetMicroseconds;
+    }
+
+    bool TaskManager::SetCompletionBudgetMicroseconds(const UInt64 budget) {
+        if (budget == 0) {
+            return false;
+        }
+        _CompletionBudgetMicroseconds = budget;
+        return true;
     }
 
     void TaskManager::LaterUpdate(FoundationApi* const foundation) {
