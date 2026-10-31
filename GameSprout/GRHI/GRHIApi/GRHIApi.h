@@ -188,7 +188,8 @@ namespace GRHI {
         PremultipliedAlpha
     };
 
-    enum class VertexFormat : uint8_t { Float2, Float3, Float4 };
+    // UInt32x4 保留整数输入语义，可用于任意四分量索引数据。
+    enum class VertexFormat : uint8_t { Float2, Float3, Float4, UInt32x4 };
     struct VertexBindingDesc { uint32_t Binding = 0; uint32_t Stride = 0; };
     struct VertexAttributeDesc { uint32_t Location = 0; uint32_t Binding = 0; VertexFormat Format = VertexFormat::Float3; uint32_t Offset = 0; };
     enum class IndexFormat : uint8_t { UInt16, UInt32 };

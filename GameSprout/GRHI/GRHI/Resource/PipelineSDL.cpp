@@ -60,12 +60,13 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
         strides[binding.Binding]=binding.Stride;
         buffers.push_back({binding.Binding,binding.Stride,SDL_GPU_VERTEXINPUTRATE_VERTEX,0});
     }
-    const SDL_GPUVertexElementFormat formats[]={SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4};
+    const SDL_GPUVertexElementFormat formats[]={SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+        SDL_GPU_VERTEXELEMENTFORMAT_UINT4};
     for(size_t index=0;index<desc.VertexAttributeCount;++index) {
         const auto& a=desc.VertexAttributes[index];
         const auto f=static_cast<unsigned>(a.Format);
         const uint32_t size=f==0?8:f==1?12:16;
-        if(a.Location>=16 || a.Binding>=16 || f>2 || !strides[a.Binding] || a.Offset>strides[a.Binding] ||
+        if(a.Location>=16 || a.Binding>=16 || f>3 || !strides[a.Binding] || a.Offset>strides[a.Binding] ||
            size>strides[a.Binding]-a.Offset || a.Offset%4 || !locations.insert(a.Location).second) {
             Fail("Invalid vertex attribute location, format, offset or binding.");return nullptr;
         }
