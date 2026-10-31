@@ -5,9 +5,6 @@
 #include <QSet>
 #include <QPointF>
 #include <functional>
-class IAssetsManager;
-class ILibraryManager;
-class EditorRuntimeResources;
 class QWindow;
 class ISceneManager;
 class ISelectionManager;
@@ -18,7 +15,6 @@ class SceneViewport final : public QWidget {
 public:
     explicit SceneViewport(QWidget* parent=nullptr);
     ~SceneViewport() override;
-    void Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,IAssetsManager* assets,ILibraryManager* library);
     // 也可借用宿主资源提供者；其生命周期须覆盖本 viewport 的渲染生命周期。
     void Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
     void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds);
@@ -70,7 +66,6 @@ private:
     GRHI::GRHIApi* _Api=nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
-    EditorRuntimeResources* _OwnedResources=nullptr;
     GRHI::IDevice* _Device=nullptr;
     GRHI::ISurface* _Surface=nullptr;
     GameSproutRuntime::IRuntimeRenderer* _Renderer=nullptr;

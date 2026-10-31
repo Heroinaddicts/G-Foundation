@@ -1,6 +1,5 @@
 #include "SceneViewport.h"
 #include "SceneViewportEditing.h"
-#include "EditorRuntimeResources.h"
 #include <QGuiApplication>
 #include <QPlatformSurfaceEvent>
 #include <QWindow>
@@ -20,10 +19,6 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
 SceneViewport::~SceneViewport(){Shutdown();delete _Editing;_Editing=nullptr;}
 void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection){_Editing->Bind(scenes,selection);}
 QPaintEngine* SceneViewport::paintEngine() const{return IsHeadless()?QWidget::paintEngine():nullptr;}
-void SceneViewport::Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,IAssetsManager* assets,ILibraryManager* library) {
-    Initialize(api,runtime,static_cast<GameSproutRuntime::IRuntimeResourceProvider*>(nullptr));
-    if(assets&&library){_OwnedResources=new EditorRuntimeResources(assets,library);_Resources=_OwnedResources;}
-}
 void SceneViewport::Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
     Shutdown();_Api=api;_Runtime=runtime;_Initialized=true;_Resources=resources;
     if(IsHeadless())SetStatus("离屏测试环境：保留 Scene 视图与独立相机，不创建原生 GPU 窗口。",true);
@@ -61,7 +56,7 @@ void SceneViewport::Shutdown() {
     ClearInput();DestroyGpu();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
     if(_HostWindow){_HostWindow->removeEventFilter(this);QObject::disconnect(_HostWindow,nullptr,this,nullptr);_HostWindow=nullptr;}
-    delete _OwnedResources;_OwnedResources=nullptr;_Resources=nullptr;
+    _Resources=nullptr;
     _Api=nullptr;_Runtime=nullptr;_Initialized=false;
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}

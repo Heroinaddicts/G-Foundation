@@ -12,8 +12,7 @@ class SceneViewUIWindow;
 QT_END_NAMESPACE
 class ISceneManager;
 class ISelectionManager;
-class IAssetsManager;
-class ILibraryManager;
+class IRuntimeAssets;
 class SceneViewport;
 
 class SceneViewUI : public ISceneViewUI {
@@ -43,8 +42,7 @@ private:
     IIDEDocker* _Docker=nullptr;
     ISceneManager* _Scenes=nullptr;
     ISelectionManager* _Selection=nullptr;
-    IAssetsManager* _Assets=nullptr;
-    ILibraryManager* _Library=nullptr;
+    IRuntimeAssets* _RuntimeAssets=nullptr;
     bool _Attached=false;
     QElapsedTimer _Timer;
 };

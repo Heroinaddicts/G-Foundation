@@ -3,8 +3,7 @@
 #include "SceneViewportEditing.h"
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
-#include "IAssetsManager.h"
-#include "ILibraryManager.h"
+#include "IRuntimeAssets.h"
 #include "ui_SceneViewUI.h"
 #include <QApplication>
 #include <algorithm>
@@ -18,17 +17,17 @@ void SceneViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) 
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
     GetGameSproutModule(editor,_Selection,SelectionManager);
-    GetGameSproutModule(editor,_Assets,AssetsManager);
-    GetGameSproutModule(editor,_Library,LibraryManager);
+    GetGameSproutModule(editor,_RuntimeAssets,RuntimeAssets);
 }
 bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     if(_Window)return true;
+    delete _Dispatch;_Dispatch=nullptr;delete _Ui;_Ui=nullptr;
     if(!qobject_cast<QApplication*>(QCoreApplication::instance()))return false;
     _Dispatch=new QObject();_Window=new QWidget();_Ui=new Ui::SceneViewUIWindow();_Ui->setupUi(_Window);
     _Viewport=_Ui->sceneViewport;
     _Viewport->StatusChanged=[this](const std::string& message){if(_Ui&&_Window)_Ui->statusLabel->setText(QString::fromStdString(message));};
     _Viewport->FocusRequested=[this]{return FocusSelection();};
-    _Viewport->Initialize(editor?editor->_GRHIApi:nullptr,_Scenes?_Scenes->GetRuntime():nullptr,_Assets,_Library);
+    _Viewport->Initialize(editor?editor->_GRHIApi:nullptr,_Scenes?_Scenes->GetRuntime():nullptr,_RuntimeAssets?_RuntimeAssets->GetResourceProvider():nullptr);
     _Viewport->BindEditingServices(_Scenes,_Selection);
     _Viewport->Editing().ToolChanged=[this](SceneEditingTool tool){
         if(!_Ui||!_Window)return;
@@ -71,7 +70,7 @@ void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     delete _Dispatch;_Dispatch=nullptr;
     if(!_Attached)delete _Window;
     _Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;
-    delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Selection=nullptr;_Assets=nullptr;_Library=nullptr;_Timer.invalidate();
+    delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Selection=nullptr;_RuntimeAssets=nullptr;_Timer.invalidate();
     if(g_Self==this)g_Self=nullptr;
 }
 SceneViewCameraState SceneViewUI::GetCameraState() const{return _Viewport?_Viewport->Camera().GetState():SceneViewCameraState{};}
@@ -91,6 +90,18 @@ bool SceneViewUI::FocusSelection() {
     std::vector<GameSproutRuntime::IGameObject*> pending{object};
     while(!pending.empty()) {
         auto* node=pending.back();pending.pop_back();
+        // Renderer supplies bounds from the current skin pose; the editor does no skinning.
+        GameSproutRuntime::Bounds posedBounds;
+        if (_Viewport->Renderer() && node->GetComponent<GameSproutRuntime::IMeshComponent>() &&
+            _Viewport->Renderer()->GetWorldBounds(scene,node->GetInstanceID(),posedBounds)) {
+            const auto low=posedBounds.Center-posedBounds.Extents, high=posedBounds.Center+posedBounds.Extents;
+            if (!foundSizedBounds) {minimum=low;maximum=high;}
+            else {minimum={std::min(minimum.X,low.X),std::min(minimum.Y,low.Y),std::min(minimum.Z,low.Z)};
+                maximum={std::max(maximum.X,high.X),std::max(maximum.Y,high.Y),std::max(maximum.Z,high.Z)};}
+            found=true;foundSizedBounds=true;
+            for(std::size_t index=0;index<node->GetChildCount();++index)pending.push_back(node->GetChild(index));
+            continue;
+        }
         const auto matrix=node->GetTransform()->GetWorldMatrix();
         // 没有几何体的节点只提供 pivot；存在非零 Mesh bounds 时忽略这些 pivot。
         GameSproutRuntime::Bounds bounds;

@@ -1,6 +1,23 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>GameViewUIWindow</class>
- <widget class="QMainWindow" name="GameViewUIWindow">
+ <widget class="QWidget" name="GameViewUIWindow">
+  <property name="minimumSize"><size><width>160</width><height>100</height></size></property>
+  <property name="styleSheet"><string notr="true">QWidget#GameViewUIWindow { background: #20252c; color: #e5e9ef; } QToolButton { background: #303e4e; color: #e5e9ef; border: 1px solid #607b96; padding: 5px 10px; } QToolButton:checked { background: #38678c; } QLabel { color: #bccad9; }</string></property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="spacing"><number>4</number></property>
+   <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
+   <item><layout class="QHBoxLayout" name="toolbarLayout">
+    <item><widget class="QToolButton" name="playButton"><property name="text"><string>播放动画</string></property><property name="checkable"><bool>true</bool></property></widget></item>
+    <item><widget class="QToolButton" name="stopButton"><property name="text"><string>停止并还原</string></property></widget></item>
+    <item><widget class="QToolButton" name="retryButton"><property name="text"><string>重试渲染</string></property></widget></item>
+    <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>1</height></size></property></spacer></item>
+    <item><widget class="QLabel" name="cameraLabel"><property name="text"><string>Main Camera</string></property></widget></item>
+   </layout></item>
+   <item><widget class="GameViewport" name="gameViewport"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>1</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>Game 与 Scene 共用 Runtime，按场景 Main Camera 绘制。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+  </layout>
  </widget>
+ <customwidgets><customwidget><class>GameViewport</class><extends>QWidget</extends><header>GameViewport.h</header><container>0</container></customwidget></customwidgets>
+ <resources/><connections/>
 </ui>
