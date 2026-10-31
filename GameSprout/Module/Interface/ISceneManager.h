@@ -26,6 +26,13 @@ public:
     // 相对项目 Assets 的路径，未保存的默认场景返回空字符串。
     virtual const std::string& GetActiveScenePath() const = 0;
     virtual bool OpenScene(const std::string& relativePath, std::string& error) = 0;
+    // Model instantiation is an editor transaction; View never reads FBX or builds bones.
+    virtual GameSproutRuntime::IGameObject* InstantiateModel(const GameSproutRuntime::ResourceReference&,
+        uint64_t, std::string& error) {error="当前场景服务不支持模型实例化。";return nullptr;}
+    // Shared animation preview clock; every view renders the same evaluated pose.
+    virtual void SetAnimationPreviewPlaying(bool) {}
+    virtual bool IsAnimationPreviewPlaying() const {return false;}
+    virtual void ResetAnimationPreview() {}
     using fSceneEditOperation = std::function<bool(GameSproutRuntime::IGameObject&,std::string&)>;
     // 闭包仅捕获值。执行前按 ID 重新查询当前场景对象，不应捕获 UI/Runtime 对象指针。
     // 主线程同步执行；Runtime 更新/遍历/事件回调及场景操作重入时拒绝。

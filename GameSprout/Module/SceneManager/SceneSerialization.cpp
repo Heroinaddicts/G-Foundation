@@ -1,4 +1,5 @@
 #include "SceneDocument.h"
+#include "SceneAnimationDocument.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -23,7 +24,7 @@ Json::Value Reference(const GameSproutRuntime::ResourceReference& reference) {
     result["Guid"]=reference.Guid;result["LocalID"]=Json::UInt64(reference.LocalID);
     return result;
 }
-Json::Value Components(GameSproutRuntime::IGameObject& object) {
+Json::Value Components(GameSproutRuntime::IGameObject& object, const SceneDocument::ObjectIDs& ids) {
     Json::Value result(Json::arrayValue);
     for (std::size_t index=0;index<object.GetComponentCount();++index) {
         auto* component=object.GetComponentAt(index);
@@ -64,6 +65,8 @@ Json::Value Components(GameSproutRuntime::IGameObject& object) {
             data["Visible"]=value->IsVisible();data["Materials"]=Json::Value(Json::arrayValue);
             if (value->GetMaterialCount()>1024) throw std::runtime_error("Too many material slots");
             for (std::size_t slot=0;slot<value->GetMaterialCount();++slot) data["Materials"].append(Reference(value->GetMaterial(slot)));
+        } else if (SceneAnimationDocument::Handles(type)) {
+            data=SceneAnimationDocument::Serialize(*component,ids);
         } else if (type=="GameSproutRuntime.Camera") {
             auto* value=dynamic_cast<GameSproutRuntime::ICameraComponent*>(component);
             if (!value) throw std::runtime_error("Camera interface mismatch");
@@ -114,7 +117,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
         }
         Json::Value document(Json::objectValue);
         document["Version"]=Json::UInt(1);document["Name"]=scene.GetName();document["RootActive"]=scene.IsActiveSelf();
-        document["RootComponents"]=Components(scene);document["NextObjectID"]=Json::UInt64(next.Next);
+        document["RootComponents"]=Components(scene,next);document["NextObjectID"]=Json::UInt64(next.Next);
         document["MainCameraID"]=Json::UInt64(0);document["Objects"]=Json::Value(Json::arrayValue);
         for (const auto& entry:ordered) {
             auto* object=entry.Object;auto* parent=object->Parent();
@@ -122,7 +125,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
             Json::Value node(Json::objectValue);
             node["ID"]=Json::UInt64(next.RuntimeToFile.at(object->GetInstanceID()));
             node["ParentID"]=Json::UInt64(parent==&scene?0:next.RuntimeToFile.at(parent->GetInstanceID()));
-            node["Name"]=object->GetName();node["Active"]=object->IsActiveSelf();node["Components"]=Components(*object);
+            node["Name"]=object->GetName();node["Active"]=object->IsActiveSelf();node["Components"]=Components(*object,next);
             document["Objects"].append(std::move(node));
         }
         if (auto* camera=scene.GetMainCamera()) {

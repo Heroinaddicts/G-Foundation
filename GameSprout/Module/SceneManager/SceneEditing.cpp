@@ -50,6 +50,7 @@ void SceneManager::RefreshState(bool force) {
 }
 bool SceneManager::RunEdit(const Edit& edit,bool forward,std::string& error) {
     if(edit.Type==Edit::Kind::Deletion)return RunDeletion(edit,forward,error);
+    if(edit.Type==Edit::Kind::Creation)return RunDeletion(edit,!forward,error);
     const auto sceneID=_ActiveID;
     auto resolve=[&]() -> GameSproutRuntime::IGameObject* {
         auto* scene=GetActiveScene();

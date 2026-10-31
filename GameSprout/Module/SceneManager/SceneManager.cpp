@@ -1,5 +1,6 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
+#include "IRuntimeAssets.h"
 #include "GameSproutRuntimeExport.h"
 #include "SafeSystem.hpp"
 #include <QDebug>
@@ -7,6 +8,7 @@
 
 SceneManager::~SceneManager() { Release(nullptr); }
 void SceneManager::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api) {
+    _RuntimeAssets=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IRuntimeAssets>("RuntimeAssets") : nullptr;
     _Project=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IProject>("Project") : nullptr;
 }
 bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
@@ -22,6 +24,7 @@ bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
 }
 bool SceneManager::Launch(GameSproutEditor::GameSproutModuleApi*) {
     if(!_Runtime) return false;
+    if (_RuntimeAssets) _Runtime->SetResourceProvider(_RuntimeAssets->GetResourceProvider());
     if(!GetActiveScene()) {
         GameSproutRuntime::IScene* scene=nullptr;
         SceneDocument::ObjectIDs ids;
@@ -39,7 +42,7 @@ GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
 }
 void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
-    _TransformEdit={};
+    _TransformEdit={};_AnimationPreviewPlaying=false;
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
@@ -58,7 +61,7 @@ void SceneManager::Update(GameSproutEditor::GameSproutModuleApi*) {
     if(!_Runtime) return;
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;
     _Timer.start();
-    _Runtime->Update(elapsed);
+    _Runtime->Update(_AnimationPreviewPlaying?elapsed:0.0f);
     if(_TransformEdit.Active&&!TransformTarget(true)) {std::string error;CancelTransformEdit(error);}
     if (_StatePending) RefreshState();
 }
@@ -68,8 +71,9 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _TransformEdit={};
     if(_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     _RuntimeSubscribed=false;
+    if(_Runtime)_Runtime->SetResourceProvider(nullptr);
     delete _Runtime;_Runtime=nullptr;
-    _Project=nullptr;_ActiveID=0;_ActivePath.clear();_Timer.invalidate();
+    _Project=nullptr;_RuntimeAssets=nullptr;_AnimationPreviewPlaying=false;_ActiveID=0;_ActivePath.clear();_Timer.invalidate();
     _Switching=false;_Notifying=false;_NotifyAgain=false;_StateNotifyAgain=false;_ExecutingEdit=false;_StatePending=false;
     _ObjectIDs={};_BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
 }

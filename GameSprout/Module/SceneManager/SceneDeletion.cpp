@@ -1,4 +1,5 @@
 #include "SceneManager.h"
+#include "SceneAnimationDocument.h"
 #include <exception>
 #include <set>
 
@@ -56,7 +57,8 @@ bool SceneManager::CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& 
         if(copy["ID"].asUInt64()==edit.FileID)copy["ParentID"]=Json::UInt64(0);
         subtree["Objects"].append(std::move(copy));
     }
-    if(!SceneDocument::Validate(subtree,error))return false;
+    if(!SceneDocument::ValidateSubtree(subtree,error))return false;
+    edit.AnimationBindings=SceneAnimationDocument::CaptureBindings(document);
     edit.Subtree.swap(subtree);return true;
 }
 bool SceneManager::RunDeletion(const Edit& edit,bool forward,std::string& error) {
@@ -66,7 +68,9 @@ bool SceneManager::RunDeletion(const Edit& edit,bool forward,std::string& error)
         auto* parent=QueryObjectByFileID(edit.ParentFileID);
         if(!parent){error="待恢复子树的父节点已经删除。";return false;}
         GameSproutRuntime::IGameObject* restored=nullptr;
-        return SceneDocument::RestoreSubtree(edit.Subtree,*_Runtime,*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,error);
+        if(!SceneDocument::RestoreSubtree(edit.Subtree,*_Runtime,*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,error))return false;
+        SceneAnimationDocument::RestoreBindings(edit.AnimationBindings,*_Runtime,*scene,_ObjectIDs);
+        return true;
     }
     auto* object=QueryObjectByFileID(edit.FileID);
     if(!object||object==scene){error="待删除节点已经失效。";return false;}

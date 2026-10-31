@@ -4,6 +4,7 @@
 #include "SceneDocument.h"
 #include <QElapsedTimer>
 #include <map>
+class IRuntimeAssets;
 
 class SceneManager final : public ISceneManager, public GameSproutRuntime::IRuntimeListener {
 public:
@@ -12,6 +13,11 @@ public:
     GameSproutRuntime::IScene* GetActiveScene() const override;
     const std::string& GetActiveScenePath() const override { return _ActivePath; }
     bool OpenScene(const std::string& path, std::string& error) override;
+    GameSproutRuntime::IGameObject* InstantiateModel(const GameSproutRuntime::ResourceReference& model,
+        uint64_t parentID, std::string& error) override;
+    void SetAnimationPreviewPlaying(bool playing) override;
+    bool IsAnimationPreviewPlaying() const override {return _AnimationPreviewPlaying;}
+    void ResetAnimationPreview() override;
     bool EditObject(uint64_t objectID,const std::string& label,const fSceneEditOperation& apply,
                     const fSceneEditOperation& revert,std::string& error) override;
     bool DeleteObject(uint64_t objectID,std::string& error) override;
@@ -48,13 +54,14 @@ private:
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
     struct Edit {
-        enum class Kind {Property,Deletion};
+        enum class Kind {Property,Deletion,Creation};
         Kind Type=Kind::Property;
         std::uint64_t FileID=0;
         std::string Label;
         fSceneEditOperation Apply;
         fSceneEditOperation Revert;
         Json::Value Subtree;
+        Json::Value AnimationBindings;
         uint64_t ParentFileID=0;
         std::size_t SiblingIndex=0;
     };
@@ -71,6 +78,8 @@ private:
     } _TransformEdit;
     GameSproutRuntime::IGameSproutRuntime* _Runtime = nullptr;
     IProject* _Project = nullptr;
+    IRuntimeAssets* _RuntimeAssets = nullptr;
+    bool _AnimationPreviewPlaying = false;
     std::uint64_t _ActiveID = 0;
     std::string _ActivePath;
     QElapsedTimer _Timer;

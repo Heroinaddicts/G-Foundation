@@ -1,4 +1,5 @@
 #include "SceneDocument.h"
+#include "SceneAnimationDocument.h"
 
 #include <algorithm>
 #include <cmath>
@@ -193,6 +194,9 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if (!component->SetMaterials(materials)) Fail(path,"Runtime rejected material slots");
             component->SetVisible(visible);
         }
+    } else if (SceneAnimationDocument::Handles(type)) {
+        SceneAnimationDocument::Validate(value,path);
+        if (object) SceneAnimationDocument::Create(value,*object);
     } else if (type=="GameSproutRuntime.Camera") {
         Members(value,path,{"Type","Settings"});
         GameSproutRuntime::CameraSettings settings;
@@ -243,7 +247,7 @@ struct Plan {
     std::vector<Node> Nodes;
     std::map<std::uint64_t,std::size_t> Indices;
 };
-Plan ValidatePlan(const Json::Value& document) {
+Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     Members(document,"Scene",{"Version","Name","RootActive","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects"});
     if (Unsigned(document["Version"],"Scene.Version")!=1) Fail("Scene.Version","only version 1 is supported");
     Plan plan;
@@ -253,13 +257,14 @@ Plan ValidatePlan(const Json::Value& document) {
     bool rootCamera=false;
     if (document.isMember("RootComponents")) {
         plan.RootComponents=&document["RootComponents"];
-        if (!plan.RootComponents->isArray() || plan.RootComponents->size()>8) Fail("Scene.RootComponents","expected at most 8 components");
+        if (!plan.RootComponents->isArray() || plan.RootComponents->size()>16) Fail("Scene.RootComponents","expected at most 16 components");
         std::set<std::string> types;
         for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c) {
             const auto& component=(*plan.RootComponents)[c];
             const std::string path="Scene.RootComponents["+std::to_string(c)+"]";
             ComponentData(component,nullptr,path);
             const std::string type=component["Type"].asString();
+            if(SceneAnimationDocument::Handles(type))Fail(path,"animation components require a regular object, not the scene root");
             if (!types.insert(type).second) Fail(path,"duplicate component type");
             rootCamera=rootCamera || type=="GameSproutRuntime.Camera";
             if (type=="GameSproutRuntime.Transform") {
@@ -290,7 +295,7 @@ Plan ValidatePlan(const Json::Value& document) {
         node.Name=Name(object["Name"],path+".Name");
         node.Active=BoolMember(object,"Active",true,path);
         node.Components=&object["Components"];
-        if (!node.Components->isArray() || node.Components->size()>8) Fail(path+".Components","expected at most 8 components");
+        if (!node.Components->isArray() || node.Components->size()>16) Fail(path+".Components","expected at most 16 components");
         std::set<std::string> types;
         for (Json::ArrayIndex c=0;c<node.Components->size();++c) {
             const auto& component=(*node.Components)[c];
@@ -339,6 +344,7 @@ Plan ValidatePlan(const Json::Value& document) {
     }
     if (plan.RootMainCamera && (plan.CameraID || !rootCamera))
         Fail("Scene.RootMainCamera","requires root Camera and MainCameraID=0");
+    if(checkReferences)SceneAnimationDocument::ValidateReferences(document);
     return plan;
 }
 Json::Value Array(std::initializer_list<float> values) {
@@ -385,6 +391,11 @@ bool Validate(const Json::Value& document,std::string& error) {
     catch (...) {error="Scene: unexpected validation failure";}
     return false;
 }
+bool ValidateSubtree(const Json::Value& document,std::string& error) {
+    error.clear();
+    try {ValidatePlan(document,false);return true;}
+    catch(const std::exception& exception){error=exception.what();return false;}
+}
 bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRuntime& runtime,
                  GameSproutRuntime::IScene*& output, ObjectIDs& ids, std::string& error) {
     GameSproutRuntime::IScene* candidate=nullptr;
@@ -419,6 +430,7 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         }
         if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
             ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]");
+        SceneAnimationDocument::Bind(document,*candidate,objects);
         candidate->SetActive(plan.RootActive);
         for (const auto& node:plan.Nodes) {
             const auto world=objects.at(node.ID)->GetTransform()->GetWorldMatrix();
@@ -454,7 +466,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
     std::vector<std::uint64_t> created;
     const auto previousCamera=scene.GetMainCamera()?scene.GetMainCamera()->GetGameObject()->GetInstanceID():0;
     try {
-        const Plan plan=ValidatePlan(document);
+        const Plan plan=ValidatePlan(document,false);
         if(plan.Nodes.empty() || plan.RootMainCamera || (plan.RootComponents&&!plan.RootComponents->empty()))
             Fail("Subtree","expected nodes without scene-root components");
         const Node* root=nullptr;
@@ -474,6 +486,8 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
         // 总节点数、真实父链深度、文件ID冲突等均在创建任何对象之前检查。
         ValidatePlan(combined);
         std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
+        for (const auto& entry:candidateIDs.RuntimeToFile)
+            if(auto* existing=runtime.QueryGameObject(entry.first))objects.emplace(entry.second,existing);
         created.reserve(plan.Nodes.size());
         for(const auto& node:plan.Nodes) {
             auto* object=scene.CreateGameObject(node.Name);
@@ -492,6 +506,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
                 ComponentData((*node.Components)[index],object,"Subtree.Components");
             object->SetActive(node.Active);
         }
+        SceneAnimationDocument::Bind(document,scene,objects);
         auto* restored=objects.at(root->ID);
         if(!restored->SetSiblingIndex(siblingIndex))Fail("Subtree","Runtime rejected restored sibling order");
         if(plan.CameraID && !scene.SetMainCamera(objects.at(plan.CameraID)->GetComponent<GameSproutRuntime::ICameraComponent>()))

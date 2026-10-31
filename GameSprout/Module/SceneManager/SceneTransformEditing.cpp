@@ -46,6 +46,8 @@ GameSproutRuntime::IGameObject* SceneManager::TransformTarget(bool checkParent) 
     auto* scene=GetActiveScene();auto* object=_Runtime->QueryGameObject(_TransformEdit.ObjectID);
     if(!scene||!object||object==scene||object->GetScene()!=scene)return nullptr;
     if(checkParent) {
+        for(auto* current=object;current&&current!=scene;current=current->Parent())
+            if(current->GetTransform()->IsAnimationDriven())return nullptr;
         auto* parent=object->Parent();
         if((parent?parent->GetInstanceID():0)!=_TransformEdit.ParentID)return nullptr;
         const auto matrix=parent?parent->GetTransform()->GetWorldMatrix():GameSproutRuntime::Mat4{};
@@ -58,6 +60,11 @@ bool SceneManager::BeginTransformEdit(uint64_t objectID,const std::string& label
     if(!Ready(error))return false;
     auto* scene=GetActiveScene();auto* object=_Runtime->QueryGameObject(objectID);
     if(!object||object==scene||object->GetScene()!=scene){error="不能变换无效节点或场景根。";return false;}
+    for(auto* current=object;current&&current!=scene;current=current->Parent()) {
+        if(current->GetTransform()->IsAnimationDriven()) {
+            error="节点或父级由动画预览驱动，请先还原动画再拖拽变换。";return false;
+        }
+    }
     try {
         // 拖拽不能以无法序列化/世界矩阵已经溢出的场景作为起点。
         Json::Value document;std::string text;

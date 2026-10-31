@@ -24,6 +24,8 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
 bool Serialize(GameSproutRuntime::IScene& scene, ObjectIDs& ids,
                Json::Value& output, std::string& error);
 bool Validate(const Json::Value& document, std::string& error);
+// Subtrees can reference surviving nodes outside the subtree; full restore validates the merged scene.
+bool ValidateSubtree(const Json::Value& document, std::string& error);
 // document仅含一个根的子树，根ParentID=0；原位加入同一场景，不重建现有节点。
 // 校验合并后的完整文档，失败移除本次新建节点，保留ids/output和原主相机。
 bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRuntime& runtime,
