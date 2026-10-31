@@ -2,12 +2,15 @@
 #define __ProjectAssetsUI_h__
 #include "Header.h"
 #include "IAssetsManager.h"
+#include "GameSproutRuntimeApi.h"
 #include <set>
 #include <QString>
 class QWidget;
 class QObject;
 class ProjectAssetsModel;
 class ISceneManager;
+class IRuntimeAssets;
+class ILibraryManager;
 class QDialog;
 class QModelIndex;
 class QTreeView;
@@ -42,9 +45,16 @@ private:
     void RememberContextDirectory(QTreeView* tree, const QModelIndex& index);
     void ShowCreateSceneDialog();
     void OpenSceneAsset(const QModelIndex& index);
-    void SelectPendingCreatedScene(const std::vector<IAssetMeta*>& metas);
+    void SelectPendingCreatedAsset(const std::vector<IAssetMeta*>& metas);
     static void RefreshMenu();
     static void CreateSceneMenu();
+    static void CreateAnimatorControllerMenu();
+    static void InstantiateModelMenu();
+    static void CreateAvatarMaskMenu();
+    void ShowCreateAvatarMaskDialog();
+    void ShowCreateAnimatorControllerDialog();
+    void InstantiateSelectedModel();
+    bool ResolveModelReference(GameSproutRuntime::ResourceReference& reference, std::string& error) const;
     QWidget * _Window = nullptr;
     QObject * _Dispatch = nullptr;
     Ui::ProjectAssetsUIWindow * _Ui = nullptr;
@@ -53,6 +63,9 @@ private:
     IAssetsManager * _Assets = nullptr;
     ISelectionManager * _Selection = nullptr;
     ISceneManager * _Scenes = nullptr;
+    IRuntimeAssets* _RuntimeAssets=nullptr;
+    ILibraryManager* _Library=nullptr;
+    ProjectAssetSelection _ContextAsset;
     QDialog * _CreateSceneDialog = nullptr;
     IIDEDocker * _Docker = nullptr;
     bool _Attached = false;
@@ -68,7 +81,7 @@ private:
     QString _CurrentPath;
     QString _CurrentFolderGuid;
     QString _ContextDirectory;
-    QString _PendingCreatedScenePath;
+    QString _PendingCreatedAssetPath;
     bool _HasContextDirectory = false;
     std::set<QString> _ExpandedFolders{"root"};
     std::set<QString> _ExpandedAssets;

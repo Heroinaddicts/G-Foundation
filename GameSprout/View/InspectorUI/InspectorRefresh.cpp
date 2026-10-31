@@ -2,14 +2,20 @@
 #include "ImportSettingsInspector.h"
 #include "AssetInfoInspector.h"
 #include "GameObjectInspector.h"
+#include "MaterialInspector.h"
+#include "AnimationClipPreviewInspector.h"
+#include "AvatarMaskInspector.h"
+#include "AvatarInspector.h"
 #include "AssetDisplayNames.h"
 #include "ui_InspectorUI.h"
 #include "../../Module/Shared/AssetArtifactIO.h"
 #include <QFileInfo>
 
 void InspectorUI::Clear(const QString & message) {
-    _Editable=false;_ActivePanel=nullptr;_BaselineSettings.clear();_OperationError.clear();
+    _Editable=false;_ActivePanel=nullptr;_BaselineSettings.clear();_BaselineMaterialSource.clear();_OperationError.clear();_MaterialMode=false;
+    if (_Material) { _Material->Deactivate();_Material->hide(); }
     _Ui->assetNameLabel->setText("Inspector");
+    _Ui->assetNameLabel->setToolTip({});
     _Ui->typeLabel->clear();_Ui->stateLabel->clear();
     _Ui->pathEdit->clear();_Ui->guidEdit->clear();_Ui->localIDEdit->clear();
     _Ui->pathEditLabel->setText(QStringLiteral("路径"));
@@ -23,6 +29,9 @@ void InspectorUI::Clear(const QString & message) {
 
 void InspectorUI::Refresh() {
     _Dirty=false;
+    if(_ClipPreview)_ClipPreview->hide();
+    if(_MaskInspector)_MaskInspector->hide();
+    if(_AvatarInspector)_AvatarInspector->hide();
     if (_Ui->lockButton->isChecked() && _LockedSceneMissing) {
         Clear(QStringLiteral("锁定的节点已删除或场景已切换。解锁后可查看其他选择。"));
         return;
@@ -71,12 +80,39 @@ void InspectorUI::Refresh() {
     _Ui->guidEditLabel->setText(QStringLiteral("GUID"));
     _Ui->localIDEditLabel->setText(QStringLiteral("LocalID"));
     _Ui->assetNameLabel->setText(QFileInfo(path).fileName());
+    _Ui->assetNameLabel->setToolTip("Assets/"+path);
     _Ui->pathEdit->setText("Assets/"+path);
     _Ui->guidEdit->setText(QString::fromStdString(selected.GuidString));
     _Ui->localIDEdit->setText(selected.IsSubAsset ? QString::number(selected.LocalID) : QStringLiteral("源文件"));
     _Ui->typeLabel->setText(QString::fromStdString(value["ImporterType"].asString()));
     const auto state=meta->GetImportState();
     _Ui->stateLabel->setText(state==eAssetImportState::Ready ? "就绪" : state==eAssetImportState::Failed ? "导入失败" : state==eAssetImportState::Pending ? "待导入" : "无需导入");
+    IAsset * selectedAsset=selected.IsSubAsset?_Library->QueryAsset(meta->_Guid,selected.LocalID):nullptr;
+    if (_RuntimeAssets && selectedAsset && selectedAsset->GetAssetType()==eAssetType::AnimationClip) {
+        RefreshAnimationClip(*meta,*selectedAsset);return;
+    }
+    if(_RuntimeAssets&&meta->_ImporterType==eAssetImporterType::AvatarMask){
+        GameSproutRuntime::ResourceReference reference{selected.GuidString,selected.LocalID};
+        if(!selected.IsSubAsset){AssetImportManifest manifest;if(_Library->GetManifest(meta->_Guid,manifest))for(const auto& asset:manifest.Assets)
+            if(asset.Type==eAssetType::AvatarMask&&asset.SourceKey=="main"){reference.LocalID=asset.LocalID;break;}}
+        _Editable=false;_ActivePanel=nullptr;_MaterialMode=false;_Material->Deactivate();_Material->hide();
+        for(const auto& panel:_Panels)panel.second->hide();_BaselineSettings.clear();_BaselineMaterialSource.clear();
+        _MaskInspector->Load(_RuntimeAssets,_Assets,_Library,_Selection,reference);_MaskInspector->Edit=[this,reference]{EditAvatarMask(reference);};
+        _MaskInspector->show();_Ui->textureHost->show();_Ui->infoHost->hide();_Ui->contentStack->setCurrentIndex(1);UpdateButtons();return;
+    }
+    if(_RuntimeAssets&&selectedAsset&&selectedAsset->GetAssetType()==eAssetType::Avatar){
+        const GameSproutRuntime::ResourceReference reference{selected.GuidString,selected.LocalID};
+        _Editable=false;_ActivePanel=nullptr;_MaterialMode=false;_Material->Deactivate();_Material->hide();
+        for(const auto& panel:_Panels)panel.second->hide();_BaselineSettings.clear();_BaselineMaterialSource.clear();
+        _AvatarInspector->Load(_RuntimeAssets,reference);_AvatarInspector->Edit=[this,reference]{EditModelRig(reference);};
+        _AvatarInspector->show();_Ui->textureHost->show();_Ui->infoHost->hide();_Ui->contentStack->setCurrentIndex(1);UpdateButtons();return;
+    }
+    if (meta->_ImporterType==eAssetImporterType::Material || (selectedAsset && selectedAsset->GetAssetType()==eAssetType::Material)) {
+        RefreshMaterial(meta,selectedAsset?selectedAsset->GetLocalID():0,changed);
+        return;
+    }
+    if (_MaterialMode) { _MaterialMode=false;_BaselineMaterialSource.clear();_Material->Deactivate(); }
+    _Material->hide();
     Json::Value info(Json::objectValue);
     const auto found=_Panels.find(meta->_ImporterType);
     ImportSettingsInspector * panel=(!selected.IsSubAsset && found!=_Panels.end()) ? found->second : nullptr;
@@ -102,6 +138,7 @@ void InspectorUI::Refresh() {
         if (!panel) info["ImportSettings"]=value["ImportSettings"];
         _Info->Load(panel ? QStringLiteral("资源信息") : QStringLiteral("资源信息与导入设置（当前为只读）"),info);
     }
+    BindAnimationImportSources(*meta,panel);
     const std::string current=AssetArtifactIO::JsonText(value["ImportSettings"]);
     if (panel && (changed || panel!=_ActivePanel || !HasPendingChanges())) {
         _BaselineSettings=current;

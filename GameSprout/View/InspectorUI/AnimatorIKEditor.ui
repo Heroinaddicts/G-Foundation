@@ -1,0 +1,422 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AnimatorIKEditorForm</class>
+ <widget class="QWidget" name="AnimatorIKEditorForm">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="requiresAvatarLabel">
+     <property name="text">
+      <string>IK 预览需要绑定有效的 Humanoid Avatar。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="ikGroup">
+     <property name="title">
+      <string>IK 临时预览</string>
+     </property>
+     <property name="checkable">
+      <bool>true</bool>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+     <layout class="QVBoxLayout" name="ikLayout">
+      <item>
+       <widget class="QWidget" name="controls">
+        <layout class="QVBoxLayout" name="controlsLayout">
+         <item>
+          <widget class="QLabel" name="helpLabel">
+           <property name="text">
+            <string>目标和 Hint 使用 Animator 根对象的局部空间（米），旋转为局部 XYZW 四元数。需要 Humanoid Avatar 且 Controller 层开启 IK Pass。目标只用于当前预览，不写入场景。</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="goalCombo">
+           <item>
+            <property name="text">
+             <string>Left Foot</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Right Foot</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Left Hand</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Right Hand</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="goalTable">
+           <column>
+            <property name="text">
+             <string>X</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>Y</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>Z</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>W</string>
+            </property>
+           </column>
+           <row>
+            <property name="text">
+             <string>Position</string>
+            </property>
+           </row>
+           <row>
+            <property name="text">
+             <string>Rotation</string>
+            </property>
+           </row>
+           <row>
+            <property name="text">
+             <string>Hint</string>
+            </property>
+           </row>
+           <item row="0" column="0">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="0" column="1">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="0" column="2">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="0" column="3">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="1" column="0">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="1" column="1">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="1" column="2">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="1" column="3">
+            <property name="text">
+             <string>1</string>
+            </property>
+           </item>
+           <item row="2" column="0">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="2" column="1">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="2" column="2">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="2" column="3">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <layout class="QFormLayout" name="weightsForm">
+           <item row="0" column="0">
+            <widget class="QLabel" name="positionWeightSpinLabel">
+             <property name="text">
+              <string>位置权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QDoubleSpinBox" name="positionWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="rotationWeightSpinLabel">
+             <property name="text">
+              <string>旋转权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QDoubleSpinBox" name="rotationWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="hintWeightSpinLabel">
+             <property name="text">
+              <string>Hint 权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="hintWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QPushButton" name="applyGoalButton">
+           <property name="text">
+            <string>应用选中 IK 目标</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTableWidget" name="lookAtTable">
+           <column>
+            <property name="text">
+             <string>Look At X</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>Look At Y</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>Look At Z</string>
+            </property>
+           </column>
+           <row>
+            <property name="text">
+             <string>Target</string>
+            </property>
+           </row>
+           <item row="0" column="0">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="0" column="1">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+           <item row="0" column="2">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <layout class="QFormLayout" name="lookForm">
+           <item row="0" column="0">
+            <widget class="QLabel" name="lookWeightSpinLabel">
+             <property name="text">
+              <string>注视总权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QDoubleSpinBox" name="lookWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="value">
+              <double>0</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="bodyWeightSpinLabel">
+             <property name="text">
+              <string>身体权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QDoubleSpinBox" name="bodyWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="value">
+              <double>0.5</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="headWeightSpinLabel">
+             <property name="text">
+              <string>头部权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="headWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="value">
+              <double>1</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="eyesWeightSpinLabel">
+             <property name="text">
+              <string>眼睛权重</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QDoubleSpinBox" name="eyesWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="value">
+              <double>0</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="clampWeightSpinLabel">
+             <property name="text">
+              <string>角度限制</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QDoubleSpinBox" name="clampWeightSpin">
+             <property name="maximum">
+              <double>1</double>
+             </property>
+             <property name="singleStep">
+              <double>0.05</double>
+             </property>
+             <property name="value">
+              <double>0.5</double>
+             </property>
+             <property name="keyboardTracking">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QPushButton" name="applyLookAtButton">
+           <property name="text">
+            <string>应用 Look At</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="clearIKButton">
+           <property name="text">
+            <string>清除全部临时 IK 目标</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="statusLabel">
+           <property name="text">
+            <string />
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+</ui>

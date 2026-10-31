@@ -50,7 +50,7 @@ void ResourceField::Refresh() {
         IAssetMeta* meta=_Assets->QueryAsset(Guid(_Value.Guid));
         SetError(meta&&meta->GetImportState()!=eAssetImportState::Ready?"资源正在导入或导入失败；当前保留上次成功引用。":"");
     } else {
-        _Ui->resourceNameEdit->setText(QStringLiteral("Missing · ")+QString::fromStdString(_Value.Guid)+":"+QString::number(_Value.LocalID));
+        _Ui->resourceNameEdit->setText(QStringLiteral("Missing (%1)").arg(QString::fromStdString(AssetReferenceResolver::TypeName(_Expected))));
         _Ui->resourceNameEdit->setToolTip(QString::fromStdString(_Value.Guid+":"+std::to_string(_Value.LocalID)));SetError(error);
     }
 }

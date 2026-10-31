@@ -1,0 +1,379 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AnimatorComponentEditorForm</class>
+ <widget class="QWidget" name="AnimatorComponentEditorForm">
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <layout class="QFormLayout" name="settingsLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="skeletonLabel">
+       <property name="text">
+        <string>骨架</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="ResourceField" name="skeletonResource" />
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="controllerLabel">
+       <property name="text">
+        <string>Controller</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="ResourceField" name="controllerResource" />
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="clipLabel">
+       <property name="text">
+        <string>默认动画</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="ResourceField" name="clipResource" />
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="speedLabel">
+       <property name="text">
+        <string>播放倍率</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QDoubleSpinBox" name="speedSpin">
+       <property name="decimals">
+        <number>3</number>
+       </property>
+       <property name="maximum">
+        <double>100.000000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>0.100000000000000</double>
+       </property>
+       <property name="value">
+        <double>1.000000000000000</double>
+       </property>
+       <property name="keyboardTracking">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QCheckBox" name="playOnStartCheck">
+       <property name="text">
+        <string>启动时播放</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QCheckBox" name="loopCheck">
+       <property name="text">
+        <string>默认动画循环</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="0">
+      <widget class="QLabel" name="rootMotionModeLabel">
+       <property name="text">
+        <string>根运动</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="1">
+      <widget class="QComboBox" name="rootMotionModeCombo">
+       <item>
+        <property name="text">
+         <string>关闭</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>仅提取（交给移动系统）</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>应用到角色</string>
+        </property>
+       </item>
+       <property name="toolTip">
+        <string>需在片段导入设置中先提取根运动。应用到角色只改变运行姿态，停止预览后恢复初始变换。</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="0">
+      <widget class="QLabel" name="avatarResourceLabel">
+       <property name="text">
+        <string>Humanoid Avatar</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="1">
+      <widget class="ResourceField" name="avatarResource" />
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="previewGroup">
+     <property name="title">
+      <string>动画预览 · 不保存播放姿态</string>
+     </property>
+     <layout class="QVBoxLayout" name="previewLayout">
+      <item>
+       <layout class="QFormLayout" name="layerPreviewLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="previewLayerLabel">
+          <property name="text">
+           <string>预览层</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="previewLayerCombo" />
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="runtimeWeightLabel">
+          <property name="text">
+           <string>运行权重</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="runtimeWeightSpin">
+          <property name="maximum">
+           <double>1</double>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="singleStep">
+           <double>0.05</double>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+          <property name="toolTip">
+           <string>只调整当前角色的运行实例，不写入场景或 Controller；还原后恢复默认权重。</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="playbackLayout">
+        <item>
+         <widget class="QPushButton" name="playButton">
+          <property name="text">
+           <string>播放</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pauseButton">
+          <property name="text">
+           <string>暂停</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="stopButton">
+          <property name="text">
+           <string>还原</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="stateLayout">
+        <item>
+         <widget class="QComboBox" name="stateCombo" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="crossFadeButton">
+          <property name="text">
+           <string>切换状态</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="seekLayout">
+        <item>
+         <widget class="QDoubleSpinBox" name="seekSpin">
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="maximum">
+           <double>86400.000000000000000</double>
+          </property>
+          <property name="suffix">
+           <string> s</string>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="seekButton">
+          <property name="text">
+           <string>定位时间</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="parameterLayout">
+        <item>
+         <widget class="QComboBox" name="parameterCombo" />
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="parameterSpin">
+          <property name="minimum">
+           <double>-1000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="decimals">
+           <number>3</number>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="setParameterButton">
+          <property name="text">
+           <string>设置 / 触发</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="rootMotionDeltaLabel">
+        <property name="text">
+         <string>动画请求位移：0, 0, 0 m</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="rootMotionRotationLabel">
+        <property name="text">
+         <string>动画请求旋转：0, 0, 0, 1</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="animationNotificationsGroup">
+        <property name="title">
+         <string>最近动画通知（最多 64 条）</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <layout class="QVBoxLayout" name="notificationsLayout">
+         <item>
+          <widget class="QTableWidget" name="animationNotificationsTable">
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>160</height>
+            </size>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="selectionBehavior">
+            <enum>QAbstractItemView::SelectRows</enum>
+           </property>
+           <column>
+            <property name="text">
+             <string>动画层 · 时间 / 状态</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>通知</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>参数</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="clearAnimationNotificationsButton">
+           <property name="text">
+            <string>清空通知</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="playbackLabel">
+        <property name="text">
+         <string>尚未播放</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="AnimatorIKEditor" name="ikEditor" />
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ResourceField</class>
+   <extends>QWidget</extends>
+   <header>ResourceField.h</header>
+   <container>0</container>
+  </customwidget>
+  <customwidget>
+   <class>AnimatorIKEditor</class>
+   <extends>QWidget</extends>
+   <header>AnimatorIKEditor.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections />
+</ui>

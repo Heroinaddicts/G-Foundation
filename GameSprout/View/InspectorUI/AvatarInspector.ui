@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>AvatarInspectorForm</class><widget class="QWidget" name="AvatarInspectorForm"><layout class="QVBoxLayout" name="mainLayout"><item><widget class="QLabel" name="summaryLabel"><property name="wordWrap"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="configureButton"><property name="text"><string>配置模型 Rig / Humanoid Avatar</string></property></widget></item></layout></widget><resources/><connections/></ui>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+<class>MaterialExtractDialog</class><widget class="QDialog" name="MaterialExtractDialog">
+<property name="windowTitle"><string>提取材质</string></property><property name="modal"><bool>true</bool></property><property name="minimumSize"><size><width>420</width><height>0</height></size></property>
+<property name="styleSheet"><string>QDialog { background:#25272b; color:#e0e2e6; } QLabel { color:#e0e2e6; } QLineEdit { background:#1d1f23; color:#e0e2e6; border:1px solid #454a53; padding:6px; } QPushButton { padding:6px 14px; } QLabel#errorLabel { color:#f0b5a5; }</string></property>
+<layout class="QVBoxLayout" name="mainLayout"><item><widget class="QLabel" name="descriptionLabel"><property name="text"><string>输入相对于 Assets 的 .mat 路径。提取后模型将引用这个独立材质，原有场景引用保持有效。目标已存在时不会覆盖。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+<item><widget class="QLineEdit" name="pathEdit"><property name="placeholderText"><string>Materials/MyMaterial.mat</string></property></widget></item>
+<item><widget class="QLabel" name="errorLabel"><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+<item><layout class="QHBoxLayout" name="buttonLayout"><item><widget class="QPushButton" name="extractButton"><property name="text"><string>提取</string></property><property name="default"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="cancelButton"><property name="text"><string>取消</string></property></widget></item></layout></item>
+</layout></widget><resources/><connections/></ui>

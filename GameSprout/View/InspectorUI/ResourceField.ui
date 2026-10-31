@@ -1,22 +1,125 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
- <class>ResourceFieldForm</class>
- <widget class="QWidget" name="ResourceFieldForm">
-  <property name="acceptDrops"><bool>true</bool></property>
-  <property name="styleSheet"><string>QWidget#ResourceFieldForm { color:#e0e2e6; }
+  <class>ResourceFieldForm</class>
+  <widget class="QWidget" name="ResourceFieldForm">
+    <property name="acceptDrops">
+      <bool>true</bool>
+    </property>
+    <property name="styleSheet">
+      <string>QWidget#ResourceFieldForm { color:#e0e2e6; }
 QLineEdit { background:#1d1f23; color:#e0e2e6; border:1px solid #566171; border-radius:3px; padding:4px; }
 QLabel#resourceTypeLabel { color:#b8c7d8; } QLabel#resourceErrorLabel { color:#ffb4ae; }
-QToolButton { background:#303c4d; color:#f1f4f8; border:1px solid #64788f; border-radius:3px; padding:4px 7px; } QToolButton:hover { background:#425773; } QToolButton:disabled { color:#858b95; background:#30343a; }</string></property>
-  <layout class="QVBoxLayout" name="mainLayout"><property name="spacing"><number>3</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-   <item><widget class="QLabel" name="resourceTypeLabel"><property name="text"><string>Resource</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
-   <item><layout class="QHBoxLayout" name="referenceLayout"><property name="spacing"><number>4</number></property>
-    <item><widget class="QLineEdit" name="resourceNameEdit"><property name="readOnly"><bool>true</bool></property><property name="acceptDrops"><bool>false</bool></property><property name="placeholderText"><string>未绑定：从 Project 拖入资源</string></property></widget></item>
-    <item><widget class="QToolButton" name="selectResourceButton"><property name="text"><string>选择</string></property><property name="toolTip"><string>按此字段所需类型选择资源</string></property></widget></item>
-    <item><widget class="QToolButton" name="locateResourceButton"><property name="text"><string>定位</string></property><property name="toolTip"><string>在 Project 中选中源文件或子资源</string></property></widget></item>
-    <item><widget class="QToolButton" name="clearResourceButton"><property name="text"><string>清空</string></property><property name="toolTip"><string>只解除引用，不删除资源文件</string></property></widget></item>
-   </layout></item>
-   <item><widget class="QLabel" name="resourceErrorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
-  </layout>
- </widget>
- <resources/><connections/>
+QToolButton { background:#303c4d; color:#f1f4f8; border:1px solid #64788f; border-radius:3px; padding:4px 7px; } QToolButton:hover { background:#425773; } QToolButton:disabled { color:#858b95; background:#30343a; }</string>
+    </property>
+    <layout class="QVBoxLayout" name="mainLayout">
+      <property name="spacing">
+        <number>3</number>
+      </property>
+      <property name="leftMargin">
+        <number>0</number>
+      </property>
+      <property name="topMargin">
+        <number>0</number>
+      </property>
+      <property name="rightMargin">
+        <number>0</number>
+      </property>
+      <property name="bottomMargin">
+        <number>0</number>
+      </property>
+      <item>
+        <widget class="QLabel" name="resourceTypeLabel">
+          <property name="visible">
+            <bool>false</bool>
+          </property>
+          <property name="text">
+            <string>Resource</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <layout class="QHBoxLayout" name="referenceLayout">
+          <property name="spacing">
+            <number>4</number>
+          </property>
+          <item>
+            <widget class="QLineEdit" name="resourceNameEdit">
+              <property name="readOnly">
+                <bool>true</bool>
+              </property>
+              <property name="acceptDrops">
+                <bool>false</bool>
+              </property>
+              <property name="placeholderText">
+                <string>未绑定：从 Project 拖入资源</string>
+              </property>
+              <property name="sizePolicy">
+                <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                </sizepolicy>
+              </property>
+              <property name="minimumSize">
+                <size>
+                  <width>48</width>
+                  <height>0</height>
+                </size>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QToolButton" name="selectResourceButton">
+              <property name="text">
+                <string>选择</string>
+              </property>
+              <property name="toolTip">
+                <string>按此字段所需类型选择资源</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QToolButton" name="locateResourceButton">
+              <property name="text">
+                <string>定位</string>
+              </property>
+              <property name="toolTip">
+                <string>在 Project 中选中源文件或子资源</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QToolButton" name="clearResourceButton">
+              <property name="text">
+                <string>清空</string>
+              </property>
+              <property name="toolTip">
+                <string>只解除引用，不删除资源文件</string>
+              </property>
+            </widget>
+          </item>
+        </layout>
+      </item>
+      <item>
+        <widget class="QLabel" name="resourceErrorLabel">
+          <property name="text">
+            <string />
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources />
+  <connections />
 </ui>

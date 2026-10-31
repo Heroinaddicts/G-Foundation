@@ -1,0 +1,91 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AnimatorSyncEditorForm</class>
+ <widget class="QWidget" name="AnimatorSyncEditorForm">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="syncHelpLabel">
+     <property name="text">
+      <string>同步层共享来源状态机和归一化时间；只覆盖动作，不复制或编辑状态/转场。</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QComboBox" name="syncSourceStateCombo" />
+   </item>
+   <item>
+    <widget class="QCheckBox" name="syncOverrideCheck">
+     <property name="text">
+      <string>覆盖此状态的动作</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="ResourceField" name="syncClipField" />
+   </item>
+   <item>
+    <widget class="QLineEdit" name="syncBlendParameterEdit">
+     <property name="placeholderText">
+      <string>留空使用单动作；填写 Float 参数名使用 1D 动作覆盖</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="syncMotionsTable">
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+     <column>
+      <property name="text">
+       <string>阈值</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>速度</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>动作</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="syncAddMotionButton">
+     <property name="text">
+      <string>新增 1D 子动作</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="syncRemoveMotionButton">
+     <property name="text">
+      <string>移除选中子动作</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="ResourceField" name="syncMotionField" />
+   </item>
+   <item>
+    <widget class="QLabel" name="syncStatusLabel">
+     <property name="text">
+      <string />
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ResourceField</class>
+   <extends>QWidget</extends>
+   <header>ResourceField.h</header>
+  </customwidget>
+ </customwidgets>
+</ui>

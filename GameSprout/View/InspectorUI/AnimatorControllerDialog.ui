@@ -1,0 +1,633 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AnimatorControllerDialogForm</class>
+ <widget class="QDialog" name="AnimatorControllerDialogForm">
+  <property name="windowTitle">
+   <string>Animator Controller</string>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string>QLabel#statusLabel { color: #e8b55c; } QTableWidget { selection-background-color: #365974; } </string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QScrollArea" name="controllerScrollArea">
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="controllerScrollContent">
+      <layout class="QVBoxLayout" name="controllerContentLayout">
+       <item>
+        <widget class="QLabel" name="descriptionLabel">
+         <property name="text">
+          <string>每层独立编辑状态和转场，共享参数；层按从上到下的顺序混合。</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="layerGroup">
+         <property name="title">
+          <string>动画层</string>
+         </property>
+         <layout class="QVBoxLayout" name="layerLayout">
+          <item>
+           <layout class="QHBoxLayout" name="layerActions">
+            <item>
+             <widget class="QComboBox" name="layerCombo" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="addLayerButton">
+              <property name="text">
+               <string>新增层</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="removeLayerButton">
+              <property name="text">
+               <string>删除层</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="moveLayerUpButton">
+              <property name="text">
+               <string>上移</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="moveLayerDownButton">
+              <property name="text">
+               <string>下移</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QFormLayout" name="layerDetails">
+            <item row="0" column="0">
+             <widget class="QLabel" name="layerNameLabel">
+              <property name="text">
+               <string>名称</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLineEdit" name="layerNameEdit" />
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="layerModeLabel">
+              <property name="text">
+               <string>混合模式</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QComboBox" name="layerModeCombo">
+              <item>
+               <property name="text">
+                <string>Override · 覆盖</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Additive · 叠加</string>
+               </property>
+              </item>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="layerWeightLabel">
+              <property name="text">
+               <string>默认权重</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QDoubleSpinBox" name="layerWeightSpin">
+              <property name="maximum">
+               <double>1</double>
+              </property>
+              <property name="decimals">
+               <number>3</number>
+              </property>
+              <property name="singleStep">
+               <double>0.05</double>
+              </property>
+              <property name="keyboardTracking">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="layerMaskLabel">
+              <property name="text">
+               <string>Avatar Mask</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="ResourceField" name="layerMaskField" />
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="referenceClipLabel">
+              <property name="text">
+               <string>叠加参考动作</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="ResourceField" name="referenceClipField" />
+            </item>
+            <item row="5" column="0">
+             <widget class="QLabel" name="referenceTimeLabel">
+              <property name="text">
+               <string>参考姿势时间</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <widget class="QDoubleSpinBox" name="referenceTimeSpin">
+              <property name="maximum">
+               <double>86400</double>
+              </property>
+              <property name="decimals">
+               <number>3</number>
+              </property>
+              <property name="suffix">
+               <string> s</string>
+              </property>
+              <property name="keyboardTracking">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="0">
+             <widget class="QLabel" name="syncSourceComboLabel">
+              <property name="text">
+               <string>同步状态机来源</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="1">
+             <widget class="QComboBox" name="syncSourceCombo" />
+            </item>
+            <item row="7" column="0">
+             <widget class="QLabel" name="syncTimingCheckLabel">
+              <property name="text">
+               <string>同步层参与时长混合</string>
+              </property>
+             </widget>
+            </item>
+            <item row="7" column="1">
+             <widget class="QCheckBox" name="syncTimingCheck" />
+            </item>
+            <item row="8" column="0">
+             <widget class="QLabel" name="ikPassCheckLabel">
+              <property name="text">
+               <string>启用 IK Pass</string>
+              </property>
+             </widget>
+            </item>
+            <item row="8" column="1">
+             <widget class="QCheckBox" name="ikPassCheck" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="layerHelpLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTabWidget" name="tabs">
+         <widget class="QWidget" name="statesTab">
+          <attribute name="title">
+           <string>状态与动作</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="statesTabLayout">
+           <item>
+            <layout class="QHBoxLayout" name="stateActions">
+             <item>
+              <widget class="QPushButton" name="addStateButton">
+               <property name="text">
+                <string>新增状态</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="removeStateButton">
+               <property name="text">
+                <string>删除状态</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="defaultLabel">
+               <property name="text">
+                <string>默认状态</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QComboBox" name="defaultStateCombo" />
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="statesTable">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SingleSelection</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>名称</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>动作</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>速度</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>循环</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="clipRow">
+             <item>
+              <widget class="QLabel" name="clipLabel">
+               <property name="text">
+                <string>选中状态的动作</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="ResourceField" name="clipField" />
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="blendRow">
+             <item>
+              <widget class="QLabel" name="blendLabel">
+               <property name="text">
+                <string>1D 混合参数</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="blendParameterEdit">
+               <property name="placeholderText">
+                <string>留空使用上方单动作；填写 Float 参数名启用 1D 混合</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="motionActions">
+             <item>
+              <widget class="QLabel" name="motionsLabel">
+               <property name="text">
+                <string>1D 子动作（阈值须递增）</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="addMotionButton">
+               <property name="text">
+                <string>新增子动作</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="removeMotionButton">
+               <property name="text">
+                <string>删除子动作</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="motionsTable">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SingleSelection</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>阈值</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>速度</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>动作</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <widget class="ResourceField" name="motionClipField" />
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="parametersTab">
+          <attribute name="title">
+           <string>参数</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="parametersTabLayout">
+           <item>
+            <widget class="QLabel" name="parameterHelp">
+             <property name="text">
+              <string>类型填写 Float、Int、Bool 或 Trigger；Bool / Trigger 默认值填写 0 或 1。</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="parameterActions">
+             <item>
+              <widget class="QPushButton" name="addParameterButton">
+               <property name="text">
+                <string>新增参数</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="removeParameterButton">
+               <property name="text">
+                <string>删除参数</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="parametersTable">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SingleSelection</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>名称</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>类型</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>默认值</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="transitionsTab">
+          <attribute name="title">
+           <string>转场与条件</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="transitionsTabLayout">
+           <item>
+            <widget class="QLabel" name="transitionHelp">
+             <property name="text">
+              <string>来源可填写 AnyState；同一转场的全部条件必须成立。时长单位为秒，目标偏移为归一化时间。</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="transitionActions">
+             <item>
+              <widget class="QPushButton" name="addTransitionButton">
+               <property name="text">
+                <string>新增转场</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="removeTransitionButton">
+               <property name="text">
+                <string>删除转场</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="transitionsTable">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SingleSelection</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>来源</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>目标</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>时长</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>退出时间</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>退出点</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>目标偏移</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>允许自转移</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="conditionActions">
+             <item>
+              <widget class="QLabel" name="conditionsLabel">
+               <property name="text">
+                <string>选中转场的条件</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="addConditionButton">
+               <property name="text">
+                <string>新增条件</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="removeConditionButton">
+               <property name="text">
+                <string>删除条件</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="conditionHelp">
+             <property name="text">
+              <string>比较填写 Greater、Less、Equal、NotEqual、If 或 IfNot；If / IfNot 用于 Bool、Trigger。</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="conditionsTable">
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::SingleSelection</enum>
+             </property>
+             <column>
+              <property name="text">
+               <string>参数</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>比较</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>值</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="syncTab">
+          <attribute name="title">
+           <string>同步动作覆盖</string>
+          </attribute>
+          <layout class="QVBoxLayout" name="syncTabLayout">
+           <item>
+            <widget class="AnimatorSyncEditor" name="syncEditor" />
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="bottomActions">
+     <item>
+      <widget class="QPushButton" name="reloadButton">
+       <property name="text">
+        <string>重新加载</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="saveHelp">
+       <property name="text">
+        <string>保存会校验动作引用、参数及状态关系。</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveButton">
+       <property name="text">
+        <string>保存</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>关闭</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ResourceField</class>
+   <extends>QWidget</extends>
+   <header>ResourceField.h</header>
+  </customwidget>
+  <customwidget>
+   <class>AnimatorSyncEditor</class>
+   <extends>QWidget</extends>
+   <header>AnimatorSyncEditor.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections />
+</ui>

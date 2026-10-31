@@ -20,6 +20,13 @@ std::string TypeName(eAssetType type) {
     case eAssetType::Texture:return "Texture";
     case eAssetType::Mesh:return "Mesh";
     case eAssetType::Material:return "Material";
+    case eAssetType::Shader:return "Shader";
+    case eAssetType::Model:return "Model";
+    case eAssetType::Skeleton:return "Skeleton";
+    case eAssetType::AnimationClip:return "Animation Clip";
+    case eAssetType::AnimatorController:return "Animator Controller";
+    case eAssetType::Avatar:return "Avatar";
+    case eAssetType::AvatarMask:return "Avatar Mask";
     default:return "Unsupported";
     }
 }
@@ -27,7 +34,7 @@ bool Resolve(IAssetsManager* assets,ILibraryManager* library,const GameSproutRun
     eAssetType expected,AssetReferenceCandidate& result,std::string& error,bool requireReady) {
     error.clear();result={};
     if(!assets || !library) {error="资源服务尚未就绪。";return false;}
-    if(expected!=eAssetType::Mesh && expected!=eAssetType::Texture && expected!=eAssetType::Material) {error="此字段尚未支持该资源类型。";return false;}
+    if(expected!=eAssetType::Mesh && expected!=eAssetType::Texture && expected!=eAssetType::Material && expected!=eAssetType::Shader && expected!=eAssetType::Model && expected!=eAssetType::Skeleton && expected!=eAssetType::AnimationClip && expected!=eAssetType::AnimatorController && expected!=eAssetType::Avatar && expected!=eAssetType::AvatarMask) {error="此字段尚未支持该资源类型。";return false;}
     const Guid guid(reference.Guid);
     if(!guid.IsValid() || !reference.LocalID) {error="资源身份无效，需要有效 GUID 和非零 LocalID。";return false;}
     IAssetMeta* meta=assets->QueryAsset(guid);

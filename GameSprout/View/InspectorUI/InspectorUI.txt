@@ -4,26 +4,29 @@ Inspector 资源与场景节点面板
 - SelectionManager 保存资源身份快照并在主线程 Update 合并通知，不持有 Meta/IAsset。
 - ProjectAssetsUI 发布文件、目录和子资源选择，也响应外部选择恢复；模型重建不发布瞬间空选择。
 - InspectorUI 订阅选择和资源事件，按需重新查询 Meta/Library。锁定时保留检查目标。
-- 源文件显示路径、GUID、导入器、状态和导入设置；子资源显示名称、类型、LocalID 和产物描述。
-- 当前支持单选编辑 Texture、Model、Audio、Text、Font、Video、Shader 和 ComputeShader。
-- Model 按模型、骨骼/动画、材质分页；暂未实现的压缩/Humanoid/光照 UV 等能力受限。
-- 其他原生源资源设置和子资源信息仍为只读。多选仅显示数量。
-- 未实现纹理/模型/动画预览，也未读取完整产物 payload；资源删除后不继续使用旧指针。
+- 普通模式显示资源名称与可编辑属性；路径、GUID、LocalID、就绪状态和产物描述只在调试模式显示。
+- 面板“⋮ → 检查模式”切换普通／调试，默认普通；重要错误与未保存提示仍常驻显示。
+- 当前支持单选编辑 Texture、Model、Audio、Text、Font、Video、Shader、ComputeShader、原生动画及动画配置资源。
+- Model 按模型、骨骼/动画、材质分页；Humanoid 可配置角色骨映射、参考姿势与身体尺度，自动匹配只提供可检查的建议。暂未实现的压缩、光照 UV 等能力受限。
+- 独立 .mat 可编辑保存；模型内嵌材质参数只读，可提取为独立材质并保留原模型引用。其他原生源资源设置和子资源信息仍为只读。多选仅显示数量。
+- 材质读取真实二进制产物参数；资源删除后不继续使用旧指针。
 
 场景节点
 - Hierarchy 与 Project 共用 SelectionManager，非空节点/资源选择互斥；锁定检查目标不改变共享选择。
 - Inspector 仅保存 SceneID/ObjectID，刷新时通过 SceneManager/Runtime 重新查询，不保存节点或组件指针。
-- 展示对象名称、父节点、运行时身份、自身启用状态和层级启用状态，场景根也可检查。
+- 节点 Header 一行显示自身启用、可编辑名称和锁定；场景根只显示名称和锁定，不作为普通对象启停。
+- 场景根的固定 Transform 不出现在普通模式，只在调试模式查看。
+- 删除重复名称、大分组、父节点、组件数量以及层级启用状态的常驻行；路径和运行 ID 仅在调试模式查看。
 - Transform、RectTransform、Image、Canvas、Mesh、MeshRenderer、Camera 各自有可折叠信息分组；未知组件显示稳定类型标识。
 - 对象名、启用状态和七类组件的普通属性可编辑，经 SceneManager.EditObject 校验、回读并记录 Undo/Redo。
 - Mesh/Texture/Material 资源字段支持拖入、按类型选择、定位和清空；GUID/LocalID 由完整 Manifest 解析，Missing 身份保留。
-- 派生值与调试数据保留在默认折叠的 Details；矩阵、Bounds、运行 ID、层级启用状态只读。
+- 普通组件面板只显示可编辑属性；调试模式额外提供 Details，矩阵、Bounds、资源身份等派生值只读。
 - 订阅 Runtime 变化，组件修改/添加/移除、父级变换/改名/启用、主相机变化均刷新显示。
 - 锁定节点删除或切换场景后清除失效身份并显示空状态，解锁前不跟随其他选择。
 - 从未应用的资源草稿切换到节点时，仍提供应用、放弃、取消；取消恢复共享资源选择。
 - 材质槽支持增加、删除与排序；整体替换数组以支持撤销。Camera 可设为主相机。
 - File/Save Scene 与 Save Scene As 保存完整节点及组件属性、资源引用；稳定文件 ID 与 Runtime InstanceID 分离。
-- 当前未提供 Add Component、节点创建/删除的 Undo，也未接入 GRHI 渲染。
+- 组件增删的完整作者界面仍待扩展；节点删除由 SceneManager 记录 Undo/Redo，Scene/Game 通过公共 Runtime/GRHI 渲染链展示结果。
 
 设置编辑
 - TextureInspector 内部保留 JSON 设置草稿，不持有或提前修改 ITextureImportSettings。
@@ -53,3 +56,23 @@ Inspector 资源与场景节点面板
   音频采样率、视频缩放、字体字号和字形重建、Shader 宏定义保存及 Compute 阶段限制。
 - 媒体测试需要 ffmpeg/ffprobe，字体测试需要系统字体；缺少时显式跳过对应产物验证。
 - Shader 工具缺失允许导入失败，验证设置可保存且错误可见，不宣称已完成跨平台着色器编译。
+
+材质
+- MaterialInspector 根据 Shader 的参数描述生成 Color、Float、Int、Range、Vector、Texture、Toggle、Enum 控件；参数声明与 GPU 绑定反射分别维护。
+- MaterialPropertyRow 的全部控件/布局均在 .ui，MaterialValueStack 只采用当前页的尺寸，避免隐藏贴图页撑高其他参数。
+- Shader 槽复用按类型验证的 ResourceField；切换 Shader 保留仍适用的值，类型/范围不适用的同名属性恢复新默认值。
+- Texture 槽支持拖放、选择、定位、清空与 Tiling/Offset；颜色可用颜色选择器或直接输入 RGBA。
+- 独立材质保存到 .mat 源文件，经 AssetsManager 校验并重新导入；不会写入 .meta.ImportSettings 或直接覆盖 Artifact。
+- 源文件快照用于冲突检测，补齐默认值后的展示快照用于草稿判断；打开未显式保存过默认值的材质不会立即变成已修改。
+- 内嵌材质展示只读参数；已提取的材质沿 ExternalMaterial 查询显示实际外部参数，并提供打开外部材质。
+- 提取路径默认在模型同目录；用户可输入 Assets 相对 .mat 路径，已经存在时不覆盖。提取完成后选择新的独立材质。
+- 产物路径、大小、版本、未解析贴图和映射目标只在调试模式的折叠信息中查看。
+- 当前场景预览支持基础颜色、基础贴图、贴图 Tiling/Offset 和双面；金属度/粗糙度及自定义 Shader 参数可保存，尚未参与场景预览。
+
+动画与人形配置
+- Controller 编辑器支持多层、1D 混合、同步来源、Motion Override、Timing、IK Pass、遮罩和 Additive 参考姿势；源数据由 RuntimeAssets Module 校验及保存。
+- Avatar 子资源双击或 Model Inspector 可进入 Rig 配置；55 角色骨、参考 TRS 与尺度使用 typed Module 接口，不在 View 中读取 FBX 或重建骨架。
+- Transform 遮罩显示固定 Skeleton 的节点树；Humanoid 遮罩显示可跨骨架使用的 8 个身体部位，根运动权重独立。
+- Animator 的 Avatar、Skeleton、Controller 与默认 Clip 属于场景作者配置；播放、参数、层权重、IK/LookAt 目标是临时预览状态。
+- 原生动画的 SourceAvatar 位于 Meta 导入设置草稿，经统一 Apply/Restore 流程处理，不扫描或改写动画帧本体。
+- IK 面板的静态表格行列在 .ui 声明，构造回归覆盖 LookAt 单元格与四种目标切换，防止 uic 初始化空指针。

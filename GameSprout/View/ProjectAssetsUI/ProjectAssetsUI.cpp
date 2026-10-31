@@ -1,6 +1,8 @@
 #include "ProjectAssetsUI.h"
 #include "ProjectAssetsModel.h"
 #include "ISceneManager.h"
+#include "IRuntimeAssets.h"
+#include "ILibraryManager.h"
 #include "ui_ProjectAssetsUI.h"
 #include <QApplication>
 #include <QHeaderView>
@@ -18,6 +20,8 @@ void ProjectAssetsUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * edi
     GetGameSproutModule(editor,_Assets,AssetsManager);
     GetGameSproutModule(editor,_Selection,SelectionManager);
     GetGameSproutModule(editor,_Scenes,SceneManager);
+    GetGameSproutModule(editor,_RuntimeAssets,RuntimeAssets);
+    GetGameSproutModule(editor,_Library,LibraryManager);
 }
 
 bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
@@ -122,7 +126,7 @@ void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
     _FolderModel=nullptr;_AssetModel=nullptr;
     delete _Ui;_Ui=nullptr;
     _Assets=nullptr;
-    _Scenes=nullptr;_PendingCreatedScenePath.clear();_HasContextDirectory=false;
+    _Scenes=nullptr;_RuntimeAssets=nullptr;_Library=nullptr;_ContextAsset={};_PendingCreatedAssetPath.clear();_HasContextDirectory=false;
     _SynchronizingSelection=false;
     if (g_Self==this) g_Self=nullptr;
 }

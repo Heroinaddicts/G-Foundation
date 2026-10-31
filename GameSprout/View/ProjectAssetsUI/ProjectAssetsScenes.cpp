@@ -2,6 +2,8 @@
 #include "ProjectAssetsModel.h"
 #include "ISceneManager.h"
 #include "ISceneEditorUI.h"
+#include "IInspectorUI.h"
+#include "ILibraryManager.h"
 #include "ui_CreateSceneDialog.h"
 #include "ui_ProjectAssetsUI.h"
 #include <QDialog>
@@ -50,6 +52,12 @@ void ProjectAssetsUI::RememberContextDirectory(QTreeView*, const QModelIndex& in
     _ContextDirectory = first.isValid() && first.data(ProjectAssetsModel::FolderRole).toBool()
         ? first.data(ProjectAssetsModel::PathRole).toString() : _CurrentPath;
     _HasContextDirectory = true;
+    _ContextAsset={};
+    if (first.isValid()&&!first.data(ProjectAssetsModel::FolderRole).toBool()) {
+        _ContextAsset.GuidString=first.data(ProjectAssetsModel::GuidRole).toString().toStdString();
+        _ContextAsset.LocalID=first.data(ProjectAssetsModel::LocalIDRole).toULongLong();
+        _ContextAsset.IsSubAsset=first.data(ProjectAssetsModel::SubAssetRole).toBool();
+    }
 }
 
 void ProjectAssetsUI::CreateSceneMenu() {
@@ -87,8 +95,8 @@ void ProjectAssetsUI::ShowCreateSceneDialog() {
             return;
         }
         // 只创建文件。等待 AssetsManager 的文件事件/Meta，再按身份选中，不自动打开场景。
-        _PendingCreatedScenePath=QString::fromStdString(path);
-        const QString parent=QFileInfo(_PendingCreatedScenePath).path();
+        _PendingCreatedAssetPath=QString::fromStdString(path);
+        const QString parent=QFileInfo(_PendingCreatedAssetPath).path();
         NavigateToDirectory(parent=="." ? "" : parent.toStdString());
         _Dirty=true;
         dialog->accept();
@@ -99,9 +107,32 @@ void ProjectAssetsUI::ShowCreateSceneDialog() {
 }
 
 void ProjectAssetsUI::OpenSceneAsset(const QModelIndex& index) {
-    if (!_Scenes || !_Assets || !index.isValid() || index.data(ProjectAssetsModel::SubAssetRole).toBool()) return;
+    if (!_Assets || !index.isValid()) return;
     IAssetMeta* meta=_Assets->QueryAsset(Guid(index.data(ProjectAssetsModel::GuidRole).toString().toStdString()));
-    if (!meta || meta->_ImporterType!=eAssetImporterType::Scene) return;
+    if (!meta) return;
+    if(index.data(ProjectAssetsModel::SubAssetRole).toBool()){
+        auto* asset=_Library?_Library->QueryAsset(meta->_Guid,index.data(ProjectAssetsModel::LocalIDRole).toULongLong()):nullptr;
+        if(asset&&asset->GetAssetType()==eAssetType::Avatar&&g_GameSproutEditor){auto* inspector=g_GameSproutEditor->GetGameSproutView<IInspectorUI>("InspectorUI");if(inspector)inspector->EditModelRig({meta->_Guid.GetGuidString(),asset->GetLocalID()});}return;
+    }
+    if (meta->_ImporterType==eAssetImporterType::AnimatorController && _Library && g_GameSproutEditor) {
+        AssetImportManifest manifest;
+        if (_Library->GetManifest(meta->_Guid,manifest)) for(const auto& asset:manifest.Assets)
+            if(asset.Type==eAssetType::AnimatorController&&asset.SourceKey=="main") {
+                auto* inspector=g_GameSproutEditor->GetGameSproutView<IInspectorUI>("InspectorUI");
+                if(inspector)inspector->EditAnimatorController({meta->_Guid.GetGuidString(),asset.LocalID});
+                return;
+            }
+        return;
+    }
+    if(meta->_ImporterType==eAssetImporterType::AvatarMask&&_Library&&g_GameSproutEditor){
+        AssetImportManifest manifest;if(_Library->GetManifest(meta->_Guid,manifest))for(const auto& asset:manifest.Assets)
+            if(asset.Type==eAssetType::AvatarMask&&asset.SourceKey=="main"){
+                auto* inspector=g_GameSproutEditor->GetGameSproutView<IInspectorUI>("InspectorUI");
+                if(inspector)inspector->EditAvatarMask({meta->_Guid.GetGuidString(),asset.LocalID});return;
+            }
+        return;
+    }
+    if(meta->_ImporterType!=eAssetImporterType::Scene||!_Scenes)return;
     if (g_GameSproutEditor) {
         ISceneEditorUI* editor = g_GameSproutEditor->GetGameSproutView<ISceneEditorUI>("SceneEditorUI");
         if (editor) { editor->OpenSceneAsset(meta->GetPath()); return; }
@@ -113,21 +144,21 @@ void ProjectAssetsUI::OpenSceneAsset(const QModelIndex& index) {
     } else _Ui->statusLabel->setToolTip(QString());
 }
 
-void ProjectAssetsUI::SelectPendingCreatedScene(const std::vector<IAssetMeta*>& metas) {
-    if (_PendingCreatedScenePath.isEmpty()) return;
+void ProjectAssetsUI::SelectPendingCreatedAsset(const std::vector<IAssetMeta*>& metas) {
+    if (_PendingCreatedAssetPath.isEmpty()) return;
     // 导入完成时，用户可能已转去检查场景对象；自动选择不能覆盖新的主动选择。
     if (_Selection && _Selection->GetSceneObjectSelection().ObjectID) {
-        _PendingCreatedScenePath.clear();
+        _PendingCreatedAssetPath.clear();
         return;
     }
     for (IAssetMeta* meta:metas) {
-        if (meta->_ImporterType!=eAssetImporterType::Scene || QString::fromStdString(meta->GetPath())!=_PendingCreatedScenePath) continue;
-        const QString parent=QFileInfo(_PendingCreatedScenePath).path();
+        if ((meta->_ImporterType!=eAssetImporterType::Scene && meta->_ImporterType!=eAssetImporterType::AnimatorController && meta->_ImporterType!=eAssetImporterType::AvatarMask) || QString::fromStdString(meta->GetPath())!=_PendingCreatedAssetPath) continue;
+        const QString parent=QFileInfo(_PendingCreatedAssetPath).path();
         NavigateToDirectory(parent=="." ? "" : parent.toStdString());
         _FolderSelected=false;
         _ExternalSelection={{meta->_Guid.GetGuidString(),0,false}};
         _RestoreExternalSelection=true;
-        _PendingCreatedScenePath.clear();
+        _PendingCreatedAssetPath.clear();
         return;
     }
 }

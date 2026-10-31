@@ -1,0 +1,225 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AvatarMaskDialogForm</class>
+ <widget class="QDialog" name="AvatarMaskDialogForm">
+  <property name="windowTitle">
+   <string>Avatar Mask</string>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>660</width>
+    <height>720</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string>QLabel#statusLabel { color: #e8b55c; } QTreeWidget { selection-background-color: #365974; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="descriptionLabel">
+     <property name="text">
+      <string>按骨架层级控制参与混合的部位。勾选或修改父节点权重会应用到整个子树；可再单独调整子节点。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="settingsLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="skeletonLabel">
+       <property name="text">
+        <string>所属骨架</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="ResourceField" name="skeletonField" />
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="defaultWeightLabel">
+       <property name="text">
+        <string>默认骨骼权重</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QDoubleSpinBox" name="defaultWeightSpin">
+       <property name="maximum">
+        <double>1</double>
+       </property>
+       <property name="singleStep">
+        <double>0.05</double>
+       </property>
+       <property name="decimals">
+        <number>3</number>
+       </property>
+       <property name="keyboardTracking">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="rootMotionWeightLabel">
+       <property name="text">
+        <string>根运动权重</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QDoubleSpinBox" name="rootMotionWeightSpin">
+       <property name="maximum">
+        <double>1</double>
+       </property>
+       <property name="singleStep">
+        <double>0.05</double>
+       </property>
+       <property name="decimals">
+        <number>3</number>
+       </property>
+       <property name="keyboardTracking">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="maskModeTitle">
+       <property name="text">
+        <string>遮罩模式</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QLabel" name="maskModeLabel">
+       <property name="text">
+        <string />
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="treeActions">
+     <item>
+      <widget class="QPushButton" name="allButton">
+       <property name="text">
+        <string>全身启用</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="noneButton">
+       <property name="text">
+        <string>全身排除</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTreeWidget" name="bonesTree">
+     <property name="alternatingRowColors">
+      <bool>true</bool>
+     </property>
+     <property name="editTriggers">
+      <set>QAbstractItemView::DoubleClicked|QAbstractItemView::EditKeyPressed</set>
+     </property>
+     <column>
+      <property name="text">
+       <string>骨骼 / 节点</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>权重 0–1</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="humanPartsTable">
+     <column>
+      <property name="text">
+       <string>人体部位</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>权重 0–1</string>
+      </property>
+     </column>
+     <attribute name="horizontalHeaderStretchLastSection">
+      <bool>true</bool>
+     </attribute>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="humanMaskHelpLabel">
+     <property name="text">
+      <string>Humanoid 部位遮罩按人体角色生效，可用于不同骨架的角色。手指和手臂分别控制；根运动仍独立。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="rootHelpLabel">
+     <property name="text">
+      <string>Mask 绑定上方所属骨架，本窗口不更换骨架。骨架结构变更后重新加载；失效路径会提示错误。根运动独立控制，不随全身操作变化。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="bottomLayout">
+     <item>
+      <widget class="QPushButton" name="reloadButton">
+       <property name="text">
+        <string>重新加载</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveButton">
+       <property name="text">
+        <string>保存</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>关闭</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ResourceField</class>
+   <extends>QWidget</extends>
+   <header>ResourceField.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections />
+</ui>

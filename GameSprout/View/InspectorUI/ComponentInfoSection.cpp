@@ -21,9 +21,10 @@ ComponentInfoSection::ComponentInfoSection(QWidget* parent) : QWidget(parent), _
     _Ui->componentProperties->header()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
     _Ui->componentProperties->header()->setSectionResizeMode(1,QHeaderView::Stretch);
     QObject::connect(_Ui->componentHeaderButton,&QToolButton::toggled,this,[this](bool expanded) { SetExpanded(expanded); });
-    QObject::connect(_Ui->detailsButton,&QToolButton::toggled,_Ui->componentProperties,&QWidget::setVisible);
+    QObject::connect(_Ui->detailsButton,&QToolButton::toggled,this,[this] { UpdateDebugVisibility(); });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemExpanded,this,[this] { UpdateHeight(); });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemCollapsed,this,[this] { UpdateHeight(); });
+    UpdateDebugVisibility();
 }
 ComponentInfoSection::~ComponentInfoSection() { delete _Ui; }
 bool ComponentInfoSection::IsExpanded() const { return _Ui->componentHeaderButton->isChecked(); }
@@ -31,6 +32,15 @@ void ComponentInfoSection::SetExpanded(bool expanded) {
     _Ui->componentHeaderButton->setChecked(expanded);
     _Ui->componentHeaderButton->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);
     _Ui->sectionBody->setVisible(expanded);
+}
+void ComponentInfoSection::SetDebugMode(bool debug) {
+    _DebugMode=debug;
+    UpdateDebugVisibility();
+}
+void ComponentInfoSection::UpdateDebugVisibility() {
+    _Ui->detailsButton->setVisible(_DebugMode);
+    _Ui->componentProperties->setVisible(_DebugMode && _Ui->detailsButton->isChecked());
+    _Ui->unavailableEditorLabel->setVisible(!_Editor && !_DebugMode);
 }
 void ComponentInfoSection::Add(const QString& key,const QString& label,const QString& value,QTreeWidgetItem* parent) {
     auto* item=new QTreeWidgetItem();
@@ -124,6 +134,13 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         Add("CullingMask",QStringLiteral("可见层掩码"),"0x"+QString::number(settings.CullingMask,16).rightJustified(8,'0'));
         auto* object=value->GetGameObject();
         Add("MainCamera",QStringLiteral("场景主相机"),Yes(object && object->GetScene() && object->GetScene()->GetMainCamera()==value));
+    } else if(auto* value=dynamic_cast<GameSproutRuntime::IAnimatorComponent*>(&component)) {
+        caption="Animator";Resource("Controller",QStringLiteral("Controller"),value->GetController());
+        Resource("Skeleton",QStringLiteral("骨架"),value->GetSkeleton());
+        Add("NodeBindings",QStringLiteral("节点绑定"),QString::number(value->GetNodeBindings().size()));
+    } else if(auto* value=dynamic_cast<GameSproutRuntime::ISkinnedMeshRendererComponent*>(&component)) {
+        caption="Skinned Mesh Renderer";
+        Add("AnimatorObjectID",QStringLiteral("Animator 节点 ID"),QString::number(value->GetAnimatorObjectID()));
     } else Add("Unknown",QStringLiteral("组件信息"),QStringLiteral("当前版本尚无此组件的专用属性面板。"));
     _Ui->componentHeaderButton->setText(caption);
     _Ui->componentHeaderButton->setToolTip(type);
@@ -132,6 +149,7 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         item->setExpanded(expanded.contains(item->data(0,Qt::UserRole).toString()));
     }
     UpdateHeight();
+    UpdateDebugVisibility();
 }
 void ComponentInfoSection::UpdateHeight() {
     int count=0;
@@ -141,4 +159,8 @@ void ComponentInfoSection::UpdateHeight() {
     }
     const int rowHeight=_Ui->componentProperties->topLevelItemCount()?qMax(22,_Ui->componentProperties->sizeHintForRow(0)):22;
     _Ui->componentProperties->setFixedHeight(_Ui->componentProperties->header()->height()+rowHeight*count+12);
+}
+
+void ComponentInfoSection::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
+    if(_Editor)_Editor->OnAnimationEvent(event);
 }

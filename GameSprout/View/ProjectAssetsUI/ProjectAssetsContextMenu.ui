@@ -16,6 +16,7 @@
     <property name="title"><string>Animation</string></property>
     <addaction name="actionAnimationClip"/>
     <addaction name="actionAnimatorController"/>
+    <addaction name="actionAvatarMask"/>
    </widget>
    <addaction name="actionFolder"/>
    <addaction name="separator"/>
@@ -32,8 +33,10 @@
   <action name="actionComputeShader"><property name="text"><string>Compute Shader</string></property></action>
   <action name="actionShaderInclude"><property name="text"><string>Shader Include</string></property></action>
   <action name="actionAnimationClip"><property name="text"><string>Animation Clip</string></property></action>
+  <action name="actionAvatarMask"><property name="text"><string>Avatar Mask</string></property></action>
   <action name="actionAnimatorController"><property name="text"><string>Animator Controller</string></property></action>
   <action name="actionReveal"><property name="text"><string>Show in File Manager</string></property></action>
+  <action name="actionInstantiateModel"><property name="text"><string>实例化模型到场景</string></property></action>
   <action name="actionOpen"><property name="text"><string>Open</string></property></action>
   <action name="actionDelete"><property name="text"><string>Delete</string></property></action>
   <action name="actionRename"><property name="text"><string>Rename</string></property></action>
@@ -46,6 +49,7 @@
   <addaction name="menuCreate"/>
   <addaction name="actionReveal"/>
   <addaction name="actionOpen"/>
+  <addaction name="actionInstantiateModel"/>
   <addaction name="separator"/>
   <addaction name="actionDelete"/>
   <addaction name="actionRename"/>

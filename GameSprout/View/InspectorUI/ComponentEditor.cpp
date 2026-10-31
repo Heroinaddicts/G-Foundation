@@ -6,6 +6,8 @@
 #include "MeshComponentEditor.h"
 #include "MeshRendererComponentEditor.h"
 #include "CameraComponentEditor.h"
+#include "AnimatorComponentEditor.h"
+#include "SkinnedMeshRendererComponentEditor.h"
 #include <QApplication>
 #include <QLineEdit>
 #include <QLocale>
@@ -65,5 +67,7 @@ ComponentEditor* CreateComponentEditor(const std::type_info& type, QWidget* pare
     if (type == typeid(GameSproutRuntime::IMeshComponent)) return new MeshComponentEditor(parent);
     if (type == typeid(GameSproutRuntime::IMeshRendererComponent)) return new MeshRendererComponentEditor(parent);
     if (type == typeid(GameSproutRuntime::ICameraComponent)) return new CameraComponentEditor(parent);
+    if (type == typeid(GameSproutRuntime::ISkinnedMeshRendererComponent)) return new SkinnedMeshRendererComponentEditor(parent);
+    if (type == typeid(GameSproutRuntime::IAnimatorComponent)) return new AnimatorComponentEditor(parent);
     return nullptr;
 }

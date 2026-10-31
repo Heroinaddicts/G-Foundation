@@ -15,7 +15,8 @@
    <item><widget class="QWidget" name="sectionBody"><layout class="QVBoxLayout" name="bodyLayout">
     <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
     <item><widget class="QWidget" name="editorHost"><layout class="QVBoxLayout" name="editorLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property></layout></widget></item>
-    <item><widget class="QToolButton" name="detailsButton"><property name="text"><string>Details（派生值与调试信息）</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>false</bool></property></widget></item>
+    <item><widget class="QLabel" name="unavailableEditorLabel"><property name="visible"><bool>false</bool></property><property name="text"><string>当前组件暂无可编辑属性。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+    <item><widget class="QToolButton" name="detailsButton"><property name="visible"><bool>false</bool></property><property name="text"><string>调试信息</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>false</bool></property></widget></item>
    <item><widget class="QTreeWidget" name="componentProperties">
     <property name="visible"><bool>false</bool></property>
     <property name="styleSheet"><string>QTreeWidget { alternate-background-color:#252930; selection-background-color:#3a526d; selection-color:#f1f4f8; }</string></property>

@@ -23,6 +23,13 @@ void ProjectAssetsUI::RegisterContextMenus() {
                 } else if (_Scenes && action->objectName() == QStringLiteral("actionScene")) {
                     menu->SetClickCalback(&ProjectAssetsUI::CreateSceneMenu);
                 }
+                else if (_RuntimeAssets && action->objectName()==QStringLiteral("actionAnimatorController")) {
+                    menu->SetClickCalback(&ProjectAssetsUI::CreateAnimatorControllerMenu);
+                } else if (_RuntimeAssets && action->objectName()==QStringLiteral("actionAvatarMask")) {
+                    menu->SetClickCalback(&ProjectAssetsUI::CreateAvatarMaskMenu);
+                } else if (_Scenes && action->objectName()==QStringLiteral("actionInstantiateModel")) {
+                    menu->SetClickCalback(&ProjectAssetsUI::InstantiateModelMenu);
+                }
                 // 尚未实现的资源操作保持禁用，不绑定占位回调。
             }
         };

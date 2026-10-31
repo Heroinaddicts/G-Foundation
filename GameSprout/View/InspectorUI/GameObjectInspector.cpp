@@ -2,20 +2,36 @@
 #include "ComponentInfoSection.h"
 #include "ui_GameObjectInspector.h"
 #include <QApplication>
+#include <QSignalBlocker>
 
 GameObjectInspector::GameObjectInspector(QWidget* parent) : QWidget(parent), _Ui(new Ui::GameObjectInspectorForm()) {
     _Ui->setupUi(this);
     QObject::connect(_Ui->objectNameEdit,&QLineEdit::editingFinished,this,[this]{CommitName();});
     QObject::connect(_Ui->objectActiveCheck,&QCheckBox::clicked,this,[this](bool active){CommitActive(active);});
+    QObject::connect(_Ui->objectLockButton,&QToolButton::toggled,this,[this](bool locked) {
+        if (LockChanged) LockChanged(locked);
+    });
 }
-GameObjectInspector::~GameObjectInspector() { delete _Ui; }
+GameObjectInspector::~GameObjectInspector() { LockChanged={};delete _Ui; }
+void GameObjectInspector::SetLocked(bool locked) {
+    const QSignalBlocker blocker(_Ui->objectLockButton);
+    _Ui->objectLockButton->setChecked(locked);
+}
+void GameObjectInspector::SetDebugMode(bool debug) {
+    _DebugMode=debug;
+    _Ui->componentScroll->setVisible(!_SceneRoot || debug);
+    _Ui->emptySceneSpace->setVisible(_SceneRoot && !debug);
+    for (auto* section:_Sections) {
+        section->SetDebugMode(debug);
+        section->setVisible(!_SceneRoot || debug);
+    }
+}
 void GameObjectInspector::Clear() {
-    _Loading=true;_Context={};_LoadedID=0;setEnabled(false);
-    _Ui->objectNameEdit->clear();_Ui->objectInstanceIDEdit->clear();_Ui->sceneInstanceIDEdit->clear();
-    _Ui->parentNameEdit->clear();_Ui->objectActiveCheck->setChecked(false);_Ui->hierarchyActiveEdit->clear();
-    _Ui->componentCountLabel->setText(QStringLiteral("组件：0"));
+    _Loading=true;_Context={};_LoadedID=0;_SceneRoot=false;setEnabled(false);
+    _Ui->objectNameEdit->clear();_Ui->objectActiveCheck->setChecked(false);
     for(auto* section:_Sections) delete section;
     _Sections.clear();
+    SetDebugMode(_DebugMode);
     _Loading=false;
 }
 void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
@@ -24,12 +40,10 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
     if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified())
         _Ui->objectNameEdit->setText(QString::fromStdString(object.GetName()));
     _LoadedID=object.GetInstanceID();
-    _Ui->objectInstanceIDEdit->setText(QString::number(object.GetInstanceID()));
-    _Ui->sceneInstanceIDEdit->setText(object.GetScene()?QString::number(object.GetScene()->GetInstanceID()):QStringLiteral("—"));
-    _Ui->parentNameEdit->setText(object.Parent()?QString::fromStdString(object.Parent()->GetName()):QStringLiteral("场景根"));
+    _SceneRoot=object.GetScene()==&object;
+    SetDebugMode(_DebugMode);
+    _Ui->objectActiveCheck->setVisible(!_SceneRoot);
     _Ui->objectActiveCheck->setChecked(object.IsActiveSelf());
-    _Ui->hierarchyActiveEdit->setText(object.IsActiveInHierarchy()?QStringLiteral("是"):QStringLiteral("否"));
-    _Ui->componentCountLabel->setText(QStringLiteral("组件：%1").arg(object.GetComponentCount()));
     while(_Sections.size()>object.GetComponentCount()) {delete _Sections.back();_Sections.pop_back();}
     for(std::size_t index=0;index<object.GetComponentCount();++index) {
         auto* component=object.GetComponentAt(index);
@@ -41,6 +55,8 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
         }
         _Sections[index]->Bind(_Context);
         _Sections[index]->Load(*component);
+        _Sections[index]->SetDebugMode(_DebugMode);
+        _Sections[index]->setVisible(!_SceneRoot || _DebugMode);
     }
 }
 
@@ -82,4 +98,8 @@ void GameObjectInspector::CommitActive(bool active) {
     _Context.Execute("修改节点启用状态",operation(active),operation(previous));
     object=_Context.Resolve();
     if(object)_Ui->objectActiveCheck->setChecked(object->IsActiveSelf());
+}
+
+void GameObjectInspector::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
+    for(auto* section:_Sections)section->OnAnimationEvent(event);
 }

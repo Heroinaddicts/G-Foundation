@@ -8,5 +8,6 @@ public:
 private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
     void CommitValues();
+    void RefreshAnimationState();
     Ui::TransformComponentEditorForm* _Ui = nullptr;
 };

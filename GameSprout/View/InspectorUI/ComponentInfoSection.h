@@ -16,13 +16,17 @@ public:
     void Bind(const ComponentEditContext& context) { _Context = context; }
     bool IsExpanded() const;
     void SetExpanded(bool expanded);
+    void SetDebugMode(bool debug);
+    void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
 private:
     void Add(const QString& key, const QString& label, const QString& value, QTreeWidgetItem* parent = nullptr);
     void Matrix(const QString& key, const QString& label, const GameSproutRuntime::Mat4& matrix);
     void Resource(const QString& key, const QString& label, const GameSproutRuntime::ResourceReference& resource);
     void UpdateHeight();
+    void UpdateDebugVisibility();
     Ui::ComponentInfoSectionForm* _Ui = nullptr;
     ComponentEditContext _Context;
     ComponentEditor* _Editor = nullptr;
     std::string _EditorType;
+    bool _DebugMode = false;
 };

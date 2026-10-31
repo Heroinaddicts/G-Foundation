@@ -1,0 +1,631 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>MaterialPropertyRowForm</class>
+  <widget class="QWidget" name="MaterialPropertyRowForm">
+    <layout class="QVBoxLayout" name="rowLayout">
+      <property name="leftMargin">
+        <number>0</number>
+      </property>
+      <property name="topMargin">
+        <number>3</number>
+      </property>
+      <property name="rightMargin">
+        <number>0</number>
+      </property>
+      <property name="bottomMargin">
+        <number>3</number>
+      </property>
+      <item>
+        <widget class="QLabel" name="groupLabel">
+          <property name="text">
+            <string />
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <widget class="QLabel" name="propertyLabel">
+          <property name="text">
+            <string>属性</string>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <widget class="MaterialValueStack" name="valueStack">
+          <widget class="QWidget" name="numberPage">
+            <layout class="QVBoxLayout" name="numberLayout">
+              <item>
+                <widget class="QDoubleSpinBox" name="numberSpin">
+                  <property name="minimum">
+                    <double>-1000000000000.000000</double>
+                  </property>
+                  <property name="maximum">
+                    <double>1000000000000.000000</double>
+                  </property>
+                  <property name="decimals">
+                    <number>6</number>
+                  </property>
+                  <property name="singleStep">
+                    <double>0.100000</double>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>72</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QSlider" name="rangeSlider">
+                  <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="maximum">
+                    <number>1000</number>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="integerPage">
+            <layout class="QVBoxLayout" name="integerLayout">
+              <item>
+                <widget class="QLineEdit" name="integerEdit">
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>48</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="colorPage">
+            <layout class="QVBoxLayout" name="colorPageLayout">
+              <item>
+                <layout class="QHBoxLayout" name="colorLayout">
+                  <item>
+                    <widget class="QPushButton" name="colorButton">
+                      <property name="text">
+                        <string>颜色…</string>
+                      </property>
+                    </widget>
+                  </item>
+                </layout>
+              </item>
+              <item>
+                <layout class="QHBoxLayout" name="colorComponentsLayout">
+                  <item>
+                    <widget class="QDoubleSpinBox" name="colorRSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                      <property name="prefix">
+                        <string>R </string>
+                      </property>
+                      <property name="toolTip">
+                        <string>R · 红色</string>
+                      </property>
+                      <property name="accessibleName">
+                        <string>R · 红色</string>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="colorGSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                      <property name="prefix">
+                        <string>G </string>
+                      </property>
+                      <property name="toolTip">
+                        <string>G · 绿色</string>
+                      </property>
+                      <property name="accessibleName">
+                        <string>G · 绿色</string>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="colorBSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                      <property name="prefix">
+                        <string>B </string>
+                      </property>
+                      <property name="toolTip">
+                        <string>B · 蓝色</string>
+                      </property>
+                      <property name="accessibleName">
+                        <string>B · 蓝色</string>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="colorASpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                      <property name="prefix">
+                        <string>A </string>
+                      </property>
+                      <property name="toolTip">
+                        <string>A · 透明度</string>
+                      </property>
+                      <property name="accessibleName">
+                        <string>A · 透明度</string>
+                      </property>
+                    </widget>
+                  </item>
+                </layout>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="vectorPage">
+            <layout class="QHBoxLayout" name="vectorLayout">
+              <item>
+                <widget class="QDoubleSpinBox" name="vectorXSpin">
+                  <property name="minimum">
+                    <double>-1000000000000.000000</double>
+                  </property>
+                  <property name="maximum">
+                    <double>1000000000000.000000</double>
+                  </property>
+                  <property name="decimals">
+                    <number>6</number>
+                  </property>
+                  <property name="singleStep">
+                    <double>0.100000</double>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>48</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="prefix">
+                    <string>X </string>
+                  </property>
+                  <property name="toolTip">
+                    <string>X · 向量分量</string>
+                  </property>
+                  <property name="accessibleName">
+                    <string>X · 向量分量</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QDoubleSpinBox" name="vectorYSpin">
+                  <property name="minimum">
+                    <double>-1000000000000.000000</double>
+                  </property>
+                  <property name="maximum">
+                    <double>1000000000000.000000</double>
+                  </property>
+                  <property name="decimals">
+                    <number>6</number>
+                  </property>
+                  <property name="singleStep">
+                    <double>0.100000</double>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>48</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="prefix">
+                    <string>Y </string>
+                  </property>
+                  <property name="toolTip">
+                    <string>Y · 向量分量</string>
+                  </property>
+                  <property name="accessibleName">
+                    <string>Y · 向量分量</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QDoubleSpinBox" name="vectorZSpin">
+                  <property name="minimum">
+                    <double>-1000000000000.000000</double>
+                  </property>
+                  <property name="maximum">
+                    <double>1000000000000.000000</double>
+                  </property>
+                  <property name="decimals">
+                    <number>6</number>
+                  </property>
+                  <property name="singleStep">
+                    <double>0.100000</double>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>48</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="prefix">
+                    <string>Z </string>
+                  </property>
+                  <property name="toolTip">
+                    <string>Z · 向量分量</string>
+                  </property>
+                  <property name="accessibleName">
+                    <string>Z · 向量分量</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QDoubleSpinBox" name="vectorWSpin">
+                  <property name="minimum">
+                    <double>-1000000000000.000000</double>
+                  </property>
+                  <property name="maximum">
+                    <double>1000000000000.000000</double>
+                  </property>
+                  <property name="decimals">
+                    <number>6</number>
+                  </property>
+                  <property name="singleStep">
+                    <double>0.100000</double>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>48</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="prefix">
+                    <string>W </string>
+                  </property>
+                  <property name="toolTip">
+                    <string>W · 向量分量</string>
+                  </property>
+                  <property name="accessibleName">
+                    <string>W · 向量分量</string>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="texturePage">
+            <layout class="QVBoxLayout" name="textureLayout">
+              <item>
+                <widget class="ResourceField" name="textureResource" />
+              </item>
+              <item>
+                <layout class="QHBoxLayout" name="tilingLayout">
+                  <item>
+                    <widget class="QLabel" name="tilingLabel">
+                      <property name="text">
+                        <string>Tiling</string>
+                      </property>
+                      <property name="textFormat">
+                        <enum>Qt::PlainText</enum>
+                      </property>
+                      <property name="wordWrap">
+                        <bool>true</bool>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="tilingXSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="tilingYSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                    </widget>
+                  </item>
+                </layout>
+              </item>
+              <item>
+                <layout class="QHBoxLayout" name="offsetLayout">
+                  <item>
+                    <widget class="QLabel" name="offsetLabel">
+                      <property name="text">
+                        <string>Offset</string>
+                      </property>
+                      <property name="textFormat">
+                        <enum>Qt::PlainText</enum>
+                      </property>
+                      <property name="wordWrap">
+                        <bool>true</bool>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="offsetXSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QDoubleSpinBox" name="offsetYSpin">
+                      <property name="minimum">
+                        <double>-1000000000000.000000</double>
+                      </property>
+                      <property name="maximum">
+                        <double>1000000000000.000000</double>
+                      </property>
+                      <property name="decimals">
+                        <number>6</number>
+                      </property>
+                      <property name="singleStep">
+                        <double>0.100000</double>
+                      </property>
+                      <property name="sizePolicy">
+                        <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                          <horstretch>0</horstretch>
+                          <verstretch>0</verstretch>
+                        </sizepolicy>
+                      </property>
+                      <property name="minimumSize">
+                        <size>
+                          <width>48</width>
+                          <height>0</height>
+                        </size>
+                      </property>
+                    </widget>
+                  </item>
+                </layout>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="togglePage">
+            <layout class="QVBoxLayout" name="toggleLayout">
+              <item>
+                <widget class="QCheckBox" name="toggleCheck">
+                  <property name="text">
+                    <string>启用</string>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="enumPage">
+            <layout class="QVBoxLayout" name="enumLayout">
+              <item>
+                <widget class="QComboBox" name="enumCombo">
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                  <property name="minimumSize">
+                    <size>
+                      <width>96</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <customwidgets>
+    <customwidget>
+      <class>MaterialValueStack</class>
+      <extends>QStackedWidget</extends>
+      <header>MaterialValueStack.h</header>
+      <container>1</container>
+    </customwidget>
+    <customwidget>
+      <class>ResourceField</class>
+      <extends>QWidget</extends>
+      <header>ResourceField.h</header>
+      <container>1</container>
+    </customwidget>
+  </customwidgets>
+  <resources />
+  <connections />
+</ui>

@@ -1,9 +1,12 @@
 #include "TransformComponentEditor.h"
 #include "ui_TransformComponentEditor.h"
 #include <QLineEdit>
+#include <QTimer>
 
 TransformComponentEditor::TransformComponentEditor(QWidget* parent) : ComponentEditor(parent), _Ui(new Ui::TransformComponentEditorForm()) {
     _Ui->setupUi(this);
+    auto* timer=new QTimer(this);timer->setInterval(100);
+    QObject::connect(timer,&QTimer::timeout,this,[this]{if(isVisible())RefreshAnimationState();});timer->start();
     for (QLineEdit* edit : {_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,_Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,_Ui->transformRotationWEdit,_Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues();});
 }
 TransformComponentEditor::~TransformComponentEditor() { delete _Ui; }
@@ -11,12 +14,26 @@ void TransformComponentEditor::ReadValues(GameSproutRuntime::IComponent& compone
     auto& c = static_cast<GameSproutRuntime::ITransformComponent&>(component);
     const auto v = InspectorValues::Read(c);
     ShowNumbers({_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,_Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,_Ui->transformRotationWEdit,_Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit},{v.Position.X,v.Position.Y,v.Position.Z,v.Rotation.X,v.Rotation.Y,v.Rotation.Z,v.Rotation.W,v.Scale.X,v.Scale.Y,v.Scale.Z});
-    setEnabled(c.GetGameObject()->GetScene() != c.GetGameObject());
+    RefreshAnimationState();
 }
 void TransformComponentEditor::CommitValues() {
     if (_Loading) return;
+    auto* object=_Context.Resolve();
+    if(object&&object->GetTransform()->IsAnimationDriven()) {
+        Fail("此变换由动画预览驱动，请先还原动画再编辑初始值。");return;
+    }
     std::vector<float> a;
     if (!ReadNumbers({_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,_Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,_Ui->transformRotationWEdit,_Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit},a)) { Fail("请输入有限数字，可使用科学计数法。"); return; }
     InspectorValues::Transform v{{a[0],a[1],a[2]},{a[3],a[4],a[5],a[6]},{a[7],a[8],a[9]}};
     Commit<GameSproutRuntime::ITransformComponent>(v,"修改 Transform");
+}
+
+void TransformComponentEditor::RefreshAnimationState() {
+    auto* object=_Context.Resolve();if(!object)return;
+    const bool driven=object->GetTransform()->IsAnimationDriven();
+    const bool readOnly=driven||object->GetScene()==object;
+    for(QLineEdit* edit:{_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
+        _Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,_Ui->transformRotationWEdit,
+        _Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit})edit->setReadOnly(readOnly);
+    _Ui->animationDrivenLabel->setVisible(driven);
 }

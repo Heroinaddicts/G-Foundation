@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AnimationClipInspectorForm</class>
+ <widget class="QWidget" name="AnimationClipInspectorForm">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="clipImportHelpLabel">
+     <property name="text">
+      <string>动画片段导入设置。多轨道 .anim 提取根运动时，源数据需提供与 Tracks 对应的 Parents 层级；事件时间相对于片段起点。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="sourceAvatarLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="sourceAvatarLabel">
+       <property name="text">
+        <string>Source Humanoid Avatar</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="ResourceField" name="sourceAvatarField" />
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="sourceAvatarHelpLabel">
+     <property name="text">
+      <string>指定动作来源的 Humanoid Avatar，导入时用于跨模型重定向；留空按 Generic 骨架路径采样。设置保存在此 .anim 的 Meta 中。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="AnimationClipOptionsEditor" name="clipOptionsEditor" />
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>AnimationClipOptionsEditor</class>
+   <extends>QWidget</extends>
+   <header>AnimationClipOptionsEditor.h</header>
+   <container>0</container>
+  </customwidget>
+  <customwidget>
+   <class>ResourceField</class>
+   <extends>QWidget</extends>
+   <header>ResourceField.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections />
+</ui>

@@ -69,7 +69,7 @@ void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSele
 void ProjectAssetsUI::Refresh() {
     if (!_Window || !_Assets) return;
     const auto metas=_Assets->GetAssetMetas();
-    SelectPendingCreatedScene(metas);
+    SelectPendingCreatedAsset(metas);
     QMap<QString,QString> folders;
     folders.insert("","");
     for(IAssetMeta * meta:metas) if(meta->_ImporterType==eAssetImporterType::Folder)

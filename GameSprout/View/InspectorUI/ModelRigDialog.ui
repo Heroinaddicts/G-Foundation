@@ -1,0 +1,253 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>ModelRigDialogForm</class>
+ <widget class="QDialog" name="ModelRigDialogForm">
+  <property name="windowTitle">
+   <string>Humanoid Avatar · 骨架配置</string>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="styleSheet">
+   <string>QLabel#statusLabel { color: #e8b55c; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="descriptionLabel">
+     <property name="text">
+      <string>Humanoid 使用角色骨映射和参考姿势重定向。请使用直立、手臂舒展的参考姿势；自动匹配只是建议，保存前会检查骨骼映射和参考姿势。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="rigForm">
+     <item row="0" column="0">
+      <widget class="QLabel" name="rigTypeComboLabel">
+       <property name="text">
+        <string>动画类型</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QComboBox" name="rigTypeCombo">
+       <item>
+        <property name="text">
+         <string>None</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Generic</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>Humanoid</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="humanScaleSpinLabel">
+       <property name="text">
+        <string>人体尺度（米，0 自动）</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QDoubleSpinBox" name="humanScaleSpin">
+       <property name="maximum">
+        <double>100000</double>
+       </property>
+       <property name="decimals">
+        <number>4</number>
+       </property>
+       <property name="keyboardTracking">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="rigTabs">
+     <widget class="QWidget" name="mappingTab">
+      <attribute name="title">
+       <string>角色骨映射</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="mappingTabLayout">
+       <item>
+        <widget class="QPushButton" name="suggestButton">
+         <property name="text">
+          <string>建议匹配未映射骨骼（保留手工映射）</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="mappingTable">
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <column>
+          <property name="text">
+           <string>人体角色骨</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>要求</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>模型骨骼</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="boneCombo" />
+       </item>
+       <item>
+        <widget class="QLabel" name="mappingHelpLabel">
+         <property name="text">
+          <string>选择角色骨后，从下拉框指定模型骨骼；可选骨允许留空。</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="referenceTab">
+      <attribute name="title">
+       <string>参考姿势</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="referenceTabLayout">
+       <item>
+        <widget class="QLabel" name="referenceHelpLabel">
+         <property name="text">
+          <string>以下是每个模型节点的局部参考 TRS。四元数顺序 XYZW；此处修改 Avatar 参考姿势，不修改 FBX。清除覆盖会恢复导入姿势。</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="resetReferenceButton">
+         <property name="text">
+          <string>清除参考姿势覆盖</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="referenceTable">
+         <column>
+          <property name="text">
+           <string>节点</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Pos X</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Pos Y</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Pos Z</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Rot X</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Rot Y</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Rot Z</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Rot W</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Scale X</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Scale Y</string>
+          </property>
+         </column>
+         <column>
+          <property name="text">
+           <string>Scale Z</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="text">
+      <string />
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttons">
+     <item>
+      <widget class="QPushButton" name="reloadButton">
+       <property name="text">
+        <string>重新加载</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveButton">
+       <property name="text">
+        <string>保存并重新导入</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="closeButton">
+       <property name="text">
+        <string>关闭</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+</ui>

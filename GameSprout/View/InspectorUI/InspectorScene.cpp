@@ -1,5 +1,6 @@
 #include "InspectorUI.h"
 #include "GameObjectInspector.h"
+#include "MaterialInspector.h"
 #include "ui_InspectorUI.h"
 #include <QStringList>
 
@@ -11,10 +12,11 @@ GameSproutRuntime::IGameObject * InspectorUI::ResolveSceneObject(const SceneObje
 }
 
 void InspectorUI::RefreshSceneObject(GameSproutRuntime::IGameObject & object) {
+    if (_MaterialMode) { _MaterialMode=false;_BaselineMaterialSource.clear();_Material->Deactivate();_Material->hide(); }
     _Editable=false;_ActivePanel=nullptr;_BaselineSettings.clear();
     _Ui->assetNameLabel->setText(QString::fromStdString(object.GetName()));
     _Ui->typeLabel->setText(object.GetScene()==&object ? QStringLiteral("Scene · 场景根") : QStringLiteral("GameObject · 场景节点"));
-    _Ui->stateLabel->setText(object.IsActiveInHierarchy() ? QStringLiteral("层级中启用 · 实时编辑") : QStringLiteral("层级中禁用 · 实时编辑"));
+    _Ui->stateLabel->setText(object.IsActiveInHierarchy() ? QStringLiteral("层级中启用") : QStringLiteral("层级中禁用"));
     _Ui->pathEditLabel->setText(QStringLiteral("节点路径"));
     _Ui->guidEditLabel->setText(QStringLiteral("场景 ID"));
     _Ui->localIDEditLabel->setText(QStringLiteral("节点 ID"));
@@ -32,4 +34,8 @@ void InspectorUI::RefreshSceneObject(GameSproutRuntime::IGameObject & object) {
     _SceneInfo->Load(object);
     _Ui->contentStack->setCurrentIndex(2);
     UpdateButtons();
+}
+
+void InspectorUI::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
+    if(_SceneInfo)_SceneInfo->OnAnimationEvent(event);
 }

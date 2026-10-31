@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CreateAvatarMaskDialog</class>
+ <widget class="QDialog" name="CreateAvatarMaskDialog">
+  <property name="windowTitle"><string>新建 Avatar Mask</string></property>
+  <property name="minimumSize"><size><width>400</width><height>0</height></size></property>
+  <property name="styleSheet"><string notr="true">QDialog { background:#292c31; color:#e0e2e6; }
+QLabel { color:#e0e2e6; }
+QLineEdit { background:#1d1f23; color:#ffffff; border:1px solid #59616d; border-radius:3px; padding:6px; }
+QLineEdit:focus { border-color:#7fa8d2; }
+QLabel#errorLabel { color:#ffb3b3; }
+QPushButton { background:#39424f; color:#ffffff; border:1px solid #637287; border-radius:3px; padding:6px 16px; }
+QPushButton:hover { background:#46566b; }</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing"><number>10</number></property>
+   <item><widget class="QLabel" name="locationCaption"><property name="text"><string>创建目录</string></property></widget></item>
+   <item><widget class="QLabel" name="directoryLabel"><property name="text"><string>Assets</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="nameCaption"><property name="text"><string>Avatar Mask 名称</string></property></widget></item>
+   <item><widget class="QLineEdit" name="maskNameEdit"><property name="text"><string>New Avatar Mask</string></property><property name="placeholderText"><string>输入名称，无需填写 .mask 后缀</string></property></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="wordWrap"><bool>true</bool></property><property name="visible"><bool>false</bool></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

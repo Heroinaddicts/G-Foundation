@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AnimationClipPreviewInspectorForm</class>
+ <widget class="QWidget" name="AnimationClipPreviewInspectorForm">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item><widget class="QLabel" name="descriptionLabel"><property name="text"><string>已导入动画片段 · 只读</string></property></widget></item>
+   <item><layout class="QFormLayout" name="summaryLayout">
+    <item row="0" column="0"><widget class="QLabel" name="durationCaption"><property name="text"><string>时长</string></property></widget></item><item row="0" column="1"><widget class="QLabel" name="durationLabel"><property name="text"><string/></property></widget></item>
+    <item row="1" column="0"><widget class="QLabel" name="sampleRateCaption"><property name="text"><string>采样率</string></property></widget></item><item row="1" column="1"><widget class="QLabel" name="sampleRateLabel"><property name="text"><string/></property></widget></item>
+    <item row="2" column="0"><widget class="QLabel" name="rootMotionCaption"><property name="text"><string>根运动节点</string></property></widget></item><item row="2" column="1"><widget class="QLabel" name="rootMotionNodeLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+   </layout></item>
+   <item><widget class="QTableWidget" name="importedEventsTable"><property name="minimumSize"><size><width>0</width><height>140</height></size></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+    <column><property name="text"><string>时间（秒）</string></property></column><column><property name="text"><string>事件名称</string></property></column><column><property name="text"><string>文本参数</string></property></column>
+   </widget></item>
+   <item><widget class="QPushButton" name="editClipSourceSettingsButton"><property name="text"><string>编辑源资源的动画导入设置</string></property></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

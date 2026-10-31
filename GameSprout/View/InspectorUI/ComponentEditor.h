@@ -12,6 +12,7 @@ public:
     void Bind(const ComponentEditContext& context);
     void Load(GameSproutRuntime::IComponent& component);
     void Reload();
+    virtual void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) {}
 protected:
     virtual void ReadValues(GameSproutRuntime::IComponent& component) = 0;
     virtual void ContextChanged() {}
