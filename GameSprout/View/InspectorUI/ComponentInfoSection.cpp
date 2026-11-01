@@ -144,6 +144,7 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
     } else Add("Unknown",QStringLiteral("组件信息"),QStringLiteral("当前版本尚无此组件的专用属性面板。"));
     _Ui->componentHeaderButton->setText(caption);
     _Ui->componentHeaderButton->setToolTip(type);
+    _Ui->componentHeaderButton->setAccessibleName(caption+QStringLiteral("：展开或折叠组件"));
     for (int index=0;index<_Ui->componentProperties->topLevelItemCount();++index) {
         auto * item=_Ui->componentProperties->topLevelItem(index);
         item->setExpanded(expanded.contains(item->data(0,Qt::UserRole).toString()));

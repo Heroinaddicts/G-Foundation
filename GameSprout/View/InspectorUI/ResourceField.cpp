@@ -5,12 +5,16 @@
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QEvent>
+#include <QKeyEvent>
 
 ResourceField::ResourceField(QWidget* parent):QWidget(parent),_Ui(new Ui::ResourceFieldForm()) {
     _Ui->setupUi(this);
+    _Ui->resourceMenuButton->setMenu(_Ui->resourceMenu);
+    _Ui->resourceNameEdit->installEventFilter(this);
     QObject::connect(_Ui->selectResourceButton,&QToolButton::clicked,this,[this]{OpenPicker(AssetReferenceResolver::Enumerate(_Assets,_Library,_Expected));});
-    QObject::connect(_Ui->clearResourceButton,&QToolButton::clicked,this,[this]{std::string error;AssignReference({},error);});
-    QObject::connect(_Ui->locateResourceButton,&QToolButton::clicked,this,[this]{
+    QObject::connect(_Ui->clearResourceAction,&QAction::triggered,this,[this]{std::string error;AssignReference({},error);});
+    QObject::connect(_Ui->locateResourceAction,&QAction::triggered,this,[this]{
         AssetReferenceCandidate candidate;std::string error;
         if(!_Selection || !AssetReferenceResolver::Resolve(_Assets,_Library,_Value,_Expected,candidate,error,false)){SetError(error);return;}
         _Selection->SetAssetSelection({{candidate.Reference.Guid,candidate.IsMain?0:candidate.Reference.LocalID,!candidate.IsMain}});
@@ -20,6 +24,7 @@ ResourceField::ResourceField(QWidget* parent):QWidget(parent),_Ui(new Ui::Resour
 ResourceField::~ResourceField() {
     Changed={};ClosePicker();
     if(_Subscribed && _Assets)_Assets->UnregisterAssetListener(this);
+    _Ui->resourceNameEdit->removeEventFilter(this);
     delete _Ui;
 }
 void ResourceField::Bind(IAssetsManager* assets,ILibraryManager* library,ISelectionManager* selection,eAssetType expected) {
@@ -41,18 +46,33 @@ void ResourceField::Refresh() {
     _Ui->resourceTypeLabel->setText(QString::fromStdString(AssetReferenceResolver::TypeName(_Expected)));
     _Ui->selectResourceButton->setEnabled(_Assets&&_Library&&_Expected!=eAssetType::Unknown);
     const bool bound=!_Value.Guid.empty()||_Value.LocalID;
-    _Ui->clearResourceButton->setEnabled(bound);_Ui->locateResourceButton->setEnabled(bound&&_Selection);
-    if(!bound){_Ui->resourceNameEdit->clear();_Ui->resourceNameEdit->setToolTip({});SetError({});return;}
+    _Ui->resourceMenuButton->setEnabled(bound);
+    _Ui->clearResourceAction->setEnabled(bound);_Ui->locateResourceAction->setEnabled(bound&&_Selection);
+    if(!bound){_Ui->resourceNameEdit->clear();_Ui->resourceNameEdit->setToolTip(tr("未绑定：从 Project 拖入资源，或点击圆形按钮选择。"));SetError({});return;}
     AssetReferenceCandidate candidate;std::string error;
     if(AssetReferenceResolver::Resolve(_Assets,_Library,_Value,_Expected,candidate,error,false)) {
         _Ui->resourceNameEdit->setText(QString::fromStdString(candidate.Name));
-        _Ui->resourceNameEdit->setToolTip(QString::fromStdString(candidate.SourcePath+"\n"+_Value.Guid+":"+std::to_string(_Value.LocalID)));
+        _Ui->resourceNameEdit->setCursorPosition(0);
+        _Ui->resourceNameEdit->setToolTip(QString::fromStdString(candidate.Name+"\n"+candidate.SourcePath+"\n"+_Value.Guid+":"+std::to_string(_Value.LocalID)));
         IAssetMeta* meta=_Assets->QueryAsset(Guid(_Value.Guid));
         SetError(meta&&meta->GetImportState()!=eAssetImportState::Ready?"资源正在导入或导入失败；当前保留上次成功引用。":"");
     } else {
         _Ui->resourceNameEdit->setText(QStringLiteral("Missing (%1)").arg(QString::fromStdString(AssetReferenceResolver::TypeName(_Expected))));
+        _Ui->resourceNameEdit->setCursorPosition(0);
         _Ui->resourceNameEdit->setToolTip(QString::fromStdString(_Value.Guid+":"+std::to_string(_Value.LocalID)));SetError(error);
     }
+}
+bool ResourceField::eventFilter(QObject* watched,QEvent* event) {
+    if(watched==_Ui->resourceNameEdit&&event->type()==QEvent::FocusOut) {
+        _Ui->resourceNameEdit->deselect();_Ui->resourceNameEdit->setCursorPosition(0);
+    }
+    if(watched==_Ui->resourceNameEdit&&event->type()==QEvent::KeyPress&&isEnabled()) {
+        const auto* key=static_cast<QKeyEvent*>(event);
+        if((key->key()==Qt::Key_Delete||key->key()==Qt::Key_Backspace)&&key->modifiers()==Qt::NoModifier) {
+            std::string error;AssignReference({},error);return true;
+        }
+    }
+    return QWidget::eventFilter(watched,event);
 }
 bool ResourceField::AssignReference(const GameSproutRuntime::ResourceReference& reference,std::string& error) {
     error.clear();GameSproutRuntime::ResourceReference value=reference;

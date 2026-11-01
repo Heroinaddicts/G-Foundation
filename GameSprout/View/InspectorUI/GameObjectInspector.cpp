@@ -37,8 +37,11 @@ void GameObjectInspector::Clear() {
 void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
     _Loading=true;setEnabled(true);
     struct Guard { bool& Value;~Guard(){Value=false;} } guard{_Loading};
-    if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified())
+    if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified()) {
         _Ui->objectNameEdit->setText(QString::fromStdString(object.GetName()));
+        if(QApplication::focusWidget()!=_Ui->objectNameEdit)_Ui->objectNameEdit->setCursorPosition(0);
+        _Ui->objectNameEdit->setToolTip(QString::fromStdString(object.GetName()));
+    }
     _LoadedID=object.GetInstanceID();
     _SceneRoot=object.GetScene()==&object;
     SetDebugMode(_DebugMode);

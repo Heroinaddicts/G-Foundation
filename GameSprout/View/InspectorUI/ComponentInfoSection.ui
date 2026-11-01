@@ -2,34 +2,200 @@
 <ui version="4.0">
  <class>ComponentInfoSectionForm</class>
  <widget class="QWidget" name="ComponentInfoSectionForm">
-  <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Maximum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
   <layout class="QVBoxLayout" name="sectionLayout">
-   <property name="spacing"><number>0</number></property>
-   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>6</number></property>
-   <item><widget class="QToolButton" name="componentHeaderButton">
-    <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
-    <property name="text"><string>Component</string></property>
-    <property name="checkable"><bool>true</bool></property><property name="checked"><bool>true</bool></property>
-    <property name="toolButtonStyle"><enum>Qt::ToolButtonTextBesideIcon</enum></property><property name="arrowType"><enum>Qt::DownArrow</enum></property>
-   </widget></item>
-   <item><widget class="QWidget" name="sectionBody"><layout class="QVBoxLayout" name="bodyLayout">
-    <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-    <item><widget class="QWidget" name="editorHost"><layout class="QVBoxLayout" name="editorLayout"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property></layout></widget></item>
-    <item><widget class="QLabel" name="unavailableEditorLabel"><property name="visible"><bool>false</bool></property><property name="text"><string>当前组件暂无可编辑属性。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-    <item><widget class="QToolButton" name="detailsButton"><property name="visible"><bool>false</bool></property><property name="text"><string>调试信息</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>false</bool></property></widget></item>
-   <item><widget class="QTreeWidget" name="componentProperties">
-    <property name="visible"><bool>false</bool></property>
-    <property name="styleSheet"><string>QTreeWidget { alternate-background-color:#252930; selection-background-color:#3a526d; selection-color:#f1f4f8; }</string></property>
-    <property name="alternatingRowColors"><bool>true</bool></property><property name="rootIsDecorated"><bool>true</bool></property>
-    <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><property name="selectionMode"><enum>QAbstractItemView::NoSelection</enum></property>
-    <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAlwaysOff</enum></property>
-    <property name="uniformRowHeights"><bool>true</bool></property><property name="allColumnsShowFocus"><bool>true</bool></property>
-    <column><property name="text"><string>属性</string></property></column>
-    <column><property name="text"><string>值（只读）</string></property></column>
-   </widget></item>
-   </layout></widget></item>
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QToolButton" name="componentHeaderButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>Component</string>
+     </property>
+     <property name="checkable">
+      <bool>true</bool>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+     <property name="toolButtonStyle">
+      <enum>Qt::ToolButtonTextBesideIcon</enum>
+     </property>
+     <property name="arrowType">
+      <enum>Qt::DownArrow</enum>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>24</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>24</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string>QToolButton#componentHeaderButton { background:#30343a; color:#e0e2e6; border:0; border-bottom:1px solid #202227; border-top:1px solid #454950; border-radius:0; padding:0 6px; text-align:left; font-weight:600; }
+QToolButton#componentHeaderButton:checked { background:#30343a; }
+QToolButton#componentHeaderButton:hover { background:#3a3f47; }
+QToolButton#componentHeaderButton:focus { border-bottom:1px solid #7fa8d2; }</string>
+     </property>
+     <property name="accessibleName">
+      <string>展开或折叠组件</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="sectionBody">
+     <layout class="QVBoxLayout" name="bodyLayout">
+      <item>
+       <widget class="QWidget" name="editorHost">
+        <layout class="QVBoxLayout" name="editorLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <property name="spacing">
+          <number>0</number>
+         </property>
+        </layout>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="unavailableEditorLabel">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>当前组件暂无可编辑属性。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="detailsButton">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>调试信息</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTreeWidget" name="componentProperties">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <property name="styleSheet">
+         <string>QTreeWidget { alternate-background-color:#252930; selection-background-color:#3a526d; selection-color:#f1f4f8; }</string>
+        </property>
+        <property name="alternatingRowColors">
+         <bool>true</bool>
+        </property>
+        <property name="rootIsDecorated">
+         <bool>true</bool>
+        </property>
+        <property name="editTriggers">
+         <set>QAbstractItemView::NoEditTriggers</set>
+        </property>
+        <property name="selectionMode">
+         <enum>QAbstractItemView::NoSelection</enum>
+        </property>
+        <property name="verticalScrollBarPolicy">
+         <enum>Qt::ScrollBarAlwaysOff</enum>
+        </property>
+        <property name="uniformRowHeights">
+         <bool>true</bool>
+        </property>
+        <property name="allColumnsShowFocus">
+         <bool>true</bool>
+        </property>
+        <column>
+         <property name="text">
+          <string>属性</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>值（只读）</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <property name="spacing">
+       <number>3</number>
+      </property>
+      <property name="leftMargin">
+       <number>8</number>
+      </property>
+      <property name="topMargin">
+       <number>5</number>
+      </property>
+      <property name="rightMargin">
+       <number>8</number>
+      </property>
+      <property name="bottomMargin">
+       <number>5</number>
+      </property>
+     </layout>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+   <property name="bottomMargin">
+    <number>3</number>
+   </property>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

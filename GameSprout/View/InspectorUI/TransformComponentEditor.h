@@ -6,8 +6,12 @@ public:
     explicit TransformComponentEditor(QWidget* parent);
     ~TransformComponentEditor() override;
 private:
+    void ContextChanged() override;
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues();
+    void CommitValues(bool rotationEdited);
     void RefreshAnimationState();
     Ui::TransformComponentEditorForm* _Ui = nullptr;
+    GameSproutRuntime::Quaternion _DisplayedRotation;
+    GameSproutRuntime::Vector3 _DisplayedEuler;
+    bool _HasDisplayedRotation=false;
 };

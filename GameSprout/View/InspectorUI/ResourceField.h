@@ -22,6 +22,7 @@ public:
     void OnAssetModify(const AssetEvent&) override;
     void OnAssetRemove(const AssetEvent&) override;
 protected:
+    bool eventFilter(QObject*,QEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override;
     void dragMoveEvent(QDragMoveEvent*) override;
     void dropEvent(QDropEvent*) override;

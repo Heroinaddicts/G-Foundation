@@ -3,24 +3,24 @@
  <class>AnimatorComponentEditorForm</class>
  <widget class="QWidget" name="AnimatorComponentEditorForm">
   <layout class="QVBoxLayout" name="rootLayout">
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
    <item>
     <layout class="QFormLayout" name="settingsLayout">
      <item row="0" column="0">
       <widget class="QLabel" name="skeletonLabel">
        <property name="text">
         <string>骨架</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
        </property>
       </widget>
      </item>
@@ -32,6 +32,18 @@
        <property name="text">
         <string>Controller</string>
        </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
       </widget>
      </item>
      <item row="1" column="1">
@@ -42,6 +54,18 @@
        <property name="text">
         <string>默认动画</string>
        </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
       </widget>
      </item>
      <item row="2" column="1">
@@ -49,8 +73,23 @@
      </item>
      <item row="3" column="0">
       <widget class="QLabel" name="speedLabel">
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
        <property name="text">
-        <string>播放倍率</string>
+        <string>速度</string>
+       </property>
+       <property name="toolTip">
+        <string>保存到场景的 Animator 播放倍率。下方预览倍率只影响当前预览。</string>
        </property>
       </widget>
      </item>
@@ -71,26 +110,58 @@
        <property name="keyboardTracking">
         <bool>false</bool>
        </property>
-      </widget>
-     </item>
-     <item row="4" column="0">
-      <widget class="QCheckBox" name="playOnStartCheck">
-       <property name="text">
-        <string>启动时播放</string>
+       <property name="maximumSize">
+        <size>
+         <width>96</width>
+         <height>24</height>
+        </size>
        </property>
       </widget>
      </item>
      <item row="4" column="1">
-      <widget class="QCheckBox" name="loopCheck">
-       <property name="text">
-        <string>默认动画循环</string>
+      <layout class="QHBoxLayout" name="playbackOptionsLayout">
+       <property name="spacing">
+        <number>12</number>
        </property>
-      </widget>
+       <item>
+        <widget class="QCheckBox" name="playOnStartCheck">
+         <property name="text">
+          <string>自动播放</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="loopCheck">
+         <property name="text">
+          <string>循环</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="playbackOptionsSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </spacer>
+       </item>
+      </layout>
      </item>
      <item row="5" column="0">
       <widget class="QLabel" name="rootMotionModeLabel">
        <property name="text">
         <string>根运动</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
        </property>
       </widget>
      </item>
@@ -114,39 +185,141 @@
        <property name="toolTip">
         <string>需在片段导入设置中先提取根运动。应用到角色只改变运行姿态，停止预览后恢复初始变换。</string>
        </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>24</height>
+        </size>
+       </property>
       </widget>
      </item>
      <item row="6" column="0">
       <widget class="QLabel" name="avatarResourceLabel">
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
        <property name="text">
-        <string>Humanoid Avatar</string>
+        <string>Avatar</string>
+       </property>
+       <property name="toolTip">
+        <string>Humanoid 动画使用的目标角色 Avatar；Generic 动画可留空。</string>
        </property>
       </widget>
      </item>
      <item row="6" column="1">
       <widget class="ResourceField" name="avatarResource" />
      </item>
+     <property name="fieldGrowthPolicy">
+      <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+     </property>
+     <property name="labelAlignment">
+      <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+     </property>
+     <property name="formAlignment">
+      <set>Qt::AlignLeft|Qt::AlignTop</set>
+     </property>
+     <property name="horizontalSpacing">
+      <number>8</number>
+     </property>
+     <property name="verticalSpacing">
+      <number>4</number>
+     </property>
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <property name="bottomMargin">
+      <number>0</number>
+     </property>
+     <item row="4" column="0">
+      <widget class="QLabel" name="playbackOptionsLabel">
+       <property name="text">
+        <string>播放</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>16777215</height>
+        </size>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
     <widget class="QGroupBox" name="previewGroup">
-     <property name="title">
-      <string>动画预览 · 不保存播放姿态</string>
-     </property>
      <layout class="QVBoxLayout" name="previewLayout">
       <item>
-       <widget class="QComboBox" name="previewModeCombo">
-        <item>
-         <property name="text">
-          <string>直接预览动画</string>
-         </property>
+       <layout class="QFormLayout" name="previewModeLayout">
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+        </property>
+        <property name="labelAlignment">
+         <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+        </property>
+        <property name="horizontalSpacing">
+         <number>8</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="previewModeLabel">
+          <property name="text">
+           <string>模式</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>80</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
         </item>
-        <item>
-         <property name="text">
-          <string>Controller 预览</string>
-         </property>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="previewModeCombo">
+          <item>
+           <property name="text">
+            <string>直接预览动画</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Controller 预览</string>
+           </property>
+          </item>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+         </widget>
         </item>
-       </widget>
+       </layout>
       </item>
       <item>
        <widget class="AnimatorClipPreviewEditor" name="clipPreviewEditor" />
@@ -154,34 +327,53 @@
       <item>
        <widget class="QWidget" name="controllerPreviewPage">
         <layout class="QVBoxLayout" name="controllerPreviewLayout">
-         <property name="leftMargin">
-          <number>0</number>
-         </property>
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <property name="rightMargin">
-          <number>0</number>
-         </property>
-         <property name="bottomMargin">
-          <number>0</number>
-         </property>
          <item>
           <layout class="QFormLayout" name="layerPreviewLayout">
            <item row="0" column="0">
             <widget class="QLabel" name="previewLayerLabel">
+             <property name="minimumSize">
+              <size>
+               <width>80</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>80</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
-              <string>预览层</string>
+              <string>动画层</string>
              </property>
             </widget>
            </item>
            <item row="0" column="1">
-            <widget class="QComboBox" name="previewLayerCombo" />
+            <widget class="QComboBox" name="previewLayerCombo">
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
+            </widget>
            </item>
            <item row="1" column="0">
             <widget class="QLabel" name="runtimeWeightLabel">
+             <property name="minimumSize">
+              <size>
+               <width>80</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>80</width>
+               <height>16777215</height>
+              </size>
+             </property>
              <property name="text">
-              <string>运行权重</string>
+              <string>权重</string>
              </property>
             </widget>
            </item>
@@ -202,8 +394,41 @@
              <property name="toolTip">
               <string>只调整当前角色的运行实例，不写入场景或 Controller；还原后恢复默认权重。</string>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>96</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
+           <property name="fieldGrowthPolicy">
+            <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+           </property>
+           <property name="labelAlignment">
+            <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+           </property>
+           <property name="formAlignment">
+            <set>Qt::AlignLeft|Qt::AlignTop</set>
+           </property>
+           <property name="horizontalSpacing">
+            <number>8</number>
+           </property>
+           <property name="verticalSpacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
           </layout>
          </item>
          <item>
@@ -213,12 +438,24 @@
              <property name="text">
               <string>播放</string>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
            <item>
             <widget class="QPushButton" name="pauseButton">
              <property name="text">
               <string>暂停</string>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -227,22 +464,71 @@
              <property name="text">
               <string>还原</string>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
           </layout>
          </item>
          <item>
           <layout class="QHBoxLayout" name="stateLayout">
            <item>
-            <widget class="QComboBox" name="stateCombo" />
+            <widget class="QComboBox" name="stateCombo">
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
+            </widget>
            </item>
            <item>
             <widget class="QPushButton" name="crossFadeButton">
              <property name="text">
-              <string>切换状态</string>
+              <string>切换</string>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>48</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
           </layout>
          </item>
          <item>
@@ -261,6 +547,12 @@
              <property name="keyboardTracking">
               <bool>false</bool>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
            <item>
@@ -268,14 +560,42 @@
              <property name="text">
               <string>定位时间</string>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
           </layout>
          </item>
          <item>
           <layout class="QHBoxLayout" name="parameterLayout">
            <item>
-            <widget class="QComboBox" name="parameterCombo" />
+            <widget class="QComboBox" name="parameterCombo">
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>24</height>
+              </size>
+             </property>
+            </widget>
            </item>
            <item>
             <widget class="QDoubleSpinBox" name="parameterSpin">
@@ -291,15 +611,42 @@
              <property name="keyboardTracking">
               <bool>false</bool>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>84</width>
+               <height>24</height>
+              </size>
+             </property>
             </widget>
            </item>
            <item>
             <widget class="QPushButton" name="setParameterButton">
              <property name="text">
-              <string>设置 / 触发</string>
+              <string>设置</string>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>48</width>
+               <height>24</height>
+              </size>
              </property>
             </widget>
            </item>
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
           </layout>
          </item>
          <item>
@@ -370,8 +717,29 @@
               <property name="text">
                <string>清空通知</string>
               </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>24</height>
+               </size>
+              </property>
              </widget>
             </item>
+            <property name="spacing">
+             <number>4</number>
+            </property>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
            </layout>
           </widget>
          </item>
@@ -385,15 +753,69 @@
            </property>
           </widget>
          </item>
+         <property name="spacing">
+          <number>4</number>
+         </property>
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
         </layout>
        </widget>
       </item>
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
      </layout>
+     <property name="title">
+      <string>动画预览</string>
+     </property>
+     <property name="toolTip">
+      <string>临时预览不保存播放姿态，也不会修改 Controller 参数。</string>
+     </property>
+     <property name="styleSheet">
+      <string>QGroupBox#previewGroup { border:0; border-top:1px solid #454a53; border-radius:0; margin-top:9px; padding-top:6px; } QGroupBox#previewGroup::title { subcontrol-origin:margin; subcontrol-position:top left; padding:0 4px 0 0; }</string>
+     </property>
     </widget>
    </item>
    <item>
     <widget class="AnimatorIKEditor" name="ikEditor" />
    </item>
+   <property name="spacing">
+    <number>4</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
   </layout>
  </widget>
  <customwidgets>

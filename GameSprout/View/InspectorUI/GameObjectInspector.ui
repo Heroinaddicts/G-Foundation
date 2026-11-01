@@ -3,42 +3,180 @@
  <class>GameObjectInspectorForm</class>
  <widget class="QWidget" name="GameObjectInspectorForm">
   <layout class="QVBoxLayout" name="mainLayout">
-   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-   <item><widget class="QWidget" name="objectHeader">
-    <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Maximum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
-    <layout class="QHBoxLayout" name="objectHeaderLayout">
-     <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-     <item><widget class="QCheckBox" name="objectActiveCheck">
-      <property name="text"><string/></property>
-      <property name="toolTip"><string>启用此对象。父节点未启用时，此对象仍不会在层级中启用。</string></property>
-      <property name="accessibleName"><string>启用对象</string></property>
-     </widget></item>
-     <item><widget class="QLineEdit" name="objectNameEdit">
-      <property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property>
-      <property name="minimumSize"><size><width>80</width><height>28</height></size></property>
-      <property name="placeholderText"><string>对象名称</string></property>
-      <property name="accessibleName"><string>对象名称</string></property>
-     </widget></item>
-     <item><widget class="QToolButton" name="objectLockButton">
-      <property name="text"><string>锁定</string></property>
-      <property name="checkable"><bool>true</bool></property>
-      <property name="toolTip"><string>锁定当前检查目标，选择其他对象或资源时保持当前显示。</string></property>
-     </widget></item>
-    </layout>
-   </widget></item>
-   <item><widget class="QScrollArea" name="componentScroll">
-    <property name="widgetResizable"><bool>true</bool></property>
-    <widget class="QWidget" name="componentHost"><layout class="QVBoxLayout" name="componentLayout">
-     <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-     <item><spacer name="bottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
-    </layout></widget>
-   </widget></item>
-   <item><widget class="QWidget" name="emptySceneSpace">
-    <property name="visible"><bool>false</bool></property>
-    <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property>
-   </widget></item>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QWidget" name="objectHeader">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Maximum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <layout class="QHBoxLayout" name="objectHeaderLayout">
+      <item>
+       <widget class="QCheckBox" name="objectActiveCheck">
+        <property name="text">
+         <string />
+        </property>
+        <property name="toolTip">
+         <string>启用此对象。父节点未启用时，此对象仍不会在层级中启用。</string>
+        </property>
+        <property name="accessibleName">
+         <string>启用对象</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="objectNameEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+          <horstretch>1</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="placeholderText">
+         <string>对象名称</string>
+        </property>
+        <property name="accessibleName">
+         <string>对象名称</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>40</width>
+          <height>24</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>26</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="objectLockButton">
+        <property name="text">
+         <string>锁</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>锁定当前检查目标，选择其他对象或资源时保持当前显示。</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>26</width>
+          <height>24</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>26</width>
+          <height>26</height>
+         </size>
+        </property>
+        <property name="accessibleName">
+         <string>锁定当前检查目标</string>
+        </property>
+        <property name="styleSheet">
+         <string>QToolButton#objectLockButton { padding:0; }</string>
+        </property>
+       </widget>
+      </item>
+      <property name="spacing">
+       <number>4</number>
+      </property>
+      <property name="leftMargin">
+       <number>6</number>
+      </property>
+      <property name="topMargin">
+       <number>4</number>
+      </property>
+      <property name="rightMargin">
+       <number>6</number>
+      </property>
+      <property name="bottomMargin">
+       <number>5</number>
+      </property>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QScrollArea" name="componentScroll">
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="componentHost">
+      <layout class="QVBoxLayout" name="componentLayout">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <spacer name="bottomSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <property name="spacing">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+     <property name="frameShape">
+      <enum>QFrame::NoFrame</enum>
+     </property>
+     <property name="horizontalScrollBarPolicy">
+      <enum>Qt::ScrollBarAlwaysOff</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="emptySceneSpace">
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>1</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+   <property name="spacing">
+    <number>4</number>
+   </property>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
