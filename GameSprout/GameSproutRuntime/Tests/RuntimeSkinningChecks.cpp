@@ -1,6 +1,5 @@
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeRenderApi.h"
-#include "GRHIExport.h"
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -65,27 +64,23 @@ static int Pixel(const std::vector<std::uint8_t>& pixels,float worldX,float worl
 }
 int main(int argc,char** argv) {
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
-    GameSproutRuntime::IRuntimeRenderer* renderer=nullptr;
-    GRHI::GRHIApi* grhi=nullptr;GRHI::IDevice* device=nullptr;GRHI::ITexture* target=nullptr;
-    SkinProvider provider;
+    GameSproutRuntime::IRuntimeViewport* renderer=nullptr;
+    SkinProvider provider;std::string error;
     try {
         Check(argc==2,"Pass SDK output directory");runtime=Export(argv[1]);Check(runtime,"Cannot load Runtime");
-        grhi=ExportGRHIApi(argv[1]);if(grhi) device=grhi->CreateDevice();
-        if(!device) {delete runtime;delete grhi;std::cout<<"SKIP GPU unavailable\n";return 77;}
-        renderer=runtime->CreateRenderer(device,&provider);Check(renderer,"Cannot create Renderer");
-        GRHI::TextureDesc description;description.Width=description.Height=256;description.Usage=GRHI::TextureUsage::ColorTarget;
-        target=device->CreateTexture(description);Check(target,device->GetLastError());
+        renderer=runtime->CreateOffscreenRenderer(256,256,&provider,error);
+        if(!renderer){delete runtime;std::cout<<"SKIP Runtime GPU unavailable: "<<error<<'\n';return 77;}
         auto* scene=runtime->CreateScene("Skinned instances");auto first=CreateCharacter(*scene,-.5f),second=CreateCharacter(*scene,.5f);
-        GameSproutRuntime::RenderView view;view.Scene=scene;view.ColorTarget=target;view.DrawGrid=false;view.ClearColor={0,0,0,1};
+        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};
         view.Camera.Position={0,0,3};view.Camera.Projection.Projection=GameSproutRuntime::CameraProjection::Orthographic;
         view.Camera.Projection.OrthographicHeight=2;
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Cannot make test camera");
         std::vector<std::uint8_t> pixels;
-        Check(renderer->Render(view),renderer->GetLastError());Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->Render(view),renderer->GetLastError());Check(renderer->ReadPixels(pixels,error),error);
         Check(Pixel(pixels,-.5f)>100 && Pixel(pixels,.5f)>100,"Integer palette input failed to render the second bone");
         Check(provider.MeshLoads==1,"Identical meshes were loaded per instance");
         first.Bone->GetTransform()->SetLocalPosition({.3f,0,0});
-        Check(renderer->Render(view),renderer->GetLastError());Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->Render(view),renderer->GetLastError());Check(renderer->ReadPixels(pixels,error),error);
         Check(Pixel(pixels,-.2f)>100 && Pixel(pixels,-.5f)<5 && Pixel(pixels,.5f)>100,"Per-instance palette moved a shared mesh or failed to move its vertex data");
         const int loads=provider.MeshLoads;Check(renderer->Render(view) && provider.MeshLoads==loads,"Changing pose reloaded the mesh artifact");
         GameSproutRuntime::SceneRaycastHit hit;
@@ -98,12 +93,12 @@ int main(int argc,char** argv) {
         for(const auto& line:outline.Lines) Check(line.From.X>-.35f && line.From.X<-.05f && line.To.X>-.35f && line.To.X<-.05f,"Outline retained bind pose vertices");
         for(int variant=0;variant<4;++variant) {
             provider.Color=(variant&1)!=0;provider.UV=(variant&2)!=0;++provider.Revision;
-            Check(renderer->Render(view),renderer->GetLastError());Check(device->ReadTexture(target,pixels),device->GetLastError());
+            Check(renderer->Render(view),renderer->GetLastError());Check(renderer->ReadPixels(pixels,error),error);
             Check(Pixel(pixels,-.2f)>100,"A skinned UV/color shader variant used incorrect vertex locations");
         }
         provider.DiagonalNormal=true;++provider.Revision;
         first.Bone->GetTransform()->SetLocalScale({1,.2f,1});
-        Check(renderer->Render(view),renderer->GetLastError());Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->Render(view),renderer->GetLastError());Check(renderer->ReadPixels(pixels,error),error);
         Check(Pixel(pixels,-.2f)>190,"Skin normals did not apply inverse transpose under nonuniform bone scale");
         first.Bone->GetTransform()->SetLocalScale({1,1,1});provider.BoneCount=129;++provider.Revision;
         Check(renderer->Render(view),renderer->GetLastError());
@@ -112,9 +107,9 @@ int main(int argc,char** argv) {
         Check(renderer->Render(view) && renderer->GetStatistics().DrawCalls==0 && !renderer->GetLastError().empty(),"Out-of-range skin index reached GPU");
         provider.BadIndex=false;provider.BadWeight=true;++provider.Revision;
         Check(renderer->Render(view) && renderer->GetStatistics().DrawCalls==0 && !renderer->GetLastError().empty(),"Invalid skin weights reached GPU");
-        delete renderer;delete target;delete runtime;delete device;delete grhi;
+        delete renderer;delete runtime;
         std::cout<<"PASS actual GPU skinning, shared instances, picking/bounds/outline, variants and invalid palettes\n";return 0;
     } catch(const std::exception& error) {
-        std::cerr<<error.what()<<'\n';delete renderer;delete target;delete runtime;delete device;delete grhi;return 1;
+        std::cerr<<error.what()<<'\n';delete renderer;delete runtime;return 1;
     }
 }

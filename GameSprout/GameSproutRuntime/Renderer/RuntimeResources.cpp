@@ -72,6 +72,16 @@ bool ValidateMesh(GameSproutRuntime::MeshRenderData& data,std::string& error) {
 }
 }
 namespace GameSproutRuntime {
+namespace {
+GRHI::SamplerDesc ToGRHISampler(const SamplerSettings& settings) {
+    GRHI::SamplerDesc result;
+    result.MinFilter=settings.MinFilter==TextureFilter::Nearest?GRHI::FilterMode::Nearest:GRHI::FilterMode::Linear;
+    result.MagFilter=settings.MagFilter==TextureFilter::Nearest?GRHI::FilterMode::Nearest:GRHI::FilterMode::Linear;
+    const auto address=[](TextureAddressMode mode){switch(mode){case TextureAddressMode::Repeat:return GRHI::AddressMode::Repeat;case TextureAddressMode::ClampToEdge:return GRHI::AddressMode::ClampToEdge;case TextureAddressMode::MirroredRepeat:return GRHI::AddressMode::MirroredRepeat;}return GRHI::AddressMode::ClampToEdge;};
+    result.AddressU=address(settings.AddressU);result.AddressV=address(settings.AddressV);return result;
+}
+}
+
 Renderer::Renderer(Runtime& runtime,GRHI::IDevice& device,IRuntimeResourceProvider& resources)
     :_Runtime(runtime),_Device(device),_Resources(resources) {}
 Renderer::~Renderer() {
@@ -80,6 +90,8 @@ Renderer::~Renderer() {
     for(auto& entry:_Depths) delete entry.second.Texture;
     for(auto* shader:_Shaders) delete shader;
     delete _White;delete _DefaultSampler;delete _Grid;
+    delete _ColorTarget;
+    if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
     for(auto& entry:_Meshes) delete entry.second.Buffer;
@@ -150,7 +162,7 @@ Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference) {
                     description.Usage=GRHI::TextureUsage::Sampled;
                     GRHI::TextureInitialData initial{data.Pixels.data(),data.Pixels.size(),0};
                     entry.Texture=_Device.CreateTexture(description,&initial);
-                    if(entry.Texture) entry.Sampler=_Device.CreateSampler(data.Sampler);
+                    if(entry.Texture) entry.Sampler=_Device.CreateSampler(ToGRHISampler(data.Sampler));
                     if(!entry.Texture || !entry.Sampler) {entry.Error=DeviceError("Create prepared texture/sampler");delete entry.Texture;delete entry.Sampler;entry.Texture=nullptr;entry.Sampler=nullptr;}
                 }
             }

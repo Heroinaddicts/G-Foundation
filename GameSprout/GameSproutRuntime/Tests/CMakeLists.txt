@@ -109,3 +109,8 @@ endif()
 add_test(NAME Runtime.DirectClipPlayback COMMAND RuntimeClipPlaybackChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.DirectClipPlayback PROPERTIES TIMEOUT 30)
+
+# A shell can consume every rendering/resource entry without GPU headers.
+add_executable(RuntimeSdkBoundaryChecks RuntimeSdkBoundaryChecks.cpp)
+target_link_libraries(RuntimeSdkBoundaryChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+add_test(NAME Runtime.PublicSdkBoundary COMMAND RuntimeSdkBoundaryChecks)

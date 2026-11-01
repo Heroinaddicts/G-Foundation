@@ -104,7 +104,7 @@ bool AnimatorComponent::ApplyPose(){
     _Applied.clear();for(std::size_t i=0;i<output.size();++i){if(!transforms[i]->SetEvaluatedPose(_GameObject->GetInstanceID(),matrices[i])){_Error="Skeleton pose is owned by another Animator";ClearPoses();_Playing=false;return false;}_Applied.push_back(transforms[i]->GetGameObject()->GetInstanceID());}
     _Pose=std::move(output);return true;
 }
-void AnimatorComponent::Update(float delta){
+void AnimatorComponent::Update(IGameSproutRuntime*,float delta){
     _RootMotionDelta={};_MotionEventCount=0;_ConsumedTriggers.clear();
     if(_ClipPlayback.Active){UpdateClipPlayback(delta);return;}
     if(!Ensure()||!_Playing)return;

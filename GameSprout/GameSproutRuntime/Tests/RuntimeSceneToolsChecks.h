@@ -1,9 +1,10 @@
 #pragma once
 #include <cmath>
 
-static void CheckSceneTools(GameSproutRuntime::IGameSproutRuntime& runtime,GameSproutRuntime::IRuntimeRenderer& renderer,
+static void CheckSceneTools(GameSproutRuntime::IGameSproutRuntime& runtime,GameSproutRuntime::IRuntimeViewport& renderer,
     GameSproutRuntime::IScene& scene,GameSproutRuntime::IGameObject& object,Provider& provider,
-    GameSproutRuntime::RenderView& view,GRHI::IDevice& device,GRHI::ITexture& target) {
+    GameSproutRuntime::RenderView& view) {
+    std::string error;
     GameSproutRuntime::RenderedCamera camera;
     Check(renderer.GetRenderedCamera(camera) && camera.Width==128 && camera.Height==128 && camera.SceneID==scene.GetInstanceID(),"Rendered camera did not report actual target/scene");
     GameSproutRuntime::SceneRaycastHit hit;
@@ -72,13 +73,13 @@ static void CheckSceneTools(GameSproutRuntime::IGameSproutRuntime& runtime,GameS
     debug.Triangles.push_back({{-.7f,-.7f,-.5f},{.7f,-.7f,-.5f},{0,.7f,-.5f},{0,0,1,1},true});
     view.DebugDraw=&debug;
     Check(renderer.Render(view),renderer.GetLastError());
-    auto pixel=Center(device,target);Check(pixel[0]>40,"Depth-tested tool incorrectly covered closer mesh");
+    auto pixel=Center(renderer);Check(pixel[0]>40,"Depth-tested tool incorrectly covered closer mesh");
     debug.Triangles[0].DepthTest=false;
-    Check(renderer.Render(view),renderer.GetLastError());pixel=Center(device,target);
+    Check(renderer.Render(view),renderer.GetLastError());pixel=Center(renderer);
     Check(pixel[2]>240 && pixel[0]<5 && pixel[1]<5,"Depthless tool triangle was not actually drawn over the mesh");
     debug.Lines.push_back({{-.6f,0,-.6f},{.6f,0,-.6f},{1,0,0,1},false});
     Check(renderer.Render(view),renderer.GetLastError());
-    std::vector<std::uint8_t> pixels;Check(device.ReadTexture(&target,pixels),device.GetLastError());
+    std::vector<std::uint8_t> pixels;Check(renderer.ReadPixels(pixels,error),error);
     bool redLine=false;
     for(int y=61;y<=66;++y) {const auto offset=(std::size_t(y)*128+64)*4;redLine|=pixels[offset]>240 && pixels[offset+1]<5 && pixels[offset+2]<5;}
     Check(redLine,"World-space debug line was not drawn after overlay fill");

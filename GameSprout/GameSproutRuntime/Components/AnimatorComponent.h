@@ -7,8 +7,8 @@ class Runtime;
 class AnimatorComponent final : public BuiltinComponent<IAnimatorComponent> {
 public:
     explicit AnimatorComponent(IGameObject*);
-    void Update(float) override;
-    void OnRelease() override;
+    void Update(IGameSproutRuntime*,float) override;
+    void OnRelease(IGameSproutRuntime*) override;
     ResourceReference GetAvatar() const override {return _Avatar;}
     void SetAvatar(const ResourceReference&) override;
     bool SetIKGoal(AvatarIKGoal,const AnimatorIKGoal&) override;

@@ -18,12 +18,13 @@
 #include "Math/Viewport.h"
 #include "ResourceReference.h"
 
-namespace GRHI { class IDevice; }
 
 namespace GameSproutRuntime {
     struct AnimationNotification;
     struct RootMotionNotification;
     class IRuntimeRenderer;
+    class IRuntimeViewport;
+    struct NativeWindow;
     class IRuntimeResourceProvider;
     class IObject {
     public:
@@ -34,6 +35,7 @@ namespace GameSproutRuntime {
     class IScene;
     class ITransformComponent;
     class ICameraComponent;
+    class IGameSproutRuntime;
 
     class IComponent : IObject {
     public:
@@ -42,9 +44,11 @@ namespace GameSproutRuntime {
 
         // 生命周期仅由 Runtime 调用：登记归属后 OnCreate 一次，销毁前 OnRelease 一次。
         // 回调中请求的结构修改与销毁延迟至当前回调/遍历结束，不直接 delete。
-        virtual void OnCreate() {}
-        virtual void Update(float deltaSeconds) { (void)deltaSeconds; } // 秒。
-        virtual void OnRelease() {}
+        virtual void OnCreate(IGameSproutRuntime * const runtime) {}
+        virtual void OnInitialize(IGameSproutRuntime * const runtime) {}
+        virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
+        virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
+        virtual void OnRelease(IGameSproutRuntime * const runtime) {}
 
         // 返回注册的接口类型，不返回 ImageComponent 等内部实现类的类型。
         virtual const std::type_info& GetComponentType() const = 0;
@@ -55,6 +59,11 @@ namespace GameSproutRuntime {
         IGameObject * const _GameObject;
         IComponent(const IComponent&) = delete;
         IComponent& operator=(const IComponent&) = delete;
+    };
+
+    class IScript : IComponent {
+    public:
+        virtual ~IScript() {}
     };
 
     class IGameObject : IObject {
@@ -124,7 +133,6 @@ namespace GameSproutRuntime {
         virtual IComponent* GetComponent(const std::type_info& type) const = 0;
         virtual bool RemoveComponent(const std::type_info& type) = 0;
     };
-
 
     class IScene : public IGameObject {
     public:
@@ -270,9 +278,11 @@ namespace GameSproutRuntime {
     class IGameSproutRuntime {
     public:
         virtual ~IGameSproutRuntime() = default;
-        // 返回对象由调用者 delete；借用本 Runtime、device 和资源提供者。
-        // 必须先销毁 Renderer，再销毁这三个依赖；全部在宿主线程调用。
-        virtual IRuntimeRenderer* CreateRenderer(GRHI::IDevice* device, IRuntimeResourceProvider* resources) = 0;
+        // Runtime owns and shares the GPU device. Hosts pass only their native window.
+        // Delete returned viewports before this Runtime and the resource provider.
+        virtual IRuntimeViewport* CreateViewport(const NativeWindow&, IRuntimeResourceProvider*, std::string& error) = 0;
+        virtual IRuntimeViewport* CreateOffscreenRenderer(std::uint32_t width, std::uint32_t height,
+            IRuntimeResourceProvider*, std::string& error) = 0;
         virtual IScene* CreateScene(const std::string& name) = 0;
         virtual bool DestroyScene(IScene* scene) = 0;
         virtual std::size_t GetSceneCount() const = 0;
@@ -290,7 +300,7 @@ namespace GameSproutRuntime {
         virtual IRuntimeResourceProvider* GetResourceProvider() const { return nullptr; }
         virtual IGameObject* InstantiateModel(IScene*, const ResourceReference&, IGameObject*, std::string& error) { error="Model instantiation is unavailable";return nullptr; }
         virtual void Update(float deltaSeconds) = 0; // 有限且非负，单位秒。
-        // 旧的无 View 帧入口不猜测窗口或游戏主相机。3D 绘制使用 CreateRenderer + RenderView。
+        // 旧的无 View 帧入口不猜测窗口或游戏主相机。3D 绘制使用 CreateViewport/CreateOffscreenRenderer + RenderView。
         virtual void Render() = 0;
     };
 

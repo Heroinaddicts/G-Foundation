@@ -1,6 +1,5 @@
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeRenderApi.h"
-#include "GRHIExport.h"
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -48,45 +47,36 @@ public:
         return true;
     }
 };
-class HiddenSurface final : public GRHI::ISurface {
-public:
-    void Release() override {}
-    GRHI::TextureFormat GetColorFormat() const override {return GRHI::TextureFormat::Unknown;}
-    bool Draw(GRHI::ITexture*,const GRHI::Color&) override {return true;}
-    GRHI::AcquireFrameResult AcquireFrame(GRHI::ICommandBuffer*,GRHI::SurfaceFrame& frame) override {frame={};return GRHI::AcquireFrameResult::Unavailable;}
-};
 class Probe final : public GameSproutRuntime::IRuntimeListener {
 public:
     int Calls=0;
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override {++Calls;}
 };
-static std::array<int,4> Center(GRHI::IDevice& device,GRHI::ITexture& target) {
-    std::vector<std::uint8_t> pixels;
-    Check(device.ReadTexture(&target,pixels),device.GetLastError());
-    const auto offset=(std::size_t(target.GetHeight()/2)*target.GetWidth()+target.GetWidth()/2)*4;
-    Check(pixels.size()==std::size_t(target.GetWidth())*target.GetHeight()*4,"Readback extent mismatch");
+static std::array<int,4> Center(GameSproutRuntime::IRuntimeViewport& renderer) {
+    std::vector<std::uint8_t> pixels;std::string error;
+    Check(renderer.ReadPixels(pixels,error),error);
+    const auto& extent=renderer.GetStatistics();
+    const auto offset=(std::size_t(extent.Height/2)*extent.Width+extent.Width/2)*4;
+    Check(pixels.size()==std::size_t(extent.Width)*extent.Height*4,"Readback extent mismatch");
     return {pixels[offset],pixels[offset+1],pixels[offset+2],pixels[offset+3]};
 }
 #include "RuntimeSceneToolsChecks.h"
 int main(int argc,char** argv) {
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
-    GameSproutRuntime::IRuntimeRenderer* renderer=nullptr;
-    GRHI::GRHIApi* grhi=nullptr;GRHI::IDevice* device=nullptr;GRHI::ITexture* target=nullptr;GRHI::ITexture* resized=nullptr;
+    GameSproutRuntime::IRuntimeViewport* renderer=nullptr;
+    std::string error;
     Provider provider;
     try {
         Check(argc==2,"Pass the SDK binary directory");
         runtime=Export(argv[1]);Check(runtime,"Cannot load real Runtime SDK");
-        grhi=ExportGRHIApi(argv[1]);
-        if(!grhi) {delete runtime;std::cout<<"SKIP GRHI GPU driver unavailable\n";return 77;}
-        device=grhi->CreateDevice();
-        if(!device) {const auto error=grhi->GetLastError();delete runtime;delete grhi;std::cout<<"SKIP GPU device unavailable: "<<error<<'\n';return 77;}
-        renderer=runtime->CreateRenderer(device,&provider);Check(renderer,"Renderer factory failed");
-        Check(!runtime->CreateRenderer(nullptr,&provider) && !runtime->CreateRenderer(device,nullptr),"Invalid renderer dependencies accepted");
-        GRHI::TextureDesc description;description.Width=128;description.Height=128;description.Usage=GRHI::TextureUsage::ColorTarget;
-        target=device->CreateTexture(description);Check(target,device->GetLastError());
-        GameSproutRuntime::RenderView startupClear;startupClear.ColorTarget=target;startupClear.DrawScene=false;startupClear.ClearColor={1,0,0,1};
+        renderer=runtime->CreateOffscreenRenderer(128,128,&provider,error);
+        if(!renderer){delete runtime;std::cout<<"SKIP Runtime GPU unavailable: "<<error<<'\n';return 77;}
+        Check(!runtime->CreateOffscreenRenderer(128,128,nullptr,error),"Invalid viewport dependencies accepted");
+        Check(!runtime->CreateViewport({},&provider,error),"Invalid native window accepted");
+        auto* second=runtime->CreateOffscreenRenderer(16,16,&provider,error);Check(second,error);delete second;
+        GameSproutRuntime::RenderView startupClear;startupClear.DrawScene=false;startupClear.ClearColor={1,0,0,1};
         Check(renderer->Render(startupClear),renderer->GetLastError());
-        const auto startupPixel=Center(*device,*target);
+        const auto startupPixel=Center(*renderer);
         Check(startupPixel[0]==255&&startupPixel[1]==0&&startupPixel[2]==0&&provider.MeshLoads==0,
             "An empty startup view required a scene or loaded draw resources");
         auto* scene=runtime->CreateScene("Offscreen scene");auto* object=scene->CreateGameObject("Real triangle");
@@ -94,11 +84,11 @@ int main(int argc,char** argv) {
         auto* meshRenderer=object->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
         mesh->SetMesh({"0123456789abcdef0123456789abcdef",1});
         Check(meshRenderer->SetMaterials({{"0123456789abcdef0123456789abcdef",2}}),"Material fixture failed");
-        GameSproutRuntime::RenderView view;view.Scene=scene;view.ColorTarget=target;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,0,3};
+        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,0,3};
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Cannot create explicit camera");
         runtime->Update(0);Probe probe;Check(runtime->RegisterListener(&probe),"Cannot observe derived bounds changes");
         Check(renderer->Render(view),renderer->GetLastError());
-        auto pixel=Center(*device,*target);
+        auto pixel=Center(*renderer);
         Check(pixel[1]>120 && pixel[0]<5 && pixel[2]<5,"Actual HLSL matrix/texture pixel is not lit green");
         Check(renderer->GetStatistics().VisibleObjects==1 && renderer->GetStatistics().Triangles==1 && mesh->GetLocalBounds().Extents.X==1,
               "Renderer mesh/statistics/loaded bounds mismatch");
@@ -109,7 +99,7 @@ int main(int argc,char** argv) {
         clear.Camera.View.Data[0]=std::numeric_limits<float>::quiet_NaN();
         GameSproutRuntime::DebugDrawList ignoredDebug;
         ignoredDebug.Lines.push_back({{std::numeric_limits<float>::quiet_NaN(),0,0},{}, {}});clear.DebugDraw=&ignoredDebug;
-        Check(renderer->Render(clear),renderer->GetLastError());pixel=Center(*device,*target);
+        Check(renderer->Render(clear),renderer->GetLastError());pixel=Center(*renderer);
         Check(std::abs(pixel[0]-64)<=1&&std::abs(pixel[1]-128)<=1&&std::abs(pixel[2]-191)<=1,"Clear-only view retained previous geometry or ignored clear color");
         Check(!renderer->GetRenderedCamera(rendered)&&rendered.SceneID==0&&rendered.Width==0&&
             renderer->GetStatistics().DrawCalls==0&&renderer->GetStatistics().Triangles==0,"Clear-only view retained a pick camera or submitted grid/debug/scene geometry");
@@ -121,13 +111,13 @@ int main(int argc,char** argv) {
         Check(renderer->Render(view) && provider.MeshLoads==loads,"Unchanged prepared mesh was uploaded again");
         for(const auto flags:std::initializer_list<std::array<bool,2>>{{true,true},{false,true},{true,false},{false,false}}) {
             provider.UV=flags[0];provider.Color=flags[1];++provider.Revision;
-            Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*device,*target);
+            Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
             Check(flags[0]?(pixel[1]>120 && pixel[0]<5):(pixel[0]>120 && pixel[1]>120 && pixel[2]>120),
                   "Missing UV/color shader variant read wrong vertex fields");
         }
         provider.UV=true;provider.Color=true;provider.Green=128;provider.SRGB=true;++provider.Revision;
-        Check(renderer->Render(view),renderer->GetLastError());const auto srgb=Center(*device,*target);
-        provider.SRGB=false;++provider.Revision;Check(renderer->Render(view),renderer->GetLastError());const auto linear=Center(*device,*target);
+        Check(renderer->Render(view),renderer->GetLastError());const auto srgb=Center(*renderer);
+        provider.SRGB=false;++provider.Revision;Check(renderer->Render(view),renderer->GetLastError());const auto linear=Center(*renderer);
         Check(srgb[1]>20 && linear[1]>srgb[1]+25,"sRGB source texture decoding was not applied");
         provider.Green=255;provider.SRGB=true;++provider.Revision;
         auto* front=scene->CreateGameObject("Near red triangle");front->GetTransform()->SetLocalPosition({0,0,0.5f});
@@ -136,49 +126,51 @@ int main(int argc,char** argv) {
         // Render near object first and far green object second: depth must keep the red foreground.
         auto* reorder=scene->CreateGameObject("Reorder helper");
         Check(reorder->AddChild(object,false) && scene->AddChild(object,false) && scene->DestroyGameObject(reorder),"Cannot reorder depth fixture");
-        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*device,*target);
+        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
         Check(pixel[0]>120 && pixel[1]<5,"Depth test allowed farther geometry to overwrite foreground");
         Check(scene->DestroyGameObject(front),"Cannot remove depth fixture");
         meshRenderer->SetMaterials({});provider.DiagonalNormal=true;++provider.Revision;
         object->GetTransform()->SetLocalScale({1,0.2f,1});
-        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*device,*target);
+        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
         Check(pixel[0]>190,"Nonuniform scale did not use inverse-transpose normals");
         object->GetTransform()->SetLocalScale({-1,1,1});
-        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*device,*target);
+        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
         Check(pixel[0]>20,"Negative scale winding was culled incorrectly");
         object->GetTransform()->SetLocalScale({0,1,1});Check(renderer->Render(view),renderer->GetLastError());
-        Check(Center(*device,*target)[0]==0 && renderer->GetStatistics().SkippedObjects==1,"Singular transform was not safely skipped");
+        Check(Center(*renderer)[0]==0 && renderer->GetStatistics().SkippedObjects==1,"Singular transform was not safely skipped");
         object->GetTransform()->SetLocalScale({1,1,1});object->SetActive(false);
-        Check(renderer->Render(view) && Center(*device,*target)[0]==0,"Inactive object was rendered");object->SetActive(true);
-        meshRenderer->SetVisible(false);Check(renderer->Render(view) && Center(*device,*target)[0]==0,"Hidden renderer was rendered");meshRenderer->SetVisible(true);
+        Check(renderer->Render(view) && Center(*renderer)[0]==0,"Inactive object was rendered");object->SetActive(true);
+        meshRenderer->SetVisible(false);Check(renderer->Render(view) && Center(*renderer)[0]==0,"Hidden renderer was rendered");meshRenderer->SetVisible(true);
         Check(renderer->Render(view),renderer->GetLastError());
-        CheckSceneTools(*runtime,*renderer,*scene,*object,provider,view,*device,*target);
+        CheckSceneTools(*runtime,*renderer,*scene,*object,provider,view);
         provider.BadIndex=true;++provider.Revision;Check(renderer->Render(view),renderer->GetLastError());
         Check(renderer->GetStatistics().DrawCalls==0 && !renderer->GetLastError().empty(),"Corrupt prepared indices were sent to GPU or had no diagnostic");
         provider.BadIndex=false;provider.Missing=true;++provider.Revision;Check(renderer->Render(view),renderer->GetLastError());
-        Check(Center(*device,*target)[0]==0 && renderer->GetStatistics().VisibleObjects==0 && !renderer->GetLastError().empty() &&
+        Check(Center(*renderer)[0]==0 && renderer->GetStatistics().VisibleObjects==0 && !renderer->GetLastError().empty() &&
               mesh->GetLocalBounds().Extents.X==0,"Missing mesh was replaced with fake geometry or retained stale derived bounds");
-        HiddenSurface hidden;auto hiddenView=view;hiddenView.ColorTarget=nullptr;hiddenView.Surface=&hidden;
+        auto hiddenView=view;Check(renderer->Resize(0,0,error),error);
         Check(renderer->Render(hiddenView) && !renderer->GetStatistics().Width && !renderer->GetStatistics().Height,"Unavailable Surface was not a successful skip");
         GameSproutRuntime::RenderedCamera unavailableCamera;
         Check(!renderer->GetRenderedCamera(unavailableCamera) && !unavailableCamera.Width,"Unavailable view retained a stale pixel camera");
+        Check(renderer->Resize(128,128,error),error);
         bool rejected=false;scene->ForeachChild([&](GameSproutRuntime::IGameObject*) {rejected=!renderer->Render(view);});
         Check(rejected,"Renderer ran from Runtime traversal callback");
         auto* empty=runtime->CreateScene("Grid only");view.Scene=empty;view.DrawGrid=true;view.Camera.Position={0,3,5};
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Grid camera failed");
         Check(renderer->Render(view),renderer->GetLastError());
-        std::vector<std::uint8_t> pixels;Check(device->ReadTexture(target,pixels),device->GetLastError());
+        std::vector<std::uint8_t> pixels;Check(renderer->ReadPixels(pixels,error),error);
         std::size_t colored=0;for(std::size_t i=0;i<pixels.size();i+=4) if(pixels[i]||pixels[i+1]||pixels[i+2])++colored;
         Check(colored>20 && renderer->GetStatistics().DrawCalls==1,"Empty scene reference grid missing");
-        description.Width=64;description.Height=96;resized=device->CreateTexture(description);Check(resized,device->GetLastError());
-        view.ColorTarget=resized;Check(renderer->Render(view) && renderer->GetStatistics().Width==64 && renderer->GetStatistics().Height==96,"Resized view did not rebuild depth/projection");
-        view.ColorTarget=target;Check(renderer->Render(view),renderer->GetLastError());
+        Check(renderer->Resize(64,96,error),error);Check(renderer->Render(view) && renderer->GetStatistics().Width==64 && renderer->GetStatistics().Height==96,"Resized viewport did not rebuild depth/projection");
+        Check(!renderer->Resize(0xffffffffu,0xffffffffu,error),"Oversized viewport accepted");
+        Check(renderer->Render(view)&&renderer->GetStatistics().Width==64,"Failed viewport resize destroyed its previous target");
+        Check(renderer->Resize(128,128,error),error);Check(renderer->Render(view),renderer->GetLastError());
         runtime->UnregisterListener(&probe);
-        delete renderer;renderer=nullptr;delete resized;resized=nullptr;delete target;target=nullptr;delete device;device=nullptr;delete grhi;grhi=nullptr;delete runtime;runtime=nullptr;
+        delete renderer;renderer=nullptr;delete runtime;runtime=nullptr;
         std::cout<<"PASS actual GPU Runtime Renderer: HLSL matrices, four vertex variants, texture/sRGB, depth, inverse-transpose normals, negative/zero scale, grid/resize, revision cache and missing/corrupt assets\n";
         return 0;
     } catch(const std::exception& exception) {
-        delete renderer;delete resized;delete target;delete device;delete grhi;delete runtime;
+        delete renderer;delete runtime;
         std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;
     }
 }

@@ -1,7 +1,6 @@
 #pragma once
 #include "GameSproutRuntimeApi.h"
 #include "RuntimeAnimationData.h"
-#include "GRHIApi.h"
 
 namespace GameSproutRuntime {
 
@@ -30,13 +29,19 @@ struct MeshRenderData {
     Bounds LocalBounds;
 };
 
+enum class TextureFilter : std::uint8_t { Nearest, Linear };
+enum class TextureAddressMode : std::uint8_t { Repeat, ClampToEdge, MirroredRepeat };
+struct SamplerSettings {
+    TextureFilter MinFilter = TextureFilter::Linear, MagFilter = TextureFilter::Linear;
+    TextureAddressMode AddressU = TextureAddressMode::ClampToEdge, AddressV = TextureAddressMode::ClampToEdge;
+};
 struct TextureRenderData {
     std::uint32_t Width = 0;
     std::uint32_t Height = 0;
     bool SRGB = true;
     // 第一版上传 mip0；此处已是紧密排列的 RGBA8，无源图片解码。
     std::vector<std::uint8_t> Pixels;
-    GRHI::SamplerDesc Sampler;
+    SamplerSettings Sampler;
 };
 
 struct MaterialRenderData {

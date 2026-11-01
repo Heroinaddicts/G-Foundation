@@ -19,7 +19,7 @@ void AnimatorComponent::ClearPoses(bool retainClipPose){
     _Pose.clear();for(auto& layer:_Layers){layer.Pose.clear();layer.FrozenPose.clear();layer.PoseCoverage.clear();layer.FrozenCoverage.clear();layer.Frozen=false;}
     _RootMotionDelta={};_AccumulatedMotion={};
 }
-void AnimatorComponent::OnRelease(){_ClipPlayback={};ClearPoses();Owner().ForgetAnimatorReferences(_GameObject->GetInstanceID());}
+void AnimatorComponent::OnRelease(IGameSproutRuntime*){_ClipPlayback={};ClearPoses();Owner().ForgetAnimatorReferences(_GameObject->GetInstanceID());}
 void AnimatorComponent::ForgetObject(std::uint64_t id){
     bool changed=false;for(auto& binding:_Bindings)if(binding.ObjectID==id){binding.ObjectID=0;changed=true;}
     if(changed){Stop();_Error="Animator skeleton node was deleted";NotifyComponentChanged(_GameObject,this);}

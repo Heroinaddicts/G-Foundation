@@ -4,7 +4,7 @@ GameSproutRuntime 第一阶段公共协议
 已实现独立 Runtime 工厂、场景和节点树、组件工厂、生命周期、变换和节点事件。
 Transform、RectTransform、Image、Canvas、Mesh、MeshRenderer、Camera 为实际内部组件。
 Canvas 是普通 GameObject 挂载 ICanvasComponent，没有独立 Canvas 对象类型。
-已实现独立 3D Renderer，宿主传入 GRHI Device/目标与预处理资源提供者；不依赖 Qt、Foundation 或 Editor。
+已实现独立 3D Renderer；宿主只传入原生窗口描述与预处理资源提供者，Runtime 内部管理 GRHI；不依赖 Qt、Foundation 或 Editor。
 尚未接入 Canvas 自动布局/UI 绘制、动画蒙皮或物理。旧无参数 Render 不推测窗口或相机。
 Tests 的 Object/Image/ExportFixture 只是测试替身，不属于发布的 Runtime 实现。
 
@@ -76,9 +76,12 @@ ResourceReference 保存 GUID 字符串与 LocalID，不保存贴图像素、Met
 图像的色调、UV 等实例参数归组件；Renderer 根据资源提供者读取产物并持有自己的 GPU 缓存。
 
 显式 3D RenderView
-包含 RuntimeRenderApi.h，调用 Runtime::CreateRenderer(device,provider)，返回 Renderer 由使用者 delete。
-Renderer 借用 Runtime、Device、provider；先删除 Renderer，再删除这三个依赖。全部在宿主线程调用。
-RenderView 明确指定 Scene、Surface 或离屏 ColorTarget（二选一）及观察相机 View/Projection/Position。
+包含 RuntimeRenderApi.h，调用 Runtime::CreateViewport(NativeWindow,provider,error) 或 CreateOffscreenRenderer(width,height,provider,error)。
+返回 IRuntimeViewport 由使用者 delete；借用 Runtime 与 provider，必须先销毁 viewport 再销毁这两个依赖。全部在宿主线程调用。
+Runtime 内部按需创建共享 Device，多个 viewport 各自持有自己的 Surface 或离屏目标。宿主 SDK 不暴露 GRHI 对象或头文件。
+RenderView 只指定 Scene、观察相机 View/Projection/Position、网格与调试绘制，渲染目标绑定在 viewport 内部。
+离屏 viewport 通过 Resize 调整像素尺寸，任一维度为零时暂停绘制；ReadPixels 返回紧密 RGBA8 字节。
+Qt 宿主在原生窗口即将销毁时先删除 viewport，句柄重建后重新 CreateViewport；Runtime 不销毁宿主窗口。
 Renderer 从实际目标像素宽高计算投影，不采用 Scene::GetMainCamera 替换 Editor 临时观察相机。
 不推进 Update，不创建相机节点，不修改场景/Undo；回调/遍历/重入中拒绝 Render。
 隐藏 Surface 的 Unavailable 是成功跳过，Statistics.Width/Height=0，不遗留未提交命令。
@@ -114,7 +117,7 @@ CPU位置与索引仅在资源首次载入或Revision变化时解包缓存，完
 跳过非激活层级、Visible=false、奇异变换及缺失Mesh/Material/Texture分段；当前默认Layer0受mask最低位控制。
 GetWorldBounds 先对已绑定Mesh被section引用的顶点求本地AABB，再变换8角得到保守世界AABB；中心等于模型矩阵乘本地中心，适用于聚焦非激活/不可见对象及稳定的Center操作轴。
 AppendSelectionOutline 将实际Mesh边按顶点索引去重后追加到调试列表，失败不改变已有列表。
-这些查询借用同一Runtime/Device/provider，在宿主线程调用，回调/遍历/Render内拒绝重入。
+这些查询借用同一Runtime/provider及Runtime内部设备，在宿主线程调用，回调/遍历/Render内拒绝重入。
 当前拾取直接遍历候选三角形，没有BVH；线框生成针对单个选中对象，不把调试数据存入场景。
 Runtime.RendererGPU同时覆盖最近/精确拾取、父旋转与镜像非均匀缩放、资源删除与不可见过滤、真实GPU工具overlay/深度遮挡。
 
@@ -152,3 +155,5 @@ GetMainCamera 返回借用组件指针；只能选择当前场景内仍有效的
 相机组件、相机对象或其祖先被删除后，场景自动清除主相机；不保存失效的组件地址。
 主相机变化通过场景根节点的 MainCameraChanged 事件通知 Editor，实际派发仍在 Update 尾部。
 源 .scene 的 MainCameraID 使用文件内部对象 ID，实例化时映射到实际相机组件，不能直接当 InstanceID 使用。
+
+Runtime.PublicSdkBoundary 仅使用 Runtime/Api 包含目录编译所有公共渲染和资源接口，禁止间接包含 GRHI 头文件。

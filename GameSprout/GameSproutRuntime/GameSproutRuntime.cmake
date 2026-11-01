@@ -1,5 +1,4 @@
 include_guard(GLOBAL)
-include("${CMAKE_CURRENT_LIST_DIR}/../GRHI/GRHI.cmake")
 
 # Public SDK only: expose Api/ and an independently built library. Consumers
 # must not add the Runtime implementation as a subdirectory to access its API.
@@ -11,7 +10,7 @@ if(NOT TARGET GameSproutRuntime::GameSproutRuntimeApi)
         "${CMAKE_CURRENT_LIST_DIR}/Api"
     )
     # The header-only Export helper uses the platform dynamic loader.
-    target_link_libraries(GameSproutRuntimeApi INTERFACE GRHI::GRHIApi ${CMAKE_DL_LIBS})
+    target_link_libraries(GameSproutRuntimeApi INTERFACE ${CMAKE_DL_LIBS})
 endif()
 
 if(NOT TARGET GameSproutRuntime::GameSproutRuntime)
@@ -35,3 +34,21 @@ if(NOT TARGET GameSproutRuntime::GameSproutRuntime)
         )
     endif()
 endif()
+
+# Packaging is a Runtime SDK responsibility. It does not expose GPU headers or
+# backend objects to consumers of GameSproutRuntimeApi.
+function(GameSproutRuntimeDeploy target)
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../GRHI/GRHI.cmake")
+    get_target_property(backend_dependencies GRHI::GRHI GRHI_RUNTIME_DEPENDENCIES)
+    add_custom_target(${target}DeployRuntime
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${target}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:GameSproutRuntime::GameSproutRuntime>" "$<TARGET_FILE_DIR:${target}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:GRHI::GRHI>" ${backend_dependencies} "$<TARGET_FILE_DIR:${target}>"
+        DEPENDS "$<TARGET_FILE:GameSproutRuntime::GameSproutRuntime>"
+            "$<TARGET_FILE:GRHI::GRHI>" ${backend_dependencies}
+        COMMENT "Deploying Runtime SDK and its private graphics dependencies"
+        VERBATIM)
+    add_dependencies(${target} ${target}DeployRuntime)
+endfunction()

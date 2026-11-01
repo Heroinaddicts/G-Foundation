@@ -16,7 +16,7 @@ void GameObjectState::ReleaseComponents() noexcept {
     while (!Components.empty()) {
         IComponent* component=Components.back().Pointer;
         Components.pop_back();
-        try { component->OnRelease(); } catch (...) {}
+        try { component->OnRelease(&Owner); } catch (...) {}
         delete component;
     }
     Components.clear();
@@ -84,7 +84,7 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
         if (NextComponentSerial==std::numeric_limits<std::uint64_t>::max()) { delete component; return nullptr; }
         Components.push_back({component,++NextComponentSerial,false});
         registered=true;
-        component->OnCreate();
+        component->OnCreate(&Owner);
         // 初始化回调可以请求移除/销毁；此时不能把即将失效的接口返回调用方。
         const auto current=std::find_if(Components.begin(),Components.end(),[&](const ComponentEntry& entry){return entry.Pointer==component;});
         if(!Owner.IsUsable(this) || current==Components.end() || current->PendingRemove) return nullptr;
@@ -94,7 +94,7 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
         if (registered) {
             const auto found=std::find_if(Components.begin(),Components.end(),[&](const ComponentEntry& entry){return entry.Pointer==component;});
             if(found!=Components.end()) Components.erase(found);
-            try { component->OnRelease(); } catch (...) {}
+            try { component->OnRelease(&Owner); } catch (...) {}
         }
         delete component;
         return nullptr;
@@ -119,7 +119,7 @@ bool GameObjectState::RemoveComponentNow(IComponent* component,std::uint64_t ser
     Owner.Notify(*this,SceneNodeEventType::ComponentRemoved,component->GetTypeName());
     // 从查询中移除后再执行释放回调，避免释放阶段再次取到正在销毁的组件。
     Components.erase(found);
-    try { component->OnRelease(); } catch (...) {}
+    try { component->OnRelease(&Owner); } catch (...) {}
     delete component;
     return true;
 }

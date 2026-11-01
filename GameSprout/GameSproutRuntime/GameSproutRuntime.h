@@ -1,6 +1,7 @@
 #pragma once
 #include "Api/GameSproutRuntimeApi.h"
 #include "Animation/AnimationResources.h"
+#include "GRHIApi.h"
 #include <deque>
 #include <map>
 #include <typeindex>
@@ -17,7 +18,8 @@ public:
     ~Runtime() override;
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
-    IRuntimeRenderer* CreateRenderer(GRHI::IDevice* device,IRuntimeResourceProvider* resources) override;
+    IRuntimeViewport* CreateViewport(const NativeWindow&,IRuntimeResourceProvider*,std::string&) override;
+    IRuntimeViewport* CreateOffscreenRenderer(std::uint32_t,std::uint32_t,IRuntimeResourceProvider*,std::string&) override;
     IScene* CreateScene(const std::string& name) override;
     bool DestroyScene(IScene* scene) override;
     std::size_t GetSceneCount() const override { return _Scenes.size(); }
@@ -68,6 +70,8 @@ private:
         AnimationNotification Event;
         RootMotionNotification RootMotion;
     };
+    GRHI::IDevice* RenderDevice(std::string& error);
+    void ReleaseGraphics();
     std::uint64_t NextID();
     bool RegisterNode(GameObjectState& state);
     bool ReparentNow(GameObjectState& child, GameObjectState& parent, bool keepWorld);
@@ -96,6 +100,8 @@ private:
     bool _Updating = false;
     bool _ShuttingDown = false;
     AnimationResources _AnimationResources;
+    GRHI::GRHIApi* _RenderApi=nullptr;
+    GRHI::IDevice* _RenderDevice=nullptr;
 };
 
 // 所有回调与树/组件遍历共用一个屏障。退出最外层后再执行结构命令。

@@ -74,7 +74,7 @@ private:
         if(type!=typeid(GameSproutRuntime::IImageComponent)) return nullptr;
         auto* image=new Image(this);
         Components.emplace(std::type_index(type),image);
-        image->OnCreate();
+        image->OnCreate(nullptr);
         return image;
     }
     GameSproutRuntime::IComponent* GetComponent(const std::type_info& type) const override {
@@ -84,7 +84,7 @@ private:
     bool RemoveComponent(const std::type_info& type) override {
         const auto found=Components.find(std::type_index(type));
         if(found==Components.end()) return false;
-        found->second->OnRelease(); delete found->second; Components.erase(found); return true;
+        found->second->OnRelease(nullptr); delete found->second; Components.erase(found); return true;
     }
     std::string Name;
     bool Active=true;

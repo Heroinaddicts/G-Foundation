@@ -32,15 +32,12 @@ struct DebugBufferScope {
 };
 }
 namespace GameSproutRuntime {
-IRuntimeRenderer* Runtime::CreateRenderer(GRHI::IDevice* device,IRuntimeResourceProvider* resources) {
-    if(!device || !resources || IsExecuting() || IsShuttingDown()) return nullptr;
-    try {return new Renderer(*this,*device,*resources);} catch(...) {return nullptr;}
-}
 bool Renderer::Render(const RenderView& view) {
     _HasRenderedCamera=false;_RenderedCamera={};
-    if(_Rendering || _Runtime.IsExecuting()) return Fail("Runtime Renderer cannot run inside a Runtime callback or another Render");
+    if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsShuttingDown()) return Fail("Runtime Renderer cannot run inside a Runtime callback or another Render");
     _Error.clear();_Statistics={};
-    if(bool(view.Surface)==bool(view.ColorTarget)) return Fail("RenderView requires exactly one Surface or ColorTarget");
+    if(!_Surface&&!_ColorTarget){_Statistics={};return true;}
+    if(_Surface&&_ColorTarget)return Fail("Viewport has conflicting render targets");
     if(view.DrawScene) {
         auto* scene=_Runtime.Find(view.Scene);
         if(!_Runtime.IsUsable(scene) || scene->SceneOwner!=view.Scene) return Fail("RenderView scene is not a live scene owned by this Runtime");
@@ -117,9 +114,9 @@ bool Renderer::Render(const RenderView& view) {
         GRHI::ColorTargetView target;
         GRHI::TextureFormat format=GRHI::TextureFormat::Unknown;
         std::uint32_t width=0,height=0;
-        if(view.Surface) {
+        if(_Surface) {
             GRHI::SurfaceFrame frame;
-            const auto result=view.Surface->AcquireFrame(command.Command,frame);
+            const auto result=_Surface->AcquireFrame(command.Command,frame);
             if(result==GRHI::AcquireFrameResult::Unavailable) {
                 const bool cancelled=_Device.Cancel(command.Command);
                 if(cancelled) command.Command=nullptr;
@@ -129,7 +126,7 @@ bool Renderer::Render(const RenderView& view) {
             if(result!=GRHI::AcquireFrameResult::Ready) return Fail(DeviceError("Acquire Runtime surface frame"));
             command.AcquiredFrame=true;target=frame.ColorTarget;width=frame.Width;height=frame.Height;format=frame.Format;
         } else {
-            target=view.ColorTarget->GetColorTargetView();width=view.ColorTarget->GetWidth();height=view.ColorTarget->GetHeight();format=view.ColorTarget->GetFormat();
+            target=_ColorTarget->GetColorTargetView();width=_ColorTarget->GetWidth();height=_ColorTarget->GetHeight();format=_ColorTarget->GetFormat();
         }
         if(!width || !height || !target.Token) return Fail("Runtime render target has no valid color view or pixel extent");
         Mat4 viewProjection;

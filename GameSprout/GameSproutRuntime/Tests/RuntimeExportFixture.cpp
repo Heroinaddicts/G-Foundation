@@ -3,7 +3,8 @@
 // 仅供加载器测试，明确不实现场景/对象业务，不进入发布动态库。
 class ExportFixture final : public GameSproutRuntime::IGameSproutRuntime {
 public:
-    GameSproutRuntime::IRuntimeRenderer* CreateRenderer(GRHI::IDevice*,GameSproutRuntime::IRuntimeResourceProvider*) override {return nullptr;}
+    GameSproutRuntime::IRuntimeViewport* CreateViewport(const GameSproutRuntime::NativeWindow&,GameSproutRuntime::IRuntimeResourceProvider*,std::string&) override {return nullptr;}
+    GameSproutRuntime::IRuntimeViewport* CreateOffscreenRenderer(std::uint32_t,std::uint32_t,GameSproutRuntime::IRuntimeResourceProvider*,std::string&) override {return nullptr;}
     GameSproutRuntime::IScene* CreateScene(const std::string&) override { return nullptr; }
     bool DestroyScene(GameSproutRuntime::IScene*) override { return false; }
     std::size_t GetSceneCount() const override { return 0; }

@@ -5,6 +5,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+include("${CMAKE_CURRENT_LIST_DIR}/../GRHI/GRHI.cmake")
 
 # Automatically include new runtime sources and preserve their on-disk layout.
 file(GLOB_RECURSE gamesprout_runtime_files CONFIGURE_DEPENDS
@@ -34,6 +35,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/GameSproutRuntime.cmake")
 target_link_libraries(GameSproutRuntime PUBLIC
     GameSproutRuntime::GameSproutRuntimeApi
 )
+target_link_libraries(GameSproutRuntime PRIVATE GRHI::GRHIApi)
 target_include_directories(GameSproutRuntime PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
@@ -91,3 +93,10 @@ if(GAMESPROUT_RUNTIME_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests)
 endif()
+
+# Keep standalone Runtime SDK outputs self-contained for shell and GPU tests.
+get_target_property(runtime_backend_dependencies GRHI::GRHI GRHI_RUNTIME_DEPENDENCIES)
+add_custom_command(TARGET GameSproutRuntime POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:GRHI::GRHI>" ${runtime_backend_dependencies} "$<TARGET_FILE_DIR:GameSproutRuntime>"
+    VERBATIM)

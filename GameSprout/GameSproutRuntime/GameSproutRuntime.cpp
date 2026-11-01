@@ -13,6 +13,7 @@ Runtime::~Runtime() {
     while (!_Scenes.empty()) DestroyNow(_Scenes.back()->State());
     // 包括尚未挂载的创建请求，保证异常/关闭时没有遗留对象。
     while (!_Nodes.empty()) DestroyNow(*_Nodes.begin()->second);
+    ReleaseGraphics();
 }
 std::uint64_t Runtime::NextID() {
     if (_NextID==std::numeric_limits<std::uint64_t>::max()) return 0;
@@ -110,7 +111,7 @@ void Runtime::Update(float deltaSeconds) {
                     if(!IsUsable(node)) break;
                     const auto current=std::find_if(node->Components.begin(),node->Components.end(),[&](const auto& item){return item.Serial==component.Serial;});
                     if(current==node->Components.end() || current->PendingRemove) continue;
-                    try { component.Pointer->Update(deltaSeconds); } catch (...) {}
+                    try { component.Pointer->Update(this,deltaSeconds); } catch (...) {}
                 }
             }
         }

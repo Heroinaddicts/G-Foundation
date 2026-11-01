@@ -1,18 +1,23 @@
 #pragma once
 #include "Api/RuntimeRenderApi.h"
 #include "RuntimeShaders.h"
+#include "GRHIApi.h"
 #include <map>
 #include <tuple>
 
 namespace GameSproutRuntime {
 class Runtime;
-class Renderer final : public IRuntimeRenderer {
+class Renderer final : public IRuntimeViewport {
 public:
     Renderer(Runtime& runtime,GRHI::IDevice& device,IRuntimeResourceProvider& resources);
     ~Renderer() override;
     Renderer(const Renderer&)=delete;
     Renderer& operator=(const Renderer&)=delete;
     bool Render(const RenderView& view) override;
+    bool ReadPixels(std::vector<std::uint8_t>&,std::string&) override;
+    bool Resize(std::uint32_t,std::uint32_t,std::string&) override;
+    void BindSurface(GRHI::ISurface* surface) {_Surface=surface;}
+
     const std::string& GetLastError() const override {return _Error;}
     const RenderStatistics& GetStatistics() const override {return _Statistics;}
     bool GetRenderedCamera(RenderedCamera& camera) const override;
@@ -86,6 +91,8 @@ private:
     std::string DeviceError(const std::string& operation) const;
     Runtime& _Runtime;
     GRHI::IDevice& _Device;
+    GRHI::ISurface* _Surface=nullptr;
+    GRHI::ITexture* _ColorTarget=nullptr;
     IRuntimeResourceProvider& _Resources;
     std::map<ResourceKey,MeshGPU> _Meshes;
     std::map<ResourceKey,TextureGPU> _Textures;

@@ -1,9 +1,17 @@
 #pragma once
 #include "GameSproutRuntimeApi.h"
-#include "GRHIApi.h"
 #include "RuntimeResourceApi.h"
 
 namespace GameSproutRuntime {
+
+// Native window identity only; ownership remains with the platform/Qt host.
+// Cocoa: NSView*, Win32: HWND, X11: Window. No GPU backend objects cross the API.
+enum class NativeWindowSystem : std::uint8_t { Cocoa, Win32, X11, Wayland };
+struct NativeWindow {
+    NativeWindowSystem System = NativeWindowSystem::Cocoa;
+    std::uintptr_t Handle = 0;
+    std::uintptr_t Display = 0;
+};
 
 struct RenderCamera {
     Mat4 View;
@@ -31,9 +39,6 @@ struct DebugDrawList {
 
 struct RenderView {
     IScene* Scene = nullptr;
-    // 二选一；Surface 来自宿主原生窗口，ColorTarget 用于离屏绘制。
-    GRHI::ISurface* Surface = nullptr;
-    GRHI::ITexture* ColorTarget = nullptr;
     RenderCamera Camera;
     bool DrawGrid = true;
     Color ClearColor{0.09f, 0.10f, 0.12f, 1.0f};
@@ -91,6 +96,17 @@ public:
     // 追加所选对象的精确 Mesh 边线；边按索引去重。失败不修改已有列表。
     virtual bool AppendSelectionOutline(IScene* scene, std::uint64_t objectID, DebugDrawList& draw,
         const Color& tint = Color{1.0f, 0.65f, 0.05f, 1.0f}, bool depthTest = false) = 0;
+};
+
+// Created by Runtime, deleted by the caller before its Runtime/resource provider.
+// Window-backed instances release their presentation binding before the native
+// window is destroyed. Recreate the viewport after a native handle replacement.
+class IRuntimeViewport : public IRuntimeRenderer {
+public:
+    // Readback is available for offscreen instances only; tightly packed RGBA8.
+    virtual bool ReadPixels(std::vector<std::uint8_t>& pixels, std::string& error) = 0;
+    // Zero dimensions suspend an offscreen viewport; no scene/camera is rendered.
+    virtual bool Resize(std::uint32_t width, std::uint32_t height, std::string& error) = 0;
 };
 
 }
