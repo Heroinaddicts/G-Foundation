@@ -34,14 +34,18 @@ namespace GameSproutEditor {
                 FoundationUtils::SafeSystem::File::GetDirectoryOfCurrentExe();
 
             GameSproutRuntime::IGameSproutRuntime* runtime = Export(libraryDirectory);
-            if (!runtime) qFatal("Cannot load GameSproutRuntime from directory %s.", libraryDirectory.c_str());
+            if (!runtime) {
+                qCritical("Cannot load GameSproutRuntime from directory %s.", libraryDirectory.c_str());
+                return nullptr;
+            }
             // Set the pointer before initialization callbacks can look it up.
             try {s_Instance = new GameSproutEditorFinal(runtime);}
             catch (...) {delete runtime;throw;}
             if (!s_Instance->Initialize()) {
                 delete s_Instance;
                 s_Instance = nullptr;
-                qFatal("GameSprout module initialization failed; see the preceding error.");
+                qCritical("GameSprout module initialization failed; see the preceding error.");
+                return nullptr;
             }
         }
 

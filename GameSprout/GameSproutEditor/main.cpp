@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QTimer>
+#include <cstdlib>
 #include "GameSproutFinal.h"
 
 
@@ -7,6 +8,9 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
     GameSproutEditor::GameSproutFinal * gsf = GameSproutEditor::GameSproutFinal::GetInstance();
+    if (!gsf) {
+        return EXIT_FAILURE;
+    }
 
     QTimer timer;
     timer.setTimerType(Qt::PreciseTimer);

@@ -3,7 +3,8 @@
 
 namespace GameSproutEditor {
     GameSproutFinal * GameSproutFinal::GetInstance() {
-        return GameSproutEditorFinal::GetInstance()->_Api;
+        GameSproutEditorFinal* editor = GameSproutEditorFinal::GetInstance();
+        return editor ? editor->_Api : nullptr;
     }
 
     void GameSproutFinal::Update() {

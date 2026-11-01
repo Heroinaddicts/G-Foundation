@@ -1,8 +1,14 @@
 #include "Project.h"
+#include <QDebug>
 
 bool Project::Initialize(GameSproutModuleApi * const api) {
     g_GameSproutModuleApi = api;
-    _Root = api->_Foundation->GetLaunchArg("ProjectRoot");
+    const char* projectRoot = api->_Foundation->GetLaunchArg("ProjectRoot");
+    if (!projectRoot || !*projectRoot) {
+        qCritical() << "Missing project directory. Launch with --ProjectRoot=<project directory>.";
+        return false;
+    }
+    _Root = projectRoot;
 
     GetGameSproutModule(api->_EditorApi, g_IConsole, Console);
     GSRegLaunchedCallback(
@@ -25,7 +31,6 @@ void Project::LaunchFinished(GameSproutModuleApi * const api)  {
 }
 
 void Project::Update(GameSproutModuleApi * const api)  {
-    api->_Foundation->Update();
 }
 
 void Project::Release(GameSproutModuleApi * const api)  {
