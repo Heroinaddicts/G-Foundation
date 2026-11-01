@@ -2,7 +2,6 @@
 #define __ILocalDatabase_h__
 
 #include "GameSproutEditorApi.h"
-#include "GRHIApi.h"
 
 #include <vector>
 #include <cstdint>

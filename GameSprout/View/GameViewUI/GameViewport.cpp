@@ -16,9 +16,9 @@ GameViewport::GameViewport(QWidget* parent):QWidget(parent) {
 }
 GameViewport::~GameViewport(){Shutdown();}
 QPaintEngine* GameViewport::paintEngine() const {return Headless()?QWidget::paintEngine():nullptr;}
-void GameViewport::Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,
+void GameViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,
     GameSproutRuntime::IRuntimeResourceProvider* resources) {
-    Shutdown();_Api=api;_Runtime=runtime;_Resources=resources;_Initialized=true;
+    Shutdown();_Runtime=runtime;_Resources=resources;_Initialized=true;
 }
 void GameViewport::Status(const std::string& text) {
     if (_Status==text) return;
@@ -26,18 +26,14 @@ void GameViewport::Status(const std::string& text) {
 }
 void GameViewport::DestroyGPU() {
     auto* renderer=_Renderer;_Renderer=nullptr;
-    auto* surface=_Surface;_Surface=nullptr;
-    auto* device=_Device;_Device=nullptr;
     _Attempted=false;
     delete renderer;
-    if(surface){surface->Release();delete surface;}
-    if(device){device->Release();delete device;}
 }
 void GameViewport::Shutdown(){
     _Initialized=false;DestroyGPU();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
     if(_HostWindow){_HostWindow->removeEventFilter(this);QObject::disconnect(_HostWindow,nullptr,this,nullptr);_HostWindow=nullptr;}
-    _Api=nullptr;_Runtime=nullptr;_Resources=nullptr;
+    _Runtime=nullptr;_Resources=nullptr;
 }
 void GameViewport::RetryRendering(){DestroyGPU();_Attempted=false;}
 void GameViewport::ObserveNativeWindow() {
@@ -74,10 +70,10 @@ bool GameViewport::eventFilter(QObject* watched,QEvent* event) {
     return QWidget::eventFilter(watched,event);
 }
 bool GameViewport::EnsureRendering() {
-    if (_Renderer&&_Surface) return true;
+    if (_Renderer) return true;
     if (_Attempted) return false;
     _Attempted=true;
-    if (!_Api||!_Runtime||!_Resources) {Status("Game 渲染服务尚未就绪。");return false;}
+    if (!_Runtime||!_Resources) {Status("Game 渲染服务尚未就绪。");return false;}
     const auto platform=QGuiApplication::platformName();
 #if defined(__APPLE__)
     const bool supported=platform=="cocoa";
@@ -89,17 +85,21 @@ bool GameViewport::EnsureRendering() {
     if (!supported) {Status("当前平台没有可用的 Game 原生窗口句柄。");return false;}
     const WId id=winId();ObserveNativeWindow();_Attempted=true;
     if(!id){Status("Game 原生窗口尚未创建。");return false;}
-    _Device=_Api->CreateDevice();
-    if(!_Device){Status(_Api->GetLastError());return false;}
-#if defined(__APPLE__)||defined(_WIN32)
-    const auto handle=reinterpret_cast<GRHI::GRHIWindowHandle>(id);
+    GameSproutRuntime::NativeWindow window;
+#if defined(__APPLE__)
+    window.System=GameSproutRuntime::NativeWindowSystem::Cocoa;
+#elif defined(_WIN32)
+    window.System=GameSproutRuntime::NativeWindowSystem::Win32;
 #else
-    const auto handle=static_cast<GRHI::GRHIWindowHandle>(id);
+    window.System=GameSproutRuntime::NativeWindowSystem::X11;
 #endif
-    _Surface=_Device->CreateSurface(handle);
-    if(!_Surface){const std::string error=_Device->GetLastError();DestroyGPU();_Attempted=true;Status(error);return false;}
-    _Renderer=_Runtime->CreateRenderer(_Device,_Resources);
-    if(!_Renderer){DestroyGPU();_Attempted=true;Status("无法创建 Game Renderer。");return false;}
+#if defined(_WIN32)
+    window.Handle=reinterpret_cast<std::uintptr_t>(id);
+#else
+    window.Handle=static_cast<std::uintptr_t>(id);
+#endif
+    std::string error;_Renderer=_Runtime->CreateViewport(window,_Resources,error);
+    if(!_Renderer){DestroyGPU();_Attempted=true;Status(error);return false;}
     return true;
 }
 void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
@@ -121,7 +121,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
     if (Headless()) {Status(diagnostic.empty()?"离屏环境：Game 使用 Main Camera，与 Scene 共用动画姿态。":diagnostic);return;}
     if (!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()) return;
     if (!EnsureRendering()) return;
-    view.Surface=_Surface;_Rendering=true;
+    _Rendering=true;
     struct Scope{bool& Flag;~Scope(){Flag=false;}} scope{_Rendering};
     if (!_Renderer->Render(view)) {Status(_Renderer->GetLastError());return;}
     if(!diagnostic.empty()){Status(diagnostic);return;}

@@ -32,11 +32,11 @@ bool LibraryRuntimeResources::LoadTexture(const GameSproutRuntime::ResourceRefer
     data.SRGB = colorSpace == "SRGB";
     const std::string filter = settings.get("FilterMode","Bilinear").asString();
     if (filter != "Point" && filter != "Bilinear" && filter != "Trilinear") return fail();
-    data.Sampler.MinFilter = data.Sampler.MagFilter = filter == "Point" ? GRHI::FilterMode::Nearest : GRHI::FilterMode::Linear;
-    const auto wrap = [](const std::string& value, GRHI::AddressMode& mode) {
-        if (value == "Repeat") mode = GRHI::AddressMode::Repeat;
-        else if (value == "ClampToEdge") mode = GRHI::AddressMode::ClampToEdge;
-        else if (value == "MirrorRepeat") mode = GRHI::AddressMode::MirroredRepeat;
+    data.Sampler.MinFilter = data.Sampler.MagFilter = filter == "Point" ? GameSproutRuntime::TextureFilter::Nearest : GameSproutRuntime::TextureFilter::Linear;
+    const auto wrap = [](const std::string& value, GameSproutRuntime::TextureAddressMode& mode) {
+        if (value == "Repeat") mode = GameSproutRuntime::TextureAddressMode::Repeat;
+        else if (value == "ClampToEdge") mode = GameSproutRuntime::TextureAddressMode::ClampToEdge;
+        else if (value == "MirrorRepeat") mode = GameSproutRuntime::TextureAddressMode::MirroredRepeat;
         else return false;
         return true;
     };

@@ -5,7 +5,7 @@
 #include <list>
 #include <QDebug>
 #include "FoundationApi.h"
-#include "GRHIApi.h"
+#include "GameSproutRuntimeApi.h"
 UsingFoundation;
 
 #define UsingGameSprout using namespace GameSproutEditor;
@@ -20,7 +20,10 @@ namespace GameSproutEditor {
     class GameSproutViewApi {
     public:
         virtual ~GameSproutViewApi() {}
-        GameSproutViewApi(GRHI::GRHIApi * const grhi) : _GRHIApi(grhi) {}
+        explicit GameSproutViewApi(GameSproutRuntime::IGameSproutRuntime* const runtime) : _Runtime(runtime) {}
+
+        // Application-owned; Modules and Views borrow this same Runtime.
+        GameSproutRuntime::IGameSproutRuntime* const _Runtime;
 
         virtual IGameSproutView * FindGameSproutView(const std::string & name) const = 0;
         template<typename V>
@@ -34,7 +37,6 @@ namespace GameSproutEditor {
             return (M*)FindGameSproutModule(name);
         }
 
-        GRHI::GRHIApi * const _GRHIApi;
     };
 
 #define GetGameSproutView(editor, v, name) v = editor->GetGameSproutView<I##name>(#name);

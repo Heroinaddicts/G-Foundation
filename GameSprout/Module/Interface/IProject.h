@@ -2,7 +2,6 @@
 #define __IProject_h__
 
 #include "GameSproutEditorApi.h"
-#include "GRHIApi.h"
 
 class IProject : public GameSproutEditor::IGameSproutModule {
 public:

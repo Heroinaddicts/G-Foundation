@@ -13,7 +13,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutRuntime/GameSproutRuntime.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
@@ -39,7 +39,7 @@ add_library(LibraryManager SHARED ${module_files})
 target_compile_features(LibraryManager PRIVATE cxx_std_20)
 target_link_libraries(LibraryManager PRIVATE
     Foundation::FoundationApi
-    GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi
     Qt${QT_VERSION_MAJOR}::Core
 )
 target_include_directories(LibraryManager PRIVATE

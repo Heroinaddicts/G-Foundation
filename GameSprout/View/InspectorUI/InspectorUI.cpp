@@ -17,6 +17,7 @@
 #include "AvatarInspector.h"
 #include "ModelRigDialog.h"
 #include "IRuntimeAssets.h"
+#include "IAnimationPreview.h"
 #include "ui_InspectorUI.h"
 #include <QApplication>
 #include <QWidget>
@@ -31,6 +32,7 @@ void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor)
     GetGameSproutModule(editor, _RuntimeAssets, RuntimeAssets);
     GetGameSproutModule(editor, _Library, LibraryManager);
     GetGameSproutModule(editor, _Scenes, SceneManager);
+    GetGameSproutModule(editor, _AnimationPreview, AnimationPreview);
 }
 bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
     if (_Window) return true;
@@ -113,7 +115,7 @@ void InspectorUI::Update(GameSproutEditor::GameSproutViewApi *) {
     if (_Dirty) Refresh();
 }
 bool InspectorUI::SyncRuntimeSubscription() {
-    auto * runtime = _Scenes ? _Scenes->GetRuntime() : nullptr;
+    auto * runtime = g_GameSproutEditor ? g_GameSproutEditor->_Runtime : nullptr;
     if (runtime == _Runtime && (!runtime || _RuntimeSubscribed)) return !_Scenes || _RuntimeSubscribed;
     if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     _Runtime = runtime;
@@ -150,7 +152,7 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi *) {
     _Window=nullptr;_Docker=nullptr;_Info=nullptr;_SceneInfo=nullptr;_Material=nullptr;_ClipPreview=nullptr;_MaskInspector=nullptr;_AvatarInspector=nullptr;_Attached=false;
     _ActivePanel=nullptr;_Panels.clear();
     delete _Ui;_Ui=nullptr;
-    _Assets=nullptr;_Selection=nullptr;_Library=nullptr;_Scenes=nullptr;_Runtime=nullptr;
+    _Assets=nullptr;_Selection=nullptr;_Library=nullptr;_Scenes=nullptr;_Runtime=nullptr;_AnimationPreview=nullptr;
     _Inspected.clear();_InspectedScene={};_BaselineSettings.clear();_BaselineMaterialSource.clear();_Editable=false;_MaterialMode=false;_LockedSceneMissing=false;_DebugMode=false;
     if (g_Self==this) g_Self=nullptr;
 }

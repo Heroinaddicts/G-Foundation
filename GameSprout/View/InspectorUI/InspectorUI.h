@@ -19,6 +19,7 @@ class ModelRigDialog;
 class AvatarInspector;
 class AvatarMaskInspector;
 class IRuntimeAssets;
+class IAnimationPreview;
 
 class InspectorUI final : public IInspectorUI, public ISelectionListener, public IAssetListener,
                           public ISceneListener, public GameSproutRuntime::IRuntimeListener {
@@ -79,6 +80,7 @@ private:
     AvatarInspector* _AvatarInspector=nullptr;
     AvatarMaskInspector* _MaskInspector=nullptr;
     IRuntimeAssets* _RuntimeAssets=nullptr;
+    IAnimationPreview* _AnimationPreview=nullptr;
     IIDEDocker * _Docker = nullptr;
     IIDEMenu * _NormalModeMenu = nullptr;
     IIDEMenu * _DebugModeMenu = nullptr;

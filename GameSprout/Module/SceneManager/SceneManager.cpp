@@ -1,49 +1,42 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
-#include "IRuntimeAssets.h"
-#include "GameSproutRuntimeExport.h"
-#include "SafeSystem.hpp"
 #include <QDebug>
 #include <limits>
 
 SceneManager::~SceneManager() { Release(nullptr); }
 void SceneManager::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api) {
-    _RuntimeAssets=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IRuntimeAssets>("RuntimeAssets") : nullptr;
+    _Runtime=api&&api->_EditorApi?api->_EditorApi->_Runtime:nullptr;
     _Project=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IProject>("Project") : nullptr;
 }
 bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
-    if(_Runtime) return true;
+    if(_RuntimeSubscribed) return true;
     if(!_Project) return false;
-    _Runtime=Export(FoundationUtils::SafeSystem::File::GetDirectoryOfCurrentExe());
-    if(!_Runtime) {
-        qCritical() << "Cannot load GameSproutRuntime from the executable directory.";
-        return false;
-    }
-    _RuntimeSubscribed=_Runtime->RegisterListener(this);
+    if(!Runtime()){qCritical()<<"SceneManager requires EditorApi Runtime injection.";return false;}
+    _RuntimeSubscribed=Runtime()->RegisterListener(this);
     return _RuntimeSubscribed;
 }
 bool SceneManager::Launch(GameSproutEditor::GameSproutModuleApi*) {
-    if(!_Runtime) return false;
-    if (_RuntimeAssets) _Runtime->SetResourceProvider(_RuntimeAssets->GetResourceProvider());
+    if(!Runtime()) return false;
     if(!GetActiveScene()&&!RestoreLastScene()) {
         GameSproutRuntime::IScene* scene=nullptr;
         SceneDocument::ObjectIDs ids;
         std::string error;
-        if(!SceneDocument::Instantiate(SceneDocument::CreateDefault("Untitled"),*_Runtime,scene,ids,error)) {
+        if(!SceneDocument::Instantiate(SceneDocument::CreateDefault("Untitled"),*Runtime(),scene,ids,error)) {
             qCritical().noquote() << QString::fromStdString(error);return false;
         }
         Activate(scene,"",std::move(ids));
     }
-    _Timer.start();
     return true;
 }
+GameSproutRuntime::IGameSproutRuntime* SceneManager::Runtime() const {
+    return _Runtime;
+}
 GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
-    return _Runtime ? dynamic_cast<GameSproutRuntime::IScene*>(_Runtime->QueryGameObject(_ActiveID)) : nullptr;
+    return Runtime() ? dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(_ActiveID)) : nullptr;
 }
 void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
-    ClearAnimationClipPreview();
-    _TransformEdit={};_AnimationPreviewPlaying=false;
+    _TransformEdit={};
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
@@ -57,31 +50,22 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
     RememberActiveScene();
     // 先让 View 切到新身份，再释放旧场景；View 不保存旧节点裸指针。
     NotifySceneChanged();
-    if(previous && previous!=scene) _Runtime->DestroyScene(previous);
+    if(previous && previous!=scene) Runtime()->DestroyScene(previous);
 }
 void SceneManager::Update(GameSproutEditor::GameSproutModuleApi*) {
-    if(!_Runtime) return;
-    const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;
-    _Timer.start();
-    const auto clip=GetAnimationClipPreviewState(_ClipPreviewObjectID);
-    if(!clip.Active&&_ClipPreviewObjectID)ClearAnimationClipPreview();
-    // 预览期间仍允许创建节点；新增 Animator 也不能随选中 Clip 的时钟自动运行。
-    if(clip.Active)PauseControllerAnimators(_ClipPreviewObjectID);
-    _Runtime->Update((_AnimationPreviewPlaying||(clip.Active&&clip.Playing))?elapsed:0.0f);
-    if(_ClipPreviewObjectID&&!GetAnimationClipPreviewState(_ClipPreviewObjectID).Active)ClearAnimationClipPreview();
+    if(!Runtime()) return;
     if(_TransformEdit.Active&&!TransformTarget(true)) {std::string error;CancelTransformEdit(error);}
     if (_StatePending) RefreshState();
 }
 void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Listeners.clear();
-    ClearAnimationClipPreview();
     if(_TransformEdit.Active){std::string error;CancelTransformEdit(error);}
     _TransformEdit={};
-    if(_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
+    if(_RuntimeSubscribed && Runtime()) Runtime()->UnregisterListener(this);
     _RuntimeSubscribed=false;
-    if(_Runtime)_Runtime->SetResourceProvider(nullptr);
-    delete _Runtime;_Runtime=nullptr;
-    _Project=nullptr;_RuntimeAssets=nullptr;_AnimationPreviewPlaying=false;_ActiveID=0;_ActivePath.clear();_Timer.invalidate();
+    // The Editor application owns Runtime; this module releases only its own scene.
+    if(auto* scene=GetActiveScene())Runtime()->DestroyScene(scene);
+    _Project=nullptr;_Runtime=nullptr;_ActiveID=0;_ActivePath.clear();
     _Switching=false;_Notifying=false;_NotifyAgain=false;_StateNotifyAgain=false;_ExecutingEdit=false;_StatePending=false;
     _ObjectIDs={};_BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
 }
@@ -126,10 +110,7 @@ void SceneManager::NotifyListeners(bool active) {
     _Notifying=false;
 }
 void SceneManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
-    if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ClipPreviewObjectID)
-        _ClipPreviewObjectID=0;
     if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
-        _ClipPreviewObjectID=0;_AnimationPreviewPlaying=false;
         _TransformEdit={};
         _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_History.clear();_HistoryPosition=0;
         _BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_Unsaved=false;_StatePending=false;NotifySceneChanged();

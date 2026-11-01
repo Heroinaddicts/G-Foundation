@@ -15,7 +15,7 @@
 #include <limits>
 
 void ComponentEditor::Bind(const ComponentEditContext& context) {
-    const bool changed = context.SceneID != _Context.SceneID || context.ObjectID != _Context.ObjectID;
+    const bool changed = context.Runtime != _Context.Runtime || context.SceneID != _Context.SceneID || context.ObjectID != _Context.ObjectID;
     _Context = context;
     if (changed) { _Force = true; ContextChanged(); }
 }

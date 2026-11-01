@@ -2,7 +2,6 @@
 #define __IBuildSetting_h__
 
 #include "GameSproutEditorApi.h"
-#include "GRHIApi.h"
 
 class IBuildSetting : public GameSproutEditor::IGameSproutModule {
 public:

@@ -4,17 +4,17 @@
 #include <functional>
 class QWindow;
 
-// Native window hosting only; SceneManager owns the shared animation clock.
+// Native window hosting only; AnimationPreview owns the shared animation clock.
 class GameViewport final : public QWidget {
     Q_OBJECT
 public:
     explicit GameViewport(QWidget* parent=nullptr);
     ~GameViewport() override;
-    void Initialize(GRHI::GRHIApi*,GameSproutRuntime::IGameSproutRuntime*,GameSproutRuntime::IRuntimeResourceProvider*);
+    void Initialize(GameSproutRuntime::IGameSproutRuntime*,GameSproutRuntime::IRuntimeResourceProvider*);
     void RenderGame(GameSproutRuntime::IScene*);
     void Shutdown();
     void RetryRendering();
-    bool IsRenderingAvailable() const {return _Renderer&&_Surface;}
+    bool IsRenderingAvailable() const {return _Renderer!=nullptr;}
     std::function<void(const std::string&)> StatusChanged;
 protected:
     bool event(QEvent*) override;
@@ -26,12 +26,9 @@ private:
     void ObserveNativeWindow();
     void Status(const std::string&);
     static bool Headless();
-    GRHI::GRHIApi* _Api=nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
-    GRHI::IDevice* _Device=nullptr;
-    GRHI::ISurface* _Surface=nullptr;
-    GameSproutRuntime::IRuntimeRenderer* _Renderer=nullptr;
+    GameSproutRuntime::IRuntimeViewport* _Renderer=nullptr;
     QWindow* _NativeWindow=nullptr;
     QWindow* _HostWindow=nullptr;
     bool _Initialized=false;

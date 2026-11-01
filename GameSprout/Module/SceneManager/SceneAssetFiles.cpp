@@ -81,8 +81,8 @@ bool SceneManager::CreateSceneAsset(const std::string& directory,const std::stri
 
 bool SceneManager::OpenScene(const std::string& path,std::string& error) {
     error.clear();
-    if(!_Runtime || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
-    if(_Runtime->IsExecuting()) {error="Runtime 正在执行更新、渲染、遍历或事件回调，不能同步加载场景。";return false;}
+    if(!Runtime() || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
+    if(Runtime()->IsExecuting()) {error="Runtime 正在执行更新、渲染、遍历或事件回调，不能同步加载场景。";return false;}
     QString source;
     if(!Resolve(_Project,path,false,source,error)) return false;
     if(QFileInfo(source).suffix().compare("scene",Qt::CaseInsensitive)!=0) {error="请选择 .scene 场景文件。";return false;}
@@ -99,7 +99,7 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
     SceneDocument::ObjectIDs ids;
     bool success=false;
     try {
-        success=SceneDocument::Instantiate(document,*_Runtime,candidate,ids,error);
+        success=SceneDocument::Instantiate(document,*Runtime(),candidate,ids,error);
         if(success) {
             const QString assetsPath=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
             const QDir assets(QFileInfo(assetsPath).canonicalFilePath());
@@ -107,7 +107,7 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
         }
     } catch(const std::exception& exception) {error=exception.what();success=false;}
     catch(...) {error="场景加载失败。";success=false;}
-    if(!success && candidate && candidate!=GetActiveScene()) _Runtime->DestroyScene(candidate);
+    if(!success && candidate && candidate!=GetActiveScene()) Runtime()->DestroyScene(candidate);
     _Switching=false;
     return success;
 }

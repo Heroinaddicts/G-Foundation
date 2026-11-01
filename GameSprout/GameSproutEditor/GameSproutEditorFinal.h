@@ -22,7 +22,7 @@ namespace GameSproutEditor {
         void Release();
 
     private:
-        GameSproutEditorFinal(GRHI::GRHIApi * const grhi);
+        explicit GameSproutEditorFinal(GameSproutRuntime::IGameSproutRuntime* runtime);
         GameSproutEditorFinal(const GameSproutEditorFinal&) = delete;
         GameSproutEditorFinal& operator=(const GameSproutEditorFinal&) = delete;
 
@@ -34,6 +34,7 @@ namespace GameSproutEditor {
         std::vector<QLibrary*> _Libraries;
         GameSproutFinal* _Api = nullptr;
         bool _Ready = false;
+        bool _RuntimeReleased = false;
 
         friend class GameSproutFinal;
     };

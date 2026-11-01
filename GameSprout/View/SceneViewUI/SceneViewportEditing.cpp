@@ -34,11 +34,11 @@ GameSproutRuntime::Vector2 SceneViewportEditing::Pixel(GameSproutRuntime::Vector
     return {logical.X*view.Width/std::max(1,_Viewport.width()),logical.Y*view.Height/std::max(1,_Viewport.height())};
 }
 GameSproutRuntime::IGameObject* SceneViewportEditing::Selected() const {
-    if(!_Scenes||!_Selection||!_Scenes->GetRuntime()||!_Scenes->GetActiveScene())return nullptr;
+    if(!_Scenes||!_Selection||!_Viewport.GetRuntime()||!_Scenes->GetActiveScene())return nullptr;
     const auto selection=_Selection->GetSceneObjectSelection();
     auto* scene=_Scenes->GetActiveScene();
     if(selection.SceneID!=scene->GetInstanceID())return nullptr;
-    auto* object=_Scenes->GetRuntime()->QueryGameObject(selection.ObjectID);
+    auto* object=_Viewport.GetRuntime()->QueryGameObject(selection.ObjectID);
     return object&&object!=scene&&object->GetScene()==scene?object:nullptr;
 }
 void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const GameSproutRuntime::RenderCamera* drawCamera) {
@@ -139,7 +139,7 @@ bool SceneViewportEditing::DeleteSelection() {
     std::string error;
     if(!_Scenes->DeleteObject(object->GetInstanceID(),error)) {Report(error);return true;}
     const auto selection=_Selection->GetSceneObjectSelection();
-    if(!_Scenes->GetRuntime()->QueryGameObject(selection.ObjectID))_Selection->SetSceneObjectSelection({});
+    if(!_Viewport.GetRuntime()->QueryGameObject(selection.ObjectID))_Selection->SetSceneObjectSelection({});
     _Gizmo.CancelDrag();_Ready=false;_ObjectID=0;
     return true;
 }

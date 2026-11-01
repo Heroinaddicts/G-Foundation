@@ -6,6 +6,7 @@
 bool SelectionManager::Initialize(GameSproutEditor::GameSproutModuleApi * api) {
     _Assets = api->_EditorApi->GetGameSproutModule<IAssetsManager>("AssetsManager");
     _Scenes = api->_EditorApi->GetGameSproutModule<ISceneManager>("SceneManager");
+    _Runtime = api->_EditorApi->_Runtime;
     return _Assets != nullptr;
 }
 bool SelectionManager::Launch(GameSproutEditor::GameSproutModuleApi *) {
@@ -13,7 +14,6 @@ bool SelectionManager::Launch(GameSproutEditor::GameSproutModuleApi *) {
     if (!_Subscribed) return false;
     if (_Scenes) {
         _SceneSubscribed = _Scenes->RegisterSceneListener(this);
-        _Runtime = _Scenes->GetRuntime();
         _RuntimeSubscribed = _Runtime && _Runtime->RegisterListener(this);
         if (!_SceneSubscribed || !_RuntimeSubscribed) return false;
     }
@@ -35,7 +35,7 @@ void SelectionManager::SetAssetSelection(const std::vector<ProjectAssetSelection
 void SelectionManager::SetSceneObjectSelection(const SceneObjectSelection & selection) {
     SceneObjectSelection valid;
     GameSproutRuntime::IScene * scene = _Scenes ? _Scenes->GetActiveScene() : nullptr;
-    GameSproutRuntime::IGameSproutRuntime * runtime = _Scenes ? _Scenes->GetRuntime() : nullptr;
+    GameSproutRuntime::IGameSproutRuntime * runtime = _Runtime;
     if (scene && runtime && scene->GetInstanceID() == selection.SceneID && selection.ObjectID) {
         GameSproutRuntime::IGameObject * object = runtime->QueryGameObject(selection.ObjectID);
         if (object && object->GetScene() == scene) valid = selection;
@@ -102,9 +102,8 @@ void SelectionManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent 
 void SelectionManager::Release(GameSproutEditor::GameSproutModuleApi *) {
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SceneSubscribed && _Scenes) _Scenes->UnregisterSceneListener(this);
-    // Editor 先释放全部 View。模块中 SceneManager 可能先释放，需通过服务确认 Runtime 仍存活。
-    if (_RuntimeSubscribed && _Scenes && _Scenes->GetRuntime() == _Runtime && _Runtime)
-        _Runtime->UnregisterListener(this);
+    // EditorApi Runtime outlives every Module Release.
+    if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     _Subscribed = false;
     _SceneSubscribed = false;
     _RuntimeSubscribed = false;

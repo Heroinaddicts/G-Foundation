@@ -3,7 +3,6 @@
 
 #include "GameSproutEditorApi.h"
 #include "IConsoleUI.h"
-#include "GRHIApi.h"
 #include <format>
 
 class IConsole : public GameSproutEditor::IGameSproutModule {

@@ -132,7 +132,7 @@ void HierarchyUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
 }
 
 bool HierarchyUI::BindRuntime() {
-    GameSproutRuntime::IGameSproutRuntime* runtime = _SceneManager ? _SceneManager->GetRuntime() : nullptr;
+    GameSproutRuntime::IGameSproutRuntime* runtime = g_GameSproutEditor ? g_GameSproutEditor->_Runtime : nullptr;
     if (runtime == _Runtime && (!runtime || _RuntimeSubscribed)) return true;
     if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     _RuntimeSubscribed = false;

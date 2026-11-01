@@ -2,7 +2,6 @@
 #define __IGameObject_h__
 
 #include "GameSproutEditorApi.h"
-#include "GRHIApi.h"
 
 class IScript {
 public:

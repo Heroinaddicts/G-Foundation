@@ -14,16 +14,16 @@ private:
 
 bool SceneManager::Ready(std::string& error) const {
     error.clear();
-    if (!_Runtime || !GetActiveScene()) {error="当前没有可操作的场景。";return false;}
+    if (!Runtime() || !GetActiveScene()) {error="当前没有可操作的场景。";return false;}
     if (_TransformEdit.Active) {error="请先完成或取消 Scene 中的变换拖拽。";return false;}
-    if (_Switching || _ExecutingEdit || _Notifying || _Runtime->IsExecuting()) {
+    if (_Switching || _ExecutingEdit || _Notifying || Runtime()->IsExecuting()) {
         error="场景或 Runtime 正在执行其他操作，不能重入编辑、撤销或保存。";return false;
     }
     return true;
 }
 bool SceneManager::Capture(Json::Value& document,std::string& text,std::string& error) const {
     auto* scene=GetActiveScene();
-    if (!scene || !_Runtime || _Runtime->IsExecuting()) {error="场景不可用或 Runtime 正在执行回调。";return false;}
+    if (!scene || !Runtime() || Runtime()->IsExecuting()) {error="场景不可用或 Runtime 正在执行回调。";return false;}
     try {
         if (!SceneDocument::Serialize(*scene,_ObjectIDs,document,error)) return false;
         text=AssetArtifactIO::JsonText(document);return true;
@@ -33,7 +33,7 @@ bool SceneManager::Capture(Json::Value& document,std::string& text,std::string& 
 }
 bool SceneManager::HasUnsavedChanges() const {
     if (!GetActiveScene()) return false;
-    if (_Runtime->IsExecuting()) return _Unsaved;
+    if (Runtime()->IsExecuting()) return _Unsaved;
     Json::Value document;std::string text,error;
     _Unsaved=_ActivePath.empty() || !Capture(document,text,error) || text!=_BaselineText;
     return _Unsaved;
@@ -83,7 +83,7 @@ bool SceneManager::EditObject(uint64_t objectID,const std::string& label,const f
                               const fSceneEditOperation& revert,std::string& error) {
     if (!Ready(error)) return false;
     if (!objectID || !apply || !revert) {error="编辑需要有效对象和正反操作。";return false;}
-    auto* object=_Runtime->QueryGameObject(objectID);auto* scene=GetActiveScene();
+    auto* object=Runtime()->QueryGameObject(objectID);auto* scene=GetActiveScene();
     if(!object||object->GetScene()!=scene){error="编辑目标已经删除或不属于当前场景。";return false;}
     Json::Value document;std::string text;
     if(!Capture(document,text,error))return false;

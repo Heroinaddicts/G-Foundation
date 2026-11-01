@@ -4,7 +4,7 @@
 AssetsPipeline 导入为 Library/Artifact 内的二进制产物；SceneManager 不生成 Meta。
 
 顶层字段：Version=1、Name、Objects，以及可选 MainCameraID（0 表示未指定）。
-RootActive 默认 true，RootComponents 可记录场景根自身的七类组件，根 Transform 必须为单位变换。
+RootActive 默认 true，RootComponents 可记录场景根自身的组件，根 Transform 必须为单位变换。
 RootMainCamera=true 表示根上的 Camera 是主相机，此时 MainCameraID 必须为 0。
 NextObjectID 保存节点文件 ID 分配高水位，新增节点单调分配，删除后重开也不复用。
 NextObjectID 缺省使用已有最大 ID+1；0 表示 uint64 ID 空间耗尽。
@@ -20,12 +20,15 @@ GameSproutRuntime.Canvas
 GameSproutRuntime.Mesh
 GameSproutRuntime.MeshRenderer
 GameSproutRuntime.Camera
+GameSproutRuntime.Animator
+GameSproutRuntime.SkinnedMeshRenderer
 
 资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
 未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
 MainCameraID 指向包含 Camera 组件的节点。
 
-启动先建立未保存的 Untitled 场景，默认有 Main Camera。
+启动尝试恢复本项目 UserSettings/EditorState.json 中的 LastScenePath（相对 Assets）。
+没有有效记录时建立未保存的 Untitled 场景，默认有 Main Camera。打开、另存为成功后原子记录路径，退出不自动保存场景修改。
 Project/Create/Scene 仅创建文件并交给已有资源流程导入，不自动切换场景。
 双击 Scene 源资产时加载候选场景，校验及创建成功后切换；失败保留当前场景。
 HierarchyUI 只存节点 ID 和展示数据，通过 Runtime 事件刷新，不另外维护运行节点树。
@@ -45,7 +48,7 @@ Redo 检查子树未被历史之外的操作改动，避免旧快照覆盖新节
 Mesh Bounds 等从加载结果派生的数据不保存。Missing 资源的合法身份仍保留，不要求资源当前存在。
 EditObject 保存只捕获值的 apply/revert 操作，执行前在活动场景按 ID 查询目标。
 成功后记录属性撤销历史；失败或抛异常尝试恢复原值，不改变历史位置。目标已删除时 Undo 安全失败。
-当前场景切换后清空撤销历史；节点删除可撤销/重做，节点创建暂未加入 Undo。
+当前场景切换后清空撤销历史；节点删除和模型实例化可撤销/重做。
 SaveScene 要求已有当前路径；SaveSceneAs 可首次创建新文件，不静默覆盖别的已有场景。
 路径必须位于已有 Assets 子目录中，禁止符号链接；使用 QSaveFile 原子替换，不允许直接写回退。
 保存成功后才更新当前路径和基线，资源 watcher 自然接收源文件变化，不直接生成 Meta/Artifact。
@@ -56,5 +59,12 @@ HasUnsavedChanges 比较当前完整快照与保存基线，也能发现尚未�
 OnSceneStateChanged 通知属性/历史/保存状态变化，不触发场景切换及选择清空。
 编辑/Undo/Redo/Save/Open 不能从 Runtime 更新、遍历或事件回调重入执行。
 
-SceneView 通过独立编辑器相机调用 Runtime Renderer 与 GRHI；SceneManager 只管理场景数据和编辑事务。
-尚未接入播放模式隔离或资源实例化。
+职责与生命周期
+编辑器应用组合层创建并销毁 Runtime，经 EditorApi 的 const _Runtime 指针统一注入；Module 和 View 只借用。
+RuntimeHost 仅管理资源提供者连接、时钟和唯一每帧 Update，不创建或 delete Runtime。
+SceneManager 管理 .scene 文档、活动场景、稳定文件 ID、保存基线和场景编辑事务，不拥有 Runtime、GPU 或动画时钟。
+AnimationPreview 管理临时单 Clip 与场景 Animator 预览，使用 Runtime 的采样能力；它请求宿主推进时间，不自己再次 Update。
+SceneView 使用独立编辑相机，GameView 使用游戏相机；两者通过 Runtime 视口 API 绘制，不直接操作 GRHI。
+编辑器关闭时先释放全部 View，再依次释放 AnimationPreview、SceneManager、RuntimeHost，之后释放其他资源模块。
+SceneManager 只销毁自己拥有的活动场景；RuntimeHost 在场景和视口退出后断开资源提供者；应用组合层在所有 Module 退出后销毁 Runtime。
+尚未接入编辑场景与独立游戏播放场景的运行状态隔离。

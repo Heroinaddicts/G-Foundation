@@ -41,6 +41,7 @@ private:
     SceneViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
     ISceneManager* _Scenes=nullptr;
+    GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     ISelectionManager* _Selection=nullptr;
     IRuntimeAssets* _RuntimeAssets=nullptr;
     bool _Attached=false;

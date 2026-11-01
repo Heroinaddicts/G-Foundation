@@ -1,5 +1,6 @@
 #pragma once
 #include "ISceneManager.h"
+#include "IAnimationPreview.h"
 #include <functional>
 class IAssetsManager;
 class ILibraryManager;
@@ -7,6 +8,8 @@ class ISelectionManager;
 
 struct ComponentEditContext {
     ISceneManager* Scenes = nullptr;
+    GameSproutRuntime::IGameSproutRuntime* Runtime = nullptr;
+    IAnimationPreview* Preview = nullptr;
     IAssetsManager* Assets = nullptr;
     ILibraryManager* Library = nullptr;
     ISelectionManager* Selection = nullptr;

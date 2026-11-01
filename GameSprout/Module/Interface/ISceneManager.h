@@ -21,7 +21,6 @@ struct SceneTransformState {
 class ISceneManager : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~ISceneManager() = default;
-    virtual GameSproutRuntime::IGameSproutRuntime* GetRuntime() const = 0;
     virtual GameSproutRuntime::IScene* GetActiveScene() const = 0;
     // 相对项目 Assets 的路径，未保存的默认场景返回空字符串。
     virtual const std::string& GetActiveScenePath() const = 0;
@@ -29,10 +28,6 @@ public:
     // Model instantiation is an editor transaction; View never reads FBX or builds bones.
     virtual GameSproutRuntime::IGameObject* InstantiateModel(const GameSproutRuntime::ResourceReference&,
         uint64_t, std::string& error) {error="当前场景服务不支持模型实例化。";return nullptr;}
-    // Shared animation preview clock; every view renders the same evaluated pose.
-    virtual void SetAnimationPreviewPlaying(bool) {}
-    virtual bool IsAnimationPreviewPlaying() const {return false;}
-    virtual void ResetAnimationPreview() {}
     using fSceneEditOperation = std::function<bool(GameSproutRuntime::IGameObject&,std::string&)>;
     // 闭包仅捕获值。执行前按 ID 重新查询当前场景对象，不应捕获 UI/Runtime 对象指针。
     // 主线程同步执行；Runtime 更新/遍历/事件回调及场景操作重入时拒绝。
@@ -67,12 +62,4 @@ public:
     // 主线程，先订阅再查询；不回放历史，不持有监听者，销毁前必须注销。
     virtual bool RegisterSceneListener(ISceneListener* listener) = 0;
     virtual void UnregisterSceneListener(ISceneListener* listener) = 0;
-    // 临时 Clip 预览只驱动指定 Animator，不运行 Controller，不修改场景配置或撤销记录。
-    // 单次仅保留一个对象的预览；切换失败保留原预览，停止后恢复编辑姿态。
-    virtual bool PlayAnimationClip(uint64_t, const GameSproutRuntime::ResourceReference&, float seconds,
-        float speed, bool loop, std::string& error) {error="当前场景服务不支持直接预览动画。";return false;}
-    virtual bool SetAnimationClipPreviewPlaying(uint64_t, bool, std::string& error) {error="没有活动的动画预览。";return false;}
-    virtual bool SeekAnimationClipPreview(uint64_t, float, std::string& error) {error="没有活动的动画预览。";return false;}
-    virtual void StopAnimationClipPreview(uint64_t) {}
-    virtual GameSproutRuntime::AnimationClipPlaybackState GetAnimationClipPreviewState(uint64_t) const {return {};}
 };

@@ -25,7 +25,7 @@ private:
     void Release(GameSproutEditor::GameSproutModuleApi *) override;
     IAssetsManager * _Assets = nullptr;
     ISceneManager * _Scenes = nullptr;
-    GameSproutRuntime::IGameSproutRuntime * _Runtime = nullptr;
+    GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr; // Borrowed from EditorApi.
     bool _Subscribed = false;
     bool _SceneSubscribed = false;
     bool _RuntimeSubscribed = false;

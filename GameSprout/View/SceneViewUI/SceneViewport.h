@@ -16,10 +16,11 @@ public:
     explicit SceneViewport(QWidget* parent=nullptr);
     ~SceneViewport() override;
     // 也可借用宿主资源提供者；其生命周期须覆盖本 viewport 的渲染生命周期。
-    void Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
+    void Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
     void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds);
     void Shutdown();
     void RetryRendering();
+    GameSproutRuntime::IGameSproutRuntime* GetRuntime() const{return _Runtime;}
     SceneViewCamera& Camera(){return _Camera;}
     const SceneViewCamera& Camera() const{return _Camera;}
     SceneViewportEditing& Editing(){return *_Editing;}
@@ -29,7 +30,7 @@ public:
     void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error);}
     void ClearEditingError(){_EditingError.clear();}
     void ReleaseEditingCapture();
-    bool IsRenderingAvailable() const{return _Renderer&&_Surface;}
+    bool IsRenderingAvailable() const{return _Renderer!=nullptr;}
     const std::string& GetRenderError() const{return _Error;}
     GameSproutRuntime::RenderStatistics GetStatistics() const{return _Renderer?_Renderer->GetStatistics():GameSproutRuntime::RenderStatistics{};}
     std::function<bool()> FocusRequested;
@@ -63,12 +64,9 @@ private:
     Qt::MouseButton _DragButton=Qt::NoButton;
     QPointF _LastMouse;
     QSet<int> _Keys;
-    GRHI::GRHIApi* _Api=nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
-    GRHI::IDevice* _Device=nullptr;
-    GRHI::ISurface* _Surface=nullptr;
-    GameSproutRuntime::IRuntimeRenderer* _Renderer=nullptr;
+    GameSproutRuntime::IRuntimeViewport* _Renderer=nullptr;
     QWindow* _NativeWindow=nullptr;
     QWindow* _HostWindow=nullptr;
     WId _NativeID=0;

@@ -19,10 +19,10 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
 SceneViewport::~SceneViewport(){Shutdown();delete _Editing;_Editing=nullptr;}
 void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection){_Editing->Bind(scenes,selection);}
 QPaintEngine* SceneViewport::paintEngine() const{return IsHeadless()?QWidget::paintEngine():nullptr;}
-void SceneViewport::Initialize(GRHI::GRHIApi* api,GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
-    Shutdown();_Api=api;_Runtime=runtime;_Initialized=true;_Resources=resources;
+void SceneViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
+    Shutdown();_Runtime=runtime;_Initialized=true;_Resources=resources;
     if(IsHeadless())SetStatus("离屏测试环境：保留 Scene 视图与独立相机，不创建原生 GPU 窗口。",true);
-    else if(!NativePlatformSupported())SetStatus("当前 Qt 平台尚无兼容的 GRHI 原生窗口句柄。",true);
+    else if(!NativePlatformSupported())SetStatus("当前 Qt 平台尚无兼容的 Runtime 原生窗口句柄。",true);
 }
 bool SceneViewport::NativePlatformSupported() const {
     const QString name=QGuiApplication::platformName();
@@ -43,13 +43,9 @@ void SceneViewport::DestroyGpu() {
     // Renderer 缓存先释放；Surface 必须在 NSView/HWND/X11 Window 仍有效时解除绑定。
     // 先摘空成员，SDL 释放外来窗口时若同步触发原生 Qt 事件，重复清理仍然安全。
     auto* renderer=_Renderer;_Renderer=nullptr;
-    auto* surface=_Surface;_Surface=nullptr;
-    auto* device=_Device;_Device=nullptr;
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
     delete renderer;
-    if(surface){surface->Release();delete surface;}
-    if(device){device->Release();delete device;}
 }
 void SceneViewport::Shutdown() {
     _Editing->Unbind();
@@ -57,7 +53,7 @@ void SceneViewport::Shutdown() {
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
     if(_HostWindow){_HostWindow->removeEventFilter(this);QObject::disconnect(_HostWindow,nullptr,this,nullptr);_HostWindow=nullptr;}
     _Resources=nullptr;
-    _Api=nullptr;_Runtime=nullptr;_Initialized=false;
+    _Runtime=nullptr;_Initialized=false;
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}
 void SceneViewport::ObserveNativeWindow() {
@@ -107,26 +103,30 @@ bool SceneViewport::CanRender() const {
     return host && !host->isMinimized() && host->windowHandle() && host->windowHandle()->isExposed();
 }
 bool SceneViewport::EnsureRendering() {
-    if(_Renderer&&_Surface)return true;
+    if(_Renderer)return true;
     if(_Attempted)return false;
     _Attempted=true;
-    if(!_Api||!_Runtime||!_Resources){SetStatus("Scene 渲染依赖的 GRHI、Runtime 或资源服务尚未就绪。",true);return false;}
+    if(!_Runtime||!_Resources){SetStatus("Scene 渲染依赖的 Runtime 或资源服务尚未就绪。",true);return false;}
     // 只在真实、已显示的原生平台调用 winId，绝不把 offscreen/minimal 的伪 ID 交给 Cocoa。
     const WId id=winId();ObserveNativeWindow();
     _Attempted=true;
     if(!id){SetStatus("Scene 原生渲染窗口尚未创建。",true);return false;}
-    _Device=_Api->CreateDevice();
-    if(!_Device){SetStatus(_Api->GetLastError(),true);return false;}
-#if defined(_WIN32) || defined(__APPLE__)
-    const auto handle=reinterpret_cast<GRHI::GRHIWindowHandle>(id);
+    GameSproutRuntime::NativeWindow window;
+#if defined(__APPLE__)
+    window.System=GameSproutRuntime::NativeWindowSystem::Cocoa;
+#elif defined(_WIN32)
+    window.System=GameSproutRuntime::NativeWindowSystem::Win32;
 #else
-    const auto handle=static_cast<GRHI::GRHIWindowHandle>(id);
+    window.System=GameSproutRuntime::NativeWindowSystem::X11;
 #endif
-    _Surface=_Device->CreateSurface(handle);
-    if(!_Surface){const std::string error=_Device->GetLastError();DestroyGpu();_Attempted=true;SetStatus(error,true);return false;}
+#if defined(_WIN32)
+    window.Handle=reinterpret_cast<std::uintptr_t>(id);
+#else
+    window.Handle=static_cast<std::uintptr_t>(id);
+#endif
+    std::string error;_Renderer=_Runtime->CreateViewport(window,_Resources,error);
+    if(!_Renderer){DestroyGpu();_Attempted=true;SetStatus(error,true);return false;}
     _NativeID=id;
-    _Renderer=_Runtime->CreateRenderer(_Device,_Resources);
-    if(!_Renderer){DestroyGpu();_Attempted=true;SetStatus("Runtime 无法创建 Scene Renderer。",true);return false;}
     return true;
 }
 void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt) {
@@ -135,7 +135,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     _Rendering=true;
     struct Guard{bool& Value;~Guard(){Value=false;}} guard{_Rendering};
     GameSproutRuntime::RenderView view;
-    view.Scene=scene;view.Surface=_Surface;view.DrawGrid=grid;
+    view.Scene=scene;view.DrawGrid=grid;
     view.Camera.View=_Camera.ViewMatrix();view.Camera.Position=_Camera.GetState().Position;
     const auto& camera=_Camera.GetState();
     view.Camera.Projection.VerticalFovRadians=GameSproutRuntime::DegreesToRadians(camera.VerticalFovDegrees);

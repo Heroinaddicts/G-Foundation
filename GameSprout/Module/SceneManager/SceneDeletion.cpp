@@ -14,7 +14,7 @@ private:
 }
 
 uint64_t SceneManager::GetObjectFileID(uint64_t objectID) const {
-    auto* scene=GetActiveScene();auto* object=_Runtime?_Runtime->QueryGameObject(objectID):nullptr;
+    auto* scene=GetActiveScene();auto* object=Runtime()?Runtime()->QueryGameObject(objectID):nullptr;
     if(!scene||!object||object->GetScene()!=scene||object==scene)return 0;
     auto found=_ObjectIDs.RuntimeToFile.find(objectID);
     if(found!=_ObjectIDs.RuntimeToFile.end())return found->second;
@@ -27,7 +27,7 @@ GameSproutRuntime::IGameObject* SceneManager::QueryObjectByFileID(uint64_t fileI
     auto* scene=GetActiveScene();if(!scene)return nullptr;
     if(!fileID)return scene;
     for(const auto& entry:_ObjectIDs.RuntimeToFile) if(entry.second==fileID) {
-        auto* object=_Runtime->QueryGameObject(entry.first);
+        auto* object=Runtime()->QueryGameObject(entry.first);
         return object&&object->GetScene()==scene?object:nullptr;
     }
     return nullptr;
@@ -68,8 +68,8 @@ bool SceneManager::RunDeletion(const Edit& edit,bool forward,std::string& error)
         auto* parent=QueryObjectByFileID(edit.ParentFileID);
         if(!parent){error="待恢复子树的父节点已经删除。";return false;}
         GameSproutRuntime::IGameObject* restored=nullptr;
-        if(!SceneDocument::RestoreSubtree(edit.Subtree,*_Runtime,*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,error))return false;
-        SceneAnimationDocument::RestoreBindings(edit.AnimationBindings,*_Runtime,*scene,_ObjectIDs);
+        if(!SceneDocument::RestoreSubtree(edit.Subtree,*Runtime(),*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,error))return false;
+        SceneAnimationDocument::RestoreBindings(edit.AnimationBindings,*Runtime(),*scene,_ObjectIDs);
         return true;
     }
     auto* object=QueryObjectByFileID(edit.FileID);
@@ -84,13 +84,13 @@ bool SceneManager::RunDeletion(const Edit& edit,bool forward,std::string& error)
     Json::Value document;std::string text;
     if(Capture(document,text,error))return true;
     auto* parent=QueryObjectByFileID(edit.ParentFileID);GameSproutRuntime::IGameObject* restored=nullptr;std::string rollback;
-    if(!parent||!SceneDocument::RestoreSubtree(edit.Subtree,*_Runtime,*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,rollback))
+    if(!parent||!SceneDocument::RestoreSubtree(edit.Subtree,*Runtime(),*scene,*parent,edit.SiblingIndex,_ObjectIDs,restored,rollback))
         error+=" 恢复删除前子树失败："+rollback;
     return false;
 }
 bool SceneManager::DeleteObject(uint64_t objectID,std::string& error) {
     if(!Ready(error))return false;
-    auto* object=_Runtime->QueryGameObject(objectID);
+    auto* object=Runtime()->QueryGameObject(objectID);
     if(!object||object==GetActiveScene()||object->GetScene()!=GetActiveScene()){error="不能删除场景根或无效节点。";return false;}
     EditingScope editing(_ExecutingEdit);
     bool success=false;

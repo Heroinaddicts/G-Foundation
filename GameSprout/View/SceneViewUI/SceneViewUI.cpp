@@ -16,6 +16,7 @@ void SceneViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) 
     if(!editor)return;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
+    _Runtime=editor?editor->_Runtime:nullptr;
     GetGameSproutModule(editor,_Selection,SelectionManager);
     GetGameSproutModule(editor,_RuntimeAssets,RuntimeAssets);
 }
@@ -27,7 +28,7 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     _Viewport=_Ui->sceneViewport;
     _Viewport->StatusChanged=[this](const std::string& message){if(_Ui&&_Window)_Ui->statusLabel->setText(QString::fromStdString(message));};
     _Viewport->FocusRequested=[this]{return FocusSelection();};
-    _Viewport->Initialize(editor?editor->_GRHIApi:nullptr,_Scenes?_Scenes->GetRuntime():nullptr,_RuntimeAssets?_RuntimeAssets->GetResourceProvider():nullptr);
+    _Viewport->Initialize(_Runtime,_RuntimeAssets?_RuntimeAssets->GetResourceProvider():nullptr);
     _Viewport->BindEditingServices(_Scenes,_Selection);
     _Viewport->Editing().ToolChanged=[this](SceneEditingTool tool){
         if(!_Ui||!_Window)return;
@@ -70,7 +71,7 @@ void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     delete _Dispatch;_Dispatch=nullptr;
     if(!_Attached)delete _Window;
     _Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;
-    delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Selection=nullptr;_RuntimeAssets=nullptr;_Timer.invalidate();
+    delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Runtime=nullptr;_Selection=nullptr;_RuntimeAssets=nullptr;_Timer.invalidate();
     if(g_Self==this)g_Self=nullptr;
 }
 SceneViewCameraState SceneViewUI::GetCameraState() const{return _Viewport?_Viewport->Camera().GetState():SceneViewCameraState{};}
@@ -79,9 +80,9 @@ void SceneViewUI::ResetCamera(){if(_Viewport){_Viewport->Editing().Cancel();_Vie
 bool SceneViewUI::IsRenderingAvailable() const{return _Viewport&&_Viewport->IsRenderingAvailable();}
 std::string SceneViewUI::GetRenderError() const{return _Viewport?_Viewport->GetRenderError():"Scene viewport is not initialized";}
 bool SceneViewUI::FocusSelection() {
-    if(!_Viewport||!_Scenes||!_Selection)return false;
+    if(!_Viewport||!_Scenes||!_Selection||!_Runtime)return false;
     _Viewport->Editing().Cancel();
-    auto* runtime=_Scenes->GetRuntime();auto* scene=_Scenes->GetActiveScene();const auto selection=_Selection->GetSceneObjectSelection();
+    auto* runtime=_Runtime;auto* scene=_Scenes->GetActiveScene();const auto selection=_Selection->GetSceneObjectSelection();
     if(!runtime||!scene||selection.SceneID!=scene->GetInstanceID())return false;
     auto* object=runtime->QueryGameObject(selection.ObjectID);if(!object||object->GetScene()!=scene)return false;
     const float large=std::numeric_limits<float>::max();

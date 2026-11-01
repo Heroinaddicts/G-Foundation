@@ -13,6 +13,7 @@ QT_END_NAMESPACE
 
 class ISceneManager;
 class IRuntimeAssets;
+class IAnimationPreview;
 class GameViewport;
 
 class GameViewUI : public IGameViewUI {
@@ -35,6 +36,8 @@ private:
     GameViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
     ISceneManager* _Scenes=nullptr;
+    GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
+    IAnimationPreview* _Preview=nullptr;
     IRuntimeAssets* _Resources=nullptr;
     bool _Attached=false;
 };

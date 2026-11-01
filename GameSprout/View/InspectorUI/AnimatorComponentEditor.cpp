@@ -26,7 +26,7 @@ AnimatorComponentEditor::AnimatorComponentEditor(QWidget* parent):ComponentEdito
     _Ui->ikEditor->hide();
     QObject::connect(_Ui->previewModeCombo,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){
         const bool direct=index==0;
-        if(direct&&_Context.Scenes)_Context.Scenes->SetAnimationPreviewPlaying(false);
+        if(direct&&_Context.Preview)_Context.Preview->SetAnimationPreviewPlaying(false);
         if(!direct)_Ui->clipPreviewEditor->StopPreview();
         _Ui->clipPreviewEditor->setVisible(direct);
         _Ui->controllerPreviewPage->setVisible(!direct);
@@ -54,7 +54,7 @@ AnimatorComponentEditor::AnimatorComponentEditor(QWidget* parent):ComponentEdito
     QObject::connect(_Ui->playButton,&QPushButton::clicked,this,[this]{
         if(auto* animator=Animator()) {
             if(!animator->Play(_Ui->stateCombo->currentText().toStdString(),0,std::uint32_t(std::max(0,_Ui->previewLayerCombo->currentIndex())))) {Fail(animator->GetLastError());return;}
-            if(_Context.Scenes)_Context.Scenes->SetAnimationPreviewPlaying(true);
+            if(_Context.Preview)_Context.Preview->SetAnimationPreviewPlaying(true);
         }
     });
     QObject::connect(_Ui->pauseButton,&QPushButton::clicked,this,[this]{if(auto* animator=Animator())animator->Pause();RefreshPlayback();});
@@ -63,7 +63,7 @@ AnimatorComponentEditor::AnimatorComponentEditor(QWidget* parent):ComponentEdito
     QObject::connect(_Ui->crossFadeButton,&QPushButton::clicked,this,[this]{
         if(auto* animator=Animator()) {
             if(!animator->CrossFade(_Ui->stateCombo->currentText().toStdString(),0.2f,0,std::uint32_t(std::max(0,_Ui->previewLayerCombo->currentIndex()))))Fail(animator->GetLastError());
-            else if(_Context.Scenes)_Context.Scenes->SetAnimationPreviewPlaying(true);
+            else if(_Context.Preview)_Context.Preview->SetAnimationPreviewPlaying(true);
         }
     });
     QObject::connect(_Ui->setParameterButton,&QPushButton::clicked,this,[this]{
@@ -129,7 +129,7 @@ void AnimatorComponentEditor::RefreshPlayback() {
     if(_Ui->previewModeCombo->currentIndex()==0){_Ui->clipPreviewEditor->Refresh();return;}
     _Ui->ikEditor->SetAvailable(!animator->GetAvatar().Guid.empty());
     const auto controller=animator->GetController();
-    auto* runtime=_Context.Scenes?_Context.Scenes->GetRuntime():nullptr;
+    auto* runtime=_Context.Runtime;
     auto* provider=runtime?runtime->GetResourceProvider():nullptr;
     const auto revision=provider?provider->GetRevision():0;
     if(!_HasController||controller!=_LoadedController||revision!=_ControllerRevision) {

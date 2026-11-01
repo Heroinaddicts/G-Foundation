@@ -17,7 +17,7 @@ enable_language(C)
 add_subdirectory(ThirdParty/LMDB)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../Foundation/FoundationApi.cmake")
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../GRHI/GRHI.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutRuntime/GameSproutRuntime.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
@@ -41,7 +41,7 @@ add_library(LocalDatabase SHARED ${module_files})
 target_compile_features(LocalDatabase PRIVATE cxx_std_20)
 target_link_libraries(LocalDatabase PRIVATE
     Foundation::FoundationApi
-    GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi
     Qt${QT_VERSION_MAJOR}::Core
     LMDB::LMDB
 )
@@ -97,8 +97,7 @@ if(LOCALDATABASE_BUILD_TESTS)
     target_link_libraries(LocalDatabaseTests PRIVATE
         LocalDatabase
         Foundation::FoundationApi
-        GRHI::GRHIApi
-        Qt${QT_VERSION_MAJOR}::Core
+            Qt${QT_VERSION_MAJOR}::Core
     )
     set_target_properties(LocalDatabaseTests PROPERTIES
         AUTOMOC OFF

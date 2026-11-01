@@ -2,7 +2,7 @@
 #include "GameSproutFinal.h"
 #include "FoundationExport.h"
 #include "SafeSystem.hpp"
-#include "GRHIExport.h"
+#include "GameSproutRuntimeExport.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -13,7 +13,7 @@
 #include <QStringList>
 
 namespace GameSproutEditor {
-    GameSproutEditorFinal::GameSproutEditorFinal(GRHI::GRHIApi * const grhi) : GameSproutViewApi(grhi) {}
+    GameSproutEditorFinal::GameSproutEditorFinal(GameSproutRuntime::IGameSproutRuntime* runtime) : GameSproutViewApi(runtime) {}
 
     GameSproutEditorFinal::~GameSproutEditorFinal() {
         Release();
@@ -33,17 +33,14 @@ namespace GameSproutEditor {
             const std::string libraryDirectory =
                 FoundationUtils::SafeSystem::File::GetDirectoryOfCurrentExe();
 
-            GRHI::GRHIApi* grhi = ExportGRHIApi(libraryDirectory);
-            if (nullptr == grhi) {
-                qFatal("Cannot load GRHI from directory %s.", libraryDirectory.c_str());
-            }
-
+            GameSproutRuntime::IGameSproutRuntime* runtime = Export(libraryDirectory);
+            if (!runtime) qFatal("Cannot load GameSproutRuntime from directory %s.", libraryDirectory.c_str());
             // Set the pointer before initialization callbacks can look it up.
-            s_Instance = new GameSproutEditorFinal(grhi);
+            try {s_Instance = new GameSproutEditorFinal(runtime);}
+            catch (...) {delete runtime;throw;}
             if (!s_Instance->Initialize()) {
                 delete s_Instance;
                 s_Instance = nullptr;
-                delete grhi;
                 qFatal("GameSprout module initialization failed; see the preceding error.");
             }
         }
@@ -254,13 +251,27 @@ namespace GameSproutEditor {
     void GameSproutEditorFinal::Release() {
         _Ready = false;
         for (const auto& [name, view] : _ViewMap) {
-            view->Release(this);
+            if(name!="IDEWindow")view->Release(this);
+        }
+        // The IDE container owns attached widgets. Disconnect and shut down their
+        // views before deleting the container and its native viewport windows.
+        const auto ide=_ViewMap.find("IDEWindow");
+        if(ide!=_ViewMap.end())ide->second->Release(this);
+        // Views have released their native bindings. Tear down service consumers
+        // before the Runtime host; preserve the existing order for other modules.
+        for(const char* name:{"AnimationPreview","SceneManager","RuntimeHost"}) {
+            const auto found=_ModuleMap.find(name);
+            if(found!=_ModuleMap.end())found->second->Release(_Api);
         }
         for (const auto& [name, module] : _ModuleMap) {
-            module->Release(_Api);
+            if(name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
         }
         _ViewMap.clear();
         _ModuleMap.clear();
+        if (!_RuntimeReleased) {
+            _RuntimeReleased = true;
+            delete _Runtime;
+        }
         if (_Api) {
             _Api->_Foundation->Release();
         }

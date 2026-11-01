@@ -1,7 +1,7 @@
 #include "ComponentEditContext.h"
 GameSproutRuntime::IGameObject* ComponentEditContext::Resolve() const {
     auto* scene = Scenes ? Scenes->GetActiveScene() : nullptr;
-    auto* runtime = Scenes ? Scenes->GetRuntime() : nullptr;
+    auto* runtime = Runtime;
     if (!scene || !runtime || scene->GetInstanceID() != SceneID) return nullptr;
     auto* object = runtime->QueryGameObject(ObjectID);
     return object && object->GetScene() == scene ? object : nullptr;

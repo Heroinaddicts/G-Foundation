@@ -42,8 +42,8 @@ bool Write(GameSproutRuntime::IGameObject& object,const SceneTransformState& val
 }
 
 GameSproutRuntime::IGameObject* SceneManager::TransformTarget(bool checkParent) const {
-    if(!_TransformEdit.Active||!_Runtime||_ActiveID!=_TransformEdit.SceneID)return nullptr;
-    auto* scene=GetActiveScene();auto* object=_Runtime->QueryGameObject(_TransformEdit.ObjectID);
+    if(!_TransformEdit.Active||!Runtime()||_ActiveID!=_TransformEdit.SceneID)return nullptr;
+    auto* scene=GetActiveScene();auto* object=Runtime()->QueryGameObject(_TransformEdit.ObjectID);
     if(!scene||!object||object==scene||object->GetScene()!=scene)return nullptr;
     if(checkParent) {
         for(auto* current=object;current&&current!=scene;current=current->Parent())
@@ -58,7 +58,7 @@ GameSproutRuntime::IGameObject* SceneManager::TransformTarget(bool checkParent) 
 }
 bool SceneManager::BeginTransformEdit(uint64_t objectID,const std::string& label,std::string& error) {
     if(!Ready(error))return false;
-    auto* scene=GetActiveScene();auto* object=_Runtime->QueryGameObject(objectID);
+    auto* scene=GetActiveScene();auto* object=Runtime()->QueryGameObject(objectID);
     if(!object||object==scene||object->GetScene()!=scene){error="不能变换无效节点或场景根。";return false;}
     for(auto* current=object;current&&current!=scene;current=current->Parent()) {
         if(current->GetTransform()->IsAnimationDriven()) {
@@ -78,7 +78,7 @@ bool SceneManager::BeginTransformEdit(uint64_t objectID,const std::string& label
 }
 bool SceneManager::PreviewTransformEdit(const SceneTransformState& value,std::string& error) {
     error.clear();
-    if(!_TransformEdit.Active||!_Runtime||_Runtime->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="连续变换当前不可用。";return false;}
+    if(!_TransformEdit.Active||!Runtime()||Runtime()->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="连续变换当前不可用。";return false;}
     auto* object=TransformTarget(true);
     if(!object){std::string ignored;CancelTransformEdit(ignored);error="目标、父节点或变换已改变，拖拽已取消。";return false;}
     EditingScope editing(_ExecutingEdit);
@@ -102,7 +102,7 @@ bool SceneManager::PreviewTransformEdit(const SceneTransformState& value,std::st
 }
 bool SceneManager::CancelTransformEdit(std::string& error) {
     error.clear();if(!_TransformEdit.Active)return true;
-    if(!_Runtime||_Runtime->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="当前操作中不能取消变换。";return false;}
+    if(!Runtime()||Runtime()->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="当前操作中不能取消变换。";return false;}
     auto* object=TransformTarget(false);const auto before=_TransformEdit.Before;
     _TransformEdit={};
     EditingScope editing(_ExecutingEdit);
@@ -116,7 +116,7 @@ bool SceneManager::CancelTransformEdit(std::string& error) {
 bool SceneManager::CommitTransformEdit(std::string& error) {
     error.clear();
     if(!_TransformEdit.Active){error="没有活动的连续变换。";return false;}
-    if(!_Runtime||_Runtime->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="当前不能提交变换。";return false;}
+    if(!Runtime()||Runtime()->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="当前不能提交变换。";return false;}
     auto* object=TransformTarget(true);
     if(!object){std::string ignored;CancelTransformEdit(ignored);error="变换目标已经失效。";return false;}
     const auto before=_TransformEdit.Before,after=Read(*object->GetTransform());
@@ -134,7 +134,7 @@ bool SceneManager::CommitTransformEdit(std::string& error) {
     catch(...) {error="记录拖拽变换时发生异常。";}
     if(!committed && _ActiveID==sceneID) {
         // 历史分配也可能在执行apply之前失败，此时仍需撤回已显示的Preview。
-        auto* current=_Runtime->QueryGameObject(id);
+        auto* current=Runtime()->QueryGameObject(id);
         if(current&&current->GetScene()==GetActiveScene()) {
             EditingScope editing(_ExecutingEdit);std::string rollback;
             try {if(!Write(*current,before,rollback))error+=" 恢复拖拽前变换失败："+rollback;}

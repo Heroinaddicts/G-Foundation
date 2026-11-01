@@ -27,7 +27,7 @@ void InspectorUI::RefreshSceneObject(GameSproutRuntime::IGameObject & object) {
     _Ui->guidEdit->setText(QString::number(_InspectedScene.SceneID));
     _Ui->localIDEdit->setText(QString::number(_InspectedScene.ObjectID));
     ComponentEditContext context;
-    context.Scenes=_Scenes;context.Assets=_Assets;context.Library=_Library;context.Selection=_Selection;
+    context.Scenes=_Scenes;context.Runtime=_Runtime;context.Preview=_AnimationPreview;context.Assets=_Assets;context.Library=_Library;context.Selection=_Selection;
     context.SceneID=_InspectedScene.SceneID;context.ObjectID=_InspectedScene.ObjectID;
     context.Report=[this](const std::string& error) { _OperationError=QString::fromStdString(error);_Dirty=true;UpdateButtons(); };
     _SceneInfo->Bind(context);
