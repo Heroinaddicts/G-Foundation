@@ -19,34 +19,57 @@ GameSproutRuntime::Quaternion ParentRotation(GameSproutRuntime::IGameObject* par
 }
 
 void SceneViewportEditing::Bind(ISceneManager* scenes,ISelectionManager* selection) {
-    if(_Scenes==scenes&&_Selection==selection)return;
-    Cancel();_Viewport.ClearEditingError();_Scenes=scenes;_Selection=selection;_SceneID=0;_ObjectID=0;_Ready=false;
+    if(_Scenes==scenes && _Selection==selection)return;
+    Unbind();_Scenes=scenes;_Selection=selection;
+    if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
+    if(_Selection)_SelectionSubscribed=_Selection->RegisterSelectionListener(this);
+    // 先订阅，再取得首次快照；后续绘制只读取事件维护的身份。
+    OnActiveSceneChanged();
+    if(_Selection)OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());
 }
-void SceneViewportEditing::Unbind(){Cancel();_Viewport.ClearEditingError();_Scenes=nullptr;_Selection=nullptr;_SceneID=0;_ObjectID=0;_Ready=false;}
+void SceneViewportEditing::Unbind(){
+    if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
+    if(_SelectionSubscribed && _Selection)_Selection->UnregisterSelectionListener(this);
+    _SceneSubscribed=false;_SelectionSubscribed=false;
+    Cancel();_Viewport.ClearEditingError();_Scenes=nullptr;_Selection=nullptr;_ActiveScene=nullptr;
+    _SelectionSnapshot={};_SceneID=0;_ObjectID=0;_Ready=false;_TransformEditActive=false;
+}
+void SceneViewportEditing::OnActiveSceneChanged(){
+    Cancel();_ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
+    _TransformEditActive=_Scenes && _Scenes->HasTransformEdit();
+    _SceneID=0;_ObjectID=0;_Ready=false;
+}
+void SceneViewportEditing::OnSceneStateChanged(){
+    _TransformEditActive=_Scenes && _Scenes->HasTransformEdit();
+}
+void SceneViewportEditing::OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>& selection){
+    if(!selection.empty())OnSceneObjectSelectionChanged({});
+}
+void SceneViewportEditing::OnSceneObjectSelectionChanged(const SceneObjectSelection& selection){
+    if(_SelectionSnapshot==selection)return;
+    Cancel();_SelectionSnapshot=selection;_ObjectID=0;_Ready=false;
+}
 void SceneViewportEditing::Report(const std::string& error){if(!error.empty())_Viewport.ReportEditingError(error);}
 bool SceneViewportEditing::View(SceneGizmoView& view) const {
     GameSproutRuntime::RenderedCamera rendered;
-    if(!_Viewport.GetRenderedCamera(rendered)||!_Scenes||!_Scenes->GetActiveScene()
-        ||rendered.SceneID!=_Scenes->GetActiveScene()->GetInstanceID())return false;
+    if(!_Viewport.GetRenderedCamera(rendered) || !_ActiveScene
+        || rendered.SceneID!=_ActiveScene->GetInstanceID())return false;
     view={rendered.Camera,rendered.Width,rendered.Height};return view.Width&&view.Height;
 }
 GameSproutRuntime::Vector2 SceneViewportEditing::Pixel(GameSproutRuntime::Vector2 logical,const SceneGizmoView& view) const {
     return {logical.X*view.Width/std::max(1,_Viewport.width()),logical.Y*view.Height/std::max(1,_Viewport.height())};
 }
 GameSproutRuntime::IGameObject* SceneViewportEditing::Selected() const {
-    if(!_Scenes||!_Selection||!_Viewport.GetRuntime()||!_Scenes->GetActiveScene())return nullptr;
-    const auto selection=_Selection->GetSceneObjectSelection();
-    auto* scene=_Scenes->GetActiveScene();
-    if(selection.SceneID!=scene->GetInstanceID())return nullptr;
-    auto* object=_Viewport.GetRuntime()->QueryGameObject(selection.ObjectID);
-    return object&&object!=scene&&object->GetScene()==scene?object:nullptr;
+    if(!_ActiveScene || !_Viewport.GetRuntime() || _SelectionSnapshot.SceneID!=_ActiveScene->GetInstanceID())return nullptr;
+    auto* object=_Viewport.GetRuntime()->QueryGameObject(_SelectionSnapshot.ObjectID);
+    return object && object!=_ActiveScene && object->GetScene()==_ActiveScene ? object : nullptr;
 }
 void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const GameSproutRuntime::RenderCamera* drawCamera) {
     auto* object=Selected();
     const auto sceneID=scene?scene->GetInstanceID():0,objectID=object?object->GetInstanceID():0;
     if(sceneID!=_SceneID||objectID!=_ObjectID) {Cancel();_Ready=false;_SceneID=sceneID;_ObjectID=objectID;}
     if(_Gizmo.IsDragging()) {
-        if(!_Scenes||!_Scenes->HasTransformEdit())Cancel();
+        if(!_Scenes || !_TransformEditActive)Cancel();
         return;
     }
     _Ready=false;
@@ -71,8 +94,12 @@ void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSprout
     if(_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
 }
 bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
-    if(!_Scenes||!_Selection||!_Viewport.Renderer()||!_Scenes->GetActiveScene())return false;
-    UpdateFrame(_Scenes->GetActiveScene());
+    if(!_Scenes || !_Selection || !_Viewport.Renderer())return false;
+    // 输入命令开始时允许重新取快照，避免尚未派发的选择事件作用到旧目标。
+    if(_Scenes->GetActiveScene()!=_ActiveScene)OnActiveSceneChanged();
+    OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());
+    if(!_ActiveScene)return false;
+    UpdateFrame(_ActiveScene);
     _Viewport.ClearEditingError();
     SceneGizmoView view;if(!View(view))return false;
     const auto pixel=Pixel(logical,view);
@@ -81,7 +108,7 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
         if(!_Gizmo.BeginDrag(pixel,error)){Report(error);return true;}
         const char* label=_Tool==SceneEditingTool::Move?"Scene 移动物体":_Tool==SceneEditingTool::Rotate?"Scene 旋转物体":"Scene 缩放物体";
         if(!_Scenes->BeginTransformEdit(_ObjectID,label,error)){_Gizmo.CancelDrag();Report(error);return true;}
-        _DragView=view;return true;
+        _TransformEditActive=true;_DragView=view;return true;
     }
     GameSproutRuntime::Ray ray;GameSproutRuntime::SceneRaycastHit hit;
     bool picked=SceneGizmo::MakeRay(view,pixel,ray);
@@ -91,14 +118,14 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
         picked=direction.Z<0;
         if(picked)ray.Origin=ray.GetPoint(view.Camera.Projection.NearPlane/-direction.Z);
     }
-    picked=picked&&_Viewport.Renderer()->Raycast(_Scenes->GetActiveScene(),ray,hit,view.Camera.Projection.CullingMask);
+    picked=picked&&_Viewport.Renderer()->Raycast(_ActiveScene,ray,hit,view.Camera.Projection.CullingMask);
     if(picked) {
         const auto cameraPoint=view.Camera.View*GameSproutRuntime::Vector4{hit.Position.X,hit.Position.Y,hit.Position.Z,1};
         picked=-cameraPoint.Z<=view.Camera.Projection.FarPlane;
     }
-    if(picked)
-        _Selection->SetSceneObjectSelection({_Scenes->GetActiveScene()->GetInstanceID(),hit.ObjectID});
-    else _Selection->SetSceneObjectSelection({});
+    const SceneObjectSelection selection=picked ? SceneObjectSelection{_ActiveScene->GetInstanceID(),hit.ObjectID} : SceneObjectSelection{};
+    _Selection->SetSceneObjectSelection(selection);
+    OnSceneObjectSelectionChanged(selection);
     _Ready=false;return true;
 }
 bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
@@ -133,6 +160,8 @@ void SceneViewportEditing::Cancel() {
 }
 bool SceneViewportEditing::DeleteSelection() {
     if(!_Scenes||!_Selection)return false;
+    if(_Scenes->GetActiveScene()!=_ActiveScene)OnActiveSceneChanged();
+    OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());
     if(_Gizmo.IsDragging()||_Scenes->HasTransformEdit()) {Report("请先完成或取消 Scene 中的变换拖拽。");return true;}
     auto* object=Selected();if(!object)return true;
     _Viewport.ClearEditingError();

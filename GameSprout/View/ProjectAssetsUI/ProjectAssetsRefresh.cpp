@@ -35,7 +35,7 @@ bool ProjectAssetsUI::NavigateToDirectory(const std::string & path) {
     _CurrentPath=target;_CurrentFolderGuid=guid;
     _FolderSelected=!guid.isEmpty();
     _Ui->searchEdit->clear();
-    _Dirty=true;
+    QueueRefresh();
     if (_Selection && !_SynchronizingSelection) {
         if (guid.isEmpty()) {
             _Selection->SetAssetSelection({});
@@ -63,7 +63,19 @@ void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSele
         }
     }
     _FolderSelected=false;
-    _Dirty=true;
+    QueueRefresh();
+}
+
+void ProjectAssetsUI::QueueRefresh() {
+    if(!_Dispatch||!_Window||!_Launched||_RefreshQueued)return;
+    _RefreshQueued=true;
+    QMetaObject::invokeMethod(_Dispatch,[this]{
+        _RefreshQueued=false;
+        if(!_Window||!_Ui)return;
+        // 列表重建不能打断鼠标选取/拖拽。输入结束事件会继续这一次刷新。
+        if(_Ui->assetTree->IsPointerSelecting()){_RefreshDeferred=true;return;}
+        _RefreshDeferred=false;Refresh();
+    },Qt::QueuedConnection);
 }
 
 void ProjectAssetsUI::Refresh() {
@@ -145,7 +157,7 @@ void ProjectAssetsUI::Refresh() {
     _Ui->folderTree->doItemsLayout();_Ui->assetTree->doItemsLayout();
     _Ui->folderTree->verticalScrollBar()->setValue(folderScroll);
     _Ui->assetTree->verticalScrollBar()->setValue(assetScroll);
-    _ResetSelection=false;_Dirty=false;_RestoreExternalSelection=false;
+    _ResetSelection=false;_RestoreExternalSelection=false;
     UpdateStatus();
     // The guard still suppresses transient empty selections during model reset.
     if (_Selection && !_Selection->GetSceneObjectSelection().ObjectID)

@@ -43,7 +43,7 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
         QObject::connect(_Window, &QObject::destroyed, _Dispatch, [this]() {
             _Window = nullptr; _Model = nullptr; _Proxy = nullptr; _Docker = nullptr; _DeleteMenu=nullptr; _Attached = false;
         });
-        QObject::connect(_Ui->searchEdit, &QLineEdit::textChanged, _Dispatch, [this]() { _RefreshPending = true; });
+        QObject::connect(_Ui->searchEdit, &QLineEdit::textChanged, _Dispatch, [this]() { QueueRefresh(false); });
         QObject::connect(_Ui->hierarchyTree, &QTreeView::expanded, _Dispatch, [this](const QModelIndex& index) {
             if (!_Rebuilding) _ExpandedIDs.insert(index.data(HierarchyTreeModel::NodeIDRole).toULongLong());
         });
@@ -89,14 +89,11 @@ bool HierarchyUI::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
         _SelectionSubscribed = _Selection->RegisterSelectionListener(this);
         if (!_SelectionSubscribed) return false;
     }
-    // 先订阅，再读取当前场景，避免启动与打开场景时丢失树变化。
-    Refresh();
+    // 先订阅；完整启动结束后读取一次初始树，后续由事件驱动。
     return true;
 }
 
-void HierarchyUI::LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) {
-    (void)editor;
-}
+void HierarchyUI::LaunchFinished(GameSproutEditor::GameSproutViewApi * const) { _Launched=true;Refresh(); }
 
 void HierarchyUI::Show() {
     if (_Window) _Window->show();
@@ -107,10 +104,7 @@ void HierarchyUI::Hide() {
     if (_Window) _Window->hide();
 }
 
-void HierarchyUI::Update(GameSproutEditor::GameSproutViewApi * const editor) {
-    (void)editor;
-    if (_RefreshPending && _Window) Refresh();
-}
+void HierarchyUI::Update(GameSproutEditor::GameSproutViewApi * const) {}
 
 void HierarchyUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     (void)editor;
@@ -127,7 +121,7 @@ void HierarchyUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     delete _Ui; _Ui = nullptr;
     _SceneID = 0; _SelectedID = 0; _ExpandedIDs.clear();
     _ContextSceneID = 0; _ContextObjectID = 0; _ContextCaptured = false;
-    _RefreshPending = true; _Rebuilding = false;
+    _Launched=false;_RefreshQueued = false; _RebuildRequested = false; _Rebuilding = false;
     if (g_Self == this) g_Self = nullptr;
 }
 
@@ -147,17 +141,57 @@ bool HierarchyUI::BindRuntime() {
 void HierarchyUI::OnActiveSceneChanged() {
     _SceneID = 0; _SelectedID = 0; _ExpandedIDs.clear();
     _ContextSceneID = 0; _ContextObjectID = 0; _ContextCaptured = false;
-    _RefreshPending = true;
+    QueueRefresh();
 }
 
 void HierarchyUI::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
-    if (event.SceneID == _SceneID || event.ObjectID == _SceneID) _RefreshPending = true;
+    if (event.SceneID != _SceneID && event.ObjectID != _SceneID) return;
+    switch(event.Type) {
+    case GameSproutRuntime::SceneNodeEventType::Create:
+    case GameSproutRuntime::SceneNodeEventType::Destroy:
+    case GameSproutRuntime::SceneNodeEventType::Reparent:
+    case GameSproutRuntime::SceneNodeEventType::Rename:
+    case GameSproutRuntime::SceneNodeEventType::ActiveChanged:
+    case GameSproutRuntime::SceneNodeEventType::SiblingOrderChanged:
+        QueueRefresh();break;
+    default:break; // 组件/动画姿态改变不改变层级树，无需重建全部节点。
+    }
 }
 
-void HierarchyUI::RefreshMenu() { if (g_Self) g_Self->_RefreshPending = true; }
+void HierarchyUI::RefreshMenu() { if (g_Self) g_Self->QueueRefresh(); }
+
+void HierarchyUI::QueueRefresh(bool rebuild) {
+    _RebuildRequested=_RebuildRequested||rebuild;
+    if(!_Dispatch||!_Window||!_Launched||_RefreshQueued)return;
+    _RefreshQueued=true;
+    QMetaObject::invokeMethod(_Dispatch,[this]{
+        _RefreshQueued=false;
+        if(!_Window)return;
+        if(_RebuildRequested)Refresh();else RefreshPresentation();
+    },Qt::QueuedConnection);
+}
+
+void HierarchyUI::RefreshPresentation() {
+    if(!_Window||!_Ui||!_Model||!_Proxy)return;
+    _Rebuilding=true;
+    struct Guard {bool& Flag;~Guard(){Flag=false;}} guard{_Rebuilding};
+    auto* scene=_SceneManager?_SceneManager->GetActiveScene():nullptr;
+    if(scene&&scene->GetInstanceID()==_SceneID) {
+        if(auto* root=_Model->itemFromIndex(_Model->FindNode(_SceneID))) {
+            root->setText(QString::fromStdString(scene->GetName())+(_SceneManager->HasUnsavedChanges()?QStringLiteral(" *"):QString{}));
+            const auto& path=_SceneManager->GetActiveScenePath();
+            root->setToolTip(path.empty()?QStringLiteral("未保存的场景"):QStringLiteral("Assets/")+QString::fromStdString(path));
+        }
+    }
+    _Proxy->setFilterFixedString(_Ui->searchEdit->text());
+    if(!_Ui->searchEdit->text().isEmpty())_Ui->hierarchyTree->expandAll();
+    RestoreVisibleSelection();
+    UpdateStatus();
+}
 
 void HierarchyUI::Refresh() {
     if (!_Window || !_Model || !_Ui) return;
+    _RebuildRequested=false;
     if (!BindRuntime()) return;
     GameSproutRuntime::IScene* scene = _SceneManager ? _SceneManager->GetActiveScene() : nullptr;
     const std::uint64_t sceneID = scene ? scene->GetInstanceID() : 0;
@@ -192,7 +226,6 @@ void HierarchyUI::Refresh() {
     RestoreVisibleSelection();
     _Ui->hierarchyTree->doItemsLayout();
     _Ui->hierarchyTree->verticalScrollBar()->setValue(scroll);
-    _RefreshPending = false;
     UpdateStatus();
 }
 

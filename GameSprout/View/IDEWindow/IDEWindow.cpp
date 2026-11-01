@@ -134,7 +134,6 @@ void IDEWindow::Hide() {
 
 void IDEWindow::Update(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
-    if (_LoadingRefCount > 0) RefreshLoadingProgress();
 }
 
 void IDEWindow::Release(GameSproutEditor::GameSproutViewApi * const editor) {

@@ -30,7 +30,7 @@ public:
     void Hide() override;
     std::uint64_t GetSelectedObjectID() const override { return _SelectedID; }
     void OnActiveSceneChanged() override;
-    void OnSceneStateChanged() override { _RefreshPending = true; }
+    void OnSceneStateChanged() override { QueueRefresh(false); }
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) override;
     void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>& selection) override;
     void OnSceneObjectSelectionChanged(const SceneObjectSelection& selection) override;
@@ -43,7 +43,9 @@ private:
     void Update(GameSproutEditor::GameSproutViewApi * const editor) override;
     void Release(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool BindRuntime();
+    void QueueRefresh(bool rebuild = true);
     void Refresh();
+    void RefreshPresentation();
     void UpdateStatus();
     void InstallContextCapture();
     void RememberContext(const QModelIndex& index);
@@ -71,10 +73,12 @@ private:
     IIDEDocker* _Docker = nullptr;
     IContextMenu* _DeleteMenu = nullptr;
     bool _Attached = false;
+    bool _Launched = false;
     bool _SceneSubscribed = false;
     bool _RuntimeSubscribed = false;
     bool _SelectionSubscribed = false;
-    bool _RefreshPending = true;
+    bool _RefreshQueued = false;
+    bool _RebuildRequested = false;
     bool _Rebuilding = false;
     std::uint64_t _SceneID = 0;
     std::uint64_t _SelectedID = 0;

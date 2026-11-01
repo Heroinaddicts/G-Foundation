@@ -58,10 +58,12 @@ void HierarchyUI::OnSceneObjectSelectionChanged(const SceneObjectSelection&) {
     if (!_Window) return;
     if (_SelectedID && _Runtime) {
         GameSproutRuntime::IGameObject* object = _Runtime->QueryGameObject(_SelectedID);
-        for (GameSproutRuntime::IGameObject* parent = object ? object->Parent() : nullptr; parent; parent = parent->Parent())
+        for (GameSproutRuntime::IGameObject* parent = object ? object->Parent() : nullptr; parent; parent = parent->Parent()) {
             _ExpandedIDs.insert(parent->GetInstanceID());
+            if(_Model&&_Proxy&&_Ui)_Ui->hierarchyTree->expand(_Proxy->mapFromSource(_Model->FindNode(parent->GetInstanceID())));
+        }
     }
-    _RefreshPending = true;
+    QueueRefresh(false);
     const bool rebuilding = _Rebuilding;
     _Rebuilding = true;
     RestoreVisibleSelection();

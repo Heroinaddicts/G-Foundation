@@ -1,158 +1,125 @@
 #include "InspectorUI.h"
-#include "TextureInspector.h"
 #include "AssetInfoInspector.h"
-#include "GameObjectInspector.h"
-#include "ModelInspector.h"
-#include "AnimationClipInspector.h"
-#include "AnimationClipPreviewInspector.h"
-#include "AudioInspector.h"
-#include "TextInspector.h"
-#include "FontInspector.h"
-#include "VideoInspector.h"
-#include "ShaderInspector.h"
-#include "MaterialInspector.h"
-#include "AnimatorControllerDialog.h"
-#include "AvatarMaskDialog.h"
-#include "AvatarMaskInspector.h"
-#include "AvatarInspector.h"
-#include "ModelRigDialog.h"
-#include "IRuntimeAssets.h"
-#include "IAnimationPreview.h"
 #include "ui_InspectorUI.h"
 #include <QApplication>
-#include <QWidget>
-
+#include <QMetaObject>
+#include <algorithm>
 InspectorUI::~InspectorUI() { Release(nullptr); }
-void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) {
-    g_Self = this;
-    g_GameSproutEditor = editor;
+void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
+    g_Self = this; g_GameSproutEditor = editor; _Services.Editor = editor;
     GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
-    GetGameSproutModule(editor, _Assets, AssetsManager);
-    GetGameSproutModule(editor, _Selection, SelectionManager);
-    GetGameSproutModule(editor, _RuntimeAssets, RuntimeAssets);
-    GetGameSproutModule(editor, _Library, LibraryManager);
-    GetGameSproutModule(editor, _Scenes, SceneManager);
-    GetGameSproutModule(editor, _AnimationPreview, AnimationPreview);
+    GetGameSproutModule(editor, _Services.Assets, AssetsManager);
+    GetGameSproutModule(editor, _Services.Selection, SelectionManager);
+    GetGameSproutModule(editor, _Services.Library, LibraryManager);
+    GetGameSproutModule(editor, _Services.Scenes, SceneManager);
+    _Runtime = editor ? editor->_Runtime : nullptr;
 }
-bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
+bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi*) {
     if (_Window) return true;
-    if (!qobject_cast<QApplication *>(QCoreApplication::instance()) || !_Assets || !_Selection || !_Library) return false;
+    if (!qobject_cast<QApplication*>(QCoreApplication::instance()) || !_Services.Assets || !_Services.Selection || !_Services.Library) return false;
     try {
-        _Dispatch = new QObject();
-        _Window = new QWidget();
-        _Ui = new Ui::InspectorUIWindow();
-        _Ui->setupUi(_Window);
-        _Panels.emplace(eAssetImporterType::Texture,new TextureInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Model,new ModelInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::AnimationClip,new AnimationClipInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Audio,new AudioInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Text,new TextInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Font,new FontInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Video,new VideoInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::Shader,new ShaderInspector(_Ui->textureHost));
-        _Panels.emplace(eAssetImporterType::ComputeShader,new ShaderInspector(_Ui->textureHost,true));
-        for (const auto & entry:_Panels) {
-            _Ui->textureHostLayout->addWidget(entry.second);
-            entry.second->hide();
-            entry.second->Changed=[this,panel=entry.second] {
-                if (panel==_ActivePanel) { _OperationError.clear();UpdateButtons(); }
-            };
-        }
-        _AvatarInspector=new AvatarInspector(_Ui->textureHost);_Ui->textureHostLayout->addWidget(_AvatarInspector);_AvatarInspector->hide();
-        _MaskInspector=new AvatarMaskInspector(_Ui->textureHost);
-        _Ui->textureHostLayout->addWidget(_MaskInspector);_MaskInspector->hide();
-        _ClipPreview=new AnimationClipPreviewInspector(_Ui->textureHost);
-        _Ui->textureHostLayout->addWidget(_ClipPreview);_ClipPreview->hide();
-        _Material=new MaterialInspector(_Ui->textureHost);
-        _Ui->textureHostLayout->addWidget(_Material);
-        _Material->hide();
-        _Material->Changed=[this] { if (_MaterialMode) { _OperationError.clear();UpdateButtons(); } };
-        _Info = new AssetInfoInspector(_Ui->infoHost);
-        _Ui->infoHostLayout->addWidget(_Info);
-        _SceneInfo = new GameObjectInspector(_Ui->sceneHost);
-        _Ui->sceneHostLayout->addWidget(_SceneInfo);
-        _SceneInfo->LockChanged=[this](bool locked) { _Ui->lockButton->setChecked(locked); };
+        _Dispatch = new QObject(); _Window = new QWidget(); _Ui = new Ui::InspectorUIWindow(); _Ui->setupUi(_Window);
+        _Info = new AssetInfoInspector(_Ui->infoHost); _Ui->infoHostLayout->addWidget(_Info);
         QObject::connect(_Window, &QObject::destroyed, _Dispatch, [this] {
-            _Window=nullptr;_Info=nullptr;_SceneInfo=nullptr;_Material=nullptr;_ClipPreview=nullptr;_MaskInspector=nullptr;_AvatarInspector=nullptr;_Docker=nullptr;
-            _NormalModeMenu=nullptr;_DebugModeMenu=nullptr;_Attached=false;_ActivePanel=nullptr;_Panels.clear();
+            _Window = nullptr; _Info = nullptr; _Docker = nullptr; _Attached = false;
+            _ActivePanel = nullptr; _ActiveExtension = nullptr; _Panels.clear();
+            _NormalModeMenu = nullptr; _DebugModeMenu = nullptr;
         });
         QObject::connect(_Ui->applyButton, &QPushButton::clicked, _Dispatch, [this] { ApplyChanges(); });
         QObject::connect(_Ui->revertButton, &QPushButton::clicked, _Dispatch, [this] { RevertChanges(); });
         QObject::connect(_Ui->lockButton, &QToolButton::toggled, _Dispatch, [this](bool locked) {
-            if (!locked) _LockedSceneMissing=false;
-            if (_SceneInfo) _SceneInfo->SetLocked(locked);
-            _Dirty=true;
+            if (!locked) _LockedSceneMissing = false;
+            if (_ActivePanel) _ActivePanel->SetLocked(locked);
+            RequestRefresh();
         });
         Clear(QStringLiteral("选择一个资源或场景节点以查看属性。"));
-    } catch (...) { Release(nullptr);throw; }
+    } catch (...) { Release(nullptr); throw; }
     return true;
 }
-bool InspectorUI::Launch(GameSproutEditor::GameSproutViewApi *) {
+bool InspectorUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if (!_Window || !g_IIDEWindow) return false;
     _Docker = g_IIDEWindow->CreateDocker("Inspector");
     if (!_Docker || !_Docker->AttachWidget(_Window)) return false;
-    _Attached = true;
-    _Docker->SetTitle("Inspector");
-    if (auto * mode=_Docker->CreateChildMenu(_Ui->inspectorModeAction->text())) {
-        _NormalModeMenu=mode->CreateChildMenu(_Ui->normalInspectorAction->text());
-        _DebugModeMenu=mode->CreateChildMenu(_Ui->debugInspectorAction->text());
+    _Attached = true; _Docker->SetTitle("Inspector");
+    if (auto* mode = _Docker->CreateChildMenu(_Ui->inspectorModeAction->text())) {
+        _NormalModeMenu = mode->CreateChildMenu(_Ui->normalInspectorAction->text());
+        _DebugModeMenu = mode->CreateChildMenu(_Ui->debugInspectorAction->text());
         if (_NormalModeMenu) _NormalModeMenu->SetClickCallback([] { if (g_Self) g_Self->SetDebugMode(false); });
         if (_DebugModeMenu) _DebugModeMenu->SetClickCallback([] { if (g_Self) g_Self->SetDebugMode(true); });
     }
-    _AssetSubscribed = _Assets->RegisterAssetListener(this);
-    _SelectionSubscribed = _Selection->RegisterSelectionListener(this);
-    if (!_AssetSubscribed || !_SelectionSubscribed) return false;
-    if (_Scenes) {
-        _SceneSubscribed = _Scenes->RegisterSceneListener(this);
-        if (!_SceneSubscribed || !SyncRuntimeSubscription()) return false;
+    const bool assets = _Services.Assets->RegisterAssetListener(this);
+    const bool selection = _Services.Selection->RegisterSelectionListener(this);
+    _Subscribed = assets && selection;
+    if (!assets || !selection) {
+        if (assets) _Services.Assets->UnregisterAssetListener(this);
+        if (selection) _Services.Selection->UnregisterSelectionListener(this);
+        return false;
     }
-    Refresh();
-    return true;
-}
-void InspectorUI::Update(GameSproutEditor::GameSproutViewApi *) {
-    if (!_Window || _ResolvingSelection) return;
-    SyncRuntimeSubscription();
-    if (_Dirty) Refresh();
-}
-bool InspectorUI::SyncRuntimeSubscription() {
-    auto * runtime = g_GameSproutEditor ? g_GameSproutEditor->_Runtime : nullptr;
-    if (runtime == _Runtime && (!runtime || _RuntimeSubscribed)) return !_Scenes || _RuntimeSubscribed;
-    if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
-    _Runtime = runtime;
+    _SceneSubscribed = _Services.Scenes && _Services.Scenes->RegisterSceneListener(this);
     _RuntimeSubscribed = _Runtime && _Runtime->RegisterListener(this);
-    _Dirty = true;
-    return !_Scenes || _RuntimeSubscribed;
+    return (!_Services.Scenes || _SceneSubscribed) && (!_Runtime || _RuntimeSubscribed);
 }
-void InspectorUI::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent & event) {
-    // 祖先的改名、挂载或启用状态同样会影响当前节点显示；不保留事件中的指针。
-    if (_InspectedScene.SceneID && event.SceneID == _InspectedScene.SceneID) _Dirty = true;
+void InspectorUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*) { _Launched = true; Refresh(); }
+void InspectorUI::RequestRefresh() {
+    if (!_Launched || !_Dispatch || !_Window || _RefreshQueued) return;
+    _RefreshQueued = true;
+    QMetaObject::invokeMethod(_Dispatch, [this] {
+        _RefreshQueued = false;
+        if (_ResolvingSelection) { _RefreshDeferred = true; return; }
+        if (_Window) Refresh();
+    }, Qt::QueuedConnection);
 }
-void InspectorUI::Show() { if (_Window) _Window->show();if (_Docker) _Docker->Activate(); }
+void InspectorUI::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
+    if (_Target.Scene.SceneID && event.SceneID == _Target.Scene.SceneID) RequestRefresh();
+}
+void InspectorUI::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
+    if (_ActivePanel) _ActivePanel->OnAnimationEvent(event);
+}
+bool InspectorUI::RegisterExtension(IInspectorExtension* extension) {
+    if (!extension || std::find(_Extensions.begin(), _Extensions.end(), extension) != _Extensions.end()) return false;
+    _Extensions.push_back(extension);
+    std::stable_sort(_Extensions.begin(), _Extensions.end(), [](auto* left, auto* right) { return left->Priority() > right->Priority(); });
+    RequestRefresh(); return true;
+}
+void InspectorUI::UnregisterExtension(IInspectorExtension* extension) {
+    const auto found = std::find(_Extensions.begin(), _Extensions.end(), extension);
+    if (found == _Extensions.end()) return;
+    _Extensions.erase(found);
+    // Remaining node pages can contain component editors created by this extension.
+    for (auto& entry : _Panels) entry.second->Deactivate();
+    const auto panel = _Panels.find(extension);
+    if (panel != _Panels.end()) {
+        if (_ActivePanel == panel->second) { _ActivePanel = nullptr; _ActiveExtension = nullptr; }
+        delete panel->second; _Panels.erase(panel);
+    }
+    RequestRefresh();
+}
+ComponentEditor* InspectorUI::CreateComponentEditor(const std::type_info& type, QWidget* parent) {
+    for (auto* extension : _Extensions) if (auto* editor = extension->CreateComponentEditor(type, parent)) return editor;
+    return nullptr;
+}
+void InspectorUI::Show() { if (_Window) _Window->show(); if (_Docker) _Docker->Activate(); }
 void InspectorUI::Hide() { if (_Window) _Window->hide(); }
-void InspectorUI::Release(GameSproutEditor::GameSproutViewApi *) {
-    delete _RigDialog;_RigDialog=nullptr;
-    delete _MaskDialog;_MaskDialog=nullptr;
-    delete _ControllerDialog;_ControllerDialog=nullptr;_RuntimeAssets=nullptr;
+void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    _Launched = false;
     if (_NormalModeMenu) _NormalModeMenu->SetClickCallback(nullptr);
     if (_DebugModeMenu) _DebugModeMenu->SetClickCallback(nullptr);
-    _NormalModeMenu=nullptr;_DebugModeMenu=nullptr;
     if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
-    if (_SceneSubscribed && _Scenes) _Scenes->UnregisterSceneListener(this);
-    if (_AssetSubscribed && _Assets) _Assets->UnregisterAssetListener(this);
-    if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
-    _AssetSubscribed=false;_SelectionSubscribed=false;_SceneSubscribed=false;_RuntimeSubscribed=false;
-    for (const auto & entry:_Panels) entry.second->Changed={};
-    if (_SceneInfo) { _SceneInfo->LockChanged={};_SceneInfo->Clear(); }
-    if (_Material) { _Material->Changed={};_Material->Deactivate(); }
-    if (_MaskInspector) _MaskInspector->Edit={};
-    if (_AvatarInspector) _AvatarInspector->Edit={};
-    if (_ClipPreview) _ClipPreview->EditSource={};
-    delete _Dispatch;_Dispatch=nullptr;
+    if (_SceneSubscribed && _Services.Scenes) _Services.Scenes->UnregisterSceneListener(this);
+    if (_Subscribed) { _Services.Assets->UnregisterAssetListener(this); _Services.Selection->UnregisterSelectionListener(this); }
+    _Subscribed = false; _RuntimeSubscribed = false; _SceneSubscribed = false;
+    for (auto& entry : _Panels) {
+        entry.second->Changed = {}; entry.second->RequestSelection = {}; entry.second->RequestLock = {};
+        entry.second->ReportError = {};
+        entry.second->ResolvePendingChanges = {}; entry.second->Deactivate(); delete entry.second;
+    }
+    _Panels.clear(); _Extensions.clear(); _ActivePanel = nullptr; _ActiveExtension = nullptr;
+    delete _Dispatch; _Dispatch = nullptr;
     if (!_Attached) delete _Window;
-    _Window=nullptr;_Docker=nullptr;_Info=nullptr;_SceneInfo=nullptr;_Material=nullptr;_ClipPreview=nullptr;_MaskInspector=nullptr;_AvatarInspector=nullptr;_Attached=false;
-    _ActivePanel=nullptr;_Panels.clear();
-    delete _Ui;_Ui=nullptr;
-    _Assets=nullptr;_Selection=nullptr;_Library=nullptr;_Scenes=nullptr;_Runtime=nullptr;_AnimationPreview=nullptr;
-    _Inspected.clear();_InspectedScene={};_BaselineSettings.clear();_BaselineMaterialSource.clear();_Editable=false;_MaterialMode=false;_LockedSceneMissing=false;_DebugMode=false;
-    if (g_Self==this) g_Self=nullptr;
+    _Window = nullptr; _Docker = nullptr; _Info = nullptr; _Attached = false;
+    _NormalModeMenu = nullptr; _DebugModeMenu = nullptr;
+    delete _Ui; _Ui = nullptr;
+    _Services = {}; _Runtime = nullptr; _Target = {}; _RefreshQueued = false; _RefreshDeferred = false;
+    _LockedSceneMissing = false; _OperationError.clear();
+    if (g_Self == this) g_Self = nullptr;
 }

@@ -1,4 +1,6 @@
 #include "AnimationPreview.h"
+#include <QDebug>
+#include <limits>
 
 AnimationPreview::~AnimationPreview(){Release(nullptr);}
 void AnimationPreview::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api){
@@ -44,7 +46,7 @@ void AnimationPreview::PauseOtherAnimators(uint64_t exceptObjectID){
 }
 void AnimationPreview::UpdateClock(){
     if(!_Host)return;
-    const auto clip=GetAnimationClipPreviewState(_ClipObjectID);
+    const auto& clip=_PublishedClip;
     const bool allowed=_Scenes&&_Scenes->GetActiveScene()&&!_Scenes->HasTransformEdit();
     _Host->SetSimulationPlaying(allowed&&(_Playing||(clip.Active&&clip.Playing)));
 }
@@ -59,12 +61,10 @@ bool AnimationPreview::PlayAnimationClip(uint64_t objectID,const GameSproutRunti
     }
     if(_ClipObjectID!=objectID)ClearClip();
     _ClipObjectID=objectID;_Playing=false;
-    PauseOtherAnimators(objectID);UpdateClock();_Host->ResetClock();error.clear();return true;
+    PauseOtherAnimators(objectID);PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();error.clear();return true;
 }
 GameSproutRuntime::AnimationClipPlaybackState AnimationPreview::GetAnimationClipPreviewState(uint64_t objectID) const{
-    if(!objectID||objectID!=_ClipObjectID)return {};
-    auto* animator=PreviewAnimator(objectID);
-    return animator?animator->GetClipPlaybackState():GameSproutRuntime::AnimationClipPlaybackState{};
+    return objectID&&objectID==_PublishedObjectID?_PublishedClip:GameSproutRuntime::AnimationClipPlaybackState{};
 }
 bool AnimationPreview::SetAnimationClipPreviewPlaying(uint64_t objectID,bool playing,std::string& error){
     if(!Ready(error))return false;
@@ -73,7 +73,7 @@ bool AnimationPreview::SetAnimationClipPreviewPlaying(uint64_t objectID,bool pla
     if(!animator->SetClipPlaybackPlaying(playing)){
         error=animator->GetLastError();if(error.empty())error="无法切换动画预览播放状态。";return false;
     }
-    UpdateClock();_Host->ResetClock();error.clear();return true;
+    PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();error.clear();return true;
 }
 bool AnimationPreview::SeekAnimationClipPreview(uint64_t objectID,float seconds,std::string& error){
     if(!Ready(error))return false;
@@ -82,11 +82,11 @@ bool AnimationPreview::SeekAnimationClipPreview(uint64_t objectID,float seconds,
     if(!animator->SeekClip(seconds)){
         error=animator->GetLastError();if(error.empty())error="无法定位动画预览时间。";return false;
     }
-    UpdateClock();_Host->ResetClock();error.clear();return true;
+    PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();error.clear();return true;
 }
 void AnimationPreview::StopAnimationClipPreview(uint64_t objectID){
     if(!objectID||objectID!=_ClipObjectID||!Runtime()||Runtime()->IsExecuting())return;
-    ClearClip();UpdateClock();_Host->ResetClock();
+    ClearClip();PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();
 }
 void AnimationPreview::SetAnimationPreviewPlaying(bool playing){
     std::string error;if(!Ready(error))return;
@@ -101,11 +101,11 @@ void AnimationPreview::SetAnimationPreviewPlaying(bool playing){
         }
         for(std::size_t index=0;index<object->GetChildCount();++index)nodes.push_back(object->GetChild(index));
     }
-    UpdateClock();_Host->ResetClock();
+    PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();
 }
 void AnimationPreview::ResetAnimationPreview(){
     auto* runtime=Runtime();if(!runtime||runtime->IsExecuting())return;
-    ClearClip();_Playing=false;
+    ClearClip();_Playing=false;_PendingAnimators.clear();_CheckClip=false;
     std::vector<GameSproutRuntime::IGameObject*> nodes;
     if(_Scenes)if(auto* scene=_Scenes->GetActiveScene())nodes.push_back(scene);
     while(!nodes.empty()){
@@ -113,25 +113,107 @@ void AnimationPreview::ResetAnimationPreview(){
         if(auto* animator=object->GetComponent<GameSproutRuntime::IAnimatorComponent>())animator->Stop();
         for(std::size_t index=0;index<object->GetChildCount();++index)nodes.push_back(object->GetChild(index));
     }
-    UpdateClock();if(_Host)_Host->ResetClock();
+    PublishState();UpdateClock();if(_Host)_Host->ResetClock();UpdateFrameSubscription();NotifyReset();
 }
-void AnimationPreview::Update(GameSproutEditor::GameSproutModuleApi*){
-    if(!Runtime())return;
-    const auto clip=GetAnimationClipPreviewState(_ClipObjectID);
-    if(!clip.Active&&_ClipObjectID)ClearClip();
-    if(clip.Active)PauseOtherAnimators(_ClipObjectID);
-    UpdateClock();
-}
+void AnimationPreview::Update(GameSproutEditor::GameSproutModuleApi*) {}
 void AnimationPreview::OnActiveSceneChanged(){ResetAnimationPreview();}
+void AnimationPreview::OnSceneStateChanged(){UpdateClock();}
+
+bool AnimationPreview::RegisterPreviewListener(IAnimationPreviewListener* listener){
+    if(!listener||_NextListener==std::numeric_limits<uint64_t>::max())return false;
+    for(const auto& entry:_Listeners)if(entry.second==listener)return false;
+    _Listeners.emplace(++_NextListener,listener);return true;
+}
+void AnimationPreview::UnregisterPreviewListener(IAnimationPreviewListener* listener){
+    for(auto current=_Listeners.begin();current!=_Listeners.end();)
+        if(current->second==listener)current=_Listeners.erase(current);else ++current;
+}
+void AnimationPreview::NotifyReset(){
+    const uint64_t revision=++_StateRevision,last=_NextListener;
+    auto current=_Listeners.begin();
+    while(current!=_Listeners.end()&&current->first<=last){
+        const uint64_t id=current->first;
+        try{current->second->OnAnimationPreviewReset();}catch(...){qWarning("Animation preview reset listener threw an exception");}
+        if(revision!=_StateRevision)return;
+        current=_Listeners.upper_bound(id);
+    }
+}
+GameSproutRuntime::AnimationClipPlaybackState AnimationPreview::CurrentClipState() const {
+    // Scene changes are handled by OnActiveSceneChanged. A playing-frame sample
+    // resolves only the active Animator, without querying SceneManager each tick.
+    auto* animator=PreviewAnimator(_ClipObjectID,false);
+    return animator?animator->GetClipPlaybackState():GameSproutRuntime::AnimationClipPlaybackState{};
+}
+void AnimationPreview::PublishState(bool force){PublishState(CurrentClipState(),force);}
+void AnimationPreview::PublishState(const GameSproutRuntime::AnimationClipPlaybackState& clip,bool force){
+    const bool sceneChanged=force||_PublishedPlaying!=_Playing;
+    const uint64_t oldObjectID=_PublishedObjectID,objectID=_ClipObjectID;
+    const bool clipChanged=force||oldObjectID!=objectID||_PublishedClip.Active!=clip.Active
+        ||_PublishedClip.Playing!=clip.Playing||_PublishedClip.Clip!=clip.Clip||_PublishedClip.Time!=clip.Time
+        ||_PublishedClip.Loop!=clip.Loop||_PublishedClip.Speed!=clip.Speed||_PublishedClip.Duration!=clip.Duration;
+    _PublishedPlaying=_Playing;_PublishedObjectID=objectID;_PublishedClip=clip;
+    if(!sceneChanged&&!clipChanged)return;
+    const uint64_t revision=++_StateRevision,last=_NextListener;
+    const bool scenePlaying=_Playing;
+    const auto snapshot=clip;
+    const GameSproutRuntime::AnimationClipPlaybackState empty;
+    auto current=_Listeners.begin();
+    while(current!=_Listeners.end()&&current->first<=last){
+        const uint64_t id=current->first;
+        if(sceneChanged)try{current->second->OnAnimationPreviewStateChanged(scenePlaying);}catch(...){qWarning("Animation preview listener threw an exception");}
+        if(revision!=_StateRevision)return;
+        current=_Listeners.find(id);
+        if(oldObjectID&&oldObjectID!=objectID&&current!=_Listeners.end())
+            try{current->second->OnClipPreviewStateChanged(oldObjectID,empty);}catch(...){qWarning("Clip preview listener threw an exception");}
+        if(revision!=_StateRevision)return;
+        current=_Listeners.find(id);
+        if(objectID&&clipChanged&&current!=_Listeners.end())
+            try{current->second->OnClipPreviewStateChanged(objectID,snapshot);}catch(...){qWarning("Clip preview listener threw an exception");}
+        if(revision!=_StateRevision)return;
+        current=_Listeners.upper_bound(id);
+    }
+}
+void AnimationPreview::UpdateFrameSubscription(){
+    if(!_Host)return;
+    const bool needed=_CheckClip||!_PendingAnimators.empty()||(_ClipObjectID&&_PublishedClip.Active&&_PublishedClip.Playing);
+    if(needed&&!_FrameSubscribed)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    else if(!needed&&_FrameSubscribed){_Host->UnregisterFrameListener(this);_FrameSubscribed=false;}
+}
+void AnimationPreview::OnRuntimeFrame(const RuntimeFrameEvent&){
+    if(!Runtime())return;
+    const auto pending=std::move(_PendingAnimators);_PendingAnimators.clear();
+    for(const auto id:pending)if(auto* animator=PreviewAnimator(id)) {
+        if(_ClipObjectID&&id!=_ClipObjectID)animator->Pause();
+        else if(_Playing)animator->Resume();
+    }
+    const auto clip=CurrentClipState(); // 每个活跃 Clip 每帧只读取这一份快照。
+    const bool clockChanged=_CheckClip||_PublishedClip.Active!=clip.Active||_PublishedClip.Playing!=clip.Playing;
+    _CheckClip=false;
+    if(!clip.Active)_ClipObjectID=0;
+    PublishState(clip);
+    if(clockChanged)UpdateClock();
+    UpdateFrameSubscription();
+}
 void AnimationPreview::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event){
-    if(event.Type!=GameSproutRuntime::SceneNodeEventType::Destroy)return;
-    if(event.ObjectID==_ClipObjectID)_ClipObjectID=0;
-    if(_Scenes){auto* scene=_Scenes->GetActiveScene();if(!scene||event.ObjectID==scene->GetInstanceID())_Playing=false;}
-    UpdateClock();
+    if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy){
+        _PendingAnimators.erase(event.ObjectID);
+        if(event.ObjectID==_ClipObjectID)_ClipObjectID=0;
+        if(_Scenes){auto* scene=_Scenes->GetActiveScene();if(!scene||event.ObjectID==scene->GetInstanceID())_Playing=false;}
+        PublishState();UpdateClock();UpdateFrameSubscription();return;
+    }
+    if((_Playing||_ClipObjectID)&&event.Type==GameSproutRuntime::SceneNodeEventType::ComponentAdded
+        &&event.ComponentType=="GameSproutRuntime.Animator")_PendingAnimators.insert(event.ObjectID);
+    if(event.ObjectID==_ClipObjectID&&(event.Type==GameSproutRuntime::SceneNodeEventType::ComponentRemoved
+        ||event.Type==GameSproutRuntime::SceneNodeEventType::ComponentChanged))_CheckClip=true;
+    UpdateFrameSubscription();
 }
 void AnimationPreview::Release(GameSproutEditor::GameSproutModuleApi*){
+    _Listeners.clear();
     ResetAnimationPreview();
+    if(_FrameSubscribed&&_Host)_Host->UnregisterFrameListener(this);
     if(_SceneSubscribed&&_Scenes)_Scenes->UnregisterSceneListener(this);
     if(_RuntimeSubscribed)if(auto* runtime=Runtime())runtime->UnregisterListener(this);
-    _SceneSubscribed=false;_RuntimeSubscribed=false;_ClipObjectID=0;_Playing=false;_Host=nullptr;_Scenes=nullptr;_Runtime=nullptr;
+    _SceneSubscribed=false;_RuntimeSubscribed=false;_FrameSubscribed=false;_CheckClip=false;
+    _PendingAnimators.clear();_ClipObjectID=0;_Playing=false;_PublishedObjectID=0;_PublishedPlaying=false;_PublishedClip={};
+    _Host=nullptr;_Scenes=nullptr;_Runtime=nullptr;
 }

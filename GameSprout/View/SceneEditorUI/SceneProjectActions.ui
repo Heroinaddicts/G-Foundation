@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>SceneProjectActions</class><widget class="QMenu" name="SceneProjectActions">
+ <widget class="QMenu" name="createMenu"><property name="title"><string>Create</string></property><addaction name="actionCreateScene"/></widget>
+ <action name="actionCreateScene"><property name="text"><string>Scene</string></property></action>
+ <action name="actionInstantiateModel"><property name="text"><string>实例化模型到场景</string></property></action>
+ <addaction name="createMenu"/><addaction name="actionInstantiateModel"/>
+</widget><resources/><connections/></ui>

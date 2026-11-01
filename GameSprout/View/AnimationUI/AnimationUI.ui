@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AnimationActionsForm</class>
+ <widget class="QMenu" name="AnimationActionsForm">
+  <widget class="QMenu" name="createMenu">
+   <property name="title"><string>Create</string></property>
+   <widget class="QMenu" name="animationMenu">
+    <property name="title"><string>Animation</string></property>
+    <addaction name="controllerAction"/><addaction name="maskAction"/>
+   </widget>
+   <addaction name="animationMenu"/>
+  </widget>
+  <action name="controllerAction"><property name="text"><string>Animator Controller</string></property></action>
+  <action name="maskAction"><property name="text"><string>Avatar Mask</string></property></action>
+  <addaction name="createMenu"/>
+ </widget>
+ <resources/><connections/>
+</ui>

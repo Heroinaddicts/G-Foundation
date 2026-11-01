@@ -1,4 +1,7 @@
 #include "SceneEditorUI.h"
+#include "IAssetsManager.h"
+#include "ILibraryManager.h"
+#include "ISelectionManager.h"
 #include "ui_SceneEditorActions.h"
 #include <QAction>
 #include <QApplication>
@@ -6,12 +9,15 @@
 #include <QKeySequence>
 #include <QMenu>
 
-namespace { SceneEditorUI* Instance = nullptr; }
 SceneEditorUI::~SceneEditorUI() { Release(nullptr); }
 void SceneEditorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* api) {
-    Instance = this;
+    _Self = this;
     _IDE = api ? api->GetGameSproutView<IIDEWindow>("IDEWindow") : nullptr;
     _Scenes = api ? api->GetGameSproutModule<ISceneManager>("SceneManager") : nullptr;
+    _ProjectAssets = api ? api->GetGameSproutView<IProjectAssetsUI>("ProjectAssetsUI") : nullptr;
+    _Assets = api ? api->GetGameSproutModule<IAssetsManager>("AssetsManager") : nullptr;
+    _Library = api ? api->GetGameSproutModule<ILibraryManager>("LibraryManager") : nullptr;
+    _Selection = api ? api->GetGameSproutModule<ISelectionManager>("SelectionManager") : nullptr;
 }
 bool SceneEditorUI::Initialize(GameSproutEditor::GameSproutViewApi*) {
     if (!_Dispatch) _Dispatch = new QObject();
@@ -37,21 +43,25 @@ bool SceneEditorUI::Launch(GameSproutEditor::GameSproutViewApi*) {
             else if (action->objectName() == "actionRedo") { _Redo = menu; menu->SetClickCallback(&RedoMenu); }
         }
     }
+    if (!RegisterProjectActions()) return false;
     _Subscribed = _Scenes->RegisterSceneListener(this);
     RefreshActions();
     return _Subscribed;
 }
 void SceneEditorUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if (_ProjectAssets) _ProjectAssets->UnregisterExtensions(this);
     if (_Subscribed && _Scenes) _Scenes->UnregisterSceneListener(this);
     _Subscribed = false;
     delete _SaveDialog; _SaveDialog = nullptr;
     delete _UnsavedDialog; _UnsavedDialog = nullptr;
     delete _ErrorDialog; _ErrorDialog = nullptr;
+    delete _CreateSceneDialog; _CreateSceneDialog = nullptr;
     delete _Dispatch; _Dispatch = nullptr;
-    // IDEWindow 先 Release，不能在这里再解引用它管理的菜单包装对象。
+    // 菜单包装由 IDEWindow 管理，此处清除借用引用。
     _Save = nullptr; _SaveAs = nullptr; _Undo = nullptr; _Redo = nullptr;
     _Scenes = nullptr; _IDE = nullptr; _Opening = false;
-    if (Instance == this) Instance = nullptr;
+    _ProjectAssets=nullptr;_Assets=nullptr;_Library=nullptr;_Selection=nullptr;
+    if (_Self == this) _Self = nullptr;
 }
 std::uint64_t SceneEditorUI::SceneID() const {
     auto* scene = _Scenes ? _Scenes->GetActiveScene() : nullptr;
@@ -72,21 +82,21 @@ void SceneEditorUI::OnActiveSceneChanged() {
     RefreshActions();
 }
 void SceneEditorUI::OnSceneStateChanged() { RefreshActions(); }
-void SceneEditorUI::SaveMenu() { if (Instance) Instance->SaveScene(); }
-void SceneEditorUI::SaveAsMenu() { if (Instance) Instance->SaveSceneAs(); }
+void SceneEditorUI::SaveMenu() { if (_Self) _Self->SaveScene(); }
+void SceneEditorUI::SaveAsMenu() { if (_Self) _Self->SaveSceneAs(); }
 void SceneEditorUI::UndoMenu() {
-    if (!Instance || !Instance->_Scenes || Instance->_Scenes->HasTransformEdit()) return;
+    if (!_Self || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     std::string error;
-    if (!Instance->_Scenes->Undo(error)) Instance->ShowError(error);
-    Instance->RefreshActions();
+    if (!_Self->_Scenes->Undo(error)) _Self->ShowError(error);
+    _Self->RefreshActions();
 }
 void SceneEditorUI::RedoMenu() {
-    if (!Instance || !Instance->_Scenes || Instance->_Scenes->HasTransformEdit()) return;
+    if (!_Self || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     std::string error;
-    if (!Instance->_Scenes->Redo(error)) Instance->ShowError(error);
-    Instance->RefreshActions();
+    if (!_Self->_Scenes->Redo(error)) _Self->ShowError(error);
+    _Self->RefreshActions();
 }
 void SceneEditorUI::SaveScene() {
     if (!_Scenes || !SceneID() || _Scenes->HasTransformEdit()) return;

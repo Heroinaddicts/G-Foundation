@@ -1,27 +1,21 @@
 #include "ProjectAssetsUI.h"
 #include "ProjectAssetsModel.h"
-#include "ISceneManager.h"
-#include "IRuntimeAssets.h"
-#include "ILibraryManager.h"
+#include "IProject.h"
 #include "ui_ProjectAssetsUI.h"
 #include <QApplication>
 #include <QHeaderView>
 #include <QFileInfo>
 #include <QItemSelectionModel>
 #include <QScrollBar>
-#include <QDialog>
 
 ProjectAssetsUI::~ProjectAssetsUI() { Release(nullptr); }
 
 void ProjectAssetsUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * editor) {
     g_Self = this;
-    g_GameSproutEditor = editor;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Assets,AssetsManager);
     GetGameSproutModule(editor,_Selection,SelectionManager);
-    GetGameSproutModule(editor,_Scenes,SceneManager);
-    GetGameSproutModule(editor,_RuntimeAssets,RuntimeAssets);
-    GetGameSproutModule(editor,_Library,LibraryManager);
+    GetGameSproutModule(editor,_Project,Project);
 }
 
 bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
@@ -42,8 +36,9 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
         _Ui->assetTree->header()->setStretchLastSection(false);
         QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this] {
             _Window=nullptr;_FolderModel=nullptr;_AssetModel=nullptr;_Docker=nullptr;_Attached=false;
+            for (auto& action:_ContextActions) action.Menu=nullptr;
         });
-        QObject::connect(_Ui->searchEdit,&QLineEdit::textChanged,_Dispatch,[this] { _Dirty=true; });
+        QObject::connect(_Ui->searchEdit,&QLineEdit::textChanged,_Dispatch,[this] { QueueRefresh(); });
         QObject::connect(_Ui->rootButton,&QToolButton::clicked,_Dispatch,[this] { NavigateToDirectory(""); });
         QObject::connect(_Ui->upButton,&QToolButton::clicked,_Dispatch,[this] {
             const QString parent=QFileInfo(_CurrentPath).path();
@@ -60,10 +55,13 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
             if (!_Rebuilding && index.isValid()) NavigateToDirectory(index.data(ProjectAssetsModel::PathRole).toString().toStdString());
         });
         _Ui->assetTree->ClickCommitted=[this] { PublishSelection(); };
+        _Ui->assetTree->PointerSelectionFinished=[this] {
+            if(_RefreshDeferred){_RefreshDeferred=false;QueueRefresh();}
+        };
         QObject::connect(_Ui->assetTree,&QTreeView::doubleClicked,_Dispatch,[this](const QModelIndex & index) {
             const QModelIndex first=index.siblingAtColumn(0);
             if (first.data(ProjectAssetsModel::FolderRole).toBool()) NavigateToDirectory(first.data(ProjectAssetsModel::PathRole).toString().toStdString());
-            else OpenSceneAsset(first);
+            else OpenAsset(first);
         });
         QObject::connect(_Ui->folderTree,&QTreeView::expanded,_Dispatch,[this](const QModelIndex & index) {
             if (!_Rebuilding) _ExpandedFolders.insert(index.data(ProjectAssetsModel::KeyRole).toString());
@@ -93,6 +91,7 @@ bool ProjectAssetsUI::Launch(GameSproutEditor::GameSproutViewApi *) {
     _Attached = true;
     _Docker->SetTitle("Project");
     RegisterContextMenus();
+    RegisterExtensionMenus();
     if (IIDEMenu * menu = _Docker->CreateChildMenu("刷新视图")) menu->SetClickCallback(&ProjectAssetsUI::RefreshMenu);
     _Subscribed = _Assets->RegisterAssetListener(this);
     if (!_Subscribed) return false;
@@ -101,21 +100,19 @@ bool ProjectAssetsUI::Launch(GameSproutEditor::GameSproutViewApi *) {
         if (!_SelectionSubscribed) return false;
         OnAssetSelectionChanged(_Selection->GetAssetSelection());
     }
-    // Subscribe before the initial query. Events and snapshots merge by identity.
-    Refresh();
+    // 先订阅；LaunchFinished 查询一次初始快照，后续只响应事件。
     return true;
 }
 
-void ProjectAssetsUI::LaunchFinished(GameSproutEditor::GameSproutViewApi *) { _Dirty = true; }
-void ProjectAssetsUI::Update(GameSproutEditor::GameSproutViewApi *) {
-    if (_Dirty && _Window && !_Ui->assetTree->IsPointerSelecting()) Refresh();
-}
+void ProjectAssetsUI::LaunchFinished(GameSproutEditor::GameSproutViewApi *) { _Launched=true;Refresh(); }
+void ProjectAssetsUI::Update(GameSproutEditor::GameSproutViewApi *) {}
 void ProjectAssetsUI::Show() { if (_Window) _Window->show(); if (_Docker) _Docker->Activate(); }
 void ProjectAssetsUI::Hide() { if (_Window) _Window->hide(); }
-void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->_Dirty=true; }
+void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->QueueRefresh(); }
 
 void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
-    delete _CreateSceneDialog;_CreateSceneDialog=nullptr;
+    for (auto& action:_ContextActions) if (_Docker && action.Menu) action.Menu->SetClickCalback(nullptr);
+    _ContextActions.clear();_OpenHandlers.clear();
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _SelectionSubscribed=false;_Selection=nullptr;
@@ -126,7 +123,7 @@ void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
     _FolderModel=nullptr;_AssetModel=nullptr;
     delete _Ui;_Ui=nullptr;
     _Assets=nullptr;
-    _Scenes=nullptr;_RuntimeAssets=nullptr;_Library=nullptr;_ContextAsset={};_PendingCreatedAssetPath.clear();_HasContextDirectory=false;
-    _SynchronizingSelection=false;
+    _Project=nullptr;_ContextAsset={};_PendingCreatedAssetPath.clear();_HasContextDirectory=false;
+    _SynchronizingSelection=false;_Launched=false;_RefreshQueued=false;_RefreshDeferred=false;
     if (g_Self==this) g_Self=nullptr;
 }

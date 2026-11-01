@@ -2,9 +2,13 @@
 #include "ISceneEditorUI.h"
 #include "ISceneManager.h"
 #include "IIDEWindow.h"
+#include "IProjectAssetsUI.h"
 #include <functional>
 class QObject;
 class QDialog;
+class IAssetsManager;
+class ILibraryManager;
+class ISelectionManager;
 
 class SceneEditorUI final : public ISceneEditorUI, public ISceneListener {
 public:
@@ -23,17 +27,31 @@ private:
     void OpenNow(const std::string& path);
     void ShowError(const std::string& message);
     void RefreshActions();
+    bool RegisterProjectActions();
+    bool OpenProjectAsset(const ProjectAssetSelection& selected);
+    bool ResolveModelReference(const ProjectAssetActionContext& context,
+        GameSproutRuntime::ResourceReference& reference,std::string& error) const;
+    void ShowCreateSceneDialog();
+    void InstantiateSelectedModel();
     std::uint64_t SceneID() const;
     static void SaveMenu();
     static void SaveAsMenu();
     static void UndoMenu();
     static void RedoMenu();
+    static void CreateSceneMenu();
+    static void InstantiateModelMenu();
+    inline static SceneEditorUI* _Self = nullptr;
     ISceneManager* _Scenes = nullptr;
+    IProjectAssetsUI* _ProjectAssets = nullptr;
+    IAssetsManager* _Assets = nullptr;
+    ILibraryManager* _Library = nullptr;
+    ISelectionManager* _Selection = nullptr;
     IIDEWindow* _IDE = nullptr;
     QObject* _Dispatch = nullptr;
     QDialog* _SaveDialog = nullptr;
     QDialog* _UnsavedDialog = nullptr;
     QDialog* _ErrorDialog = nullptr;
+    QDialog* _CreateSceneDialog = nullptr;
     IIDEMenu* _Save = nullptr;
     IIDEMenu* _SaveAs = nullptr;
     IIDEMenu* _Undo = nullptr;

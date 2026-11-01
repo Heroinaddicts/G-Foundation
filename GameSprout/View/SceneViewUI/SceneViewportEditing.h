@@ -8,10 +8,14 @@ class SceneViewport;
 enum class SceneEditingTool { View, Move, Rotate, Scale };
 
 // Scene 编辑交互：只借用服务，长期只保存节点 ID；变换历史由 SceneManager 持有。
-class SceneViewportEditing final {
+class SceneViewportEditing final : public ISceneListener, public ISelectionListener {
 public:
     explicit SceneViewportEditing(SceneViewport& viewport):_Viewport(viewport) {}
     void Bind(ISceneManager* scenes,ISelectionManager* selection);
+    void OnActiveSceneChanged() override;
+    void OnSceneStateChanged() override;
+    void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>&) override;
+    void OnSceneObjectSelectionChanged(const SceneObjectSelection&) override;
     void Unbind();
     void UpdateFrame(GameSproutRuntime::IScene* scene,const GameSproutRuntime::RenderCamera* drawCamera=nullptr);
     void BuildDraw(GameSproutRuntime::IScene* scene,GameSproutRuntime::DebugDrawList& draw);
@@ -35,6 +39,9 @@ private:
     SceneViewport& _Viewport;
     ISceneManager* _Scenes=nullptr;
     ISelectionManager* _Selection=nullptr;
+    GameSproutRuntime::IScene* _ActiveScene=nullptr;
+    SceneObjectSelection _SelectionSnapshot;
+    bool _SceneSubscribed=false,_SelectionSubscribed=false,_TransformEditActive=false;
     std::uint64_t _SceneID=0,_ObjectID=0;
     SceneEditingTool _Tool=SceneEditingTool::Move;
     SceneGizmoSettings _Settings;

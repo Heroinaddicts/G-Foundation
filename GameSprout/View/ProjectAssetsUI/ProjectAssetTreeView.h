@@ -11,6 +11,7 @@ public:
     explicit ProjectAssetTreeView(QWidget* parent=nullptr) : QTreeView(parent) {}
     bool IsPointerSelecting() const { return _PointerSelecting || _Dragging; }
     std::function<void()> ClickCommitted;
+    std::function<void()> PointerSelectionFinished;
 protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;

@@ -2,6 +2,9 @@
 #define __GameViewUI_h__
 
 #include "Header.h"
+#include "IRuntimeHost.h"
+#include "ISceneManager.h"
+#include "IAnimationPreview.h"
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -16,12 +19,15 @@ class IRuntimeAssets;
 class IAnimationPreview;
 class GameViewport;
 
-class GameViewUI : public IGameViewUI {
+class GameViewUI : public IGameViewUI, public IRuntimeFrameListener, public ISceneListener, public IAnimationPreviewListener {
 public:
     ~GameViewUI() override;
 
     void Show() override;
     void Hide() override;
+    void OnRuntimeFrame(const RuntimeFrameEvent&) override;
+    void OnActiveSceneChanged() override;
+    void OnAnimationPreviewStateChanged(bool scenePlaying) override;
 
 private:
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
@@ -36,6 +42,9 @@ private:
     GameViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
     ISceneManager* _Scenes=nullptr;
+    IRuntimeHost* _Host=nullptr;
+    GameSproutRuntime::IScene* _ActiveScene=nullptr;
+    bool _FrameSubscribed=false,_SceneSubscribed=false,_PreviewSubscribed=false;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     IAnimationPreview* _Preview=nullptr;
     IRuntimeAssets* _Resources=nullptr;

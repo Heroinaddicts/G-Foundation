@@ -105,3 +105,6 @@ set_target_properties(InspectorUI PROPERTIES
     PDB_OUTPUT_DIRECTORY "${view_output_directory}/$<0:>"
     COMPILE_PDB_OUTPUT_DIRECTORY "${view_output_directory}/$<0:>"
 )
+
+include("${CMAKE_CURRENT_LIST_DIR}/../Shared/InspectorControls/InspectorControls.cmake")
+target_link_libraries(InspectorUI PRIVATE GameSproutInspectorControls)

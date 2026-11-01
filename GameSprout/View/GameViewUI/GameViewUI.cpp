@@ -13,6 +13,7 @@ void GameViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
     if(!editor)return;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
+    GetGameSproutModule(editor,_Host,RuntimeHost);
     _Runtime=editor?editor->_Runtime:nullptr;
     GetGameSproutModule(editor,_Preview,AnimationPreview);
     GetGameSproutModule(editor,_Resources,RuntimeAssets);
@@ -26,8 +27,15 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     _Viewport->Initialize(_Runtime,
         _Resources?_Resources->GetResourceProvider():nullptr);
     _Viewport->StatusChanged=[this](const std::string& text){if(_Window)_Ui->statusLabel->setText(QString::fromStdString(text));};
-    QObject::connect(_Ui->playButton,&QToolButton::toggled,_Dispatch,[this](bool playing){if(_Preview)_Preview->SetAnimationPreviewPlaying(playing);});
-    QObject::connect(_Ui->stopButton,&QToolButton::clicked,_Dispatch,[this]{if(_Preview)_Preview->ResetAnimationPreview();});
+    QObject::connect(_Ui->playButton,&QToolButton::toggled,_Dispatch,[this](bool playing){
+        if(_Preview)_Preview->SetAnimationPreviewPlaying(playing);
+        // 命令可能被当前事务拒绝，立即回读一次确认按钮状态，不等待轮询。
+        OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
+    });
+    QObject::connect(_Ui->stopButton,&QToolButton::clicked,_Dispatch,[this]{
+        if(_Preview)_Preview->ResetAnimationPreview();
+        OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
+    });
     QObject::connect(_Ui->retryButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
@@ -36,18 +44,32 @@ bool GameViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if(!_Window||!g_IIDEWindow)return false;
     _Docker=g_IIDEWindow->CreateDocker("Game");
     if(!_Docker||!_Docker->AttachWidget(_Window))return false;
-    _Docker->SetTitle("Game");_Attached=true;return true;
+    _Docker->SetTitle("Game");_Attached=true;
+    if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
+    if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    if(_Preview)_PreviewSubscribed=_Preview->RegisterPreviewListener(this);
+    OnActiveSceneChanged();OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
+    return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed && (!_Preview || _PreviewSubscribed);
 }
 void GameViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
 void GameViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
 void GameViewUI::Hide(){if(_Window)_Window->hide();}
-void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {
-    if(!_Window)return;
-    const QSignalBlocker blocker(_Ui->playButton);
-    _Ui->playButton->setChecked(_Preview&&_Preview->IsAnimationPreviewPlaying());
-    if(_Viewport)_Viewport->RenderGame(_Scenes?_Scenes->GetActiveScene():nullptr);
+void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
+void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
+    if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene);
+}
+void GameViewUI::OnActiveSceneChanged() {
+    _ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
+}
+void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
+    if(!_Window || !_Ui)return;
+    const QSignalBlocker blocker(_Ui->playButton);_Ui->playButton->setChecked(scenePlaying);
 }
 void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);
+    if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
+    if(_PreviewSubscribed && _Preview)_Preview->UnregisterPreviewListener(this);
+    _FrameSubscribed=false;_SceneSubscribed=false;_PreviewSubscribed=false;_ActiveScene=nullptr;_Host=nullptr;
     if(_Viewport){_Viewport->StatusChanged={};_Viewport->Shutdown();}
     delete _Dispatch;_Dispatch=nullptr;
     if(!_Attached)delete _Window;

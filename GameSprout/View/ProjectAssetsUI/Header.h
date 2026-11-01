@@ -6,7 +6,6 @@
 
 UsingGameSprout;
 
-inline extern GameSproutViewApi * g_GameSproutEditor = nullptr;
 inline extern IIDEWindow * g_IIDEWindow = nullptr;
 
 class ProjectAssetsUI;

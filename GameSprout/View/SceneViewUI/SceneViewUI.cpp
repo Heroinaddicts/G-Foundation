@@ -16,6 +16,7 @@ void SceneViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) 
     if(!editor)return;
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
+    GetGameSproutModule(editor,_Host,RuntimeHost);
     _Runtime=editor?editor->_Runtime:nullptr;
     GetGameSproutModule(editor,_Selection,SelectionManager);
     GetGameSproutModule(editor,_RuntimeAssets,RuntimeAssets);
@@ -57,16 +58,28 @@ bool SceneViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if(!_Window||!g_IIDEWindow)return false;
     _Docker=g_IIDEWindow->CreateDocker(QStringLiteral("Scene"));
     if(!_Docker||!_Docker->AttachWidget(_Window))return false;
-    _Attached=true;_Docker->SetTitle(QStringLiteral("Scene"));_Timer.start();return true;
+    _Attached=true;_Docker->SetTitle(QStringLiteral("Scene"));
+    if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
+    if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    OnActiveSceneChanged();_Timer.start();
+    return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
 }
 void SceneViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
 void SceneViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
 void SceneViewUI::Hide(){if(_Window)_Window->hide();}
-void SceneViewUI::Update(GameSproutEditor::GameSproutViewApi*) {
+void SceneViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
+void SceneViewUI::OnActiveSceneChanged() {
+    _ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
+}
+void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
+    // Editor camera navigation continues while simulation is paused.
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
-    if(_Viewport){_Viewport->BindEditingServices(_Scenes,_Selection);_Viewport->RenderScene(_Scenes?_Scenes->GetActiveScene():nullptr,_Ui->gridCheck->isChecked(),elapsed);}
+    if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);
+    if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
+    _FrameSubscribed=false;_SceneSubscribed=false;_ActiveScene=nullptr;_Host=nullptr;
     if(_Viewport){_Viewport->Editing().ToolChanged={};_Viewport->FocusRequested={};_Viewport->StatusChanged={};_Viewport->Shutdown();}
     delete _Dispatch;_Dispatch=nullptr;
     if(!_Attached)delete _Window;

@@ -25,5 +25,5 @@ void HierarchyUI::DeleteNode(bool context) {
         const auto selection=_Selection->GetSceneObjectSelection();
         if(selection.SceneID==scene->GetInstanceID()&&!_Runtime->QueryGameObject(selection.ObjectID))_Selection->SetSceneObjectSelection({});
     }
-    _RefreshPending=true;Refresh();
+    QueueRefresh();Refresh();
 }

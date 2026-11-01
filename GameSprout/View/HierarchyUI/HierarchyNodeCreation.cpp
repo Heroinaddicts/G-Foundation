@@ -50,7 +50,7 @@ void HierarchyUI::CreateNode(NodeKind kind, bool child) {
     if (!configured) {
         scene->DestroyGameObject(object);
         _Ui->statusLabel->setText(QStringLiteral("组件创建失败，已撤销新节点。"));
-        _RefreshPending = true;
+        QueueRefresh();
         return;
     }
     if (_SceneID != scene->GetInstanceID()) {
@@ -62,7 +62,7 @@ void HierarchyUI::CreateNode(NodeKind kind, bool child) {
         _ExpandedIDs.insert(ancestor->GetInstanceID());
     _Ui->searchEdit->clear();
     PublishSelection();
-    _RefreshPending = true;
+    QueueRefresh();
     Refresh();
     _Ui->hierarchyTree->scrollTo(_Ui->hierarchyTree->currentIndex());
     _Ui->hierarchyTree->setFocus();

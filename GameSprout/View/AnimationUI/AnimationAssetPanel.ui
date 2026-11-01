@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AnimationAssetPanelForm</class>
+ <widget class="QWidget" name="AnimationAssetPanelForm">
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <property name="spacing"><number>6</number></property>
+   <item><widget class="AnimationClipInspector" name="clipImportInspector"/></item>
+   <item><widget class="AnimationClipPreviewInspector" name="clipPreviewInspector"/></item>
+   <item><widget class="AvatarInspector" name="avatarInspector"/></item>
+   <item><widget class="AvatarMaskInspector" name="maskInspector"/></item>
+   <item><widget class="QWidget" name="controllerPanel">
+    <layout class="QVBoxLayout" name="controllerLayout">
+     <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+     <item><widget class="QLabel" name="controllerSummary"><property name="wordWrap"><bool>true</bool></property></widget></item>
+     <item><widget class="QPushButton" name="editControllerButton"><property name="text"><string>编辑动画控制器…</string></property></widget></item>
+    </layout>
+   </widget></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>AnimationClipInspector</class><extends>QWidget</extends><header>AnimationClipInspector.h</header></customwidget>
+  <customwidget><class>AnimationClipPreviewInspector</class><extends>QWidget</extends><header>AnimationClipPreviewInspector.h</header></customwidget>
+  <customwidget><class>AvatarInspector</class><extends>QWidget</extends><header>AvatarInspector.h</header></customwidget>
+  <customwidget><class>AvatarMaskInspector</class><extends>QWidget</extends><header>AvatarMaskInspector.h</header></customwidget>
+ </customwidgets>
+ <resources/><connections/>
+</ui>

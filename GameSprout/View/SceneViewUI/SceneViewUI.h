@@ -3,6 +3,8 @@
 
 #include "Header.h"
 #include <QElapsedTimer>
+#include "IRuntimeHost.h"
+#include "ISceneManager.h"
 
 QT_BEGIN_NAMESPACE
 class QMainWindow;
@@ -15,12 +17,14 @@ class ISelectionManager;
 class IRuntimeAssets;
 class SceneViewport;
 
-class SceneViewUI : public ISceneViewUI {
+class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener {
 public:
     ~SceneViewUI() override;
 
     void Show() override;
     void Hide() override;
+    void OnRuntimeFrame(const RuntimeFrameEvent&) override;
+    void OnActiveSceneChanged() override;
     SceneViewCameraState GetCameraState() const override;
     bool SetCameraState(const SceneViewCameraState& state) override;
     void ResetCamera() override;
@@ -41,6 +45,9 @@ private:
     SceneViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
     ISceneManager* _Scenes=nullptr;
+    IRuntimeHost* _Host=nullptr;
+    GameSproutRuntime::IScene* _ActiveScene=nullptr;
+    bool _FrameSubscribed=false,_SceneSubscribed=false;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     ISelectionManager* _Selection=nullptr;
     IRuntimeAssets* _RuntimeAssets=nullptr;

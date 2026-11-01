@@ -20,6 +20,7 @@ void ProjectAssetTreeView::mouseReleaseEvent(QMouseEvent* event) {
         _PointerSelecting=false;_SuppressRelease=false;
         _PreviousSelection.clear();_PreviousCurrent=QPersistentModelIndex{};
         if(!suppress && ClickCommitted)ClickCommitted();
+        if(PointerSelectionFinished)PointerSelectionFinished();
     }
 }
 void ProjectAssetTreeView::startDrag(Qt::DropActions supportedActions) {
@@ -33,4 +34,5 @@ void ProjectAssetTreeView::startDrag(Qt::DropActions supportedActions) {
     }
     _PreviousSelection.clear();_PreviousCurrent=QPersistentModelIndex{};
     _PointerSelecting=false;_Dragging=false;
+    if(PointerSelectionFinished)PointerSelectionFinished();
 }
