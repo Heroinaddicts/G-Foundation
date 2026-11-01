@@ -1,43 +1,57 @@
-# Editor、Runtime 与图形后端边界
+# Editor 功能边界与事件协议
 
-本文件记录当前实现。早期的 RuntimeArchitecture.md 保留为历史讨论稿；实际模块归属以本文和公共接口为准。
+## 当前职责
 
-## 调用方向
+| 模块 | 负责 |
+| --- | --- |
+| InspectorUI | 选择与锁定、扩展选派、公共应用/恢复按钮、诊断显示 |
+| AssetImportUI | Texture、Model、Audio、Font、Video、Text、Shader 导入设置页面 |
+| MaterialUI | Shader 参数控件、内嵌材质查看和提取、独立材质编辑 |
+| AnimationUI | 动画片段、Animator、Controller、Avatar、Mask、Rig 的界面与创建菜单 |
+| SceneObjectUI | 场景节点和组件分组、Transform/Camera/Mesh/UI 组件编辑 |
+| ProjectAssetsUI | 资源浏览、目录导航、选择、通用菜单和打开处理器注册 |
+| SceneEditorUI | 场景菜单、创建/打开/保存提示、模型实例化入口 |
+| AnimationEditor | Controller/Mask/Rig 源数据创建、校验、保存与重导入协调 |
+| AnimationPreview | 临时动画预览与还原、播放状态事件，不保存场景作者数据 |
+| RuntimeAssets | Library 产物适配为 Runtime 资源提供者 |
+| SceneManager | 场景文档、节点编辑事务、撤销/重做、保存与恢复 |
+| RuntimeHost | 唯一 Runtime Update、模拟时钟、帧完成事件 |
+
+动画在 `.scene` 中的序列化和绑定属于场景格式，所以保留于 SceneManager。导入器和资源解码器按文件分类，仍分别归 AssetsPipeline 和 RuntimeAssets；文件数量并不决定是否要新增模块。
+
+## 扩展接口
+
+`IInspectorUI::RegisterExtension()` 注册 `IInspectorExtension`。宿主按优先级选取页面，页面通过 `InspectorPanel` 提供加载、展示信息、草稿判断、校验、应用和恢复。组件编辑器也由扩展工厂提供。增加功能不需要在 InspectorUI 增加资源类型或组件类型分支。
+
+`IProjectAssetsUI` 提供按 owner 注册菜单、资源打开处理器、右键上下文快照和创建后定位。功能 View 在 Launch 注册，在 Release 注销；浏览器不调用功能的私有实现。
+
+Model 的动画扩展控件通过 `IAnimationUI::CreateModelAnimationEditor()` 获得，仅依赖 `IModelAnimationEditor`。共享库 `View/Shared/InspectorControls` 保存资源选择器、通用组件编辑上下文和设置控件基类；扩展注册表只存在于 InspectorUI 实例。
+
+## 刷新与生命周期
+
+1. BeforeInitialize 获得公开接口，Initialize 创建 `.ui` 控件。
+2. Launch 先订阅事件、注册扩展，再读取必要初始状态。
+3. LaunchFinished 在所有功能注册完毕后建立首次完整视图。
+4. 选择、资源、场景或命令结果事件触发刷新；同一批事件可用 Qt 队列合并。空闲 Update 不扫描数据。
+5. RuntimeHost 完成 Runtime Update 后发送帧事件。Scene/Game 使用该事件绘制；场景与选择身份来自独立事件缓存。
+6. Release 先注销监听与扩展，再销毁控件。宿主注销扩展时也清理使用该扩展的组件编辑器，避免悬空回调。
+
+所有事件在宿主主线程派发，借用数据只在回调期间有效。跨刷新保存 Guid/LocalID 或节点身份，使用时重新验证。
+
+
+## Runtime 所有权与调用方向
+
+Editor 应用组合层创建并拥有 Runtime，通过 `GameSproutViewApi` 的 `IGameSproutRuntime* const _Runtime` 注入。各 Module/View 都直接借用该公开指针，不经 SceneManager 或 RuntimeHost 的二级 Getter 获取；EditorApi 基类不负责释放。
 
 ```text
-Editor View（Qt 窗口、输入和属性显示）
-    ├── SceneManager：场景文档与场景编辑操作
-    ├── AnimationPreview：编辑器临时播放会话
-    ├── RuntimeAssets：Library 资源提供与源资产编辑服务
-    ├── RuntimeHost：资源提供者接入与唯一更新时钟
-    └── EditorApi->_Runtime：借用统一的通用 Runtime 实例
-                    ↓
-             GameSproutRuntime
-             对象、组件、动画求值、Renderer、Viewport
-                    ↓ 私有实现
-                  GRHI
-             Device、Surface、GPU 资源与提交
+Editor View（Qt 控件与交互）
+    → Module 公共接口和事件（场景、资源、作者编辑、预览）
+    → EditorApi->_Runtime（借用统一 Runtime）
+    → GameSproutRuntime（对象、组件、动画求值、Renderer、Viewport）
+    → GRHI（Runtime 私有图形实现）
 ```
 
-游戏的可执行壳可以直接使用相同 Runtime SDK，不依赖 Editor 的 Module/View 注册表或 Qt。
-
-## 模块职责与所有权
-
-| 模块 | 负责 | 不持有的职责 |
-| --- | --- | --- |
-| Editor 应用组合层 | 创建并持有 Runtime，所有模块退出后销毁一次 | GRHI 工厂和 GPU 对象 |
-| EditorApi | 通过公开的 `IGameSproutRuntime* const _Runtime` 提供同一实例的借用指针，基类不负责释放 | Runtime 所有权和更新调度 |
-| RuntimeHost | 借用 EditorApi 的 Runtime，接入资源提供者，唯一每帧更新时钟 | Runtime 所有权、场景 JSON、选择状态、预览 UI |
-| SceneManager | 打开和保存 `.scene`、活动场景切换、稳定文件 ID、脏状态、场景编辑历史和变换事务 | Runtime 的创建销毁和 Update、动画播放状态、GPU 对象 |
-| AnimationPreview | 当前活动场景的 Controller 预览、单对象 Clip 预览、暂停、定位、还原以及预览目标清理 | Runtime 所有权、场景文件保存、窗口和 GPU 设备 |
-| RuntimeAssets | 向 Runtime 提供已预处理资源，提供现有动画源文件编辑服务 | View 控件、设备或 Surface |
-| SceneViewUI | 原生 Qt 视口、自由编辑相机、输入和编辑工具交互 | 创建 GRHI Device/Surface、读取 FBX/PNG 源文件 |
-| GameViewUI | 游戏视口和场景播放按钮 | 单独创建图形设备、拥有 Runtime 或编辑场景文档 |
-| InspectorUI | 属性控件、资源选择和编辑动作；控件分别封装为 `.h/.cpp/.ui` | 动画状态机求值、资产预处理、Runtime 生命周期 |
-
-SceneManager 内的历史目前只记录场景编辑，和稳定场景文件 ID、删除子树快照及连续拖拽事务一起工作。跨资源或跨项目的通用历史服务应独立设计，不再向 SceneManager 加入其他业务。
-
-RuntimeHost 和 AnimationPreview 已通过 `CreateComponent.py` 的 `create_component` 生成独立 Module，公共接口位于 `Module/Interface`。新增模块或独立面板 View 同样从该脚本创建；生成模板使用当前 GameSproutEditor API 和 Runtime SDK，不默认引入 GRHI API。
+游戏可执行壳使用相同 Runtime SDK，不依赖 Editor 注册表或 Qt。SceneManager 的历史仅记录场景事务；跨资源或项目的历史服务不能继续塞入场景模块。
 
 ## 渲染接口
 
@@ -51,7 +65,7 @@ Runtime 内部为同一实例共享图形 Device，不同 Scene/Game 视口拥�
 
 ## 更新与退出
 
-所有模块 Initialize 完成后才进入 Launch。Editor 入口先创建 Runtime，通过 `GameSproutViewApi(runtime)` 的公开常量指针 `_Runtime` 注入；Module 和 View 都从 EditorApi 借用，不通过 SceneManager 或 RuntimeHost 的二级 Getter 获取。RuntimeHost 在 Initialize 连接该实例，AnimationPreview 在 Launch 注册场景和 Runtime 监听。每帧由 AnimationPreview 更新临时播放策略，再由 RuntimeHost 统一调用一次 Runtime Update，SceneManager 处理场景状态变化。
+所有模块 Initialize 完成后才进入 Launch；所有功能注册完成后，View 在 LaunchFinished 建立初始快照。Foundation 只由应用组合层推进，Project 不再重复调用 Foundation Update。RuntimeHost 是 Runtime 的唯一更新时钟，完成求值后派发帧事件。AnimationPreview 用控制命令、场景事件和活跃 Clip 的帧订阅维护预览，空闲 Update 不扫描节点。
 
 退出顺序由编辑器组合层明确安排：
 
