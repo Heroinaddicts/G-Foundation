@@ -51,6 +51,7 @@ static void CommitLine(QWidget* owner,const char* name,const QString& text) {
 static QWidget* ResourceWidget(QWidget* owner,const char* hostName) {
     QWidget* host=owner?owner->findChild<QWidget*>(hostName):nullptr;
     QWidget* field=host?host->findChild<QWidget*>("ResourceFieldForm"):nullptr;
+    if (!field && host && host->inherits("ResourceField")) field=host;
     Check(field,std::string("Resource field missing: ")+hostName);return field;
 }
 static bool DropResource(QWidget* field,const ProjectAssetSelection& value) {
@@ -98,7 +99,7 @@ int main(int argc,char** argv) {
     const auto cleanup=[&] {
         for(auto it=views.rbegin();it!=views.rend();++it)GameSproutEditor::GameSproutEditorFinal::Release(*it,&editor);
         views.clear();
-        if(modulesReady)for(const std::string& name:{"SelectionManager","AnimationPreview","SceneManager","RuntimeHost","AssetsManager","AssetsPipeline","LibraryManager"})
+        if(modulesReady)for(const std::string& name:{"SelectionManager","AnimationPreview","SceneManager","RuntimeHost","AnimationEditor","RuntimeAssets","AssetsManager","AssetsPipeline","LibraryManager"})
             if(editor.Modules.count(name))GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules[name],api);
         if(ide){GameSproutEditor::GameSproutEditorFinal::Release(ide,&editor);ide=nullptr;}
         if(foundation){foundation->Release();foundation=nullptr;}
@@ -120,18 +121,19 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation init failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"})
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"})
             editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules)GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module init failed: "+entry.first);
         modulesReady=true;
         for(const auto& entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Module launch failed: "+entry.first);
-        for(const std::string& name:{"HierarchyUI","InspectorUI","ProjectAssetsUI","SceneEditorUI"}) {
+        for(const std::string& name:{"AnimationUI","AssetImportUI","MaterialUI","SceneObjectUI","HierarchyUI","InspectorUI","ProjectAssetsUI","SceneEditorUI"}) {
             auto* view=LoadView(name);editor.Views[name]=view;views.push_back(view);
         }
         for(auto* view:views)GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
         for(auto* view:views)Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View init failed");
         for(auto* view:views)Check(GameSproutEditor::GameSproutEditorFinal::Launch(view,&editor),"View launch failed");
+        for(auto* view:views)GameSproutEditor::GameSproutEditorFinal::Finished(view,&editor);
         ide->Show();QCoreApplication::processEvents();
         auto* assets=static_cast<IAssetsManager*>(editor.Modules["AssetsManager"]);
         auto* library=static_cast<ILibraryManager*>(editor.Modules["LibraryManager"]);
@@ -263,7 +265,7 @@ int main(int argc,char** argv) {
         Check(renderer->GetMaterialCount()==1,"Remove material slot did not shrink array");
         Check(scenes->Undo(error)&&renderer->GetMaterialCount()==2,"Material array Undo failed");tick();
         slot=inspectorWindow->findChild<QWidget*>("materialSlot.1");
-        auto* materialField=ResourceWidget(slot,"materialResourceHost");
+        auto* materialField=ResourceWidget(slot,"materialResource");
         Check(DropResource(materialField,{material.Guid,0,false}),"Material source drop rejected");tick();
         Check(renderer->GetMaterial(1)==material,"Material field did not bind actual main LocalID: got "
             +renderer->GetMaterial(1).Guid+"_"+std::to_string(renderer->GetMaterial(1).LocalID)

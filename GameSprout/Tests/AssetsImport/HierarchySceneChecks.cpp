@@ -58,6 +58,7 @@ int main(int argc,char** argv) {
     IHierarchyUI* hierarchy=nullptr;
     IProjectAssetsUI* projectView=nullptr;
     IInspectorUI* inspector=nullptr;
+    std::vector<GameSproutEditor::IGameSproutView*> featureViews;
     PreviewEditor editor(Export(TEST_BINARY_ROOT));
     GameSproutEditor::GameSproutModuleApi* api=nullptr;
     IAssetsManager* assets=nullptr;
@@ -77,7 +78,7 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation startup failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"}) editor.Modules[name]=LoadModule(name);
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"}) editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module initialize failed: "+entry.first);
         for(const auto& entry:editor.Modules) if(entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Module launch failed: "+entry.first);
@@ -89,10 +90,11 @@ int main(int argc,char** argv) {
         assets=static_cast<IAssetsManager*>(editor.Modules["AssetsManager"]);
         hierarchy=static_cast<IHierarchyUI*>(LoadView("HierarchyUI"));projectView=LoadProjectView();
         inspector=static_cast<IInspectorUI*>(LoadView("InspectorUI"));
-        for(GameSproutEditor::IGameSproutView* view:{static_cast<GameSproutEditor::IGameSproutView*>(hierarchy),static_cast<GameSproutEditor::IGameSproutView*>(projectView),static_cast<GameSproutEditor::IGameSproutView*>(inspector)}) {
-            GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
-            Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor)&&GameSproutEditor::GameSproutEditorFinal::Launch(view,&editor),"Scene View startup failed");
-        }
+        editor.Views["HierarchyUI"]=hierarchy;editor.Views["ProjectAssetsUI"]=projectView;editor.Views["InspectorUI"]=inspector;
+        featureViews=LoadInspectorFeatureViews(editor);
+        auto* sceneEditor=LoadView("SceneEditorUI");editor.Views["SceneEditorUI"]=sceneEditor;featureViews.push_back(sceneEditor);
+        auto views=featureViews;views.push_back(hierarchy);views.push_back(projectView);views.push_back(inspector);
+        InitializeTestViews(editor,views);LaunchTestViews(editor,views);
         ide->Show();QCoreApplication::processEvents();
         auto* projectWindow=QApplication::activeWindow();
         Check(projectWindow!=nullptr,"IDE window missing");
@@ -112,14 +114,19 @@ int main(int argc,char** argv) {
             GameSproutEditor::GameSproutEditorFinal::Update(host,api);
             GameSproutEditor::GameSproutEditorFinal::Update(editor.Modules["SelectionManager"],api);
             GameSproutEditor::GameSproutEditorFinal::Update(scenes,api);
-            GameSproutEditor::GameSproutEditorFinal::Update(projectView,&editor);
-            GameSproutEditor::GameSproutEditorFinal::Update(hierarchy,&editor);
-            GameSproutEditor::GameSproutEditorFinal::Update(inspector,&editor);
+            QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
         };
         auto pump=[&](const std::function<bool()>& done) {
             const auto start=std::chrono::steady_clock::now();
             do {tick();if(done())return;QThread::msleep(2);} while(std::chrono::steady_clock::now()-start<std::chrono::seconds(35));
             std::cerr<<"Scene timeout at "<<stage<<"\n";
+            const auto selected=static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection();
+            std::cerr<<"Selected scene/object "<<selected.SceneID<<"/"<<selected.ObjectID<<'\n';
+            if (auto* currentID=inspectorDock->findChild<QLineEdit*>("localIDEdit"))std::cerr<<"Inspector object ID="<<currentID->text().toStdString()<<'\n';
+            for(auto* form:inspectorDock->findChildren<QWidget*>("objectInspector"))std::cerr<<"GameObject form visible="<<form->isVisible()<<" parentVisible="<<form->parentWidget()->isVisible()<<'\n';
+
             for(IAssetMeta* meta:assets->GetAssetMetas()) std::cerr<<meta->GetPath()<<" state="<<int(meta->GetImportState())<<" error="<<meta->GetImportError()<<'\n';
             for(int row=0;row<assetTree->model()->rowCount();++row)std::cerr<<"Visible "<<assetTree->model()->index(row,0).data().toString().toStdString()<<'\n';
             throw std::runtime_error("Scene operation timed out: "+stage);
@@ -191,11 +198,14 @@ int main(int argc,char** argv) {
         QModelIndex sceneRow=FindRow(assetTree,"Created In Folder.scene");
         Check(QMetaObject::invokeMethod(assetTree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,sceneRow)),"Cannot double-click Scene asset");
         tick();
+        auto* unsaved=qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        Check(unsaved&&unsaved->objectName()=="UnsavedSceneDialog","Scene feature did not guard unsaved changes before opening");
+        auto* discard=unsaved->findChild<QPushButton*>("discardButton");Check(discard,"Discard scene action missing");discard->click();tick();
         Check(scenes->GetActiveScenePath()=="Scenes/Created In Folder.scene"&&scenes->GetActiveScene()->GetName()=="Created In Folder", "Scene double-click did not activate source scene");
         Check(!runtime->QueryGameObject(originalSceneID)&&scenes->GetActiveScene()->GetMainCamera(),"Old scene retained or loaded main camera absent");
         Check(hierarchy->GetSelectedObjectID()==0&&NodeIndex(hierarchyTree->model(),scenes->GetActiveScene()->GetMainCamera()->GetGameObject()->GetInstanceID()).isValid(),"Hierarchy retained old selection after scene switch");
         Check(static_cast<ISelectionManager*>(editor.Modules["SelectionManager"])->GetSceneObjectSelection()==SceneObjectSelection{},"Scene switch retained invalid scene selection");
-        QWidget* previousNodePanel=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
+        QWidget* previousNodePanel=inspectorDock->findChild<QWidget*>("objectInspector");
         Check(!previousNodePanel||!previousNodePanel->isVisible()||inspectorDock->findChild<QLineEdit*>("localIDEdit")->text().toULongLong()!=cameraID,"Scene switch retained locked deleted node in Inspector");
         inspectorLock->setChecked(false);tick();
 
@@ -265,6 +275,7 @@ int main(int argc,char** argv) {
         CheckAnimationInspectorFlow(scenes,static_cast<ISelectionManager*>(editor.Modules["SelectionManager"]),
             inspectorDock,root,tick,pump,runtime,preview);
 
+        ReleaseTestViews(editor,featureViews);
         GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);inspector=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(projectView,&editor);projectView=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,&editor);hierarchy=nullptr;
@@ -274,6 +285,8 @@ int main(int argc,char** argv) {
         GameSproutEditor::GameSproutEditorFinal::Release(host,api);host=nullptr;runtime=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(assets,api);assets=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AnimationEditor"],api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["RuntimeAssets"],api);
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["LibraryManager"],api);
         GameSproutEditor::GameSproutEditorFinal::Release(ide,&editor);ide=nullptr;
         foundation->Release();foundation=nullptr;delete api;api=nullptr;
@@ -281,6 +294,7 @@ int main(int argc,char** argv) {
         return 0;
     } catch(const std::exception& exception) {
         std::cerr<<"FAIL "<<exception.what()<<'\n';
+        ReleaseTestViews(editor,featureViews);
         if(inspector)GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);
         if(projectView)GameSproutEditor::GameSproutEditorFinal::Release(projectView,&editor);
         if(hierarchy)GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,&editor);

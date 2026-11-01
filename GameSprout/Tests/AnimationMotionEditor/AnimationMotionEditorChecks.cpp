@@ -1,9 +1,10 @@
-#include "../../View/InspectorUI/AnimationClipOptionsEditor.h"
-#include "../../View/InspectorUI/ModelAnimationSettingsEditor.h"
-#include "../../View/InspectorUI/AnimationClipInspector.h"
-#include "../../View/InspectorUI/ResourceField.h"
-#include "../../View/InspectorUI/ModelInspector.h"
-#include "../../View/InspectorUI/AnimationClipPreviewInspector.h"
+#include "../../View/AnimationUI/AnimationClipOptionsEditor.h"
+#include "../../View/AnimationUI/AnimationUI.h"
+#include "../../View/AnimationUI/ModelAnimationSettingsEditor.h"
+#include "../../View/AnimationUI/AnimationClipInspector.h"
+#include "../../View/Shared/InspectorControls/ResourceField.h"
+#include "../../View/AssetImportUI/ModelInspector.h"
+#include "../../View/AnimationUI/AnimationClipPreviewInspector.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -68,7 +69,7 @@ int main(int argc,char** argv){QApplication application(argc,argv);try {
     sourceAvatar->SetValue(avatar);sourceAvatar->Changed(avatar);Check(native.Read(read,error)&&read["SourceAvatar"]["Guid"]==avatar.Guid&&read["SourceAvatar"]["LocalID"].asUInt64()==25&&read["MainObjectID"]==nativeSettings["MainObjectID"],"Source Avatar did not remain in the import-settings draft");
     native.Load(read);Check(sourceAvatar->GetValue()==avatar,"Source Avatar draft did not reload");sourceAvatar->SetValue({});sourceAvatar->Changed({});Check(native.Read(read,error)&&!read.isMember("SourceAvatar"),"Clearing Source Avatar wrote an invalid null reference");
     Find<QPushButton>(native,"addAnimationEventButton")->click();Check(native.Read(read,error)&&read["MainObjectID"]==nativeSettings["MainObjectID"]&&read["ClipOptions"]["Events"].size()==2,"Native options edits did not preserve unrelated settings");
-    ModelInspector model(nullptr);const auto settings=ModelSettings();model.SetAnimationSources({"Walk"},{"/Root#0/Hips#0"});model.Load(settings);
+    AnimationUI animations;ModelInspector model(nullptr);model.BindAnimationUI(&animations);const auto settings=ModelSettings();model.SetAnimationSources({"Walk"},{"/Root#0/Hips#0"});model.Load(settings);
     Check(model.Read(read,error)&&read==settings,"Model ImportSettings became dirty simply by loading motion UI: "+error);
     Find<QComboBox>(model,"sourceClipCombo")->setCurrentText("Walk");Find<QPushButton>(model,"addClipOptionsButton")->click();
     Check(model.Read(read,error)&&read["AnimationClips"].size()==1&&read["OptimizeMesh"].asBool(),"Model options did not preserve untouched disabled fields");

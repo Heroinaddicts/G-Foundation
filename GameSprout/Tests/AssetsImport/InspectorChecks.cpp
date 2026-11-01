@@ -1,5 +1,34 @@
 #include "ProjectViewTestSupport.h"
 #include "InspectorPanelChecks.h"
+#include "InspectorPanel.h"
+#include <QPointer>
+
+class ExtensionProbePanel final : public InspectorPanel {
+public:
+    ExtensionProbePanel(const InspectorServices& services,QWidget* parent,bool& destroyed)
+        :InspectorPanel(services,parent),_Destroyed(destroyed) {}
+    ~ExtensionProbePanel() override {_Destroyed=true;}
+    bool Load(const InspectorTarget&,bool,std::string&) override {return true;}
+    InspectorPresentation Describe() const override {
+        InspectorPresentation presentation;presentation.Name="Extension Fixture";presentation.Type="ExtensionProbe";return presentation;
+    }
+private:
+    bool& _Destroyed;
+};
+class InspectorExtensionProbe final : public IInspectorExtension {
+public:
+    std::string GuidString;
+    mutable int Queries=0;
+    bool Destroyed=false;
+    QPointer<InspectorPanel> Panel;
+    int Priority() const override {return 10000;}
+    bool CanInspect(const InspectorServices&,const InspectorTarget& target) const override {
+        ++Queries;return target.Assets.size()==1 && target.Assets.front().GuidString==GuidString;
+    }
+    InspectorPanel* CreatePanel(const InspectorServices& services,QWidget* parent) override {
+        Panel=new ExtensionProbePanel(services,parent,Destroyed);return Panel;
+    }
+};
 
 QByteArray ReadBytes(const QString & path) {
     QFile file(path);
@@ -27,20 +56,19 @@ int main(int argc,char ** argv) {
         editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
         GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
-        for (const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})
+        for (const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager","RuntimeAssets","AnimationEditor"})
             editor.Modules[name]=LoadModule(name);
         for (const auto & entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,&api);
         for (const auto & entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,&api),"Module init failed");
         auto * browser=LoadProjectView();
         auto * inspector=static_cast<IInspectorUI *>(LoadView("InspectorUI"));
-        for (GameSproutEditor::IGameSproutView * view:{static_cast<GameSproutEditor::IGameSproutView *>(browser),static_cast<GameSproutEditor::IGameSproutView *>(inspector)}) {
-            GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
-            Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View init failed");
-        }
+        editor.Views["ProjectAssetsUI"]=browser;editor.Views["InspectorUI"]=inspector;
+        auto featureViews=LoadInspectorFeatureViews(editor);
+        auto views=featureViews;views.push_back(browser);views.push_back(inspector);
+        InitializeTestViews(editor,views);
         for (const auto & entry:editor.Modules) if (entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(browser,&editor),"Browser launch failed");
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(inspector,&editor),"Inspector launch failed");
+        LaunchTestViews(editor,views);
         auto * manager=static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
         auto * selection=static_cast<ISelectionManager *>(editor.Modules["SelectionManager"]);
         std::string stage="startup";
@@ -52,8 +80,7 @@ int main(int argc,char ** argv) {
                 real->Update();QCoreApplication::processEvents();
                 GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);
                 GameSproutEditor::GameSproutEditorFinal::Update(selection,&api);
-                GameSproutEditor::GameSproutEditorFinal::Update(browser,&editor);
-                GameSproutEditor::GameSproutEditorFinal::Update(inspector,&editor);
+                QCoreApplication::processEvents();
                 if (done()) return;
                 QThread::msleep(2);
             } while (std::chrono::steady_clock::now()-start<std::chrono::seconds(30));
@@ -71,15 +98,28 @@ int main(int argc,char ** argv) {
         auto * title=content->findChild<QLabel *>("assetNameLabel");
         auto * type=content->findChild<QLabel *>("typeLabel");
         auto * path=content->findChild<QLineEdit *>("pathEdit");
-        auto * maxSize=content->findChild<QComboBox *>("maxSizeCombo");
+        QComboBox* maxSize=nullptr;
         auto * lock=content->findChild<QToolButton *>("lockButton");
         auto * apply=content->findChild<QPushButton *>("applyButton");
-        Check(tree&&title&&type&&path&&maxSize&&lock&&apply,"Inspector Designer controls missing");
+        Check(tree&&title&&type&&path&&lock&&apply,"Inspector Designer controls missing");
         const auto click=[&](const QString & name) {
             const auto index=FindRow(tree,name);Check(index.isValid(),"Cannot select resource");
             tree->selectionModel()->setCurrentIndex(index,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);
         };
         stage="texture selection";click("Bear.png");pump([&]{return title->text()=="Bear.png";});
+        // Feature registration owns its panel. Unregistering an active feature
+        // destroys that panel, then selection is routed to another feature.
+        InspectorExtensionProbe extension;extension.GuidString=selection->GetAssetSelection().front().GuidString;
+        Check(inspector->RegisterExtension(&extension),"Cannot register an Inspector feature");
+        pump([&]{return title->text()=="Extension Fixture";});
+        Check(extension.Panel,"Registered feature did not create its panel");
+        const int eventQueries=extension.Queries;
+        for (int index=0;index<100;++index) GameSproutEditor::GameSproutEditorFinal::Update(inspector,&editor);
+        Check(extension.Queries==eventQueries,"Inspector queried feature eligibility every Update without an event");
+        inspector->UnregisterExtension(&extension);
+        pump([&]{return title->text()=="Bear.png";});
+        Check(extension.Destroyed && extension.Panel.isNull(),"Unregistered feature retained a live Inspector panel");
+        maxSize=content->findChild<QComboBox*>("maxSizeCombo");Check(maxSize,"Texture feature panel missing");
         Check(type->text()=="Texture"&&!apply->isEnabled(),"Texture inspector initial state invalid: "+type->text().toStdString()+"; "+content->findChild<QLabel *>("messageLabel")->text().toStdString());
         const auto chosen=selection->GetAssetSelection();Check(chosen.size()==1,"Unified selection missing");
         const Guid textureGuid(chosen.front().GuidString);
@@ -162,7 +202,7 @@ int main(int argc,char ** argv) {
         const auto child=tree->model()->index(0,0,source);Check(child.isValid(),"Mesh child missing");
         tree->selectionModel()->setCurrentIndex(child,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);
         pump([&]{return type->text()=="Mesh";});
-        Check(!content->findChild<QWidget *>("textureHost")->isVisible()&&!apply->isEnabled(),"Mesh displayed source texture settings");
+        Check(!maxSize->isVisible()&&!apply->isEnabled(),"Mesh displayed source texture settings");
 
         CheckInspectorPanels(root,manager,library,inspector,ide,stage,pump,idle,click);
         stage="rename";click("Bear.png");pump([&]{return title->text()=="Bear.png";});
@@ -174,11 +214,14 @@ int main(int argc,char ** argv) {
         pump([&]{return selection->GetAssetSelection().empty()&&!inspector->HasPendingChanges()&&idle();});
         Check(!apply->isEnabled(),"Deleted resource still editable");
         inspector->Hide();inspector->Show();Check(content->isVisible(),"Inspector did not reopen");
+        ReleaseTestViews(editor,featureViews);
         GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);
         GameSproutEditor::GameSproutEditorFinal::Release(browser,&editor);
         GameSproutEditor::GameSproutEditorFinal::Release(selection,&api);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,&api);
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AssetsPipeline"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["AnimationEditor"],&api);
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["RuntimeAssets"],&api);
         GameSproutEditor::GameSproutEditorFinal::Release(library,&api);
         Check(ide.Counter.Count==0,"Inspector loading imbalance");real->Release();
         std::cout<<"PASS real Inspector: selection, texture draft/apply/revert, stale/save failures, switch/cancel, lock, subresources and rename/delete\n";

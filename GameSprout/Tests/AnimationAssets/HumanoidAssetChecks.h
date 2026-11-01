@@ -1,4 +1,5 @@
 #pragma once
+#include "../../Module/AnimationEditor/AnimationEditor.h"
 #include "../../Module/Shared/HumanoidDefinition.h"
 
 namespace {
@@ -50,7 +51,7 @@ void CheckHumanoidFBX(const QString& file) {
     Check(RunAssetImport(generic,context),generic.Result.Error);Library library;library.Root=root.path().toStdString()+"/Library";library.Add(generic);
     LibraryRuntimeResources resources(nullptr,&library);GameSproutRuntime::ModelData model;GameSproutRuntime::SkeletonData skeleton;std::string error;
     Check(resources.LoadModel(Ref(generic,eAssetType::Model),model,error)&&resources.LoadSkeleton(model.Skeleton,skeleton,error),error);
-    Check(model.Avatar.Guid.empty(),"Generic model was incorrectly tagged Humanoid");RuntimeAssets suggestions;ModelHumanoidImportSettings settings;
+    Check(model.Avatar.Guid.empty(),"Generic model was incorrectly tagged Humanoid");AnimationEditor suggestions;ModelHumanoidImportSettings settings;
     Check(suggestions.SuggestHumanoidMapping(skeleton,settings.HumanBones,error),error);
     std::set<GameSproutRuntime::HumanBone> roles;for(const auto& mapping:settings.HumanBones)roles.insert(mapping.Bone);
     for(unsigned index=0;index<static_cast<unsigned>(GameSproutRuntime::HumanBone::Count);++index)if(GameSproutRuntime::IsRequiredHumanBone(static_cast<GameSproutRuntime::HumanBone>(index)))
@@ -96,8 +97,12 @@ void CheckHumanoidFBX(const QString& file) {
     Write(root.path()+"/Assets/Human.anim",native);
 
     TestEditor editor;editor.Modules={{"AssetsManager",&registry},{"LibraryManager",&library},{"Project",&project}};
-    GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);RuntimeAssets module;
-    GameSproutEditor::GameSproutEditorFinal::Before(&module,&api);Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&module,&api),"Cannot initialize Rig authoring Module");
+    RuntimeAssets runtimeAssets;editor.Modules["RuntimeAssets"]=&runtimeAssets;
+    GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);
+    GameSproutEditor::GameSproutEditorFinal::Before(&runtimeAssets,&api);
+    Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&runtimeAssets,&api),"Cannot initialize prepared resource provider");
+    AnimationEditor module;
+    GameSproutEditor::GameSproutEditorFinal::Before(&module,&api);Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&module,&api)&&GameSproutEditor::GameSproutEditorFinal::Launch(&module,&api),"Cannot initialize Rig authoring Module");
     std::string maskPath;Check(module.CreateAvatarMaskSource("","PortableBody",Ref(humanoid,eAssetType::Model),maskPath,error)&&maskPath=="PortableBody.mask",error);
     QFile maskFile(root.path()+"/Assets/PortableBody.mask");Check(maskFile.open(QIODevice::ReadOnly),"Cannot open created portable mask");Json::Value maskSource;Check(AssetArtifactIO::Parse(maskFile.readAll().toStdString(),maskSource)&&maskSource["Mode"]=="Humanoid"&&!maskSource.isMember("Skeleton"),"Humanoid Model creation did not choose a portable body mask");maskFile.close();
     TestMeta maskMeta(eAssetImporterType::AvatarMask,Guid(210,211,212,213),"PortableBody.mask");AssetImportJob maskJob(Request(root,maskMeta));Check(RunAssetImport(maskJob,context),maskJob.Result.Error);library.Add(maskJob);

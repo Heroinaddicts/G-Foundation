@@ -1,5 +1,5 @@
-#include "../../View/InspectorUI/AnimatorControllerDialog.h"
-#include "IRuntimeAssets.h"
+#include "../../View/AnimationUI/AnimatorControllerDialog.h"
+#include "IAnimationEditor.h"
 #include "HumanoidImportSettings.h"
 #include "../../Module/Shared/AnimationDefinition.h"
 #include <QApplication>
@@ -9,7 +9,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QCheckBox>
-#include "../../View/InspectorUI/ResourceField.h"
+#include "../../View/Shared/InspectorControls/ResourceField.h"
 #include <QLabel>
 #include <QTimer>
 #include <stdexcept>
@@ -17,13 +17,12 @@
 
 namespace {
 void Check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
-class Assets final:public IRuntimeAssets {
+class Assets final:public IAnimationEditor {
 public:
     GameSproutRuntime::AnimatorControllerData Data,Saved;std::string Snapshot="initial";int Saves=0;
     bool LoadModelRigSource(const GameSproutRuntime::ResourceReference&,ModelRigImportSettings&,GameSproutRuntime::SkeletonData&,std::string&,std::string&)const override{return false;}
     bool SaveModelRigSource(const GameSproutRuntime::ResourceReference&,const ModelRigImportSettings&,const std::string&,std::string&)override{return false;}
     bool SuggestHumanoidMapping(const GameSproutRuntime::SkeletonData&,std::vector<GameSproutRuntime::HumanBoneMapping>&,std::string&)const override{return false;}
-    GameSproutRuntime::IRuntimeResourceProvider* GetResourceProvider()const override{return nullptr;}
     bool CreateAvatarMaskSource(const std::string&,const std::string&,const GameSproutRuntime::ResourceReference&,std::string&,std::string&)override{return false;}
     bool LoadAvatarMaskSource(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::AvatarMaskData&,std::string&,std::string&)const override{return false;}
     bool SaveAvatarMaskSource(const GameSproutRuntime::ResourceReference&,const GameSproutRuntime::AvatarMaskData&,const std::string&,std::string&)override{return false;}

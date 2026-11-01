@@ -74,6 +74,30 @@ GameSproutEditor::IGameSproutView * LoadView(const std::string & name) {
 }
 IProjectAssetsUI * LoadProjectView() { return static_cast<IProjectAssetsUI *>(LoadView("ProjectAssetsUI")); }
 
+// Register every View before delivering lifecycle callbacks, as the production
+// host does. Feature Views own their Inspector/asset-browser contributions.
+std::vector<GameSproutEditor::IGameSproutView*> LoadInspectorFeatureViews(PreviewEditor& editor) {
+    std::vector<GameSproutEditor::IGameSproutView*> result;
+    for (const std::string name:{"AnimationUI","AssetImportUI","MaterialUI","SceneObjectUI"}) {
+        auto* view=LoadView(name);editor.Views[name]=view;result.push_back(view);
+    }
+    return result;
+}
+void InitializeTestViews(PreviewEditor& editor,const std::vector<GameSproutEditor::IGameSproutView*>& views) {
+    for (auto* view:views) GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
+    for (auto* view:views) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View initialization failed");
+}
+void LaunchTestViews(PreviewEditor& editor,const std::vector<GameSproutEditor::IGameSproutView*>& views) {
+    for (auto* view:views) Check(GameSproutEditor::GameSproutEditorFinal::Launch(view,&editor),"View launch failed");
+    for (auto* view:views) GameSproutEditor::GameSproutEditorFinal::Finished(view,&editor);
+    QCoreApplication::processEvents();
+}
+void ReleaseTestViews(PreviewEditor& editor,std::vector<GameSproutEditor::IGameSproutView*>& views) {
+    for (auto iterator=views.rbegin();iterator!=views.rend();++iterator)
+        GameSproutEditor::GameSproutEditorFinal::Release(*iterator,&editor);
+    views.clear();
+}
+
 class Recorder final : public IAssetListener {
 public:
     std::vector<AssetEvent> Events;

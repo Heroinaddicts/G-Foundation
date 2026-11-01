@@ -13,10 +13,12 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump,GameSproutRuntime::IGameSproutRuntime* runtime) {
     auto* scene=scenes->GetActiveScene();
     const auto sceneID=scene->GetInstanceID();
+    selection->SetSceneObjectSelection({sceneID,sceneID});
+    pump([&]{return inspectorDock->findChild<QToolButton*>("objectLockButton")!=nullptr;});
     auto* lock=inspectorDock->findChild<QToolButton*>("objectLockButton");
     Check(lock,"Inspector lock control missing");
     const auto inspectedID=[&]() -> std::uint64_t {
-        QWidget* form=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
+        QWidget* form=inspectorDock->findChild<QWidget*>("objectInspector");
         if(!form||!form->isVisible())return 0;
         QLineEdit* field=inspectorDock->findChild<QLineEdit*>("localIDEdit");
         return field?field->text().toULongLong():0;
@@ -164,7 +166,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     // 场景根也是合法检查目标，节点和资产选择在两侧刷新后保持互斥。
     selectNode(sceneID);Check(NodeIndex(hierarchyTree->model(),sceneID).data(Qt::UserRole+3).toBool(),"Scene root identity missing");
     Check(!activeSelf->isVisible(),"Scene root displayed a GameObject active switch");
-    QWidget* rootForm=inspectorDock->findChild<QWidget*>("GameObjectInspectorForm");
+    QWidget* rootForm=inspectorDock->findChild<QWidget*>("objectInspector");
     Check(rootForm->findChild<QWidget*>("objectHeader")->height()<=50
         && rootForm->findChild<QScrollArea*>("componentScroll")->y()<70,
         "Scene root header still consumes space reserved for component properties");

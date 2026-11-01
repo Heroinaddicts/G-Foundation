@@ -42,12 +42,13 @@ public:
 class SelectionFixture final : public ISelectionManager {
 public:
     SceneObjectSelection Selected;
+    std::vector<ISelectionListener*> Listeners;
     std::vector<ProjectAssetSelection> GetAssetSelection() const override{return {};}
     void SetAssetSelection(const std::vector<ProjectAssetSelection>&) override{}
     SceneObjectSelection GetSceneObjectSelection() const override{return Selected;}
-    void SetSceneObjectSelection(const SceneObjectSelection& value) override{Selected=value;}
-    bool RegisterSelectionListener(ISelectionListener*) override{return true;}
-    void UnregisterSelectionListener(ISelectionListener*) override{}
+    void SetSceneObjectSelection(const SceneObjectSelection& value) override{Selected=value;for(auto* listener:Listeners)listener->OnSceneObjectSelectionChanged(value);}
+    bool RegisterSelectionListener(ISelectionListener* listener) override{if(!listener||std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())return false;Listeners.push_back(listener);return true;}
+    void UnregisterSelectionListener(ISelectionListener* listener) override{std::erase(Listeners,listener);}
     bool Initialize(GameSproutEditor::GameSproutModuleApi*) override{return true;}
     bool Launch(GameSproutEditor::GameSproutModuleApi*) override{return true;}
     void Release(GameSproutEditor::GameSproutModuleApi*) override{}
@@ -55,9 +56,14 @@ public:
 class HostFixture final : public IRuntimeHost {
 public:
     bool Playing=false;
-    void SetSimulationPlaying(bool value)override{Playing=value;}
+    std::vector<IRuntimeFrameListener*> Listeners;
+    uint64_t FrameNumber=0;
+    void SetSimulationPlaying(bool value)override{Playing=value;for(auto* listener:Listeners)listener->OnSimulationPlayingChanged(value);}
     bool IsSimulationPlaying()const override{return Playing;}
     void ResetClock()override{}
+    bool RegisterFrameListener(IRuntimeFrameListener* listener)override{if(!listener||std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())return false;Listeners.push_back(listener);return true;}
+    void UnregisterFrameListener(IRuntimeFrameListener* listener)override{std::erase(Listeners,listener);}
+    void Frame() {const RuntimeFrameEvent event{++FrameNumber,1.0f/60.0f,Playing};const auto snapshot=Listeners;for(auto* listener:snapshot)if(std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())listener->OnRuntimeFrame(event);}
     bool Initialize(GameSproutEditor::GameSproutModuleApi*)override{return true;}
     bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
     void Release(GameSproutEditor::GameSproutModuleApi*)override{}
@@ -160,6 +166,8 @@ int main(int argc,char** argv) {
         hierarchy=static_cast<IHierarchyUI*>(LoadView("HierarchyUI"));editor->Views["HierarchyUI"]=hierarchy;
         GameSproutEditor::GameSproutEditorFinal::Before(hierarchy,editor);
         Check(GameSproutEditor::GameSproutEditorFinal::Initialize(hierarchy,editor)&&GameSproutEditor::GameSproutEditorFinal::Launch(hierarchy,editor),"Hierarchy startup failed");
+        GameSproutEditor::GameSproutEditorFinal::Finished(view,editor);
+        GameSproutEditor::GameSproutEditorFinal::Finished(hierarchy,editor);
         ide->Show();view->Show();QCoreApplication::processEvents();
         SceneViewport* viewport=nullptr;
         for(QWidget* window:QApplication::topLevelWidgets())if(auto* dock=window->findChild<QDockWidget*>("Scene")){viewport=dock->findChild<SceneViewport*>("sceneViewport");if(viewport)break;}
@@ -167,7 +175,7 @@ int main(int argc,char** argv) {
         if(runtime)viewport->Initialize(runtime,&resources);
         QObject::connect(viewport,&QObject::destroyed,&app,[&]{viewportDestroyed=true;});
         auto* host=viewport->window();host->resize(880,650);host->raise();host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
-        const auto tick=[&]{QCoreApplication::processEvents();if(runtime)runtime->Update(0);GameSproutEditor::GameSproutEditorFinal::Update(view,editor);GameSproutEditor::GameSproutEditorFinal::Update(hierarchy,editor);};
+        const auto tick=[&]{QCoreApplication::processEvents();if(runtime)runtime->Update(0);editor->Host.Frame();QCoreApplication::processEvents();};
         const auto pump=[&](const std::function<bool()>& done){QElapsedTimer timer;timer.start();do{tick();if(done())return;QThread::msleep(5);}while(timer.elapsed()<15000);throw std::runtime_error("Native scene timed out: "+view->GetRenderError());};
         if(headless) {
             tick();Check(!view->IsRenderingAvailable()&&spy.NativeCalls==0&&view->GetRenderError().find("离屏")!=std::string::npos,"Headless passed a fake window to Runtime");
@@ -285,7 +293,7 @@ int main(int argc,char** argv) {
         // 真实宿主先销毁 Dock/native NSView，随后才释放 Scene View 接口。
         GameSproutEditor::GameSproutEditorFinal::Release(ide,editor);ide=nullptr;QCoreApplication::processEvents();
         Check(viewportDestroyed,"IDE Release did not destroy its native Scene child");
-        GameSproutEditor::GameSproutEditorFinal::Update(view,editor);
+        editor->Host.Frame();QCoreApplication::processEvents();
         GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,editor);hierarchy=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(view,editor);view=nullptr;
         delete runtime;runtime=nullptr;delete editor;editor=nullptr;

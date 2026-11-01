@@ -34,6 +34,7 @@ public:
     static void Before(IGameSproutView * view,GameSproutViewApi * editor) {view->BeforeInitialize(editor);}
     static bool Initialize(IGameSproutView * view,GameSproutViewApi * editor) {return view->Initialize(editor)&&view->TriggerInitialized(editor);}
     static bool Launch(IGameSproutView * view,GameSproutViewApi * editor) {return view->Launch(editor)&&view->TriggerLaunched(editor);}
+    static void Finished(IGameSproutView * view,GameSproutViewApi * editor) {view->LaunchFinished(editor);}
     static void Update(IGameSproutView * view,GameSproutViewApi * editor) {view->Update(editor);}
     static void Release(IGameSproutView * view,GameSproutViewApi * editor) {view->Release(editor);}
 };

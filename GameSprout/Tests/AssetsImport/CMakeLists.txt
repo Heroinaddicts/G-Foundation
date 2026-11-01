@@ -11,31 +11,20 @@ add_executable(StartupReconcileChecks StartupReconcileChecks.cpp)
 add_executable(WarmStartupChecks WarmStartupChecks.cpp)
 add_executable(ProjectBrowserChecks ProjectBrowserChecks.cpp)
 add_executable(InspectorChecks InspectorChecks.cpp)
-add_executable(MaterialInspectorChecks MaterialInspectorChecks.cpp
-    "${gamesprout_root}/Module/RuntimeAssets/LibraryRuntimeResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/MeshResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/TextureResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/MaterialResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/AnimationResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/ControllerResources.cpp")
+add_executable(MaterialInspectorChecks MaterialInspectorChecks.cpp)
 add_executable(ArtifactFormatChecks ArtifactFormatChecks.cpp)
 add_executable(CurrentFormatChecks CurrentFormatChecks.cpp)
 add_executable(ShaderCompilerChecks ShaderCompilerChecks.cpp)
 add_executable(IDEContextMenuChecks IDEContextMenuChecks.cpp)
 add_executable(HierarchySceneChecks HierarchySceneChecks.cpp NodeInspectorChecks.h)
 add_executable(SceneEditingChecks SceneEditingChecks.cpp)
-add_executable(PreparedRenderChecks PreparedRenderChecks.cpp
-    "${gamesprout_root}/Module/RuntimeAssets/LibraryRuntimeResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/MeshResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/TextureResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/MaterialResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/AnimationResources.cpp"
-    "${gamesprout_root}/Module/RuntimeAssets/ControllerResources.cpp")
+add_executable(PreparedRenderChecks PreparedRenderChecks.cpp)
 foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks WarmStartupChecks ProjectBrowserChecks InspectorChecks MaterialInspectorChecks ArtifactFormatChecks CurrentFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
 target_compile_features(${check_target} PRIVATE cxx_std_20)
 target_include_directories(${check_target} PRIVATE
     "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
-target_link_libraries(${check_target} PRIVATE Foundation::FoundationApi GRHI::GRHIApi Qt6::Core Qt6::Gui)
+target_link_libraries(${check_target} PRIVATE Foundation::FoundationApi GRHI::GRHIApi
+    GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
 endforeach()
 target_compile_features(PreparedRenderChecks PRIVATE cxx_std_20)
 target_include_directories(PreparedRenderChecks PRIVATE
@@ -59,6 +48,15 @@ target_compile_definitions(PreparedRenderChecks PRIVATE TEST_BINARY_ROOT="${asse
 # Tests must not add product source subdirectories or overwrite the application DLLs.
 add_library(ModelTexturePipeline SHARED IMPORTED)
 set(model_texture_module_root "${assets_test_binary_root}/Logic/Module")
+add_library(PreparedRuntimeAssets SHARED IMPORTED)
+set_target_properties(PreparedRuntimeAssets PROPERTIES
+    IMPORTED_LOCATION "${model_texture_module_root}/${CMAKE_SHARED_LIBRARY_PREFIX}RuntimeAssets${CMAKE_SHARED_LIBRARY_SUFFIX}")
+if(WIN32)
+    set_target_properties(PreparedRuntimeAssets PROPERTIES IMPORTED_IMPLIB "${model_texture_module_root}/RuntimeAssets.lib")
+endif()
+target_link_libraries(MaterialInspectorChecks PRIVATE PreparedRuntimeAssets)
+target_link_libraries(PreparedRenderChecks PRIVATE PreparedRuntimeAssets)
+set_target_properties(MaterialInspectorChecks PreparedRenderChecks PROPERTIES BUILD_RPATH "${model_texture_module_root}")
 set_target_properties(ModelTexturePipeline PROPERTIES
     IMPORTED_LOCATION "${model_texture_module_root}/${CMAKE_SHARED_LIBRARY_PREFIX}AssetsPipeline${CMAKE_SHARED_LIBRARY_SUFFIX}")
 if(WIN32)

@@ -1,11 +1,7 @@
 #include "ProjectViewTestSupport.h"
 #include "../../GameSproutRuntime/Api/ResourceReference.h"
 #include <QMetaObject>
-class AvatarOpenProbe final:public IInspectorUI{
-public:GameSproutRuntime::ResourceReference Opened;bool HasPendingChanges()const override{return false;}bool ApplyChanges()override{return true;}void RevertChanges()override{}
-    bool EditModelRig(const GameSproutRuntime::ResourceReference& value)override{Opened=value;return true;}
-protected:bool Initialize(GameSproutEditor::GameSproutViewApi*)override{return true;}bool Launch(GameSproutEditor::GameSproutViewApi*)override{return true;}void Release(GameSproutEditor::GameSproutViewApi*)override{}
-};
+struct AvatarOpenProbe { GameSproutRuntime::ResourceReference Opened; };
 
 int main(int argc,char **argv) {
     QApplication application(argc,argv);
@@ -23,7 +19,7 @@ int main(int argc,char **argv) {
         if(avatarFixture)Check(QFile::copy(QString::fromLocal8Bit(argv[2]),root.filePath("Assets/Art/AvatarModel.fbx")),"Cannot copy Avatar model fixture");
         real=Foundation::GetFoundationApi(TEST_BINARY_ROOT);Check(real&&real->Initialize(argc,argv)&&real->Launch(),"Foundation startup failed");
         TestProject project;project.Root=temporary.path().toStdString();TestConsole console;
-        AvatarOpenProbe avatarProbe;PreviewIDE ide;PreviewEditor editor;editor.Views["InspectorUI"]=&avatarProbe;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
+        AvatarOpenProbe avatarProbe;PreviewIDE ide;PreviewEditor editor;editor.IDE=&ide;editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         FoundationProxy foundation;foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
         GameSproutEditor::GameSproutModuleApi api(&foundation,&editor);
         for(const std::string & name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})editor.Modules[name]=LoadModule(name);
@@ -32,18 +28,25 @@ int main(int argc,char **argv) {
         IProjectAssetsUI * ui=LoadProjectView();
         GameSproutEditor::GameSproutEditorFinal::Before(ui,&editor);
         Check(GameSproutEditor::GameSproutEditorFinal::Initialize(ui,&editor),"UI initialization failed");
+        Check(ui->RegisterAssetOpenHandler(&avatarProbe,[&](const ProjectAssetSelection& selected) {
+            if (!selected.IsSubAsset) return false;
+            auto* library=static_cast<ILibraryManager*>(editor.Modules["LibraryManager"]);
+            auto* asset=library->QueryAsset(Guid(selected.GuidString),selected.LocalID);
+            if (!asset || asset->GetAssetType()!=eAssetType::Avatar) return false;
+            avatarProbe.Opened={selected.GuidString,selected.LocalID};return true;
+        }),"Cannot register Avatar feature open handler");
         for(const auto & entry:editor.Modules)if(entry.first!="Project")Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Launch(&project,&api),"Project launch failed");
         auto * manager=static_cast<IAssetsManager *>(editor.Modules["AssetsManager"]);
         Recorder recorder;Check(manager->RegisterAssetListener(&recorder),"Cannot register asset listener");
         bool launched=false;
-        if(!late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"UI launch failed");launched=true;}
+        if(!late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"UI launch failed");GameSproutEditor::GameSproutEditorFinal::Finished(ui,&editor);launched=true;}
         std::string stage="startup";
         auto pump=[&](const std::function<bool()> & done) {
             const auto start=std::chrono::steady_clock::now();
             do {real->Update();QCoreApplication::processEvents();GameSproutEditor::GameSproutEditorFinal::Update(manager,&api);
                 GameSproutEditor::GameSproutEditorFinal::Update(editor.Modules["SelectionManager"],&api);
-                if(launched)GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
+                if(launched)QCoreApplication::processEvents();
                 if(done())return;QThread::msleep(2);
             }while(std::chrono::steady_clock::now()-start<std::chrono::seconds(35));
             for(IAssetMeta * meta:manager->GetAssetMetas()) std::cerr<<"UI TIMEOUT "<<meta->_Guid.GetGuidString()<<" "<<meta->GetPath()<<" state="<<int(meta->GetImportState())<<"\n";
@@ -52,13 +55,13 @@ int main(int argc,char **argv) {
         };
         auto idle=[&]{if(ide.Counter.Count!=0)return false;for(IAssetMeta * meta:manager->GetAssetMetas())if(meta->GetImportState()==eAssetImportState::Pending)return false;return true;};
         GameSproutEditor::GameSproutEditorFinal::Finished(manager,&api);pump([&]{return manager->GetAssetMetas().size()>=5&&idle();});
-        if(late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"Late UI launch failed");launched=true;}
+        if(late){Check(GameSproutEditor::GameSproutEditorFinal::Launch(ui,&editor),"Late UI launch failed");GameSproutEditor::GameSproutEditorFinal::Finished(ui,&editor);launched=true;}
         auto * tree=ide.Dock.Content->findChild<QTreeView *>("assetTree");
         auto * search=ide.Dock.Content->findChild<QLineEdit *>("searchEdit");
         auto * breadcrumb=ide.Dock.Content->findChild<QComboBox *>("breadcrumbCombo");
         Check(tree&&search&&breadcrumb,"Designer controls missing");
-        Check(FindRow(tree,"Art").isValid()&&FindRow(tree,"Root.png").isValid()&&tree->model()->rowCount()==3,"Initial event/snapshot synchronization failed");
-        Check(ui->NavigateToDirectory("Art"),"Cannot enter folder");GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
+        pump([&]{return FindRow(tree,"Art").isValid()&&FindRow(tree,"Root.png").isValid()&&tree->model()->rowCount()==3;});
+        Check(ui->NavigateToDirectory("Art"),"Cannot enter folder");QCoreApplication::processEvents();
         const QModelIndex source=FindRow(tree,"Triangle.obj");Check(source.isValid(),"Folder query did not populate resources");
         tree->expand(source);QCoreApplication::processEvents();
         Check(tree->model()->rowCount(source)>=1,"Model subresources did not expand");
@@ -66,6 +69,14 @@ int main(int argc,char **argv) {
         tree->selectionModel()->setCurrentIndex(child,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);
         auto selected=ui->GetSelection();Check(selected.size()==1&&selected[0].IsSubAsset&&selected[0].LocalID!=0,"Subresource selection lost GUID/LocalID");
         const auto identity=selected[0];const Guid modelGuid(identity.GuidString);
+        int openOwner=0,firstCalls=0,replacementCalls=0;
+        Check(ui->RegisterAssetOpenHandler(&openOwner,[&](const ProjectAssetSelection& value) {if(value!=identity)return false;++firstCalls;return true;}),"Open extension registration failed");
+        Check(QMetaObject::invokeMethod(tree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,child))&&firstCalls==1,"Registered feature did not receive asset open");
+        ui->UnregisterExtensions(&openOwner);
+        Check(QMetaObject::invokeMethod(tree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,child))&&firstCalls==1,"Unregistered feature received an asset open");
+        Check(ui->RegisterAssetOpenHandler(&openOwner,[&](const ProjectAssetSelection& value) {if(value!=identity)return false;++replacementCalls;return true;}),"Replacement open extension failed");
+        Check(QMetaObject::invokeMethod(tree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,child))&&firstCalls==1&&replacementCalls==1,"Open extension replacement called a stale handler");
+        ui->UnregisterExtensions(&openOwner);
         IAssetMeta * model=manager->QueryAsset(modelGuid);const auto children=model->GetSubAssets();
         Check(children.size()>=1,"IAssetMeta subresources missing");for(IAsset * asset:children)Check(asset->GetAssetType()!=eAssetType::Model,"Main resource was included as a child");
         if(avatarFixture){
@@ -75,9 +86,9 @@ int main(int argc,char **argv) {
             Check(avatarID!=0,"Skinned model fixture did not import its Avatar subresource");QModelIndex avatarIndex;
             for(int row=0;row<tree->model()->rowCount(avatarSource);++row){auto candidate=tree->model()->index(row,0,avatarSource);if(candidate.data(Qt::UserRole+3).toULongLong()==avatarID)avatarIndex=candidate;}
             Check(avatarIndex.isValid(),"Avatar child was not displayed");Check(QMetaObject::invokeMethod(tree,"doubleClicked",Qt::DirectConnection,Q_ARG(QModelIndex,avatarIndex)),"Cannot dispatch Avatar double click");
-            Check(avatarProbe.Opened.Guid==guid&&avatarProbe.Opened.LocalID==avatarID,"Avatar double click did not open its Model Rig inspector");
+            Check(avatarProbe.Opened.Guid==guid&&avatarProbe.Opened.LocalID==avatarID,"Avatar double click did not reach its registered feature handler");
             tree->selectionModel()->setCurrentIndex(child,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);
-            std::cout<<"PASS actual Avatar subresource double-click -> Model Rig View API\n";
+            std::cout<<"PASS actual Avatar subresource double-click -> registered feature handler\n";
         }
         stage="reimport";
         Check(manager->ReimportAsset(modelGuid),"Cannot reimport model");pump(idle);
@@ -85,9 +96,9 @@ int main(int argc,char **argv) {
         stage="added";
         Check(image.save(root.filePath("Assets/Art/Added.png")),"Cannot create live asset");
         pump([&]{return idle()&&FindRow(tree,"Added.png").isValid();});
-        search->setText("Triangle");GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
+        search->setText("Triangle");QCoreApplication::processEvents();
         Check(tree->model()->rowCount()==1&&FindRow(tree,"Triangle.obj").isValid(),"Search filter incorrect");
-        search->clear();GameSproutEditor::GameSproutEditorFinal::Update(ui,&editor);
+        search->clear();QCoreApplication::processEvents();
         tree->expand(FindRow(tree,"Triangle.obj"));QCoreApplication::processEvents();
         Check(ide.Dock.Host.grab().save("/tmp/gamesprout-project-assets-ui.png"),"Cannot render UI preview");
         stage="folder rename";
@@ -115,6 +126,7 @@ int main(int argc,char **argv) {
         Check(manager->ReimportAsset(manager->GetAssetsInDirectory("")[0]->_Guid),"Cannot reimport after listener removal");pump(idle);
         Check(recorder.Events.size()==count,"Unregistered listener received callbacks");
         ui->Hide();ui->Show();Check(ide.Dock.Content->isVisible(),"Hidden panel did not reopen");
+        ui->UnregisterExtensions(&avatarProbe);
         GameSproutEditor::GameSproutEditorFinal::Release(ui,&editor);
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["SelectionManager"],&api);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,&api);

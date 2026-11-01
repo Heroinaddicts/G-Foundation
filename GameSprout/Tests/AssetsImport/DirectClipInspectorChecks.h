@@ -48,7 +48,9 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     std::string error;
     Check(preview->PlayAnimationClip(objectID,runClip,0,1,true,error),error);
     pump([&]{return pause->isEnabled()&&preview->GetAnimationClipPreviewState(objectID).Active&&!status->text().isEmpty();});
-    runtime->Update(.35f);
+    // Deterministic Runtime stepping is followed by the production Host frame:
+    // preview/UI read the published frame snapshot, not a live Runtime query.
+    runtime->Update(.35f);tick();
     auto playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&playback.Playing&&playback.Clip==runClip&&playback.Time>.3f,
         "Direct Clip preview did not advance while Controller Speed remains zero");
@@ -60,7 +62,7 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     pause->click();playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&!playback.Playing,"Direct Clip Pause did not freeze the preview");
     const float pausedTime=playback.Time;
-    runtime->Update(.5f);
+    runtime->Update(.5f);tick();
     Check(preview->GetAnimationClipPreviewState(objectID).Time==pausedTime,"Paused direct Clip advanced with Runtime updates");
     seconds->setValue(.5);seek->click();
     Check(std::fabs(preview->GetAnimationClipPreviewState(objectID).Time-.5f)<.001f
@@ -84,12 +86,12 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     slider->setValue(9000);
     Check(QMetaObject::invokeMethod(slider,"sliderReleased",Qt::DirectConnection),"Cannot release the playing direct Clip timeline");
     Check(preview->GetAnimationClipPreviewState(objectID).Playing,"Timeline release did not restore prior playback");
-    seconds->setValue(.9);seek->click();runtime->Update(1);
+    seconds->setValue(.9);seek->click();runtime->Update(1);tick();
     playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&!playback.Playing&&std::fabs(playback.Time-1)<.001f
         &&std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-24)<.001f,
         "Non-looping direct Clip did not stop at the final pose");
-    play->click();runtime->Update(.1f);
+    play->click();runtime->Update(.1f);tick();
     playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Playing&&playback.Time>.1f&&playback.Time<.5f,
         "Play after a non-looping Clip finished did not restart it from the beginning");

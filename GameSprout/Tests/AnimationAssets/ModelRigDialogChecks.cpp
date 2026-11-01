@@ -1,7 +1,7 @@
-#include "../../View/InspectorUI/ModelRigDialog.h"
-#include "../../View/InspectorUI/AnimatorIKEditor.h"
+#include "../../View/AnimationUI/ModelRigDialog.h"
+#include "../../View/AnimationUI/AnimatorIKEditor.h"
 #include <QGroupBox>
-#include "IRuntimeAssets.h"
+#include "IAnimationEditor.h"
 #include "HumanoidValidation.h"
 #include <QApplication>
 #include <QComboBox>
@@ -15,10 +15,9 @@
 namespace{
 void Check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
 template<class T>T* Find(QWidget& parent,const char* name){auto* value=parent.findChild<T*>(name);Check(value,"Missing generated Rig .ui control");return value;}
-class Assets final:public IRuntimeAssets{
+class Assets final:public IAnimationEditor{
 public:
     ModelRigImportSettings Data,Saved;std::string Snapshot="initial";int Saves=0;
-    GameSproutRuntime::IRuntimeResourceProvider* GetResourceProvider()const override{return nullptr;}
     bool LoadModelRigSource(const GameSproutRuntime::ResourceReference&,ModelRigImportSettings& data,GameSproutRuntime::SkeletonData& skeleton,std::string& snapshot,std::string&)const override{
         data=Data;snapshot=Snapshot;skeleton={};GameSproutRuntime::SkeletonNode hips;hips.Path="/Hips";hips.Name="Hips";skeleton.Nodes.push_back(hips);
         auto head=hips;head.Path="/Head";head.Name="Head";head.Parent=0;head.Transform.Position.Y=1;skeleton.Nodes.push_back(head);return true;

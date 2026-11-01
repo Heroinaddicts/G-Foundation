@@ -1,4 +1,5 @@
 #pragma once
+#include "../../Module/AnimationEditor/AnimationEditor.h"
 #include "../../Module/Shared/AvatarMaskDefinition.h"
 #include "../../Module/RuntimeAssets/RuntimeAssets.h"
 #include "AnimationTestSources.h"
@@ -63,8 +64,12 @@ void CheckMaskImport() {
     registeredMask.State=eAssetImportState::Ready;registeredMask.Identities=job.Result.Manifest.SubAssetsJson;
     sourceRegistry.Metas[maskRef.Guid]=&registeredMask;Check(registeredMask.SaveMeta(),"Cannot persist Mask source Meta");
     TestEditor editor;editor.Modules={{"AssetsManager",&sourceRegistry},{"LibraryManager",&library},{"Project",&project}};
-    GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);RuntimeAssets module;
-    GameSproutEditor::GameSproutEditorFinal::Before(&module,&api);Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&module,&api),"RuntimeAssets source service failed");
+    RuntimeAssets runtimeAssets;editor.Modules["RuntimeAssets"]=&runtimeAssets;
+    GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);
+    GameSproutEditor::GameSproutEditorFinal::Before(&runtimeAssets,&api);
+    Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&runtimeAssets,&api),"Cannot initialize prepared resource provider");
+    AnimationEditor module;
+    GameSproutEditor::GameSproutEditorFinal::Before(&module,&api);Check(GameSproutEditor::GameSproutEditorFinal::Initialize(&module,&api)&&GameSproutEditor::GameSproutEditorFinal::Launch(&module,&api),"RuntimeAssets source service failed");
     std::string created,snapshot;GameSproutRuntime::AvatarMaskData authoring;
     Check(module.CreateAvatarMaskSource("","FullBody",skeletonRef,created,error)&&created=="FullBody.mask",error);
     Json::Value createdSource;QFile createdFile(root.path()+"/Assets/FullBody.mask");Check(createdFile.open(QIODevice::ReadOnly),"Mask creation used the wrong absolute path");
@@ -80,6 +85,7 @@ void CheckMaskImport() {
     Check(!module.SaveAvatarMaskSource(maskRef,authoring,snapshot,error)&&sourceRegistry.Reimports==1,"Stale source snapshot overwrote an external edit");
     Check(module.LoadAvatarMaskSource(maskRef,authoring,snapshot,error)&&authoring.DefaultWeight==.4f&&authoring.RootMotionWeight==.5f,error);
     GameSproutEditor::GameSproutEditorFinal::Release(&module,&api);
+    GameSproutEditor::GameSproutEditorFinal::Release(&runtimeAssets,&api);
     Write(root.path()+"/Assets/Upper.mask",AvatarMaskDefinition::Write(mask,false));
     // A stable guid_localid file can be atomically replaced with an equal-length
     // generation after the main thread captured its descriptor. Never decode it

@@ -99,12 +99,14 @@ int main(int argc,char** argv) {
     TestProject project;TestConsole console;PreviewIDE ide;PreviewEditor editor;FoundationProxy foundation;
     GameSproutEditor::GameSproutModuleApi* api=nullptr;
     IInspectorUI* inspector=nullptr;
+    std::vector<GameSproutEditor::IGameSproutView*> featureViews;
     LibraryRuntimeResources* resources=nullptr;
     std::vector<GameSproutEditor::IGameSproutModule*> initialized;
     const auto cleanup=[&] {
         delete resources;resources=nullptr;
+        ReleaseTestViews(editor,featureViews);
         if (inspector) { GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);inspector=nullptr; }
-        for (const std::string name:{"AssetsManager","AssetsPipeline","ShaderCompiler","SelectionManager","LibraryManager","LocalDatabase","GuidCreator"}) {
+        for (const std::string name:{"AnimationEditor","RuntimeAssets","AssetsManager","AssetsPipeline","ShaderCompiler","SelectionManager","LibraryManager","LocalDatabase","GuidCreator"}) {
             const auto found=editor.Modules.find(name);
             if (found!=editor.Modules.end() && std::find(initialized.begin(),initialized.end(),found->second)!=initialized.end())
                 GameSproutEditor::GameSproutEditorFinal::Release(found->second,api);
@@ -129,7 +131,7 @@ int main(int argc,char** argv) {
         editor.Modules["Project"]=&project;editor.Modules["Console"]=&console;
         foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide.Counter;
         api=new GameSproutEditor::GameSproutModuleApi(&foundation,&editor);
-        for (const std::string name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager"})
+        for (const std::string name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager","RuntimeAssets","AnimationEditor"})
             editor.Modules[name]=LoadModule(name);
         for (const auto& item:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(item.second,api);
         for (const auto& item:editor.Modules) {
@@ -137,10 +139,10 @@ int main(int argc,char** argv) {
             initialized.push_back(item.second);
         }
         inspector=static_cast<IInspectorUI*>(LoadView("InspectorUI"));
-        GameSproutEditor::GameSproutEditorFinal::Before(inspector,&editor);
-        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(inspector,&editor),"Inspector initialize failed");
+        editor.Views["InspectorUI"]=inspector;featureViews=LoadInspectorFeatureViews(editor);
+        auto views=featureViews;views.push_back(inspector);InitializeTestViews(editor,views);
         for (const auto& item:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Launch(item.second,api),"Launch "+item.first);
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(inspector,&editor),"Inspector launch failed");
+        LaunchTestViews(editor,views);
         auto* assets=static_cast<IAssetsManager*>(editor.Modules["AssetsManager"]);
         auto* library=static_cast<ILibraryManager*>(editor.Modules["LibraryManager"]);
         auto* selection=static_cast<ISelectionManager*>(editor.Modules["SelectionManager"]);
@@ -152,7 +154,7 @@ int main(int argc,char** argv) {
                 real->Update();QCoreApplication::processEvents();
                 GameSproutEditor::GameSproutEditorFinal::Update(assets,api);
                 GameSproutEditor::GameSproutEditorFinal::Update(selection,api);
-                GameSproutEditor::GameSproutEditorFinal::Update(inspector,&editor);
+                QCoreApplication::processEvents();
                 if (done()) return;
                 QThread::msleep(2);
             } while (timer.elapsed()<30000);
