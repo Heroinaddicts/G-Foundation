@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
+
+include("${CMAKE_CURRENT_LIST_DIR}/../../Foundation/ParallelBuild.cmake")
+
 project(GameSproutShaderTools LANGUAGES C CXX)
 
 # This is an independent host-tools build, never an editor/runtime subdirectory.
