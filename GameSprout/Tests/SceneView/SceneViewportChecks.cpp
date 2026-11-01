@@ -3,7 +3,8 @@
 #include "ISelectionManager.h"
 #include "IHierarchyUI.h"
 #include "GameSproutRuntimeExport.h"
-#include "GRHIExport.h"
+#include "IRuntimeHost.h"
+#include "../Shared/ViewportRuntimeSpy.h"
 #include "../AssetsImport/ProjectViewTestSupport.h"
 #include <QDockWidget>
 #include <QMouseEvent>
@@ -18,10 +19,8 @@
 
 class SceneFixture final : public ISceneManager {
 public:
-    GameSproutRuntime::IGameSproutRuntime* Runtime=nullptr;
     GameSproutRuntime::IScene* Scene=nullptr;
     std::string Path;
-    GameSproutRuntime::IGameSproutRuntime* GetRuntime() const override{return Runtime;}
     GameSproutRuntime::IScene* GetActiveScene() const override{return Scene;}
     const std::string& GetActiveScenePath() const override{return Path;}
     bool OpenScene(const std::string&,std::string&) override{return false;}
@@ -53,14 +52,26 @@ public:
     bool Launch(GameSproutEditor::GameSproutModuleApi*) override{return true;}
     void Release(GameSproutEditor::GameSproutModuleApi*) override{}
 };
+class HostFixture final : public IRuntimeHost {
+public:
+    bool Playing=false;
+    void SetSimulationPlaying(bool value)override{Playing=value;}
+    bool IsSimulationPlaying()const override{return Playing;}
+    void ResetClock()override{}
+    bool Initialize(GameSproutEditor::GameSproutModuleApi*)override{return true;}
+    bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
+    void Release(GameSproutEditor::GameSproutModuleApi*)override{}
+};
 class WindowEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    explicit WindowEditor(GRHI::GRHIApi* api):GameSproutViewApi(api){}
+    explicit WindowEditor(GameSproutRuntime::IGameSproutRuntime* runtime):GameSproutViewApi(runtime){}
     SceneFixture Scenes;
+    HostFixture Host;
     SelectionFixture Selection;
     IIDEWindow* IDE=nullptr;
     std::map<std::string,GameSproutEditor::IGameSproutView*> Views;
     GameSproutEditor::IGameSproutModule* FindGameSproutModule(const std::string& name) const override {
+        if(name=="RuntimeHost")return const_cast<HostFixture*>(&Host);
         if(name=="SceneManager")return const_cast<SceneFixture*>(&Scenes);
         if(name=="SelectionManager")return const_cast<SelectionFixture*>(&Selection);
         return nullptr;
@@ -69,15 +80,6 @@ public:
         if(name=="IDEWindow")return IDE;
         const auto found=Views.find(name);return found==Views.end()?nullptr:found->second;
     }
-};
-class HeadlessRHI final : public GRHI::GRHIApi {
-public:
-    int Calls=0;
-    std::vector<GRHI::AdapterInfo> Adapters;
-    std::string Error;
-    const std::vector<GRHI::AdapterInfo>& GetAdapterList() const override{return Adapters;}
-    const std::string& GetLastError() const override{return Error;}
-    GRHI::IDevice* CreateDevice(const std::string&) override{++Calls;throw std::runtime_error("Headless attempted a native GPU device");}
 };
 class TriangleResources final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
@@ -124,7 +126,7 @@ int main(int argc,char** argv) {
     QApplication app(argc,argv);
     const bool headless=QCoreApplication::arguments().contains("--headless");
     if(!headless&&SceneViewport::IsHeadless()){std::cout<<"SKIP native viewport requires a real desktop platform\n";return 0;}
-    HeadlessRHI spy;GRHI::GRHIApi* rhi=nullptr;
+    ViewportRuntimeSpy spy;spy.RejectNativeCalls=true;
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
     ISceneViewUI* view=nullptr;IIDEWindow* ide=nullptr;IHierarchyUI* hierarchy=nullptr;
     WindowEditor* editor=nullptr;
@@ -132,11 +134,9 @@ int main(int argc,char** argv) {
     bool viewportDestroyed=false;
     try {
         if(!headless) {
-            rhi=ExportGRHIApi(TEST_RUNTIME_ROOT);Check(rhi,"GRHI SDK load failed");
             runtime=Export(TEST_RUNTIME_ROOT);Check(runtime,"Runtime SDK load failed");
         }
-        editor=new WindowEditor(headless?&spy:rhi);
-        editor->Scenes.Runtime=runtime;
+        editor=new WindowEditor(headless?&spy:runtime);
         GameSproutRuntime::IGameObject* mesh=nullptr;
         GameSproutRuntime::ICameraComponent* gameCamera=nullptr;
         GameSproutRuntime::Mat4 gameWorld;
@@ -164,13 +164,13 @@ int main(int argc,char** argv) {
         SceneViewport* viewport=nullptr;
         for(QWidget* window:QApplication::topLevelWidgets())if(auto* dock=window->findChild<QDockWidget*>("Scene")){viewport=dock->findChild<SceneViewport*>("sceneViewport");if(viewport)break;}
         Check(viewport,"Promoted native sceneViewport missing");
-        if(runtime)viewport->Initialize(rhi,runtime,&resources);
+        if(runtime)viewport->Initialize(runtime,&resources);
         QObject::connect(viewport,&QObject::destroyed,&app,[&]{viewportDestroyed=true;});
         auto* host=viewport->window();host->resize(880,650);host->raise();host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
         const auto tick=[&]{QCoreApplication::processEvents();if(runtime)runtime->Update(0);GameSproutEditor::GameSproutEditorFinal::Update(view,editor);GameSproutEditor::GameSproutEditorFinal::Update(hierarchy,editor);};
         const auto pump=[&](const std::function<bool()>& done){QElapsedTimer timer;timer.start();do{tick();if(done())return;QThread::msleep(5);}while(timer.elapsed()<15000);throw std::runtime_error("Native scene timed out: "+view->GetRenderError());};
         if(headless) {
-            tick();Check(!view->IsRenderingAvailable()&&spy.Calls==0&&view->GetRenderError().find("离屏")!=std::string::npos,"Headless passed a fake window to GRHI");
+            tick();Check(!view->IsRenderingAvailable()&&spy.NativeCalls==0&&view->GetRenderError().find("离屏")!=std::string::npos,"Headless passed a fake window to Runtime");
         }else {
             auto state=view->GetCameraState();state.Position={0,0,3};state.OrbitPivot={0,0,0};state.YawDegrees=0;state.PitchDegrees=0;state.OrbitDistance=3;
             Check(view->SetCameraState(state),"Cannot set Scene camera override");
@@ -288,13 +288,13 @@ int main(int argc,char** argv) {
         GameSproutEditor::GameSproutEditorFinal::Update(view,editor);
         GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,editor);hierarchy=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(view,editor);view=nullptr;
-        delete runtime;runtime=nullptr;delete rhi;rhi=nullptr;delete editor;editor=nullptr;
+        delete runtime;runtime=nullptr;delete editor;editor=nullptr;
         std::cout<<"PASS Scene native child, independent camera, physical resize and host-before-view teardown"<<(headless?" (headless guarded)":"")<<'\n';return 0;
     }catch(const std::exception& error) {
         std::cerr<<"FAIL "<<error.what()<<'\n';
         if(ide)GameSproutEditor::GameSproutEditorFinal::Release(ide,editor);
         if(hierarchy)GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,editor);
         if(view)GameSproutEditor::GameSproutEditorFinal::Release(view,editor);
-        delete runtime;delete rhi;delete editor;return 1;
+        delete runtime;delete editor;return 1;
     }
 }

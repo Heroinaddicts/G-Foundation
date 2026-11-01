@@ -3,8 +3,8 @@
 
 static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IGameObject* character,
     GameSproutRuntime::IGameObject* bone,QWidget* form,const QDir& root,
-    const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump) {
-    auto* runtime=scenes->GetRuntime();
+    const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump,GameSproutRuntime::IGameSproutRuntime* runtime,IAnimationPreview* preview) {
+
     auto* animator=character->GetComponent<GameSproutRuntime::IAnimatorComponent>();
     const auto objectID=character->GetInstanceID();
     const auto controller=animator->GetController(),defaultClip=animator->GetDefaultClip();
@@ -46,10 +46,10 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     } listenerScope{runtime,&notifications};
     const GameSproutRuntime::ResourceReference runClip{defaultClip.Guid,2};
     std::string error;
-    Check(scenes->PlayAnimationClip(objectID,runClip,0,1,true,error),error);
-    pump([&]{return pause->isEnabled()&&scenes->GetAnimationClipPreviewState(objectID).Active&&!status->text().isEmpty();});
+    Check(preview->PlayAnimationClip(objectID,runClip,0,1,true,error),error);
+    pump([&]{return pause->isEnabled()&&preview->GetAnimationClipPreviewState(objectID).Active&&!status->text().isEmpty();});
     runtime->Update(.35f);
-    auto playback=scenes->GetAnimationClipPreviewState(objectID);
+    auto playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&playback.Playing&&playback.Clip==runClip&&playback.Time>.3f,
         "Direct Clip preview did not advance while Controller Speed remains zero");
     Check(bone->GetTransform()->GetWorldMatrix()(0,3)>17
@@ -57,50 +57,50 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     Check(animator->GetPlaybackState().CurrentState==controllerBefore.CurrentState,
         "Direct Clip preview changed the running Controller state");
 
-    pause->click();playback=scenes->GetAnimationClipPreviewState(objectID);
+    pause->click();playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&!playback.Playing,"Direct Clip Pause did not freeze the preview");
     const float pausedTime=playback.Time;
     runtime->Update(.5f);
-    Check(scenes->GetAnimationClipPreviewState(objectID).Time==pausedTime,"Paused direct Clip advanced with Runtime updates");
+    Check(preview->GetAnimationClipPreviewState(objectID).Time==pausedTime,"Paused direct Clip advanced with Runtime updates");
     seconds->setValue(.5);seek->click();
-    Check(std::fabs(scenes->GetAnimationClipPreviewState(objectID).Time-.5f)<.001f
-        &&!scenes->GetAnimationClipPreviewState(objectID).Playing
+    Check(std::fabs(preview->GetAnimationClipPreviewState(objectID).Time-.5f)<.001f
+        &&!preview->GetAnimationClipPreviewState(objectID).Playing
         &&std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-19)<.001f,
         "Direct Clip time entry did not seek the chosen clip while paused");
     Check(QMetaObject::invokeMethod(slider,"sliderPressed",Qt::DirectConnection),"Cannot begin the direct Clip timeline drag");
     slider->setValue(7500);
     Check(QMetaObject::invokeMethod(slider,"sliderReleased",Qt::DirectConnection),"Cannot finish the direct Clip timeline drag");
-    Check(std::fabs(scenes->GetAnimationClipPreviewState(objectID).Time-.75f)<.001f
+    Check(std::fabs(preview->GetAnimationClipPreviewState(objectID).Time-.75f)<.001f
         &&std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-21.5f)<.001f,
         "Direct Clip timeline drag used the wrong duration or did not apply a pose");
 
     speed->setValue(2);loop->setChecked(false);
-    playback=scenes->GetAnimationClipPreviewState(objectID);
+    playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Speed==2&&!playback.Loop&&!playback.Playing,
         "Direct Clip options reset paused playback or were not passed to Runtime");
-    play->click();Check(scenes->GetAnimationClipPreviewState(objectID).Playing,"Direct Clip Play did not resume the preview");
+    play->click();Check(preview->GetAnimationClipPreviewState(objectID).Playing,"Direct Clip Play did not resume the preview");
     Check(QMetaObject::invokeMethod(slider,"sliderPressed",Qt::DirectConnection),"Cannot scrub the playing direct Clip");
-    Check(!scenes->GetAnimationClipPreviewState(objectID).Playing,"Timeline drag did not pause a playing direct Clip");
+    Check(!preview->GetAnimationClipPreviewState(objectID).Playing,"Timeline drag did not pause a playing direct Clip");
     slider->setValue(9000);
     Check(QMetaObject::invokeMethod(slider,"sliderReleased",Qt::DirectConnection),"Cannot release the playing direct Clip timeline");
-    Check(scenes->GetAnimationClipPreviewState(objectID).Playing,"Timeline release did not restore prior playback");
+    Check(preview->GetAnimationClipPreviewState(objectID).Playing,"Timeline release did not restore prior playback");
     seconds->setValue(.9);seek->click();runtime->Update(1);
-    playback=scenes->GetAnimationClipPreviewState(objectID);
+    playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Active&&!playback.Playing&&std::fabs(playback.Time-1)<.001f
         &&std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-24)<.001f,
         "Non-looping direct Clip did not stop at the final pose");
     play->click();runtime->Update(.1f);
-    playback=scenes->GetAnimationClipPreviewState(objectID);
+    playback=preview->GetAnimationClipPreviewState(objectID);
     Check(playback.Playing&&playback.Time>.1f&&playback.Time<.5f,
         "Play after a non-looping Clip finished did not restart it from the beginning");
 
     // Select a second Clip through the Module, then verify that the View targets it.
     // The in-memory provider deliberately has no source Meta; this avoids file import
     // work and exercises the same transient identity synchronization as a restored panel.
-    Check(scenes->PlayAnimationClip(objectID,defaultClip,.25f,1,true,error),error);
+    Check(preview->PlayAnimationClip(objectID,defaultClip,.25f,1,true,error),error);
     pump([&]{return std::fabs(speed->value()-1)<.001&&loop->isChecked();});
     pause->click();seconds->setValue(.5);seek->click();
-    Check(scenes->GetAnimationClipPreviewState(objectID).Clip==defaultClip
+    Check(preview->GetAnimationClipPreviewState(objectID).Clip==defaultClip
         &&std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-9)<.001f,
         "Direct Clip switch did not replace the sampled motion immediately");
     Check(animator->GetController()==controller&&animator->GetDefaultClip()==defaultClip
@@ -112,12 +112,12 @@ static void CheckDirectClipInspector(ISceneManager* scenes,GameSproutRuntime::IG
     Check(ReadFile(root.filePath("Assets/Scenes/AnimatorInspector.scene"))==savedBefore,
         "Saving direct Clip preview persisted its selection, playback, or evaluated pose");
     stop->click();tick();
-    Check(!scenes->GetAnimationClipPreviewState(objectID).Active
+    Check(!preview->GetAnimationClipPreviewState(objectID).Active
         &&bone->GetTransform()->GetWorldMatrix()(0,3)==4&&!animator->GetPlaybackState().Playing,
         "Direct Clip Restore did not clear the evaluated pose and freeze the Controller");
-    Check(scenes->PlayAnimationClip(objectID,runClip,.4f,1,true,error),error);
+    Check(preview->PlayAnimationClip(objectID,runClip,.4f,1,true,error),error);
     mode->setCurrentIndex(1);
-    Check(!scenes->GetAnimationClipPreviewState(objectID).Active
+    Check(!preview->GetAnimationClipPreviewState(objectID).Active
         &&bone->GetTransform()->GetWorldMatrix()(0,3)==4&&!direct->isVisible(),
         "Switching to Controller mode retained the direct Clip preview pose");
     std::cout<<"PASS Designer direct Clip preview: Controller bypass, pause/seek/timeline, options, Clip switching and source-only save\n";

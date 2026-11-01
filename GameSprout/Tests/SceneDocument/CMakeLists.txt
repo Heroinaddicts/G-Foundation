@@ -4,7 +4,6 @@ project(SceneDocumentChecks LANGUAGES CXX)
 get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${gamesprout_root}/Foundation/FoundationApi.cmake")
 include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
-include("${gamesprout_root}/GRHI/GRHI.cmake")
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
@@ -55,7 +54,6 @@ target_include_directories(SceneManagerChecks PRIVATE
 )
 target_link_libraries(SceneManagerChecks PRIVATE
     Foundation::FoundationApi
-    GRHI::GRHIApi
     GameSproutRuntime::GameSproutRuntime
     Qt${QT_VERSION_MAJOR}::Core
 )
@@ -73,5 +71,9 @@ target_sources(SceneDocumentChecks PRIVATE "${gamesprout_root}/Module/SceneManag
 target_sources(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneAnimationPreview.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneSession.cpp")
+
+# The host and preview are independent production modules in the registry fixture.
+target_sources(SceneManagerChecks PRIVATE
+    "${gamesprout_root}/Module/RuntimeHost/RuntimeHost.cpp"
+    "${gamesprout_root}/Module/AnimationPreview/AnimationPreview.cpp")

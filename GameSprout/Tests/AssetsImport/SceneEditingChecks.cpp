@@ -1,5 +1,7 @@
 #include "ProjectViewTestSupport.h"
 #include "ISceneManager.h"
+#include "IRuntimeHost.h"
+#include "IAnimationPreview.h"
 #include "ISceneEditorUI.h"
 #include "IHierarchyUI.h"
 #include "ISelectionManager.h"
@@ -84,7 +86,7 @@ static void PickResource(const GameSproutRuntime::ResourceReference& reference) 
 
 int main(int argc,char** argv) {
     QApplication application(argc,argv);
-    PreviewEditor editor;
+    PreviewEditor editor(Export(TEST_BINARY_ROOT));
     Foundation::FoundationApi* foundation=nullptr;
     GameSproutEditor::GameSproutModuleApi* api=nullptr;
     IIDEWindow* ide=nullptr;
@@ -96,7 +98,7 @@ int main(int argc,char** argv) {
     const auto cleanup=[&] {
         for(auto it=views.rbegin();it!=views.rend();++it)GameSproutEditor::GameSproutEditorFinal::Release(*it,&editor);
         views.clear();
-        if(modulesReady)for(const std::string& name:{"SelectionManager","SceneManager","AssetsManager","AssetsPipeline","LibraryManager"})
+        if(modulesReady)for(const std::string& name:{"SelectionManager","AnimationPreview","SceneManager","RuntimeHost","AssetsManager","AssetsPipeline","LibraryManager"})
             if(editor.Modules.count(name))GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules[name],api);
         if(ide){GameSproutEditor::GameSproutEditorFinal::Release(ide,&editor);ide=nullptr;}
         if(foundation){foundation->Release();foundation=nullptr;}
@@ -118,7 +120,7 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation init failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","SelectionManager","SceneManager"})
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"})
             editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules)GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module init failed: "+entry.first);
@@ -231,10 +233,10 @@ int main(int argc,char** argv) {
         Check(object->GetComponent<GameSproutRuntime::ICameraComponent>()->GetSettings().NearPlane==validNear&&
             inspectorWindow->findChild<QLineEdit*>("cameraNearEdit")->text().toFloat()==validNear,"Invalid camera setting was not restored");
         auto* textureField=ResourceWidget(inspectorWindow,"textureResourceHost");
-        textureField->findChild<QToolButton*>("clearResourceButton")->click();tick();
+        textureField->findChild<QAction*>("clearResourceAction")->trigger();tick();
         Check(object->GetComponent<GameSproutRuntime::IImageComponent>()->GetTexture().Guid.empty(),"Clear did not remove texture reference");
         Check(scenes->Undo(error)&&object->GetComponent<GameSproutRuntime::IImageComponent>()->GetTexture()==texture,"Clear Undo failed");tick();
-        textureField->findChild<QToolButton*>("clearResourceButton")->click();tick();
+        textureField->findChild<QAction*>("clearResourceAction")->trigger();tick();
         Check(DropResource(textureField,{texture.Guid,0,false}),"Source texture drop rejected");tick();
         Check(object->GetComponent<GameSproutRuntime::IImageComponent>()->GetTexture()==texture,"Source GUID+0 did not resolve main texture ID");
         auto* meshField=ResourceWidget(inspectorWindow,"meshResourceHost");

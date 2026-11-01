@@ -68,7 +68,7 @@ void CheckHumanoidIntegration(Host& host,LibraryRuntimeResources& resources,Libr
     const float lowerLength=HumanDistance(HumanPosition(*elbow),HumanPosition(*hand));
     auto* geometry=Geometry(character);GameSproutRuntime::Bounds bounds;
     Check(geometry&&host.Renderer->GetWorldBounds(scene,geometry->GetInstanceID(),bounds),host.Renderer->GetLastError());
-    GameSproutRuntime::RenderView view;view.Scene=scene;view.ColorTarget=host.Target;
+    GameSproutRuntime::RenderView view;view.Scene=scene;
     view.Camera.Position=bounds.Center+GameSproutRuntime::Vector3{0,.04f,2};
     Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,bounds.Center,{0,1,0},view.Camera.View),"Cannot frame retargeted model");
     view.Camera.Projection.Projection=GameSproutRuntime::CameraProjection::Orthographic;

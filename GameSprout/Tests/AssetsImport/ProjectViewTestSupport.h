@@ -1,4 +1,5 @@
 #pragma once
+#include "GameSproutRuntimeExport.h"
 #include "AssetTestSupport.h"
 #include "IProjectAssetsUI.h"
 #include "IInspectorUI.h"
@@ -47,7 +48,8 @@ public:
 };
 class PreviewEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    PreviewEditor():GameSproutViewApi(nullptr) {}
+    explicit PreviewEditor(GameSproutRuntime::IGameSproutRuntime* runtime=nullptr):GameSproutViewApi(runtime) {}
+    ~PreviewEditor() override {delete _Runtime;}
     std::map<std::string,GameSproutEditor::IGameSproutModule *> Modules;
     IIDEWindow * IDE=nullptr;
     std::map<std::string,GameSproutEditor::IGameSproutView *> Views;

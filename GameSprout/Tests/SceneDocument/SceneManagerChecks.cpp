@@ -1,4 +1,8 @@
 #include "SceneManager.h"
+#include "GameSproutRuntimeExport.h"
+#include "SafeSystem.hpp"
+#include "../../Module/RuntimeHost/RuntimeHost.h"
+#include "../../Module/AnimationPreview/AnimationPreview.h"
 #include "../Shared/AssetArtifactIO.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
@@ -30,10 +34,40 @@ public:
 };
 class Editor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    explicit Editor(Project& project):GameSproutViewApi(nullptr),_Project(project) {}
-    GameSproutEditor::IGameSproutModule* FindGameSproutModule(const std::string& name) const override {return name=="Project"?&_Project:nullptr;}
+    explicit Editor(Project& project):GameSproutViewApi(Export(FoundationUtils::SafeSystem::File::GetDirectoryOfCurrentExe())),_Project(project) {}
+    ~Editor() override {delete _Runtime;}
+    GameSproutEditor::IGameSproutModule* FindGameSproutModule(const std::string& name) const override {if(name=="Project")return &_Project;
+        if(name=="RuntimeHost")return const_cast<RuntimeHost*>(&Host);
+        if(name=="AnimationPreview")return const_cast<AnimationPreview*>(&Preview);
+        return name=="SceneManager"?Scenes:nullptr;}
     GameSproutEditor::IGameSproutView* FindGameSproutView(const std::string&) const override {return nullptr;}
     Project& _Project;
+    RuntimeHost Host;
+    AnimationPreview Preview;
+    SceneManager* Scenes=nullptr;
+};
+// Test the same independent module ownership as the editor registry.
+class SceneServicesScope {
+public:
+    SceneServicesScope(Editor& editor,SceneManager& scenes,GameSproutEditor::GameSproutModuleApi& api)
+        :EditorValue(editor),Scenes(scenes),Api(api){EditorValue.Scenes=&scenes;}
+    bool Start(){
+        for(auto* module:{static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Host),static_cast<GameSproutEditor::IGameSproutModule*>(&Scenes),static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Preview)})
+            GameSproutEditor::GameSproutEditorFinal::Before(*module,Api);
+        for(auto* module:{static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Host),static_cast<GameSproutEditor::IGameSproutModule*>(&Scenes),static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Preview)})
+            if(!GameSproutEditor::GameSproutEditorFinal::Initialize(*module,Api))return false;
+        for(auto* module:{static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Host),static_cast<GameSproutEditor::IGameSproutModule*>(&Scenes),static_cast<GameSproutEditor::IGameSproutModule*>(&EditorValue.Preview)})
+            if(!GameSproutEditor::GameSproutEditorFinal::Launch(*module,Api))return false;
+        return true;
+    }
+    void Stop(){if(Stopped)return;Stopped=true;
+        GameSproutEditor::GameSproutEditorFinal::Release(EditorValue.Preview,Api);
+        GameSproutEditor::GameSproutEditorFinal::Release(Scenes,Api);
+        GameSproutEditor::GameSproutEditorFinal::Release(EditorValue.Host,Api);
+    }
+    ~SceneServicesScope(){Stop();}
+private:
+    Editor& EditorValue;SceneManager& Scenes;GameSproutEditor::GameSproutModuleApi& Api;bool Stopped=false;
 };
 class Listener final : public ISceneListener {
 public:
@@ -57,15 +91,13 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
-    SceneManager manager;
     try {
         QTemporaryDir temporary;Check(temporary.isValid(),"Temporary project unavailable");
         QDir root(temporary.path());Check(root.mkpath("Assets/Scenes"),"Cannot create Assets");
         Project project;project.Root=temporary.path().toStdString();Editor editor(project);
         GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);
-        GameSproutEditor::GameSproutEditorFinal::Before(manager,api);
-        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(manager,api),"SceneManager SDK startup failed");
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(manager,api),"Default scene failed");
+        SceneManager manager;SceneServicesScope services(editor,manager,api);
+        Check(services.Start(),"Independent RuntimeHost/SceneManager/AnimationPreview startup failed");
         Listener listener;Check(manager.RegisterSceneListener(&listener),"Cannot subscribe scene state listener");
         std::string error;
         Check(manager.HasUnsavedChanges() && !manager.SaveScene(error),"Untitled must require first Save As");
@@ -159,12 +191,19 @@ int main(int argc,char** argv) {
         Check(scene->DestroyGameObject(camera),"Cannot remove Undo target");
         Check(!manager.Undo(error) && !error.empty(),"Undo used a deleted target");
         CheckTransformTransactions(manager,api,root);
-        CheckSceneDeletion(manager,api,root);
+        CheckSceneDeletion(manager,api,root,editor._Runtime);
         CheckAnimationSceneDeletion(manager,api,root);
-        CheckRootMotionEditing(manager,root);
-        CheckDirectClipPreview(manager,api,root);
+        CheckRootMotionEditing(manager,root,editor._Runtime);
+        CheckDirectClipPreview(manager,api,root,editor.Host,editor.Preview,editor._Runtime);
         manager.UnregisterSceneListener(&listener);
+        auto* retainedRuntime=editor._Runtime;
+        GameSproutEditor::GameSproutEditorFinal::Release(editor.Preview,api);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,api);
+        Check(retainedRuntime&&editor._Runtime==retainedRuntime&&retainedRuntime->GetSceneCount()==0,
+            "SceneManager released Runtime ownership instead of only destroying its active scene");
+        services.Stop();
+        Check(editor._Runtime==retainedRuntime&&retainedRuntime->GetSceneCount()==0,
+            "RuntimeHost deleted the application-owned Runtime instead of releasing its borrowed services");
         CheckSceneSessionRestoration();
         std::cout<<"PASS SceneManager: stable IDs, snapshot dirty state, Undo/Redo/rollback, guarded callbacks, atomic safe-path Save/Open\n";
         return 0;

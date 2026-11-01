@@ -3,6 +3,7 @@
 #include "../../Module/RuntimeAssets/LibraryRuntimeResources.h"
 #include "../../View/Shared/AssetDragPayload.h"
 #include <QCheckBox>
+#include <QAction>
 #include <QDoubleSpinBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -216,7 +217,7 @@ int main(int argc,char** argv) {
         resources=new LibraryRuntimeResources(assets,library);GameSproutRuntime::MaterialRenderData render;
         Check(resources->LoadMaterial(independent,render,error) && render.BaseColorTexture==texture && render.BaseColorTextureST.X==2 && render.BaseColorTextureST.W>0.19f,error);
         auto* baseTextureField=content->findChild<QWidget*>("material.BaseColorTexture")->findChild<QWidget*>("textureResource");
-        baseTextureField->findChild<QToolButton*>("clearResourceButton")->click();
+        baseTextureField->findChild<QAction*>("clearResourceAction")->trigger();
         Check(inspector->ApplyChanges(),"Clearing material texture did not save");pump(idle);
         Check(resources->LoadMaterial(independent,render,error) && render.BaseColorTexture.Guid.empty(),"Cleared texture was rebound");
         baseTextureField=content->findChild<QWidget*>("material.BaseColorTexture")->findChild<QWidget*>("textureResource");

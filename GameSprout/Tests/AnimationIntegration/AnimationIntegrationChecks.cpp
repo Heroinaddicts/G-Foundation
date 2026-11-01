@@ -4,7 +4,6 @@
 #include "../../Module/Shared/AnimationDefinition.h"
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeRenderApi.h"
-#include "GRHIExport.h"
 #include <QGuiApplication>
 #include <QImage>
 #include <QTemporaryDir>
@@ -65,11 +64,8 @@ protected:
 };
 struct Host {
     GameSproutRuntime::IGameSproutRuntime* Runtime=nullptr;
-    GameSproutRuntime::IRuntimeRenderer* Renderer=nullptr;
-    GRHI::GRHIApi* GRHI=nullptr;
-    GRHI::IDevice* Device=nullptr;
-    GRHI::ITexture* Target=nullptr;
-    ~Host(){delete Renderer;delete Target;delete Runtime;delete Device;delete GRHI;}
+    GameSproutRuntime::IRuntimeViewport* Renderer=nullptr;
+    ~Host(){delete Renderer;delete Runtime;}
 };
 AssetImportRequest Request(const QTemporaryDir& root,const Guid& guid,const std::string& path,eAssetImporterType importer) {
     AssetImportRequest request;request.AssetsRoot=root.path().toStdString()+"/Assets";
@@ -97,7 +93,7 @@ void Render(Host& host,const GameSproutRuntime::RenderView& view,std::vector<std
     Check(host.Renderer->Render(view),host.Renderer->GetLastError());
     Check(host.Renderer->GetStatistics().Triangles>0 && host.Renderer->GetStatistics().SkippedObjects==0,
         "Actual FBX geometry was skipped: "+host.Renderer->GetLastError());
-    Check(host.Device->ReadTexture(host.Target,pixels),host.Device->GetLastError());
+    std::string error;Check(host.Renderer->ReadPixels(pixels,error),error);
 }
 std::size_t Different(const std::vector<std::uint8_t>& left,const std::vector<std::uint8_t>& right) {
     Check(left.size()==right.size(),"GPU readback extents differ");std::size_t count=0;
@@ -145,18 +141,16 @@ int main(int argc,char** argv) {
         Check(RunAssetImport(controllerJob,context),"Actual Controller compilation failed: "+controllerJob.Result.Error);library.Add(controllerJob);
 
         Host host;host.Runtime=Export(TEST_RUNTIME_ROOT);Check(host.Runtime,"Cannot load the independently built Runtime SDK");
-        host.GRHI=ExportGRHIApi(TEST_GPU_ROOT);if(host.GRHI)host.Device=host.GRHI->CreateDevice();
-        if(!host.Device){std::cout<<"SKIP GPU unavailable after successful FBX import\n";return 77;}
-        host.Runtime->SetResourceProvider(&resources);host.Renderer=host.Runtime->CreateRenderer(host.Device,&resources);Check(host.Renderer,"Cannot create Runtime Renderer");
-        GRHI::TextureDesc target;target.Width=1280;target.Height=720;target.Usage=GRHI::TextureUsage::ColorTarget;
-        host.Target=host.Device->CreateTexture(target);Check(host.Target,host.Device->GetLastError());
+        host.Runtime->SetResourceProvider(&resources);
+        host.Renderer=host.Runtime->CreateOffscreenRenderer(1280,720,&resources,error);
+        if(!host.Renderer){std::cout<<"SKIP Runtime GPU unavailable after successful FBX import: "<<error<<'\n';return 77;}
         auto* scene=host.Runtime->CreateScene("Woman actual Runtime");
         auto* first=host.Runtime->InstantiateModel(scene,modelReference,nullptr,error);Check(first,error);
         auto* animator=first->GetComponent<GameSproutRuntime::IAnimatorComponent>();Check(animator,"Model did not create Animator");
         Check(animator->GetNodeBindings().size()==35,"Model did not bind the complete node hierarchy");
         auto* geometry=Geometry(first);Check(geometry,"Model did not create SkinnedMeshRenderer");
         GameSproutRuntime::Bounds bounds;Check(host.Renderer->GetWorldBounds(scene,geometry->GetInstanceID(),bounds),host.Renderer->GetLastError());
-        GameSproutRuntime::RenderView view;view.Scene=scene;view.ColorTarget=host.Target;view.DrawGrid=false;view.ClearColor={.035f,.045f,.06f,1};
+        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={.035f,.045f,.06f,1};
         view.Camera.Position=bounds.Center+GameSproutRuntime::Vector3{0,.08f,2};
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,bounds.Center,{0,1,0},view.Camera.View),"Cannot make explicit Scene camera");
         view.Camera.Projection.Projection=GameSproutRuntime::CameraProjection::Orthographic;

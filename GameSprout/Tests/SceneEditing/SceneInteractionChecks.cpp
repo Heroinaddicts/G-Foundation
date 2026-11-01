@@ -155,7 +155,7 @@ static void CheckCaptureInvalidation(SceneInteractionFixture& fixture) {
     const auto objectID=object->GetInstanceID();
     DragGizmo(fixture,begin,end,Qt::NoModifier,EndGesture::Commit,[&]{
         Check(scene->DestroyGameObject(object),"Cannot delete active native gizmo target");fixture.Settle();checkReleased();
-        Check(!scenes->GetRuntime()->QueryGameObject(objectID),"Invalidated gizmo target survived deletion");
+        Check(!fixture.Services.Editor._Runtime->QueryGameObject(objectID),"Invalidated gizmo target survived deletion");
     });
     Check(!scenes->CanUndo(),"Cancelled resize/selection/deletion gesture appended Undo");fixture.Select(nullptr);
 }
@@ -266,10 +266,9 @@ static void CheckNarrowToolbar(SceneInteractionFixture& fixture) {
 }
 int main(int argc,char** argv) {
     QApplication application(argc,argv);if(SceneViewport::IsHeadless()){std::cout<<"SKIP native editing requires Cocoa/Windows/X11\n";return 0;}
-    GRHI::GRHIApi* rhi=nullptr;
+
     try {
-        rhi=ExportGRHIApi(TEST_RUNTIME_ROOT);Check(rhi,"Cannot load GRHI for real Scene interaction");
-        {SceneInteractionFixture fixture(rhi);fixture.Initialize();CheckPickingAndOverlay(fixture);CheckCaptureInvalidation(fixture);CheckTransformsAndPersistence(fixture);CheckNarrowToolbar(fixture);}
-        delete rhi;rhi=nullptr;std::cout<<"PASS real Qt/Metal pick, overlay, gizmo transactions, Inspector and scene persistence\n";return 0;
-    }catch(const std::exception& exception){delete rhi;std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;}
+        {SceneInteractionFixture fixture;fixture.Initialize();CheckPickingAndOverlay(fixture);CheckCaptureInvalidation(fixture);CheckTransformsAndPersistence(fixture);CheckNarrowToolbar(fixture);}
+        std::cout<<"PASS real Qt/Metal pick, overlay, gizmo transactions, Inspector and scene persistence\n";return 0;
+    }catch(const std::exception& exception){std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;}
 }

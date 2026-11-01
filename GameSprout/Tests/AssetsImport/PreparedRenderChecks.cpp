@@ -2,7 +2,6 @@
 #include "AssetTestSupport.h"
 #include "../../Module/RuntimeAssets/LibraryRuntimeResources.h"
 #include "GameSproutRuntimeExport.h"
-#include "GRHIExport.h"
 
 static GameSproutRuntime::ResourceReference FindResource(ILibraryManager* library, IAssetsManager* manager,
     const std::string& path, eAssetType type) {
@@ -18,11 +17,8 @@ static GameSproutRuntime::ResourceReference FindResource(ILibraryManager* librar
 int main(int argc, char** argv) {
     QGuiApplication application(argc,argv);
     Foundation::FoundationApi* real = nullptr;
-    GRHI::GRHIApi* grhi = nullptr;
-    GRHI::IDevice* device = nullptr;
-    GRHI::ITexture* target = nullptr;
     GameSproutRuntime::IGameSproutRuntime* runtime = nullptr;
-    GameSproutRuntime::IRuntimeRenderer* renderer = nullptr;
+    GameSproutRuntime::IRuntimeViewport* renderer = nullptr;
     LibraryRuntimeResources* resources = nullptr;
     TestProject project; TestConsole console; TestIDE ide; TestEditor editor;
     FoundationProxy foundation;
@@ -31,10 +27,7 @@ int main(int argc, char** argv) {
     const auto cleanup = [&] {
         delete renderer;renderer=nullptr;
         delete resources;resources=nullptr;
-        delete target;target=nullptr;
         delete runtime;runtime=nullptr;
-        delete device;device=nullptr;
-        delete grhi;grhi=nullptr;
         if (modulesReady) for (const std::string& name : {"AssetsManager","AssetsPipeline","ShaderCompiler","LibraryManager","LocalDatabase","GuidCreator"})
             GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules[name],api);
         modulesReady=false;
@@ -108,23 +101,19 @@ int main(int argc, char** argv) {
             cleanup();return 0;
         }
         // 原始 source 不参与绘制：上传 Library 内的顶点/索引/像素，验证真实 GPU 像素。
-        grhi=ExportGRHIApi(TEST_BINARY_ROOT);Check(grhi,"Cannot load GRHI");
-        device=grhi->CreateDevice();Check(device,"Cannot create GPU device");
         runtime=Export(TEST_BINARY_ROOT);Check(runtime,"Cannot load Runtime");
-        renderer=runtime->CreateRenderer(device,resources);Check(renderer,"Cannot create Runtime renderer");
+        renderer=runtime->CreateOffscreenRenderer(192,192,resources,error);Check(renderer,error);
         auto* scene=runtime->CreateScene("Prepared Scene");
         auto* object=scene->CreateGameObject("Imported Triangle");
         object->AddComponent<GameSproutRuntime::IMeshComponent>()->SetMesh(mesh);
         object->AddComponent<GameSproutRuntime::IMeshRendererComponent>()->SetMaterials({materialReference});
-        GRHI::TextureDesc targetDesc;targetDesc.Width=192;targetDesc.Height=192;targetDesc.Usage=GRHI::TextureUsage::ColorTarget;
-        target=device->CreateTexture(targetDesc);Check(target,device->GetLastError());
-        GameSproutRuntime::RenderView view;view.Scene=scene;view.ColorTarget=target;view.DrawGrid=false;
+        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;
         view.Camera.Position={0,0,3};
         Check(GameSproutRuntime::TryMakeLookAt({0,0,3},{0,0,0},{0,1,0},view.Camera.View),"Camera failed");
         Check(renderer->Render(view),renderer->GetLastError());
         Check(renderer->GetStatistics().VisibleObjects==1&&renderer->GetStatistics().Triangles==1,"Imported geometry did not draw");
         std::vector<std::uint8_t> pixels;
-        Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->ReadPixels(pixels,error),error);
         const std::size_t center=(96*192+96)*4;
         Check(pixels.size()==192*192*4&&pixels[center+1]>pixels[center]*2&&pixels[center+1]>pixels[center+2]*2,"Prepared texture/material not visible in GPU output");
         QImage preview(pixels.data(),192,192,QImage::Format_RGBA8888);
@@ -145,14 +134,14 @@ int main(int argc, char** argv) {
         Check(manager->SaveMaterialSource(Guid(materialReference.Guid),AssetArtifactIO::JsonText(materialDocument),materialSource,error),error);
         pump(idle);
         Check(renderer->Render(view),"Renderer did not recover from import revision: "+renderer->GetLastError());
-        Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->ReadPixels(pixels,error),error);
         Check(pixels[center+1]>pixels[center]*2,"Material UV offset did not sample the green region");
         Check(manager->LoadMaterialSource(Guid(materialReference.Guid),materialSource,error),error);
         materialDocument["BaseColorTextureST"][2]=0.75;
         Check(manager->SaveMaterialSource(Guid(materialReference.Guid),AssetArtifactIO::JsonText(materialDocument),materialSource,error),error);
         pump(idle);
         Check(renderer->Render(view),renderer->GetLastError());
-        Check(device->ReadTexture(target,pixels),device->GetLastError());
+        Check(renderer->ReadPixels(pixels,error),error);
         Check(pixels[center]>pixels[center+1]*2 && pixels[center]>pixels[center+2]*2,
             "Saved UV offset was not passed to the GPU Shader");
         std::cout<<"PASS imported resources -> Runtime -> GRHI GPU pixels, material save/UV transform and reimport cache refresh\n";

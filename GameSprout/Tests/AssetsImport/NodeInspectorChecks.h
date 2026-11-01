@@ -10,7 +10,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     IHierarchyUI* hierarchy,IProjectAssetsUI* projectView,IInspectorUI* inspector,
     QTreeView* hierarchyTree,QTreeView* assetTree,QDockWidget* hierarchyDock,
     QDockWidget* inspectorDock,const QDir& projectRoot,
-    const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump) {
+    const std::function<void()>& tick,const std::function<void(const std::function<bool()>&)>& pump,GameSproutRuntime::IGameSproutRuntime* runtime) {
     auto* scene=scenes->GetActiveScene();
     const auto sceneID=scene->GetInstanceID();
     auto* lock=inspectorDock->findChild<QToolButton*>("objectLockButton");
@@ -66,8 +66,8 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
         action->trigger();submenu->hide();menu->hide();
         const auto chosen=selection->GetSceneObjectSelection();
         Check(chosen.SceneID==sceneID&&chosen.ObjectID&&selection->GetAssetSelection().empty(),"Creation did not select new Runtime object");
-        auto* object=scenes->GetRuntime()->QueryGameObject(chosen.ObjectID);
-        Check(object&&object->GetScene()==scene&&object->Parent()==(child&&context?scenes->GetRuntime()->QueryGameObject(context):scene),"Create/Child used wrong parent");
+        auto* object=runtime->QueryGameObject(chosen.ObjectID);
+        Check(object&&object->GetScene()==scene&&object->Parent()==(child&&context?runtime->QueryGameObject(context):scene),"Create/Child used wrong parent");
         pump([&]{return inspectedID()==chosen.ObjectID;});tick();
         QModelIndex index=NodeIndex(hierarchyTree->model(),chosen.ObjectID);
         Check(index.isValid()&&hierarchy->GetSelectedObjectID()==chosen.ObjectID&&hierarchyTree->currentIndex()==index,"Created node not selected in tree");
@@ -105,7 +105,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     for(const Preset& preset:presets) {
         auto* object=create(preset.Menu,false,sceneID);roots.push_back(object->GetInstanceID());checkDetails(object,preset);
     }
-    auto* parent=scenes->GetRuntime()->QueryGameObject(roots.front());
+    auto* parent=runtime->QueryGameObject(roots.front());
     for(const Preset& preset:presets)checkDetails(create(preset.Menu,true,parent->GetInstanceID(),preset.Menu==std::string("UI Empty")),preset);
     auto* duplicate=create("Empty",true,parent->GetInstanceID());
     Check(duplicate->GetName()=="GameObject (1)","Sibling duplicate name not made unique");
@@ -144,20 +144,20 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     Check(parent->RemoveComponent<GameSproutRuntime::IImageComponent>(),"Cannot remove added component");
     pump([&]{return !inspectorDock->findChild<QTreeWidget*>("componentProperties.GameSproutRuntime.Image");});
     Check(!parent->RemoveComponent<GameSproutRuntime::ITransformComponent>(),"Core Transform removal allowed");
-    auto* renderer=scenes->GetRuntime()->QueryGameObject(roots[2])->GetComponent<GameSproutRuntime::IMeshRendererComponent>();
+    auto* renderer=runtime->QueryGameObject(roots[2])->GetComponent<GameSproutRuntime::IMeshRendererComponent>();
     Check(renderer->SetMaterial(0,texture),"Cannot assign material slot");renderer->SetVisible(false);selectNode(roots[2]);
     Check(property("MeshRenderer","MaterialCount")=="1"&&property("MeshRenderer","Material.0.Guid")==QString::fromStdString(texture.Guid)&&property("MeshRenderer","Material.0.LocalID")=="42","Renderer material slot details missing");
-    auto* mesh=scenes->GetRuntime()->QueryGameObject(roots[2])->GetComponent<GameSproutRuntime::IMeshComponent>();
+    auto* mesh=runtime->QueryGameObject(roots[2])->GetComponent<GameSproutRuntime::IMeshComponent>();
     mesh->SetMesh(texture);
     pump([&]{return property("Mesh","MeshGuid")==QString::fromStdString(texture.Guid)&&property("Mesh","MeshLocalID")=="42";});
-    auto* camera=scenes->GetRuntime()->QueryGameObject(roots[1])->GetComponent<GameSproutRuntime::ICameraComponent>();
+    auto* camera=runtime->QueryGameObject(roots[1])->GetComponent<GameSproutRuntime::ICameraComponent>();
     auto cameraSettings=camera->GetSettings();cameraSettings.VerticalFovRadians=GameSproutRuntime::DegreesToRadians(75);cameraSettings.NearPlane=0.25f;
     Check(camera->SetSettings(cameraSettings),"Cannot update camera settings");selectNode(roots[1]);
     std::cerr<<"Camera Inspector FOV="<<property("Camera","VerticalFovDegrees").toStdString()<<" Near="<<property("Camera","NearPlane").toStdString()<<'\n';
     Check(std::abs(property("Camera","VerticalFovDegrees").toDouble()-75.0)<0.001&&property("Camera","NearPlane")=="0.25","Camera settings details did not update");
-    auto* canvas=scenes->GetRuntime()->QueryGameObject(roots[3])->GetComponent<GameSproutRuntime::ICanvasComponent>();
+    auto* canvas=runtime->QueryGameObject(roots[3])->GetComponent<GameSproutRuntime::ICanvasComponent>();
     Check(canvas->SetReferenceResolution({1280,720})&&canvas->SetPixelsPerUnit(200),"Cannot update Canvas settings");
-    auto* rect=scenes->GetRuntime()->QueryGameObject(roots[3])->GetComponent<GameSproutRuntime::IRectTransformComponent>();
+    auto* rect=runtime->QueryGameObject(roots[3])->GetComponent<GameSproutRuntime::IRectTransformComponent>();
     rect->SetPivot({0.25f,0.75f});rect->SetSizeDelta({320,180});selectNode(roots[3]);
     Check(property("Canvas","ReferenceResolution").contains("1280")&&property("Canvas","PixelsPerUnit")=="200"&&property("RectTransform","Pivot").contains("0.25")&&property("RectTransform","SizeDelta").contains("320"),"Canvas/RectTransform details did not update");
 
@@ -207,7 +207,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     const QModelIndex other=NodeIndex(hierarchyTree->model(),roots[1]);
     hierarchyTree->selectionModel()->setCurrentIndex(other,QItemSelectionModel::ClearAndSelect|QItemSelectionModel::Rows);tick();tick();
     Check(inspectedID()==lockedID&&selection->GetSceneObjectSelection().ObjectID==roots[1],"Inspector lock changed selection or lost target");
-    Check(scene->DestroyGameObject(scenes->GetRuntime()->QueryGameObject(lockedID)),"Cannot delete locked node");
+    Check(scene->DestroyGameObject(runtime->QueryGameObject(lockedID)),"Cannot delete locked node");
     pump([&]{return inspectedID()==0;});
     Check(lock->isChecked(),"Deleted locked node unexpectedly unlocked Inspector");
     const QModelIndex whileLocked=NodeIndex(hierarchyTree->model(),roots.front());
@@ -215,7 +215,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     Check(inspectedID()==0&&selection->GetSceneObjectSelection().ObjectID==roots.front(),"Deleted locked node followed a later selection before unlock");
     lock->setChecked(false);pump([&]{return inspectedID()==roots.front();});
     selectNode(roots[1]);
-    Check(scene->DestroyGameObject(scenes->GetRuntime()->QueryGameObject(roots[1])),"Cannot delete selected node");
+    Check(scene->DestroyGameObject(runtime->QueryGameObject(roots[1])),"Cannot delete selected node");
     pump([&]{return selection->GetSceneObjectSelection()==SceneObjectSelection{}&&inspectedID()==0&&hierarchy->GetSelectedObjectID()==0;});
     selectNode(roots[2]);
     QAction* normalMode=nullptr;QAction* debugMode=nullptr;
@@ -244,6 +244,6 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     QPainter painter(&preview);painter.drawPixmap(0,0,hierarchyDock->grab());painter.drawPixmap(hierarchyDock->width(),0,inspectorDock->grab());painter.end();
     Check(preview.save("/tmp/gamesprout-node-inspector-preview.png"),"Node Inspector screenshot failed");
     hierarchyDock->setFloating(false);inspectorDock->setFloating(false);
-    for(std::uint64_t id:roots)if(auto* object=scenes->GetRuntime()->QueryGameObject(id))Check(scene->DestroyGameObject(object),"Cannot clean up created node");
+    for(std::uint64_t id:roots)if(auto* object=runtime->QueryGameObject(id))Check(scene->DestroyGameObject(object),"Cannot clean up created node");
     selection->SetSceneObjectSelection({});tick();tick();
 }

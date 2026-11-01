@@ -19,11 +19,10 @@ static void CheckSceneSessionRestoration() {
         Project project;project.Root=root.absolutePath().toStdString();Editor editor(project);
         GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);
         SceneManager manager;
-        GameSproutEditor::GameSproutEditorFinal::Before(manager,api);
-        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(manager,api),"Recent-scene Runtime startup failed");
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(manager,api),"Recent-scene restore blocked project startup");
+        SceneServicesScope services(editor,manager,api);
+        Check(services.Start(),"Recent-scene independent module startup failed");
         inspect(manager);
-        GameSproutEditor::GameSproutEditorFinal::Release(manager,api);
+        services.Stop();
     };
     const auto remembered=[&] {
         Json::Value value;

@@ -2,7 +2,7 @@
 #include "SceneViewport.h"
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeResourceApi.h"
-#include "GRHIExport.h"
+#include "../Shared/ViewportRuntimeSpy.h"
 #include "ui_GameViewUI.h"
 #include "ui_SceneViewUI.h"
 #include <QApplication>
@@ -16,14 +16,6 @@
 
 namespace {
 void Check(bool value,const std::string& text){if(!value)throw std::runtime_error(text);}
-class RHI final : public GRHI::GRHIApi {
-public:
-    int Calls=0;
-    std::vector<GRHI::AdapterInfo> Adapters;std::string Error;
-    const std::vector<GRHI::AdapterInfo>& GetAdapterList()const override{return Adapters;}
-    const std::string& GetLastError()const override{return Error;}
-    GRHI::IDevice* CreateDevice(const std::string&)override {++Calls;throw std::runtime_error("Headless View passed a fake native window to GRHI");}
-};
 class Resources final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
     int RenderLoads=0;
@@ -44,7 +36,6 @@ struct RuntimeOwner {
     GameSproutRuntime::IGameSproutRuntime* Pointer=nullptr;
     ~RuntimeOwner(){delete Pointer;}
 };
-struct RHIOwner {GRHI::GRHIApi* Pointer=nullptr;~RHIOwner(){delete Pointer;}};
 void SurfaceEvent(QObject* object,QPlatformSurfaceEvent::SurfaceEventType type) {
     if(!object)return;QPlatformSurfaceEvent event(type);QCoreApplication::sendEvent(object,&event);
 }
@@ -55,11 +46,9 @@ int main(int argc,char** argv) {
         const bool native=QCoreApplication::arguments().contains("--native");
         if(native&&SceneViewport::IsHeadless()){std::cout<<"SKIP native test requires a desktop Qt platform\n";return 77;}
         Check(native||SceneViewport::IsHeadless(),"Run headless test with QT_QPA_PLATFORM=offscreen");
-        Resources resources;RHI rhi;RHIOwner realRHI;
-        if(native){realRHI.Pointer=ExportGRHIApi(TEST_RUNTIME_ROOT);Check(realRHI.Pointer,"Cannot load native GRHI SDK");}
-        GRHI::GRHIApi* activeRHI=native?realRHI.Pointer:&rhi;
+        Resources resources;ViewportRuntimeSpy boundary;boundary.RejectNativeCalls=!native;
         RuntimeOwner owner;owner.Pointer=Export(TEST_RUNTIME_ROOT);Check(owner.Pointer,"Cannot load Runtime SDK");
-        auto* runtime=owner.Pointer;runtime->SetResourceProvider(&resources);auto* scene=runtime->CreateScene("Shared Editor scene");
+        boundary.Real=owner.Pointer;auto* runtime=&boundary;runtime->SetResourceProvider(&resources);auto* scene=runtime->CreateScene("Shared Editor scene");
         auto* rig=scene->CreateGameObject("Rig");auto* bone=scene->CreateGameObject("Bone",rig);
         auto* player=rig->AddComponent<GameSproutRuntime::IAnimatorComponent>();Check(player,"Animator factory unavailable");
         player->SetSkeleton({"11111111111111111111111111111111",1});player->SetDefaultClip({"11111111111111111111111111111111",2});
@@ -79,7 +68,7 @@ int main(int argc,char** argv) {
         Check(gameWindow->findChild<QToolButton*>("playButton")&&gameWindow->findChild<QToolButton*>("stopButton")&&
             sceneWindow->findChild<QToolButton*>("focusSelectionButton"),"Promoted View controls were not loaded from their .ui files");
         game->StatusChanged=[&](const std::string& text){status=text;};
-        game->Initialize(activeRHI,runtime,&resources);sceneView->Initialize(activeRHI,runtime,&resources);
+        game->Initialize(runtime,&resources);sceneView->Initialize(runtime,&resources);
         gameWindow->resize(640,360);sceneWindow->resize(640,360);gameWindow->show();sceneWindow->show();application.processEvents();
         const auto awaitNative=[&]{
             if(!native)return;QElapsedTimer timer;timer.start();
@@ -92,7 +81,7 @@ int main(int argc,char** argv) {
             game->RenderGame(scene);sceneView->RenderScene(scene,true,.25f);application.processEvents();
         }
         Check(player->GetPlaybackState().Time==time,"Scene/Game Views advanced the Module-owned animation clock");
-        Check(rhi.Calls==0&&resources.RenderLoads==0,"Headless View touched native GPU/resource rendering");
+        Check(boundary.NativeCalls==0&&resources.RenderLoads==0,"Headless View touched native GPU/resource rendering");
         Check(native||status.find("Main Camera")!=std::string::npos,"Game headless state did not identify the game camera");
         Check(scene->SetMainCamera(nullptr),"Cannot remove Main Camera");game->RenderGame(scene);
         Check(status.find("Main Camera")!=std::string::npos,"Missing Main Camera did not submit an empty view with its diagnostic");
@@ -118,14 +107,14 @@ int main(int argc,char** argv) {
         gameWindow->hide();sceneWindow->hide();application.processEvents();gameWindow->show();sceneWindow->show();application.processEvents();
         awaitNative();
         game->RenderGame(scene);sceneView->RenderScene(scene,false,1);
-        Check(player->GetPlaybackState().Time==time&&rhi.Calls==0,"Window reopen advanced animation or created a native GPU in headless mode");
+        Check(player->GetPlaybackState().Time==time&&boundary.NativeCalls==0,"Window reopen advanced animation or created a native GPU in headless mode");
         game->Shutdown();game->Shutdown();sceneView->Shutdown();sceneView->Shutdown();
         game->RenderGame(scene);sceneView->RenderScene(scene,false,1);
         if(!native)SurfaceEvent(gameWindow->windowHandle(),QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed);
-        game->Initialize(activeRHI,runtime,&resources);sceneView->Initialize(activeRHI,runtime,&resources);
+        game->Initialize(runtime,&resources);sceneView->Initialize(runtime,&resources);
         awaitNative();
         game->RenderGame(scene);sceneView->RenderScene(scene,true,.5f);
-        Check(player->GetPlaybackState().Time==time&&rhi.Calls==0,"Reinitialize changed scheduling or reused invalid GPU state");
+        Check(player->GetPlaybackState().Time==time&&boundary.NativeCalls==0,"Reinitialize changed scheduling or reused invalid GPU state");
         delete gameWindow;delete sceneWindow;
         Check(gameDestroyed&&sceneDestroyed,"View host deletion did not destroy its promoted viewport");
         Check(player->GetPlaybackState().Time==time&&runtime->GetSceneCount()==1,"View teardown owned/destroyed shared Runtime data");

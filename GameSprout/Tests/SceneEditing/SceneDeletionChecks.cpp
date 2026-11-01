@@ -55,7 +55,7 @@ static void CheckRestoredComponents(GameSproutRuntime::IGameObject& parent,GameS
     Check(ChildNames(&parent)==std::vector<std::string>{"First nested sibling","All components","Last nested sibling"}&&child.FindChild("Grandchild"),"Deletion Undo lost nested sibling order or grandchildren");
 }
 static void CheckModuleDeletion() {
-    SceneEditingServices fixture;fixture.Initialize();auto* scenes=fixture.Scenes;auto* scene=scenes->GetActiveScene();auto* runtime=scenes->GetRuntime();
+    SceneEditingServices fixture;fixture.Initialize();auto* scenes=fixture.Scenes;auto* scene=scenes->GetActiveScene();auto* runtime=fixture.Editor._Runtime;
     const auto sceneID=scene->GetInstanceID();auto* defaultCameraObject=scene->GetMainCamera()->GetGameObject();const auto defaultCameraID=defaultCameraObject->GetInstanceID();
     auto tree=CreateDeletionTree(scenes,false);const auto beforeID=tree.Before->GetInstanceID(),afterID=tree.After->GetInstanceID();
     const auto parentID=tree.Parent->GetInstanceID(),childID=tree.Child->GetInstanceID(),grandID=tree.Grandchild->GetInstanceID();
@@ -112,7 +112,7 @@ static void CloseHierarchyMenu(SceneInteractionFixture& fixture) {
     if(auto* menu=fixture.Host->findChild<QDockWidget*>("Hierarchy")->findChild<QMenu*>("Hierarchy.ContentContextMenu"))menu->hide();fixture.Settle();
 }
 static void CheckViewsDeletion(SceneInteractionFixture& fixture) {
-    auto* scenes=fixture.Services.Scenes;auto* runtime=scenes->GetRuntime();auto* scene=scenes->GetActiveScene();std::string error;
+    auto* scenes=fixture.Services.Scenes;auto* runtime=fixture.Services.Editor._Runtime;auto* scene=scenes->GetActiveScene();std::string error;
     auto tree=CreateDeletionTree(scenes,true);auto* cameraA=scene->AddComponent<GameSproutRuntime::ICameraComponent>();
     Check(scene->SetMainCamera(cameraA),"Cannot initialize MainCamera history baseline");fixture.Select(tree.Child);fixture.Pump([&]{return fixture.Viewport->GetStatistics().VisibleObjects>0;});
     auto* hierarchy=static_cast<IHierarchyUI*>(fixture.Services.Editor.Views["HierarchyUI"]);auto* hierarchyDock=fixture.Host->findChild<QDockWidget*>("Hierarchy");auto* nodes=hierarchyDock->findChild<QTreeView*>("hierarchyTree");Check(nodes,"Real Hierarchy tree missing");
@@ -163,12 +163,11 @@ static void CheckViewsDeletion(SceneInteractionFixture& fixture) {
     std::cout<<"PASS real Hierarchy menu/keyboard, viewport Delete, selection/Inspector/render cleanup, text/repeat/gizmo guards\n";
 }
 int main(int argc,char** argv) {
-    QApplication application(argc,argv);GRHI::GRHIApi* rhi=nullptr;
+    QApplication application(argc,argv);
     try {
         if(QCoreApplication::arguments().contains("--module-only")){CheckModuleDeletion();return 0;}
         if(SceneViewport::IsHeadless()){std::cout<<"SKIP native deletion requires a desktop platform\n";return 0;}
-        rhi=ExportGRHIApi(TEST_RUNTIME_ROOT);Check(rhi,"Cannot load GRHI for deletion view checks");
-        {SceneInteractionFixture fixture(rhi);fixture.Initialize();CheckViewsDeletion(fixture);}
-        delete rhi;return 0;
-    }catch(const std::exception& exception){delete rhi;std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;}
+        {SceneInteractionFixture fixture;fixture.Initialize();CheckViewsDeletion(fixture);}
+        return 0;
+    }catch(const std::exception& exception){std::cerr<<"FAIL "<<exception.what()<<'\n';return 1;}
 }

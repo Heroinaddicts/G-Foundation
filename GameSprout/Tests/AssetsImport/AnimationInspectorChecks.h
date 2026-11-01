@@ -7,6 +7,7 @@
 #include <QTableWidget>
 #include <QGroupBox>
 #include "DirectClipInspectorChecks.h"
+#include "InspectorLayoutChecks.h"
 
 class InspectorAnimationResources final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
@@ -41,8 +42,8 @@ public:
 
 static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager* selection,QDockWidget* inspectorDock,
     const QDir& root,const std::function<void()>& tick,
-    const std::function<void(const std::function<bool()>&)>& pump) {
-    auto* runtime=scenes->GetRuntime();InspectorAnimationResources resources;
+    const std::function<void(const std::function<bool()>&)>& pump,GameSproutRuntime::IGameSproutRuntime* runtime,IAnimationPreview* preview) {
+    InspectorAnimationResources resources;
     struct ProviderScope {
         GameSproutRuntime::IGameSproutRuntime* Runtime;
         GameSproutRuntime::IRuntimeResourceProvider* Previous;
@@ -67,11 +68,13 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
         return inspectorDock->findChild<QWidget*>(formName);
     };
     auto* form=select(character,"AnimatorComponentEditorForm");
-    CheckDirectClipInspector(scenes,character,bone,form,root,tick,pump);
+    CheckInspectorEulerEditing(scenes,character,inspectorDock,root,tick);
+    CheckInspectorResponsiveLayout(inspectorDock,form,tick);
+    CheckDirectClipInspector(scenes,character,bone,form,root,tick,pump,runtime,preview);
     // Leaving the inspected object must tear down its temporary Clip playback.
-    Check(scenes->PlayAnimationClip(character->GetInstanceID(),{guid,2},.4f,1,true,error),error);
+    Check(preview->PlayAnimationClip(character->GetInstanceID(),{guid,2},.4f,1,true,error),error);
     select(geometry,"SkinnedMeshRendererComponentEditorForm");
-    Check(!scenes->GetAnimationClipPreviewState(character->GetInstanceID()).Active
+    Check(!preview->GetAnimationClipPreviewState(character->GetInstanceID()).Active
         &&bone->GetTransform()->GetWorldMatrix()(0,3)==4,"Changing Inspector selection retained a direct Clip preview");
     form=select(character,"AnimatorComponentEditorForm");
     auto* previewMode=form->findChild<QComboBox*>("previewModeCombo");
@@ -85,7 +88,7 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
     Check(state->findText("Idle")>=0&&state->findText("Run")>=0&&parameters->findText("Speed")>=0,"Animator Inspector did not load state and parameter declarations");
     auto* avatarField=form->findChild<QWidget*>("avatarResource");auto* ikGroup=form->findChild<QGroupBox*>("ikGroup");
     Check(avatarField&&ikGroup&&!ikGroup->isEnabled()&&form->findChild<QTableWidget*>("goalTable")&&form->findChild<QPushButton*>("applyLookAtButton"),"Humanoid Avatar / IK generated controls missing or Generic IK was enabled");
-    play->click();Check(animator->GetPlaybackState().Playing&&scenes->IsAnimationPreviewPlaying(),"Inspector Play did not start Runtime and editor preview");
+    play->click();Check(animator->GetPlaybackState().Playing&&preview->IsAnimationPreviewPlaying(),"Inspector Play did not start Runtime and editor preview");
     pause->click();Check(!animator->GetPlaybackState().Playing,"Inspector Pause did not pause Animator");
     seekSpin->setValue(.5);seek->click();
     Check(std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-9)<.001f&&bone->GetTransform()->GetLocalPosition().X==4,"Inspector Seek did not evaluate pose while preserving source TRS");
@@ -158,18 +161,18 @@ static void CheckAnimationInspectorFlow(ISceneManager* scenes,ISelectionManager*
     Check(scenes->Undo(error)&&animator->GetRootMotionMode()==GameSproutRuntime::RootMotionMode::Disabled,error);
     Check(scenes->Redo(error)&&animator->GetRootMotionMode()==GameSproutRuntime::RootMotionMode::ApplyToObject,error);
     Check(scenes->SaveScene(error),error);tick();form=select(character,"AnimatorComponentEditorForm");
-    form->findChild<QPushButton*>("playButton")->click();runtime->Update(.35f);scenes->SetAnimationPreviewPlaying(false);
+    form->findChild<QPushButton*>("playButton")->click();runtime->Update(.35f);preview->SetAnimationPreviewPlaying(false);
     Check(character->GetTransform()->GetWorldMatrix()(0,3)>5&&character->GetTransform()->GetLocalPosition().X==0,"Applied root motion modified source TRS or failed to move the running object");
     Check(std::fabs(bone->GetTransform()->GetWorldMatrix()(0,3)-9.25f)<.01f&&bone->GetTransform()->GetLocalPosition().X==4,"Root motion was applied twice or lost during pose stripping");
     Check(!scenes->HasUnsavedChanges(),"Root motion or event preview dirtied the editing scene");
     pump([&]{return notices->rowCount()>0;});
     bool footstep=false;for(int row=0;row<notices->rowCount();++row)if(notices->item(row,1)&&notices->item(row,1)->text()=="Footstep")footstep=notices->item(row,2)->text()=="Left";
     Check(footstep,"Runtime clip notification was not forwarded to the active Inspector");
-    scenes->SetAnimationPreviewPlaying(true);runtime->Update(100);scenes->SetAnimationPreviewPlaying(false);
+    preview->SetAnimationPreviewPlaying(true);runtime->Update(100);preview->SetAnimationPreviewPlaying(false);
     pump([&]{return notices->rowCount()==64;});
     form->findChild<QGroupBox*>("animationNotificationsGroup")->setChecked(true);
     form->findChild<QPushButton*>("clearAnimationNotificationsButton")->click();Check(notices->rowCount()==0,"Clear notifications did not clear the view data");
     form->findChild<QPushButton*>("stopButton")->click();Check(character->GetTransform()->GetWorldMatrix()(0,3)==0,"Root-motion Restore did not restore the authoring basis");
-    scenes->ResetAnimationPreview();selection->SetSceneObjectSelection({});tick();
+    preview->ResetAnimationPreview();selection->SetSceneObjectSelection({});tick();
     std::cout<<"PASS Designer Animator/SkinnedMeshRenderer Inspector: playback, typed parameters, Undo/Redo, source-pose save and reopen\n";
 }

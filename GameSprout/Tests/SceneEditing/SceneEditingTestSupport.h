@@ -1,6 +1,8 @@
 #pragma once
 #include "../AssetsImport/ProjectViewTestSupport.h"
 #include "ISceneManager.h"
+#include "IRuntimeHost.h"
+#include "IAnimationPreview.h"
 #include "ISelectionManager.h"
 #include "ILibraryManager.h"
 #include <QElapsedTimer>
@@ -39,7 +41,8 @@ public:
 };
 class SceneEditingEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    explicit SceneEditingEditor(GRHI::GRHIApi* rhi):GameSproutViewApi(rhi){}
+    SceneEditingEditor():GameSproutViewApi(Export(TEST_RUNTIME_ROOT)){}
+    ~SceneEditingEditor() override{delete _Runtime;}
     std::map<std::string,GameSproutEditor::IGameSproutModule*> Modules;
     std::map<std::string,GameSproutEditor::IGameSproutView*> Views;
     IIDEWindow* IDE=nullptr;
@@ -53,29 +56,40 @@ public:
 };
 class SceneEditingServices final {
 public:
-    explicit SceneEditingServices(GRHI::GRHIApi* rhi=nullptr):Editor(rhi),ModuleAPI(nullptr,&Editor){}
+    SceneEditingServices():ModuleAPI(nullptr,&Editor){}
     ~SceneEditingServices(){Shutdown();}
     void Initialize() {
         Check(Temporary.isValid(),"Cannot create Scene editing test project");
         Check(QDir(Temporary.path()).mkpath("Assets/Scenes"),"Cannot create scene folder");
         Project.Root=Temporary.path().toStdString();Library.Root=QDir(Temporary.path()).filePath("Library").toStdString();
         Editor.Modules["Project"]=&Project;Editor.Modules["AssetsManager"]=&Assets;Editor.Modules["LibraryManager"]=&Library;Editor.Modules["Console"]=&Console;
+        Host=static_cast<IRuntimeHost*>(LoadModule("RuntimeHost"));Editor.Modules["RuntimeHost"]=Host;
+        Preview=static_cast<IAnimationPreview*>(LoadModule("AnimationPreview"));Editor.Modules["AnimationPreview"]=Preview;
         Scenes=static_cast<ISceneManager*>(LoadModule("SceneManager"));Editor.Modules["SceneManager"]=Scenes;
         Selection=static_cast<ISelectionManager*>(LoadModule("SelectionManager"));Editor.Modules["SelectionManager"]=Selection;
+        GameSproutEditor::GameSproutEditorFinal::Before(Host,&ModuleAPI);GameSproutEditor::GameSproutEditorFinal::Before(Preview,&ModuleAPI);
         GameSproutEditor::GameSproutEditorFinal::Before(Scenes,&ModuleAPI);GameSproutEditor::GameSproutEditorFinal::Before(Selection,&ModuleAPI);
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(Host,&ModuleAPI),"RuntimeHost initialization failed");HostReady=true;
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(Preview,&ModuleAPI),"AnimationPreview initialization failed");PreviewReady=true;
         Check(GameSproutEditor::GameSproutEditorFinal::Initialize(Scenes,&ModuleAPI),"Real SceneManager initialization failed");SceneReady=true;
         Check(GameSproutEditor::GameSproutEditorFinal::Initialize(Selection,&ModuleAPI),"Real SelectionManager initialization failed");SelectionReady=true;
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(Host,&ModuleAPI),"RuntimeHost launch failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Launch(Scenes,&ModuleAPI),"Real SceneManager launch failed");
-        Check(GameSproutEditor::GameSproutEditorFinal::Launch(Selection,&ModuleAPI),"Real SelectionManager launch failed");Tick();
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(Selection,&ModuleAPI),"Real SelectionManager launch failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Launch(Preview,&ModuleAPI),"AnimationPreview launch failed");Tick();
     }
     void Tick() {
         QCoreApplication::processEvents();
+        if(PreviewReady)GameSproutEditor::GameSproutEditorFinal::Update(Preview,&ModuleAPI);
+        if(HostReady)GameSproutEditor::GameSproutEditorFinal::Update(Host,&ModuleAPI);
         if(SceneReady)GameSproutEditor::GameSproutEditorFinal::Update(Scenes,&ModuleAPI);
         if(SelectionReady)GameSproutEditor::GameSproutEditorFinal::Update(Selection,&ModuleAPI);
     }
     void Shutdown() {
+        if(PreviewReady){GameSproutEditor::GameSproutEditorFinal::Release(Preview,&ModuleAPI);PreviewReady=false;}
         if(SelectionReady){GameSproutEditor::GameSproutEditorFinal::Release(Selection,&ModuleAPI);SelectionReady=false;}
         if(SceneReady){GameSproutEditor::GameSproutEditorFinal::Release(Scenes,&ModuleAPI);SceneReady=false;}
+        if(HostReady){GameSproutEditor::GameSproutEditorFinal::Release(Host,&ModuleAPI);HostReady=false;}
     }
     QByteArray ReadScene(const QString& name="Transaction.scene") const {
         QFile file(QDir(Temporary.path()).filePath("Assets/Scenes/"+name));Check(file.open(QIODevice::ReadOnly),"Cannot read saved scene");return file.readAll();
@@ -88,8 +102,10 @@ public:
     SceneEditingEmptyAssets Assets;
     SceneEditingEmptyLibrary Library;
     ISceneManager* Scenes=nullptr;
+    IRuntimeHost* Host=nullptr;
+    IAnimationPreview* Preview=nullptr;
     ISelectionManager* Selection=nullptr;
-    bool SceneReady=false,SelectionReady=false;
+    bool SceneReady=false,SelectionReady=false,HostReady=false,PreviewReady=false;
 };
 static SceneTransformState ReadTransform(GameSproutRuntime::IGameObject& object) {
     const auto* transform=object.GetTransform();return {transform->GetLocalPosition(),transform->GetLocalRotation(),transform->GetLocalScale()};

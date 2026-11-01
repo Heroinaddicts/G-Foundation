@@ -1,8 +1,8 @@
 #pragma once
 #include "SceneMotionFixture.h"
 
-static void CheckRootMotionEditing(SceneManager& manager,const QDir&) {
-    auto* runtime=manager.GetRuntime();auto* previous=runtime->GetResourceProvider();
+static void CheckRootMotionEditing(SceneManager& manager,const QDir&,GameSproutRuntime::IGameSproutRuntime* runtime) {
+    auto* previous=runtime->GetResourceProvider();
     SceneMotionResources resources;runtime->SetResourceProvider(&resources);
     struct ResourceScope {
         GameSproutRuntime::IGameSproutRuntime* Runtime;

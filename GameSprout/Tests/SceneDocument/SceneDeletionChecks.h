@@ -1,6 +1,6 @@
 #pragma once
 
-static void CheckSceneDeletion(SceneManager& manager,GameSproutEditor::GameSproutModuleApi& api,const QDir& root) {
+static void CheckSceneDeletion(SceneManager& manager,GameSproutEditor::GameSproutModuleApi& api,const QDir& root,GameSproutRuntime::IGameSproutRuntime* runtime) {
     std::string path,error;
     Check(manager.CreateSceneAsset("Scenes","Deletion",path,error)&&manager.OpenScene(path,error),error);
     auto* scene=manager.GetActiveScene();const auto sceneID=scene->GetInstanceID();
@@ -29,8 +29,8 @@ static void CheckSceneDeletion(SceneManager& manager,GameSproutEditor::GameSprou
     const auto targetFile=manager.GetObjectFileID(oldTargetID),childFile=manager.GetObjectFileID(oldChildID),grandchildFile=manager.GetObjectFileID(oldGrandchildID);
     Check(targetFile&&childFile&&grandchildFile&&manager.QueryObjectByFileID(0)==scene,"Stable deletion identities unavailable");
     Check(!manager.DeleteObject(sceneID,error)&&manager.GetActiveScene()==scene,"Delete accepted scene root");
-    auto* foreign=manager.GetRuntime()->CreateScene("Foreign scene");auto* foreignNode=foreign->CreateGameObject("Foreign node");
-    Check(!manager.DeleteObject(foreignNode->GetInstanceID(),error)&&manager.GetRuntime()->DestroyScene(foreign),"Delete accepted another scene's object");
+    auto* foreign=runtime->CreateScene("Foreign scene");auto* foreignNode=foreign->CreateGameObject("Foreign node");
+    Check(!manager.DeleteObject(foreignNode->GetInstanceID(),error)&&runtime->DestroyScene(foreign),"Delete accepted another scene's object");
     Check(manager.EditObject(oldTargetID,"Rename victim",[](auto& object,std::string&){object.SetName("Edited victim");return true;},
         [](auto& object,std::string&){object.SetName("Victim");return true;},error),error);
     const auto before=TransformState(*child);auto after=before;after.Position={3,2,-1};after.Rotation={.12f,.34f,.56f,.78f};after.Scale={2,.8f,-1.7f};
@@ -66,7 +66,7 @@ static void CheckSceneDeletion(SceneManager& manager,GameSproutEditor::GameSprou
     scene->ForeachChild([&](GameSproutRuntime::IGameObject*) {callbackGuard=!manager.DeleteObject(target->GetInstanceID(),error);});
     Check(callbackGuard&&manager.QueryObjectByFileID(targetFile)==target,"Delete ran inside Runtime traversal");
     auto* external=scene->CreateGameObject("External new child",target);const auto externalID=external->GetInstanceID();
-    Check(!manager.Redo(error)&&manager.GetRuntime()->QueryGameObject(externalID)==external&&manager.QueryObjectByFileID(targetFile)==target,
+    Check(!manager.Redo(error)&&runtime->QueryGameObject(externalID)==external&&manager.QueryObjectByFileID(targetFile)==target,
         "Old delete Redo discarded an unrecorded new child");
     Check(scene->DestroyGameObject(external)&&manager.Redo(error)&&manager.Undo(error),"Valid delete could not redo after resolving external conflict");
     const auto parentFile=manager.GetObjectFileID(parent->GetInstanceID());

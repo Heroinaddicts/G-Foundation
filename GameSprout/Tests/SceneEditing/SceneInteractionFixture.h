@@ -2,7 +2,6 @@
 #include "SceneEditingTestSupport.h"
 #include "SceneViewport.h"
 #include "SceneGizmo.h"
-#include "GRHIExport.h"
 #include "IHierarchyUI.h"
 #include <QDockWidget>
 #include <QMainWindow>
@@ -37,7 +36,7 @@ public:
 };
 class SceneInteractionFixture final {
 public:
-    explicit SceneInteractionFixture(GRHI::GRHIApi* rhi):Services(rhi),RHI(rhi){}
+    SceneInteractionFixture()=default;
     ~SceneInteractionFixture(){Shutdown();}
     void Initialize() {
         Services.Initialize();auto& editor=Services.Editor;
@@ -54,7 +53,7 @@ public:
             Host=host;SceneDock=dock;Viewport=dock->findChild<SceneViewport*>("sceneViewport");if(Viewport)break;
         }
         Check(Host&&Viewport,"Real Scene editing native viewport missing");InspectorDock=Host->findChild<QDockWidget*>("Inspector");Check(InspectorDock,"Inspector missing");
-        Viewport->Initialize(RHI,Services.Scenes->GetRuntime(),&Geometry);
+        Viewport->Initialize(Services.Editor._Runtime,&Geometry);
         Host->resize(1440,900);Host->show();Host->raise();Host->activateWindow();
         IDE->QueryDocker("Inspector")->Layout(eDockerLayout::Right);
         Check(IDE->QueryDocker("Hierarchy")->Split(IDE->QueryDocker("Scene"),Qt::Horizontal),"Cannot lay out interactive Scene");
@@ -107,7 +106,6 @@ public:
     }
     SceneInteractionGeometry Geometry;
     SceneEditingServices Services;
-    GRHI::GRHIApi* RHI=nullptr;
     IIDEWindow* IDE=nullptr;
     ISceneViewUI* SceneView=nullptr;
     std::vector<GameSproutEditor::IGameSproutView*> Views;
