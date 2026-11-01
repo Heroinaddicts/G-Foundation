@@ -1,5 +1,7 @@
 # GameSprout 通用 Runtime 架构讨论稿
 
+> 本文是早期架构讨论稿。当前已实现的 Editor/Module、Runtime 与 GRHI 分工见 [EditorModuleBoundaries.md](EditorModuleBoundaries.md)。
+
 状态：设计提案。当前仅实现 Metal，公共 RHI 接口面向 Vulkan、Direct3D 12 与桌面 OpenGL 做兼容性设计审查；Qt 在后续通过宿主适配接入。尚未创建实现模块。
 
 ## 1. 目标与边界
