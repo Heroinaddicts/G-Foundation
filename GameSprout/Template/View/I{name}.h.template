@@ -1,9 +1,9 @@
 #ifndef __I{name}_h__
 #define __I{name}_h__
 
-#include "GameSproutApi.h"
+#include "GameSproutEditorApi.h"
 
-class I{name} : public GameSprout::IGameSproutView {
+class I{name} : public GameSproutEditor::IGameSproutView {
 public:
     virtual ~I{name}() {}
 };

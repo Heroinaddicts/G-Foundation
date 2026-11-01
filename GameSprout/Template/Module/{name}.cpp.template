@@ -1,26 +1,26 @@
 #include "{name}.h"
 
-void {name}::BeforeInitialize(GameSproutApi * const api) {
+void {name}::BeforeInitialize(GameSproutEditor::GameSproutModuleApi * const api) {
     g_Self = this;
 }
 
-bool {name}::Initialize(GameSproutApi * const api) {
+bool {name}::Initialize(GameSproutEditor::GameSproutModuleApi * const api) {
     g_GameSproutApi = api;
     return true;
 }
 
-bool {name}::Launch(GameSproutApi * const api)  {
+bool {name}::Launch(GameSproutEditor::GameSproutModuleApi * const api)  {
     return true;
 }
 
-void {name}::LaunchFinished(GameSproutApi * const api)  {
+void {name}::LaunchFinished(GameSproutEditor::GameSproutModuleApi * const api)  {
 
 }
 
-void {name}::Update(GameSproutApi * const api)  {
+void {name}::Update(GameSproutEditor::GameSproutModuleApi * const api)  {
     
 }
 
-void {name}::Release(GameSproutApi * const api)  {
+void {name}::Release(GameSproutEditor::GameSproutModuleApi * const api)  {
     
 }
