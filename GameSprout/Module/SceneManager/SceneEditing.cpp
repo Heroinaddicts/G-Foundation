@@ -14,6 +14,7 @@ private:
 
 bool SceneManager::Ready(std::string& error) const {
     error.clear();
+    if (IsPlaySessionActive()) {error="运行期间不能修改或保存编辑场景，请先停止运行。";return false;}
     if (!Runtime() || !GetActiveScene()) {error="当前没有可操作的场景。";return false;}
     if (_TransformEdit.Active) {error="请先完成或取消 Scene 中的变换拖拽。";return false;}
     if (_Switching || _ExecutingEdit || _Notifying || Runtime()->IsExecuting()) {
@@ -32,6 +33,7 @@ bool SceneManager::Capture(Json::Value& document,std::string& text,std::string& 
     catch (...) {error="无法生成场景数据。";return false;}
 }
 bool SceneManager::HasUnsavedChanges() const {
+    if (_PlaySession) return _PlaySession->Unsaved;
     if (!GetActiveScene()) return false;
     if (Runtime()->IsExecuting()) return _Unsaved;
     Json::Value document;std::string text,error;
@@ -40,6 +42,7 @@ bool SceneManager::HasUnsavedChanges() const {
 }
 void SceneManager::RefreshState(bool force) {
     _StatePending=false;
+    if (IsPlaySessionActive()) return;
     Json::Value document;std::string text,error;
     const bool captured=Capture(document,text,error);
     if (!captured) text="Invalid scene: "+error;
@@ -51,6 +54,7 @@ void SceneManager::RefreshState(bool force) {
 bool SceneManager::RunEdit(const Edit& edit,bool forward,std::string& error) {
     if(edit.Type==Edit::Kind::Deletion)return RunDeletion(edit,forward,error);
     if(edit.Type==Edit::Kind::Creation)return RunDeletion(edit,!forward,error);
+    if(edit.Type==Edit::Kind::Component)return RunComponentEdit(edit,forward,error);
     const auto sceneID=_ActiveID;
     auto resolve=[&]() -> GameSproutRuntime::IGameObject* {
         auto* scene=GetActiveScene();

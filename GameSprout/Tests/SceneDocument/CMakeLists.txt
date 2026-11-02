@@ -67,11 +67,18 @@ add_test(NAME SceneDocument.EditingAndPersistence COMMAND SceneManagerChecks)
 set_tests_properties(SceneDocument.EditingAndPersistence PROPERTIES TIMEOUT 30)
 
 # Animation source serialization is an editor Module implementation, never a View dependency.
-target_sources(SceneDocumentChecks PRIVATE "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp")
+target_sources(SceneDocumentChecks PRIVATE
+    "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneScriptDocument.cpp")
 target_sources(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneScriptDocument.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneComponents.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneSession.cpp")
+target_sources(SceneManagerChecks PRIVATE
+    "${gamesprout_root}/Module/SceneManager/ScenePlaySession.cpp"
+    "${gamesprout_root}/Module/SelectionManager/SelectionManager.cpp")
 
 # The host and preview are independent production modules in the registry fixture.
 target_sources(SceneManagerChecks PRIVATE

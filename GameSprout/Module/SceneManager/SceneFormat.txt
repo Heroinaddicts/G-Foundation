@@ -65,6 +65,17 @@ RuntimeHost 仅管理资源提供者连接、时钟和唯一每帧 Update，不�
 SceneManager 管理 .scene 文档、活动场景、稳定文件 ID、保存基线和场景编辑事务，不拥有 Runtime、GPU 或动画时钟。
 AnimationPreview 管理临时单 Clip 与场景 Animator 预览，使用 Runtime 的采样能力；它请求宿主推进时间，不自己再次 Update。
 SceneView 使用独立编辑相机，GameView 使用游戏相机；两者通过 Runtime 视口 API 绘制，不直接操作 GRHI。
-编辑器关闭时先释放全部 View，再依次释放 AnimationPreview、SceneManager、RuntimeHost，之后释放其他资源模块。
+编辑器关闭时先停止 PlayMode 会话，再释放全部 View、预览、场景、宿主与其他资源服务。
 SceneManager 只销毁自己拥有的活动场景；RuntimeHost 在场景和视口退出后断开资源提供者；应用组合层在所有 Module 退出后销毁 Runtime。
-尚未接入编辑场景与独立游戏播放场景的运行状态隔离。
+
+运行会话
+PlayMode 通过 ISceneManager::BeginPlaySession / EndPlaySession 协调运行，不访问 SceneDocument 私有实现。
+进入前脚本执行必须关闭；捕获当前内存中的全部场景，不重新读取磁盘文件，未保存编辑也参与运行。
+文档路径、原始磁盘哈希、保存基线、Undo/Redo 及稳定 FileID 分配状态随作者快照保留。
+完整验证并构建候选世界后才发布新活动场景；候选失败不会丢失原世界或编辑历史。
+运行期间拒绝作者属性/组件/结构编辑、Undo/Redo、保存和打开场景；运行节点事件不触发作者快照比较。
+HasUnsavedChanges 在运行期间返回进入前作者状态。脚本新增节点没有作者文件 ID，查询不会序列化运行世界。
+停止先由宿主释放脚本实例，再恢复作者快照；清理运行期间的全部场景，包括后来创建的其他场景。
+运行场景本身被删除、或运行数据暂时不满足源场景格式，也不会影响作者快照恢复。
+OnPlaySessionChanging 在旧世界仍可读取时触发；活动场景切换通知后清理旧世界，再触发 OnPlaySessionChanged。
+SelectionManager 保存作者 FileID / 资产身份，进入时映射到运行节点，停止后映射回恢复节点；不保留旧节点指针。

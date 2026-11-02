@@ -17,6 +17,8 @@ public:
     void OnAssetModify(const AssetEvent & event) override;
     void OnAssetRemove(const AssetEvent & event) override;
     void OnActiveSceneChanged() override;
+    void OnPlaySessionChanging(bool entering) override;
+    void OnPlaySessionChanged(bool active) override;
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent & event) override;
 private:
     bool Initialize(GameSproutEditor::GameSproutModuleApi * api) override;
@@ -33,5 +35,9 @@ private:
     uint64_t _NextListener = 0;
     std::vector<ProjectAssetSelection> _Selection;
     SceneObjectSelection _SceneSelection;
+    bool _PlaySelectionSaved=false;
+    bool _PlayObjectSelected=false;
+    uint64_t _PlayObjectFileID=0;
+    std::vector<ProjectAssetSelection> _PlayAssetSelection;
     std::map<uint64_t, ISelectionListener *> _Listeners;
 };

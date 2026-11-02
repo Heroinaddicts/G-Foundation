@@ -10,11 +10,19 @@ public:
     GameSproutRuntime::IScene* GetActiveScene() const override;
     const std::string& GetActiveScenePath() const override { return _ActivePath; }
     bool OpenScene(const std::string& path, std::string& error) override;
+    bool BeginPlaySession(std::string& error) override;
+    bool EndPlaySession(std::string& error) override;
+    bool IsPlaySessionActive() const override {return _PlaySession!=nullptr;}
     GameSproutRuntime::IGameObject* InstantiateModel(const GameSproutRuntime::ResourceReference& model,
         uint64_t parentID, std::string& error) override;
     bool EditObject(uint64_t objectID,const std::string& label,const fSceneEditOperation& apply,
                     const fSceneEditOperation& revert,std::string& error) override;
     bool DeleteObject(uint64_t objectID,std::string& error) override;
+    bool AddBuiltinComponent(uint64_t objectID,const std::string& typeName,std::string& error) override;
+    bool RemoveComponent(uint64_t objectID,const std::string& typeName,std::string& error) override;
+    bool AttachScriptComponent(uint64_t objectID,const std::string& typeID,
+        const GameSproutRuntime::ResourceReference& source,std::string& error) override;
+    bool RemoveScriptComponent(uint64_t objectID,uint64_t instanceID,std::string& error) override;
     uint64_t GetObjectFileID(uint64_t objectID) const override;
     GameSproutRuntime::IGameObject* QueryObjectByFileID(uint64_t fileID) const override;
     bool BeginTransformEdit(uint64_t objectID,const std::string& label,std::string& error) override;
@@ -24,8 +32,8 @@ public:
     bool HasTransformEdit() const override {return _TransformEdit.Active;}
     bool Undo(std::string& error) override;
     bool Redo(std::string& error) override;
-    bool CanUndo() const override {return _HistoryPosition>0;}
-    bool CanRedo() const override {return _HistoryPosition<_History.size();}
+    bool CanUndo() const override {return !IsPlaySessionActive()&&_HistoryPosition>0;}
+    bool CanRedo() const override {return !IsPlaySessionActive()&&_HistoryPosition<_History.size();}
     bool SaveScene(std::string& error) override;
     bool SaveSceneAs(const std::string& relativePath,std::string& error) override;
     bool HasUnsavedChanges() const override;
@@ -42,6 +50,7 @@ private:
     void NotifySceneChanged();
     void NotifyStateChanged();
     void NotifyListeners(bool active);
+    void NotifyPlaySession(bool changing,bool active);
     void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={});
     bool RestoreLastScene();
     void RememberActiveScene() const;
@@ -51,7 +60,7 @@ private:
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
     struct Edit {
-        enum class Kind {Property,Deletion,Creation};
+        enum class Kind {Property,Deletion,Creation,Component};
         Kind Type=Kind::Property;
         std::uint64_t FileID=0;
         std::string Label;
@@ -61,10 +70,27 @@ private:
         Json::Value AnimationBindings;
         uint64_t ParentFileID=0;
         std::size_t SiblingIndex=0;
+        Json::Value ComponentBefore,ComponentAfter;
+        std::size_t ComponentIndex=0;
+        bool ComponentWasMainCamera=false;
     };
+    struct PlaySession {
+        struct SceneSnapshot {Json::Value Document;SceneDocument::ObjectIDs IDs;};
+        std::vector<SceneSnapshot> Scenes;
+        std::size_t ActiveIndex=0;
+        std::string Path,BaselineText,DiskHash,LastStateText;
+        std::vector<Edit> History;
+        std::size_t HistoryPosition=0;
+        bool Unsaved=false;
+    };
+    PlaySession* _PlaySession=nullptr;
     bool RunEdit(const Edit& edit,bool forward,std::string& error);
     bool CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& edit,std::string& error) const;
     bool RunDeletion(const Edit& edit,bool forward,std::string& error);
+    bool RunComponentEdit(const Edit& edit,bool forward,std::string& error);
+    bool ChangeComponent(uint64_t objectID,const std::string& typeName,uint64_t scriptInstanceID,
+        const std::string& scriptTypeID,const GameSproutRuntime::ResourceReference& source,
+        bool adding,std::string& error);
     GameSproutRuntime::IGameObject* TransformTarget(bool checkParent) const;
     struct TransformEdit {
         bool Active=false;

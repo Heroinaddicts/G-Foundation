@@ -9,6 +9,10 @@ public:
     virtual void OnActiveSceneChanged() = 0;
     // 属性修改、撤销/重做或保存状态变化，不代表切换场景，不应清空选择。
     virtual void OnSceneStateChanged() {}
+    // 候选世界已经验证；Changing 回调仍可读取旧世界，Changed 回调读取新世界。
+    // 回调期间禁止场景事务重入；不要保留旧节点指针。
+    virtual void OnPlaySessionChanging(bool entering) {}
+    virtual void OnPlaySessionChanged(bool active) {}
 };
 
 struct SceneTransformState {
@@ -25,6 +29,11 @@ public:
     // 相对项目 Assets 的路径，未保存的默认场景返回空字符串。
     virtual const std::string& GetActiveScenePath() const = 0;
     virtual bool OpenScene(const std::string& relativePath, std::string& error) = 0;
+    // 主线程、Runtime 回调之外、脚本执行关闭时调用。捕获完整内存编辑会话，
+    // 运行使用重建的临时世界；停止恢复未保存内容、文件身份与编辑历史，不写 .scene。
+    virtual bool BeginPlaySession(std::string& error) {error="场景服务不支持运行会话。";return false;}
+    virtual bool EndPlaySession(std::string& error) {error="场景服务不支持运行会话。";return false;}
+    virtual bool IsPlaySessionActive() const {return false;}
     // Model instantiation is an editor transaction; View never reads FBX or builds bones.
     virtual GameSproutRuntime::IGameObject* InstantiateModel(const GameSproutRuntime::ResourceReference&,
         uint64_t, std::string& error) {error="当前场景服务不支持模型实例化。";return nullptr;}
@@ -36,6 +45,14 @@ public:
                             std::string& error) = 0;
     // 删除普通节点及完整子树；Undo仅重建被删子树，Runtime身份会改变。
     virtual bool DeleteObject(uint64_t, std::string& error) {error="当前场景服务不支持删除节点。";return false;}
+    // 结构变更由场景事务持有；不销毁对象或其余组件，支持保存和撤销/重做。
+    // typeName 使用 Runtime 公布的稳定类型名；Transform 固有且不可移除。
+    virtual bool AddBuiltinComponent(uint64_t, const std::string&, std::string& error) {error="当前场景服务不支持添加组件。";return false;}
+    virtual bool RemoveComponent(uint64_t, const std::string&, std::string& error) {error="当前场景服务不支持移除组件。";return false;}
+    virtual bool AttachScriptComponent(uint64_t, const std::string&, const GameSproutRuntime::ResourceReference&,
+                                       std::string& error) {error="当前场景服务不支持挂载脚本。";return false;}
+    // instanceID 为脚本挂载实例身份；同一对象可以挂载多个不同实例。
+    virtual bool RemoveScriptComponent(uint64_t, uint64_t, std::string& error) {error="当前场景服务不支持移除脚本。";return false;}
     // 稳定源文件身份，0表示当前场景根；无效Runtime身份同样返回0，调用方应先验证对象。
     virtual uint64_t GetObjectFileID(uint64_t) const {return 0;}
     virtual GameSproutRuntime::IGameObject* QueryObjectByFileID(uint64_t) const {return nullptr;}

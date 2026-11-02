@@ -80,19 +80,42 @@ void SelectionManager::OnAssetModify(const AssetEvent & event) {
     IAssetMeta * meta = _Assets->QueryAsset(event.GuidValue);
     if (!meta) return;
     const auto children = meta->GetSubAssets();
-    std::erase_if(selection, [&](const ProjectAssetSelection & item) {
+    const auto invalid=[&](const ProjectAssetSelection & item) {
         return item.GuidString == event.GuidValue.GetGuidString() && item.IsSubAsset
             && std::none_of(children.begin(), children.end(), [&](IAsset * child) { return child->GetLocalID() == item.LocalID; });
-    });
+    };
+    std::erase_if(selection,invalid);
+    std::erase_if(_PlayAssetSelection,invalid);
     SetAssetSelection(selection);
 }
 void SelectionManager::OnAssetRemove(const AssetEvent & event) {
     auto selection = _Selection;
     std::erase_if(selection, [&](const ProjectAssetSelection & item) { return item.GuidString == event.GuidValue.GetGuidString(); });
+    std::erase_if(_PlayAssetSelection, [&](const ProjectAssetSelection & item) { return item.GuidString == event.GuidValue.GetGuidString(); });
     SetAssetSelection(selection);
 }
 void SelectionManager::OnActiveSceneChanged() {
     SetSceneObjectSelection({});
+}
+void SelectionManager::OnPlaySessionChanging(bool entering) {
+    if(!entering||_PlaySelectionSaved) return;
+    _PlayAssetSelection=_Selection;
+    auto* scene=_Scenes?_Scenes->GetActiveScene():nullptr;
+    auto* object=scene&&_Runtime?_Runtime->QueryGameObject(_SceneSelection.ObjectID):nullptr;
+    _PlayObjectSelected=object&&object->GetScene()==scene;
+    _PlayObjectFileID=_PlayObjectSelected?_Scenes->GetObjectFileID(object->GetInstanceID()):0;
+    _PlaySelectionSaved=true;
+}
+void SelectionManager::OnPlaySessionChanged(bool active) {
+    if(!_PlaySelectionSaved||!_Scenes) return;
+    if(_PlayObjectSelected) {
+        auto* object=_Scenes->QueryObjectByFileID(_PlayObjectFileID);
+        auto* scene=_Scenes->GetActiveScene();
+        SetSceneObjectSelection(object&&scene?SceneObjectSelection{scene->GetInstanceID(),object->GetInstanceID()}:SceneObjectSelection{});
+    } else SetAssetSelection(_PlayAssetSelection);
+    if(!active) {
+        _PlaySelectionSaved=false;_PlayObjectSelected=false;_PlayObjectFileID=0;_PlayAssetSelection.clear();
+    }
 }
 void SelectionManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent & event) {
     if (event.Type == GameSproutRuntime::SceneNodeEventType::Destroy &&
@@ -113,5 +136,6 @@ void SelectionManager::Release(GameSproutEditor::GameSproutModuleApi *) {
     _Listeners.clear();
     _Selection.clear();
     _SceneSelection = {};
+    _PlaySelectionSaved=false;_PlayObjectSelected=false;_PlayObjectFileID=0;_PlayAssetSelection.clear();
     _Dirty = false;
 }

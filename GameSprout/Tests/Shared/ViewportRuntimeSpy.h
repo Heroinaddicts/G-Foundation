@@ -32,6 +32,18 @@ public:
     }
     void UnregisterListener(GameSproutRuntime::IRuntimeListener* listener) override{if(Real)Real->UnregisterListener(listener);else std::erase(Listeners,listener);}
     bool IsExecuting() const override{return Real&&Real->IsExecuting();}
+    bool BeginConstruction(std::string& error) override{
+        if(Real)return Real->BeginConstruction(error);
+        error.clear();return true;
+    }
+    bool EndConstruction(std::string& error) override{
+        if(Real)return Real->EndConstruction(error);
+        error.clear();return true;
+    }
+    bool EndFrame(std::string& error) override{
+        if(Real)return Real->EndFrame(error);
+        error.clear();return true;
+    }
     void SetResourceProvider(GameSproutRuntime::IRuntimeResourceProvider* resources) override{if(Real)Real->SetResourceProvider(resources);}
     GameSproutRuntime::IRuntimeResourceProvider* GetResourceProvider() const override{return Real?Real->GetResourceProvider():nullptr;}
     GameSproutRuntime::IGameObject* InstantiateModel(GameSproutRuntime::IScene* scene,const GameSproutRuntime::ResourceReference& reference,

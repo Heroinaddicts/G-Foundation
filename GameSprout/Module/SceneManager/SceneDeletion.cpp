@@ -18,6 +18,8 @@ uint64_t SceneManager::GetObjectFileID(uint64_t objectID) const {
     if(!scene||!object||object->GetScene()!=scene||object==scene)return 0;
     auto found=_ObjectIDs.RuntimeToFile.find(objectID);
     if(found!=_ObjectIDs.RuntimeToFile.end())return found->second;
+    // 运行时新建节点没有作者文件身份，不为查询临时对象重新序列化整个世界。
+    if(IsPlaySessionActive()) return 0;
     Json::Value document;std::string text,error;
     if(!Capture(document,text,error))return 0;
     found=_ObjectIDs.RuntimeToFile.find(objectID);

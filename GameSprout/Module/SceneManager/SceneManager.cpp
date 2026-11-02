@@ -63,6 +63,7 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _TransformEdit={};
     if(_RuntimeSubscribed && Runtime()) Runtime()->UnregisterListener(this);
     _RuntimeSubscribed=false;
+    delete _PlaySession;_PlaySession=nullptr;
     // The Editor application owns Runtime; this module releases only its own scene.
     if(auto* scene=GetActiveScene())Runtime()->DestroyScene(scene);
     _Project=nullptr;_Runtime=nullptr;_ActiveID=0;_ActivePath.clear();
@@ -110,6 +111,14 @@ void SceneManager::NotifyListeners(bool active) {
     _Notifying=false;
 }
 void SceneManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
+    if(_Switching) return;
+    if(IsPlaySessionActive()) {
+        // 运行节点事件仍由 Runtime 发给 Hierarchy/Inspector；不进入作者文档序列化。
+        if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
+            _ActiveID=0;_ObjectIDs={};NotifySceneChanged();
+        }
+        return;
+    }
     if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
         _TransformEdit={};
         _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_History.clear();_HistoryPosition=0;

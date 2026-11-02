@@ -1,5 +1,6 @@
 #include "SceneDocument.h"
 #include "SceneAnimationDocument.h"
+#include "SceneScriptDocument.h"
 
 #include <algorithm>
 #include <cmath>
@@ -19,6 +20,21 @@ constexpr std::size_t MaximumNameBytes = 1024;
 
 [[noreturn]] void Fail(const std::string& path, const std::string& reason) {
     throw std::runtime_error(path + ": " + reason);
+}
+// Roll back candidate objects before releasing the assembly barrier. Releasing
+// it first could initialize a scene whose properties/references are incomplete.
+void FinishConstructionRollback(GameSproutRuntime::IGameSproutRuntime& runtime,
+                                bool& constructionOpen,std::string& error) {
+    if(!constructionOpen)return;
+    constructionOpen=false;
+    try {
+        std::string cleanup;
+        if(!runtime.EndConstruction(cleanup)) {
+            error+="; construction rollback could not finish";
+            if(!cleanup.empty())error+=": "+cleanup;
+        }
+    } catch(const std::exception& exception) {error+="; construction rollback failed: "+std::string(exception.what());}
+    catch(...) {error+="; construction rollback failed";}
 }
 void Members(const Json::Value& value, const std::string& path, std::initializer_list<const char*> allowed) {
     if (!value.isObject()) Fail(path,"expected object");
@@ -102,7 +118,8 @@ Interface* Component(GameSproutRuntime::IGameObject* object, const std::string& 
 }
 
 // object=nullptr 为纯校验；有对象时执行已经校验过的设置。所有可选字段均使用 API 默认值。
-void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* object, const std::string& path) {
+void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* object, const std::string& path,
+                   GameSproutRuntime::IGameSproutRuntime* runtime=nullptr) {
     if (!value.isObject() || !value["Type"].isString()) Fail(path,"component requires Type string");
     const std::string type=value["Type"].asString();
     if (type=="GameSproutRuntime.Transform") {
@@ -226,6 +243,12 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             Fail(path+".Settings","invalid camera projection parameters");
         if (object && !Component<GameSproutRuntime::ICameraComponent>(object,path)->SetSettings(settings))
             Fail(path,"Runtime rejected camera settings");
+    } else if(type=="GameSproutRuntime.ScriptComponent") {
+        SceneScriptDocument::Validate(value,path);
+        if(object) {
+            if(!runtime)Fail(path,"script restoration requires Runtime");
+            SceneScriptDocument::Create(value,*object,*runtime);
+        }
     } else Fail(path+".Type","unknown component: "+type);
 }
 
@@ -264,8 +287,9 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
             const std::string path="Scene.RootComponents["+std::to_string(c)+"]";
             ComponentData(component,nullptr,path);
             const std::string type=component["Type"].asString();
-            if(SceneAnimationDocument::Handles(type))Fail(path,"animation components require a regular object, not the scene root");
-            if (!types.insert(type).second) Fail(path,"duplicate component type");
+            if(SceneAnimationDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/script components require a regular object, not the scene root");
+            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):type;
+            if (!types.insert(identity).second) Fail(path,"duplicate component identity");
             rootCamera=rootCamera || type=="GameSproutRuntime.Camera";
             if (type=="GameSproutRuntime.Transform") {
                 const auto p=Vector3Member(component,"Position",{},path);
@@ -302,7 +326,11 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
             const std::string componentPath=path+".Components["+std::to_string(c)+"]";
             ComponentData(component,nullptr,componentPath);
             const std::string type=component["Type"].asString();
-            if (!types.insert(type).second) Fail(componentPath+".Type","duplicate component type");
+            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):type;
+            if (!types.insert(identity).second) Fail(componentPath+".Type","duplicate component identity");
+            if(type=="GameSproutRuntime.ScriptComponent" &&
+                !types.insert("ScriptType:"+component["ScriptTypeID"].asString()).second)
+                Fail(componentPath+".ScriptTypeID","only one component of the same script type is allowed on an object");
             node.Camera=node.Camera || type=="GameSproutRuntime.Camera";
         }
         plan.Nodes.push_back(std::move(node));
@@ -355,6 +383,88 @@ Json::Value Array(std::initializer_list<float> values) {
 }
 
 namespace SceneDocument {
+bool RestoreComponent(const Json::Value& data,GameSproutRuntime::IGameObject& object,
+                      GameSproutRuntime::IGameSproutRuntime& runtime,std::string& error) {
+    error.clear();
+    if(runtime.IsExecuting()) {error="Cannot restore a component inside a Runtime callback";return false;}
+    const auto objectID=object.GetInstanceID();
+    if(runtime.QueryGameObject(objectID)!=&object) {error="Component owner is not a live Runtime object";return false;}
+    bool constructionOpen=false,changed=false;
+    Json::Value previous;
+    std::string type;
+    std::uint64_t scriptID=0,previousAnimatorID=0;
+    std::vector<GameSproutRuntime::AnimationNodeBinding> previousBindings;
+    const auto find=[&]()->GameSproutRuntime::IComponent* {
+        for(std::size_t index=0;index<object.GetComponentCount();++index) {
+            auto* component=object.GetComponentAt(index);
+            if(!component||!component->GetTypeName()||type!=component->GetTypeName())continue;
+            if(type=="GameSproutRuntime.ScriptComponent") {
+                const auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(component);
+                if(!script||script->GetScriptInstanceID()!=scriptID)continue;
+            }
+            return component;
+        }
+        return nullptr;
+    };
+    try {
+        ComponentData(data,nullptr,"Component");
+        type=data["Type"].asString();
+        if(type=="GameSproutRuntime.ScriptComponent")scriptID=data["InstanceID"].asUInt64();
+        if(auto* existing=find()) {
+            ObjectIDs snapshotIDs;
+            if(const auto* animator=dynamic_cast<GameSproutRuntime::IAnimatorComponent*>(existing)) {
+                previousBindings=animator->GetNodeBindings();
+                for(const auto& binding:previousBindings)if(binding.ObjectID)
+                    snapshotIDs.RuntimeToFile.emplace(binding.ObjectID,binding.ObjectID);
+            } else if(const auto* skin=dynamic_cast<GameSproutRuntime::ISkinnedMeshRendererComponent*>(existing)) {
+                previousAnimatorID=skin->GetAnimatorObjectID();
+                if(previousAnimatorID)snapshotIDs.RuntimeToFile.emplace(previousAnimatorID,previousAnimatorID);
+            }
+            previous=SerializeComponent(*existing,snapshotIDs);
+        }
+        if(!runtime.BeginConstruction(error))return false;
+        constructionOpen=true;changed=true;
+        ComponentData(data,&object,"Component",&runtime);
+        constructionOpen=false;
+        if(!runtime.EndConstruction(error))Fail("Component",error.empty()?"Runtime could not finish component initialization":error);
+        if(runtime.QueryGameObject(objectID)!=&object||!find())Fail("Component","Restored component was destroyed during initialization");
+        return true;
+    } catch(const std::exception& exception) {error=exception.what();}
+    catch(...) {error="Unexpected component restoration failure";}
+    if(changed&&runtime.QueryGameObject(objectID)==&object) {
+        // EndConstruction also closes a failed commit. Reopen only for rollback
+        // so recreating/restoring authored fields cannot initialize halfway.
+        if(!constructionOpen) {
+            std::string cleanup;
+            try {
+                constructionOpen=runtime.BeginConstruction(cleanup);
+                if(!constructionOpen)error+="; component rollback could not begin: "+cleanup;
+            } catch(...) {error+="; component rollback could not begin";}
+        }
+        try {
+            auto* current=find();
+            if(previous.isNull()) {
+                std::string cleanup;
+                if(current && !(type=="GameSproutRuntime.ScriptComponent"?
+                    runtime.RemoveScriptComponent(&object,scriptID,cleanup):runtime.RemoveBuiltinComponent(&object,type,cleanup)))
+                    error+="; component rollback failed: "+cleanup;
+            } else if(type!="GameSproutRuntime.ScriptComponent") {
+                // Script restoration only creates a new wrapper; an existing
+                // wrapper is rejected before its fields can be modified.
+                ComponentData(previous,&object,"Component.Rollback",&runtime);
+                current=find();
+                if(auto* animator=dynamic_cast<GameSproutRuntime::IAnimatorComponent*>(current)) {
+                    if(!animator->SetNodeBindings(previousBindings))Fail("Component.Rollback","Runtime rejected original animation bindings");
+                } else if(auto* skin=dynamic_cast<GameSproutRuntime::ISkinnedMeshRendererComponent*>(current)) {
+                    if(!skin->SetAnimatorObjectID(previousAnimatorID))Fail("Component.Rollback","Runtime rejected original Animator reference");
+                }
+            }
+        } catch(const std::exception& exception) {error+="; component rollback failed: "+std::string(exception.what());}
+        catch(...) {error+="; component rollback failed";}
+    }
+    FinishConstructionRollback(runtime,constructionOpen,error);
+    return false;
+}
 Json::Value CreateDefault(const std::string& name) {
     Json::Value result(Json::objectValue);
     result["Version"]=Json::UInt(1); result["Name"]=name; result["MainCameraID"]=Json::UInt64(1);
@@ -399,6 +509,8 @@ bool ValidateSubtree(const Json::Value& document,std::string& error) {
 bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRuntime& runtime,
                  GameSproutRuntime::IScene*& output, ObjectIDs& ids, std::string& error) {
     GameSproutRuntime::IScene* candidate=nullptr;
+    std::uint64_t candidateID=0;
+    bool constructionOpen=false;
     error.clear();
     if (runtime.IsExecuting()) {
         error="Scene: Runtime is executing an update, render, traversal or event callback; synchronous scene loading is not allowed";
@@ -406,8 +518,11 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
     }
     try {
         const Plan plan=ValidatePlan(document);
+        if(!runtime.BeginConstruction(error))return false;
+        constructionOpen=true;
         candidate=runtime.CreateScene(plan.Name);
         if (!candidate) Fail("Scene","Runtime could not create scene");
+        candidateID=candidate->GetInstanceID();
         std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
         ObjectIDs candidateIDs;
         candidateIDs.Next=plan.Next;
@@ -422,14 +537,19 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
             if (node.ParentID && !objects.at(node.ParentID)->AddChild(objects.at(node.ID),false))
                 Fail("Object "+std::to_string(node.ID),"Runtime rejected parent relationship");
         }
+        // Source identities are values; Runtime alone resolves them to native
+        // pointers once the complete assembly is ready for script callbacks.
+        std::vector<GameSproutRuntime::SceneObjectIdentity> identities{{candidate->GetInstanceID(),0}};
+        for(const auto& node:plan.Nodes)identities.push_back({objects.at(node.ID)->GetInstanceID(),node.ID});
+        if(!runtime.BindSceneObjectIdentities(candidate,identities,error))Fail("Scene.Identity",error);
         for (const auto& node:plan.Nodes) {
             auto* object=objects.at(node.ID);
             for (Json::ArrayIndex c=0;c<node.Components->size();++c)
-                ComponentData((*node.Components)[c],object,"Object "+std::to_string(node.ID)+".Components["+std::to_string(c)+"]");
+                ComponentData((*node.Components)[c],object,"Object "+std::to_string(node.ID)+".Components["+std::to_string(c)+"]",&runtime);
             object->SetActive(node.Active);
         }
         if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
-            ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]");
+            ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]",&runtime);
         SceneAnimationDocument::Bind(document,*candidate,objects);
         candidate->SetActive(plan.RootActive);
         for (const auto& node:plan.Nodes) {
@@ -439,6 +559,9 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         auto* camera=plan.RootMainCamera?candidate->GetComponent<GameSproutRuntime::ICameraComponent>():
             plan.CameraID?objects.at(plan.CameraID)->GetComponent<GameSproutRuntime::ICameraComponent>():nullptr;
         if (!candidate->SetMainCamera(camera)) Fail("Scene.MainCameraID","Runtime rejected main camera");
+        constructionOpen=false;
+        if(!runtime.EndConstruction(error))Fail("Scene",error.empty()?"Runtime could not finish scene initialization":error);
+        if(runtime.QueryGameObject(candidateID)!=candidate)Fail("Scene","Scene was destroyed during initialization");
         ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.Next=candidateIDs.Next;
         output=candidate;
         return true;
@@ -447,11 +570,12 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
     } catch (...) {
         error="Scene: unexpected instantiation failure";
     }
-    if (candidate) {
+    if (candidate && runtime.QueryGameObject(candidateID)==candidate) {
         try {
             if (!runtime.DestroyScene(candidate)) error+="; candidate scene rollback was rejected";
         } catch (...) { error+="; candidate scene rollback failed"; }
     }
+    FinishConstructionRollback(runtime,constructionOpen,error);
     return false;
 }
 
@@ -464,6 +588,8 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
         error="Subtree parent must be a live object in the target scene";return false;
     }
     std::vector<std::uint64_t> created;
+    bool constructionOpen=false;
+    const auto sceneID=scene.GetInstanceID();
     const auto previousCamera=scene.GetMainCamera()?scene.GetMainCamera()->GetGameObject()->GetInstanceID():0;
     try {
         const Plan plan=ValidatePlan(document,false);
@@ -489,6 +615,8 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
         for (const auto& entry:candidateIDs.RuntimeToFile)
             if(auto* existing=runtime.QueryGameObject(entry.first))objects.emplace(entry.second,existing);
         created.reserve(plan.Nodes.size());
+        if(!runtime.BeginConstruction(error))return false;
+        constructionOpen=true;
         for(const auto& node:plan.Nodes) {
             auto* object=scene.CreateGameObject(node.Name);
             if(!object)Fail("Subtree","Runtime could not create object");
@@ -500,10 +628,13 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             auto* owner=node.ParentID?objects.at(node.ParentID):&parent;
             if(!owner->AddChild(objects.at(node.ID),false))Fail("Subtree","Runtime rejected restored parent");
         }
+        std::vector<GameSproutRuntime::SceneObjectIdentity> identities;
+        for(const auto& node:plan.Nodes)identities.push_back({objects.at(node.ID)->GetInstanceID(),node.ID});
+        if(!runtime.BindSceneObjectIdentities(&scene,identities,error))Fail("Subtree.Identity",error);
         for(const auto& node:plan.Nodes) {
             auto* object=objects.at(node.ID);
             for(Json::ArrayIndex index=0;index<node.Components->size();++index)
-                ComponentData((*node.Components)[index],object,"Subtree.Components");
+                ComponentData((*node.Components)[index],object,"Subtree.Components",&runtime);
             object->SetActive(node.Active);
         }
         SceneAnimationDocument::Bind(document,scene,objects);
@@ -513,15 +644,25 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             Fail("Subtree","Runtime rejected restored main camera");
         Json::Value verified;
         if(!Serialize(scene,candidateIDs,verified,error))throw std::runtime_error(error);
+        const auto restoredID=restored->GetInstanceID();
+        constructionOpen=false;
+        if(!runtime.EndConstruction(error))Fail("Subtree",error.empty()?"Runtime could not finish subtree initialization":error);
+        if(runtime.QueryGameObject(restoredID)!=restored)Fail("Subtree","Restored root was destroyed during initialization");
         ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.Next=candidateIDs.Next;output=restored;return true;
     } catch(const std::exception& exception) {error=exception.what();}
     catch(...) {error="Unexpected subtree restoration failure";}
-    for(const auto id:created) if(auto* object=runtime.QueryGameObject(id)) {
-        try {if(!scene.DestroyGameObject(object))error+="; subtree rollback rejected";}
-        catch(...) {error+="; subtree rollback failed";}
+    if(runtime.QueryGameObject(sceneID)==&scene) {
+        for(const auto id:created) if(auto* object=runtime.QueryGameObject(id)) {
+            try {if(!scene.DestroyGameObject(object))error+="; subtree rollback rejected";}
+            catch(...) {error+="; subtree rollback failed";}
+        }
+        auto* previous=previousCamera?runtime.QueryGameObject(previousCamera):nullptr;
+        try {
+            if(!scene.SetMainCamera(previous?previous->GetComponent<GameSproutRuntime::ICameraComponent>():nullptr))
+                error+="; main camera rollback rejected";
+        } catch(...) {error+="; main camera rollback failed";}
     }
-    auto* previous=previousCamera?runtime.QueryGameObject(previousCamera):nullptr;
-    scene.SetMainCamera(previous?previous->GetComponent<GameSproutRuntime::ICameraComponent>():nullptr);
+    FinishConstructionRollback(runtime,constructionOpen,error);
     return false;
 }
 }

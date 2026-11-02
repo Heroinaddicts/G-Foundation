@@ -24,6 +24,10 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
 bool Serialize(GameSproutRuntime::IScene& scene, ObjectIDs& ids,
                Json::Value& output, std::string& error);
 bool Validate(const Json::Value& document, std::string& error);
+// 单组件快照用于编辑事务。调用者负责在完整场景中校验跨对象引用。
+Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const ObjectIDs& ids);
+bool RestoreComponent(const Json::Value& data, GameSproutRuntime::IGameObject& object,
+                      GameSproutRuntime::IGameSproutRuntime& runtime, std::string& error);
 // Subtrees can reference surviving nodes outside the subtree; full restore validates the merged scene.
 bool ValidateSubtree(const Json::Value& document, std::string& error);
 // document仅含一个根的子树，根ParentID=0；原位加入同一场景，不重建现有节点。

@@ -88,6 +88,10 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 #include "SceneRootMotionEditingChecks.h"
 #include "SceneClipPreviewChecks.h"
 #include "SceneSessionChecks.h"
+#include "SceneComponentChecks.h"
+#include "SceneScriptReferenceChecks.h"
+#include "ScenePlaySessionChecks.h"
+#include "ScenePlaySelectionChecks.h"
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
@@ -195,6 +199,10 @@ int main(int argc,char** argv) {
         CheckAnimationSceneDeletion(manager,api,root);
         CheckRootMotionEditing(manager,root,editor._Runtime);
         CheckDirectClipPreview(manager,api,root,editor.Host,editor.Preview,editor._Runtime);
+        CheckComponentTransactions(manager,root,editor._Runtime);
+        CheckScriptReferences(manager,root,editor._Runtime);
+        CheckPlaySceneSession(manager,api,root,editor._Runtime);
+        CheckPlaySceneSelection(manager,api,editor._Runtime);
         manager.UnregisterSceneListener(&listener);
         auto* retainedRuntime=editor._Runtime;
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Preview,api);
