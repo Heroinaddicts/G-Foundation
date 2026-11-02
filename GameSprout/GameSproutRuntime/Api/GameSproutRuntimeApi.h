@@ -53,17 +53,6 @@ namespace GameSproutRuntime {
         virtual ~IComponent() {}
         IComponent(IGameObject * const gameObject) : _GameObject(gameObject) {}
 
-        // 生命周期仅由 Runtime 调用：登记归属后 OnCreate 一次，销毁前 OnRelease 一次。
-        // OnInitialized 在本批节点、组件、属性及引用装配完成、结构修改提交后调用一次。
-        // 它保证同批组件的数据可访问，不保证其他组件已执行自己的 OnInitialized。
-        // 尚未初始化成功的组件不会进入 Update / FixedUpdate；资源引用就绪不等于 GPU 上传完成。
-        // 回调中请求的结构修改与销毁延迟至当前回调/遍历结束，不直接 delete。
-        virtual void OnCreate(IGameSproutRuntime * const runtime) {}
-        virtual void OnInitialized(IGameSproutRuntime * const runtime) {}
-        virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
-        virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
-        virtual void OnRelease(IGameSproutRuntime * const runtime) {}
-
         // 返回注册的接口类型，不返回 ImageComponent 等内部实现类的类型。
         virtual const std::type_info& GetComponentType() const = 0;
         // 场景序列化使用稳定标识，例如 GameSproutRuntime.Image；不能保存 RTTI/hash_code。
@@ -76,6 +65,19 @@ namespace GameSproutRuntime {
         IGameObject * const _GameObject;
         IComponent(const IComponent&) = delete;
         IComponent& operator=(const IComponent&) = delete;
+
+    protected:
+        // 生命周期仅由 Runtime 调用：登记归属后 OnCreate 一次，销毁前 OnRelease 一次。
+        // OnInitialized 在本批节点、组件、属性及引用装配完成、结构修改提交后调用一次。
+        // 它保证同批组件的数据可访问，不保证其他组件已执行自己的 OnInitialized。
+        // 尚未初始化成功的组件不会进入 Update / FixedUpdate；资源引用就绪不等于 GPU 上传完成。
+        // 回调中请求的结构修改与销毁延迟至当前回调/遍历结束，不直接 delete。
+        virtual void OnCreate(IGameSproutRuntime * const runtime) {}
+        virtual void OnInitialized(IGameSproutRuntime * const runtime) {}
+        virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
+        virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
+        virtual void OnRelease(IGameSproutRuntime * const runtime) {}
+
     private:
         std::uint64_t _ComponentInstanceID = 0;
         friend class GameObjectState;
@@ -193,6 +195,11 @@ namespace GameSproutRuntime {
         std::uint64_t FileID = 0; // Stable within this scene document; root is 0.
     };
 
+    struct SceneComponentIdentity {
+        IComponent* Component = nullptr;
+        std::uint64_t FileID = 0; // Document-wide nonzero FileID, distinct from lifetime ID.
+    };
+
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScene : public IGameObject {
     public:
         virtual ~IScene() {}
@@ -215,6 +222,9 @@ namespace GameSproutRuntime {
             error="Scene object identities are unavailable";return false;
         }
         // Atomic publication; validation failure leaves every identity unchanged.
+        virtual bool SetComponentIdentities(const std::vector<SceneComponentIdentity>&, std::string& error) {
+            error="Scene component identities are unavailable";return false;
+        }
         virtual bool BindObjectIdentities(const std::vector<SceneObjectIdentity>&, std::string& error) {
             error="Scene object identities are unavailable";return false;
         }
@@ -349,6 +359,15 @@ namespace GameSproutRuntime {
         virtual bool OnRootMotion(const RootMotionNotification&) { return false; }
     };
 
+    // Host-thread subscription to one live object's value changes. Runtime stores
+    // identities only; unregister before destroying the observer. Delivery is at
+    // a safe boundary under IsExecuting(), so edits must wait until it returns.
+    class IRuntimePropertyObserver {
+    public:
+        virtual ~IRuntimePropertyObserver() = default;
+        virtual void OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) = 0;
+    };
+
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameSproutRuntime {
     public:
         virtual ~IGameSproutRuntime() = default;
@@ -362,6 +381,11 @@ namespace GameSproutRuntime {
         virtual std::size_t GetSceneCount() const = 0;
         virtual IScene* GetScene(std::size_t index) const = 0;
         virtual IGameObject* QueryGameObject(std::uint64_t instanceID) const = 0;
+        virtual bool RegisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) {return false;}
+        virtual void UnregisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) {}
+        // Synchronize changed physics configuration/poses without time integration,
+        // script callbacks, or collision/trigger delivery. Call outside Runtime work.
+        virtual bool SynchronizePhysics(std::string& error) {error="Physics synchronization is unavailable";return false;}
         virtual const RuntimeProjectSettings& GetProjectSettings() const = 0;
         // Host-thread safe point. Validate and replace all definitions atomically; reject deletion
         // of a Tag still referenced by any live node, including inactive/detached nodes.
@@ -391,6 +415,13 @@ namespace GameSproutRuntime {
         virtual bool BindSceneObjectIdentities(IScene*, const std::vector<SceneObjectIdentity>&, std::string& error) {
             error="Scene object identities are unavailable";return false;
         }
+        // Complete scene snapshot; atomically replaces all previous component bindings.
+        virtual bool SetSceneComponentIdentities(IScene*, const std::vector<SceneComponentIdentity>&, std::string& error) {
+            error="Scene component identities are unavailable";return false;
+        }
+        virtual IComponent* QuerySceneComponentByFileID(const IScene*, std::uint64_t) const {return nullptr;}
+        virtual bool GetSceneComponentFileID(const IComponent*, std::uint64_t&) const {return false;}
+        virtual bool IsComponentType(const IComponent*, const std::string&) const {return false;}
         virtual IScriptComponent* AddScriptComponent(IGameObject*, const std::string& typeID,
             const ResourceReference& source, std::uint64_t instanceID, std::string& error);
         virtual bool RemoveScriptComponent(IGameObject*, std::uint64_t instanceID, std::string& error);

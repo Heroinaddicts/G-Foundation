@@ -30,10 +30,34 @@ friction is not claimed or silently approximated.
 
 Runtime validates positive, orthogonal TRS transforms. Box colliders accept
 nonuniform positive scale; Sphere/Capsule currently require uniform world scale.
-Shear, singular/negative scale and freezing all six degrees of freedom are
-reported as unsupported instead of being sent to Jolt assertions. Physics poses
+Shear and singular/negative scale are reported as unsupported. Locking all six
+degrees of freedom uses a zero-velocity kinematic carrier inside Jolt, while the
+public body retains its configured motion type and collision/trigger semantics.
+The carrier rejects accumulated motion from forces and velocities; unlocking
+restores the configured dynamic/kinematic behavior. Physics poses
 are separate from authoring values and reset when gameplay ends. Mesh cooking,
 joints, character controllers and ragdolls are not implemented in this version.
+
+The Runtime SDK exposes each supported Rigidbody setting through
+`IRigidbodyComponent`: enabled state, motion type, mass, gravity factor, linear
+and angular damping, continuous collision detection and constraints. Individual
+setters preserve unrelated settings and return `false` on invalid input, just
+like the atomic `GetSettings` / `SetSettings` transaction. For example:
+
+```cpp
+body->SetMass(2.0f);
+body->SetPositionFrozen(GameSproutRuntime::PhysicsAxis::X, true);
+body->SetRotationFrozen(GameSproutRuntime::PhysicsAxis::Z, true);
+body->SetConstraints(GameSproutRuntime::PhysicsConstraint::FreezeAll);
+body->SetConstraints(GameSproutRuntime::PhysicsConstraint::None);
+```
+
+Constraints use world axes. FreezeAll preserves Rigidbody ownership and contact
+subscriptions, consumes force/impulse commands without storing them, and keeps
+linear/angular velocity at zero. Unlocking starts without accumulated movement;
+new commands then work normally. Explicit teleport remains available. Settings
+reach the backend at the next fixed step or the host's zero-time
+`SynchronizePhysics` safe point; changing a property never runs an extra game tick.
 
 For standalone backend checks:
 

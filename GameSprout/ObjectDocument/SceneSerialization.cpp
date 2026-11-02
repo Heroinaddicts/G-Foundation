@@ -175,6 +175,9 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
         for(const auto& entry:ordered)
             identities.push_back({entry.Object->GetInstanceID(),next.RuntimeToFile.at(entry.Object->GetInstanceID())});
         if(!scene.BindObjectIdentities(identities,error))return false;
+        std::vector<GameSproutRuntime::SceneComponentIdentity> componentIdentities;
+        for(auto* component:components)componentIdentities.push_back({component,next.FindComponentFileID(component)});
+        if(!scene.SetComponentIdentities(componentIdentities,error))return false;
         output.swap(document);ids.RuntimeToFile.swap(next.RuntimeToFile);ids.SwapComponentIdentities(next);ids.Next=next.Next;
         return true;
     } catch (const std::exception& exception) {error=exception.what();}

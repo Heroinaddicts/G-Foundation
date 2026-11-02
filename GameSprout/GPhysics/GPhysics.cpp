@@ -171,12 +171,16 @@ struct World::Impl final : public JPH::ContactListener {
     bool Allowed(const Shape *a, const Shape *b) const {
         return a && b && (a->Mask & (1u << b->Layer)) && (b->Mask & (1u << a->Layer));
     }
+    bool SemanticDynamic(const JPH::Body &body) const {
+        const auto found = Bodies.find(body.GetUserData());
+        return found != Bodies.end() && found->second.Settings.Motion == MotionType::Dynamic;
+    }
     JPH::ValidateResult OnContactValidate(const JPH::Body &a, const JPH::Body &b, JPH::RVec3Arg,
                                           const JPH::CollideShapeResult &hit) override {
         const Shape *first = FindShape(a, hit.mSubShapeID1), *second = FindShape(b, hit.mSubShapeID2);
         if (!Allowed(first, second))
             return JPH::ValidateResult::RejectContact;
-        if (!a.IsDynamic() && !b.IsDynamic() && !first->Trigger && !second->Trigger)
+        if (!SemanticDynamic(a) && !SemanticDynamic(b) && !first->Trigger && !second->Trigger)
             return JPH::ValidateResult::RejectContact;
         return JPH::ValidateResult::AcceptContact;
     }
@@ -266,11 +270,11 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
     error.clear();
     if (!_Impl || !settings.Key || !ValidPose(settings.Transform) || !std::isfinite(settings.Mass) ||
         settings.Mass <= 0 || !Finite(settings.LinearVelocity) || !Finite(settings.AngularVelocity) ||
-        !settings.AllowedDOFs || (settings.AllowedDOFs & ~0x3fu) || settings.Motion > MotionType::Kinematic ||
+        (settings.AllowedDOFs & ~0x3fu) || settings.Motion > MotionType::Kinematic ||
         !std::isfinite(settings.GravityFactor) || !std::isfinite(settings.LinearDamping) ||
         settings.LinearDamping < 0 || !std::isfinite(settings.AngularDamping) ||
         settings.AngularDamping < 0) {
-        error = "Invalid physics body settings (at least one degree of freedom is required)";
+        error = "Invalid physics body settings";
         return false;
     }
     JPH::StaticCompoundShapeSettings compound;
@@ -337,7 +341,12 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
         error = shape.GetError().c_str();
         return false;
     }
+    // Jolt cannot create a dynamic body with zero inverse mass and inertia.
+    // A fully locked body therefore uses an immovable kinematic carrier; the
+    // public settings retain their original motion type for callback semantics.
+    const bool frozen = settings.AllowedDOFs == 0;
     const JPH::EMotionType motion = settings.Motion == MotionType::Static      ? JPH::EMotionType::Static
+                                    : frozen                               ? JPH::EMotionType::Kinematic
                                     : settings.Motion == MotionType::Kinematic ? JPH::EMotionType::Kinematic
                                                                                : JPH::EMotionType::Dynamic;
     JPH::BodyCreationSettings description(shape.Get(), JPH::RVec3(Vector(settings.Transform.Position)),
@@ -346,17 +355,18 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
                                           : motion == JPH::EMotionType::Static ? 0
                                                                                : 1);
     description.mUserData = settings.Key;
-    description.mLinearVelocity = Vector(settings.LinearVelocity);
-    description.mAngularVelocity = Vector(settings.AngularVelocity);
+    description.mLinearVelocity = frozen ? JPH::Vec3::sZero() : Vector(settings.LinearVelocity);
+    description.mAngularVelocity = frozen ? JPH::Vec3::sZero() : Vector(settings.AngularVelocity);
     description.mGravityFactor = settings.GravityFactor;
     description.mLinearDamping = settings.LinearDamping;
     description.mAngularDamping = settings.AngularDamping;
     description.mMotionQuality =
         settings.Continuous ? JPH::EMotionQuality::LinearCast : JPH::EMotionQuality::Discrete;
-    description.mAllowSleeping = settings.AllowSleeping;
+    // Keep the locked carrier available for contacts with static geometry too.
+    description.mAllowSleeping = !frozen && settings.AllowSleeping;
     description.mUseManifoldReduction = false;
     description.mCollideKinematicVsNonDynamic = true;
-    description.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(settings.AllowedDOFs);
+    description.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(frozen ? 0x3fu : settings.AllowedDOFs);
     if (settings.Shapes.empty()) {
         description.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
         description.mMassPropertiesOverride.mMass = settings.Mass;
@@ -417,7 +427,7 @@ bool World::SetPose(uint64_t key, const Pose &value, bool kinematic, float delta
     if (found == _Impl->Bodies.end())
         return false;
     auto &api = _Impl->Physics.GetBodyInterface();
-    if (kinematic && deltaSeconds > 0)
+    if (kinematic && deltaSeconds > 0 && found->second.Settings.AllowedDOFs != 0)
         api.MoveKinematic(found->second.ID, JPH::RVec3(Vector(value.Position)), Rotation(value.Rotation),
                           deltaSeconds);
     else
@@ -431,6 +441,10 @@ bool World::SetVelocity(uint64_t key, Vector3 linear, Vector3 angular) {
     const auto found = _Impl->Bodies.find(key);
     if (found == _Impl->Bodies.end() || found->second.Settings.Motion == MotionType::Static)
         return false;
+    if (found->second.Settings.AllowedDOFs == 0) {
+        linear = {};
+        angular = {};
+    }
     _Impl->Physics.GetBodyInterface().SetLinearAndAngularVelocity(found->second.ID, Vector(linear),
                                                                   Vector(angular));
     _Impl->Physics.GetBodyInterface().ActivateBody(found->second.ID);
@@ -442,6 +456,8 @@ bool World::AddForce(uint64_t key, Vector3 value, bool impulse) {
     const auto found = _Impl->Bodies.find(key);
     if (found == _Impl->Bodies.end() || found->second.Settings.Motion != MotionType::Dynamic)
         return false;
+    if (found->second.Settings.AllowedDOFs == 0)
+        return true;
     if (value.X == 0 && value.Y == 0 && value.Z == 0)
         return true;
     auto &api = _Impl->Physics.GetBodyInterface();
@@ -457,6 +473,8 @@ bool World::AddTorque(uint64_t key, Vector3 value, bool impulse) {
     const auto found = _Impl->Bodies.find(key);
     if (found == _Impl->Bodies.end() || found->second.Settings.Motion != MotionType::Dynamic)
         return false;
+    if (found->second.Settings.AllowedDOFs == 0)
+        return true;
     if (value.X == 0 && value.Y == 0 && value.Z == 0)
         return true;
     auto &api = _Impl->Physics.GetBodyInterface();

@@ -46,6 +46,8 @@ struct BodySettings {
     Pose Transform;
     Vector3 LinearVelocity, AngularVelocity;
     float Mass = 1, GravityFactor = 1, LinearDamping = 0.05f, AngularDamping = 0.05f;
+    // Translation XYZ then rotation XYZ. Zero locks all motion while preserving
+    // this body's public motion type and collision/trigger participation.
     uint8_t AllowedDOFs = 0x3f;
     bool Continuous = false, AllowSleeping = true;
     std::vector<Shape> Shapes;

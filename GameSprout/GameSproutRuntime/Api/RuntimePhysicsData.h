@@ -17,9 +17,14 @@ struct PhysicsMaterialData {
 enum class PhysicsMotionType : std::uint8_t { Dynamic, Kinematic };
 enum class PhysicsAxis : std::uint8_t { X, Y, Z };
 enum class PhysicsConstraint : std::uint32_t {
+    None=0,
     FreezePositionX=1u, FreezePositionY=2u, FreezePositionZ=4u,
-    FreezeRotationX=8u, FreezeRotationY=16u, FreezeRotationZ=32u
+    FreezeRotationX=8u, FreezeRotationY=16u, FreezeRotationZ=32u,
+    FreezePosition=7u, FreezeRotation=56u, FreezeAll=63u
 };
+constexpr PhysicsConstraint operator|(PhysicsConstraint left,PhysicsConstraint right) {
+    return static_cast<PhysicsConstraint>(static_cast<std::uint32_t>(left)|static_cast<std::uint32_t>(right));
+}
 struct RigidbodySettings {
     bool Enabled = true;
     PhysicsMotionType MotionType = PhysicsMotionType::Dynamic;

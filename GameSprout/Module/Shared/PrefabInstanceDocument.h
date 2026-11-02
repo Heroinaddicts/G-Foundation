@@ -74,13 +74,8 @@ inline std::vector<PrefabDefinition::Patch> EffectivePatches(const Json::Value& 
         auto found=nodes.find(patch.ObjectID);if(found==nodes.end())continue;
         Json::Value target=found->second;
         if(patch.ComponentID){auto components=PrefabDefinition::Objects(target["Components"]);auto component=components.find(patch.ComponentID);if(component==components.end())continue;target=component->second;}
-        bool valid=true;
-        for(const auto& part:patch.Path) {
-            if(target.isObject()&&target.isMember(part))target=target[part];
-            else if(target.isArray()) {const auto index=static_cast<Json::ArrayIndex>(std::stoul(part));if(index<target.size())target=target[index];else{valid=false;break;}}
-            else{valid=false;break;}
-        }
-        if(valid&&PrefabDefinition::Equivalent(target,patch.After))patches.push_back(std::move(patch));
+        const auto* currentValue=PrefabDefinition::FindPath(target,patch.Path);
+        if(currentValue&&PrefabDefinition::Equivalent(*currentValue,patch.After))patches.push_back(std::move(patch));
     }
     return patches;
 }

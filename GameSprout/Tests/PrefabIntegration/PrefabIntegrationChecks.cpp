@@ -331,8 +331,9 @@ public:
 };
 static GameSproutRuntime::ScriptFieldRegistration SchemaField(const std::string& id,GameSproutRuntime::ScriptValue value) {
     GameSproutRuntime::ScriptFieldRegistration field;field.Info.ID=id;field.Info.Name=id;field.Info.Default=value;
-    field.Write=[](GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,std::string& error){error.clear();return true;};
-    field.Read=[value](const GameSproutRuntime::IScript&,GameSproutRuntime::ScriptValue& output,std::string& error){output=value;error.clear();return true;};return field;
+    field.Write=[](GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string& error){error.clear();return true;};
+    field.Read=[value](const GameSproutRuntime::IScript&,GameSproutRuntime::ScriptValue& output,const GameSproutRuntime::ScriptReferenceContext&,std::string& error){output=value;error.clear();return true;};
+    field.Validate=[](const auto&,const auto&,std::string& error){error.clear();return true;};return field;
 }
 static void CheckScriptSchemaOverrides(TestProject& project,TestAssets& assets,TestLibrary& library,ISceneManager& scenes,
     IPrefabManager& prefabs,GameSproutRuntime::IGameSproutRuntime& runtime) {

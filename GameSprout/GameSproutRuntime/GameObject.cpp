@@ -17,6 +17,7 @@ void GameObjectState::ReleaseComponents() noexcept {
     Destroying = true;
     while (!Components.empty()) {
         IComponent* component=Components.back().Pointer;
+        try {Owner.InvalidateScriptComponentReferences(component);}catch(...) {}
         Components.pop_back();
         try { component->OnRelease(&Owner); } catch (...) {}
         delete component;
@@ -209,6 +210,7 @@ bool GameObjectState::RemoveComponentNow(IComponent* component,std::uint64_t ser
     if (found==Components.end()) return false;
     if(SceneOwner && component->GetComponentType()==typeid(ICameraComponent)) SceneOwner->ClearMainCameraForNode(ID);
     Owner.Notify(*this,SceneNodeEventType::ComponentRemoved,component->GetTypeName());
+    Owner.InvalidateScriptComponentReferences(component);
     // 从查询中移除后再执行释放回调，避免释放阶段再次取到正在销毁的组件。
     Components.erase(found);
     try { component->OnRelease(&Owner); } catch (...) {}
@@ -219,6 +221,12 @@ void NotifyComponentChanged(IGameObject* owner,IComponent* component) {
     if (auto* access=dynamic_cast<ObjectAccess*>(owner)) {
         auto& state=access->State();
         if (state.Owner.IsUsable(&state)) state.Owner.Notify(state,SceneNodeEventType::ComponentChanged,component->GetTypeName());
+    }
+}
+void NotifyRuntimePropertiesChanged(IGameObject* owner) {
+    if(auto* access=dynamic_cast<ObjectAccess*>(owner)) {
+        auto& state=access->State();
+        if(state.Owner.IsInScene(&state))state.Owner.MarkObjectPropertiesChanged(state.ID);
     }
 }
 }

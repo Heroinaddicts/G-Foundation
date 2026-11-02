@@ -1,7 +1,6 @@
 #include "SceneScriptDocument.h"
 #include "RuntimeScriptFieldValues.h"
-#include <cmath>
-#include <limits>
+#include "ScriptValueDocument.h"
 #include <stdexcept>
 
 namespace {
@@ -49,71 +48,11 @@ Json::Value Reference(const GameSproutRuntime::ResourceReference& value) {
     Json::Value data(Json::objectValue);data["Guid"]=value.Guid;data["LocalID"]=Json::UInt64(value.LocalID);
     Reference(data,"Script.Resource");return data;
 }
-double Number(const Json::Value& value,const std::string& path) {
-    if(!value.isNumeric()||!std::isfinite(value.asDouble()))Reject(path,"expected finite number");
-    return value.asDouble();
-}
 GameSproutRuntime::ScriptValue Value(const Json::Value& data,const std::string& path) {
-    Members(data,path,{"Kind","Value"});
-    if(!data.isMember("Value"))Reject(path,"missing field value");
-    const auto kind=Text(data["Kind"],path+".Kind",32);
-    const auto& value=data["Value"];
-    GameSproutRuntime::ScriptValue result;
-    if(kind=="Boolean") {
-        if(!value.isBool())Reject(path,"expected boolean");
-        result.Kind=GameSproutRuntime::ScriptValueKind::Boolean;result.Boolean=value.asBool();
-    } else if(kind=="Integer") {
-        if((value.type()!=Json::intValue&&value.type()!=Json::uintValue)||!value.isInt64())Reject(path,"expected signed 64-bit integer");
-        result.Kind=GameSproutRuntime::ScriptValueKind::Integer;result.Integer=value.asInt64();
-    } else if(kind=="Number") {
-        result.Kind=GameSproutRuntime::ScriptValueKind::Number;result.Number=Number(value,path);
-    } else if(kind=="String") {
-        result.Kind=GameSproutRuntime::ScriptValueKind::String;result.String=Text(value,path,1024*1024,true);
-    } else if(kind=="Vector3") {
-        if(!value.isArray()||value.size()!=3)Reject(path,"expected three float components");
-        float numbers[3];
-        for(Json::ArrayIndex i=0;i<3;++i) {
-            const auto number=Number(value[i],path);
-            if(std::fabs(number)>std::numeric_limits<float>::max())Reject(path,"vector component exceeds float range");
-            numbers[i]=static_cast<float>(number);
-        }
-        result.Kind=GameSproutRuntime::ScriptValueKind::Vector3;result.Vector={numbers[0],numbers[1],numbers[2]};
-    } else if(kind=="Resource") {
-        result.Kind=GameSproutRuntime::ScriptValueKind::Resource;result.Resource=Reference(value,path);
-    } else if(kind=="SceneObject") {
-        result.Kind=GameSproutRuntime::ScriptValueKind::SceneObject;
-        if(!value.isNull()) {
-            Members(value,path+".Value",{"ObjectFileID"});
-            const auto& id=value["ObjectFileID"];
-            if((id.type()!=Json::intValue&&id.type()!=Json::uintValue)||!id.isUInt64())
-                Reject(path,"expected an unsigned scene object file ID");
-            result.SceneObject={true,id.asUInt64()};
-        }
-    } else Reject(path,"unknown script value kind");
-    return result;
+    return ScriptValueDocument::Parse(data,path);
 }
 Json::Value Value(const GameSproutRuntime::ScriptValue& value) {
-    Json::Value data(Json::objectValue);
-    switch(value.Kind) {
-    case GameSproutRuntime::ScriptValueKind::Boolean:data["Kind"]="Boolean";data["Value"]=value.Boolean;break;
-    case GameSproutRuntime::ScriptValueKind::Integer:data["Kind"]="Integer";data["Value"]=Json::Int64(value.Integer);break;
-    case GameSproutRuntime::ScriptValueKind::Number:data["Kind"]="Number";data["Value"]=value.Number;break;
-    case GameSproutRuntime::ScriptValueKind::String:data["Kind"]="String";data["Value"]=value.String;break;
-    case GameSproutRuntime::ScriptValueKind::Vector3:
-        data["Kind"]="Vector3";data["Value"]=Json::Value(Json::arrayValue);
-        data["Value"].append(value.Vector.X);data["Value"].append(value.Vector.Y);data["Value"].append(value.Vector.Z);break;
-    case GameSproutRuntime::ScriptValueKind::Resource:data["Kind"]="Resource";data["Value"]=Reference(value.Resource);break;
-    case GameSproutRuntime::ScriptValueKind::SceneObject:
-        data["Kind"]="SceneObject";
-        if(value.SceneObject.Assigned)data["Value"]["ObjectFileID"]=Json::UInt64(value.SceneObject.ObjectFileID);
-        else {
-            if(value.SceneObject.ObjectFileID)Reject("Script.Fields","unassigned object reference has a file ID");
-            data["Value"]=Json::Value();
-        }
-        break;
-    default:Reject("Script.Fields","invalid script value kind");
-    }
-    Value(data,"Script.Fields");return data;
+    return ScriptValueDocument::Serialize(value);
 }
 }
 

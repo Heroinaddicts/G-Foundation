@@ -33,7 +33,7 @@ int main() {
         Check(second->SetShape({{2,3,4}}),"Cannot set second collider shape");
         auto settings=second->GetColliderSettings();settings.IsTrigger=true;settings.Center={1,2,3};settings.Rotation={0.1f,0.2f,0.3f,0.9f};second->GetGameObject()->SetLayer(2);
         Check(second->SetColliderSettings(settings),"Cannot set second collider surface");
-        auto rigid=body->GetSettings();rigid.MotionType=GameSproutRuntime::PhysicsMotionType::Kinematic;rigid.Mass=7;
+        auto rigid=body->GetSettings();rigid.MotionType=GameSproutRuntime::PhysicsMotionType::Kinematic;rigid.Mass=7;rigid.Constraints=63;
         Check(body->SetSettings(rigid),"Cannot set body");
         SceneDocument::ObjectIDs ids;Json::Value document;std::string error;
         Check(SceneDocument::Serialize(*scene,ids,document,error),error);
@@ -44,6 +44,8 @@ int main() {
         auto* restoredObject=restored->GetChild(0);auto colliders=restoredObject->GetComponents<GameSproutRuntime::IBoxColliderComponent>();
         Check(colliders.size()==2&&restoredIDs.FindComponentFileID(colliders[0])==firstFile&&restoredIDs.FindComponentFileID(colliders[1])==secondFile,"Roundtrip lost repeated collider identity or order");
         Check(colliders[1]->GetShape().Size.Y==3&&colliders[1]->GetColliderSettings().IsTrigger&&colliders[1]->GetColliderSettings().Center.Z==3,"Roundtrip lost physical component settings");
+        Check(restoredObject->GetComponent<GameSproutRuntime::IRigidbodyComponent>()->GetConstraints()==63,
+              "Roundtrip lost FreezeAll constraints");
         Json::Value again;Check(SceneDocument::Serialize(*restored,restoredIDs,again,error)&&again==document,"Physical document roundtrip changed current data");
         for(int i=0;i<24;++i)Check(restoredObject->AddComponent<GameSproutRuntime::IBoxColliderComponent>()!=nullptr,"Cannot create repeated Collider beyond old 16-component limit");
         Check(SceneDocument::Serialize(*restored,restoredIDs,again,error),"Repeated Colliders cannot be saved beyond old 16-component limit: "+error);
@@ -56,8 +58,8 @@ int main() {
         Check(restoredIDs.FindComponentFileID(replacement)!=removedFile,"Direct Runtime remove/add reused old document identity");
         auto invalid=document;for(auto& component:invalid["Objects"][0]["Components"])if(component["Type"]=="GameSproutRuntime.CapsuleCollider")component["Shape"]["Height"]=0.01;
         Check(!SceneDocument::Validate(invalid,error),"Invalid capsule geometry accepted");
-        invalid=document;for(auto& component:invalid["Objects"][0]["Components"])if(component["Type"]=="GameSproutRuntime.Rigidbody")component["Settings"]["Constraints"]=63;
-        Check(!SceneDocument::Validate(invalid,error),"All-frozen unsupported body accepted");
+        invalid=document;for(auto& component:invalid["Objects"][0]["Components"])if(component["Type"]=="GameSproutRuntime.Rigidbody")component["Settings"]["Constraints"]=64;
+        Check(!SceneDocument::Validate(invalid,error),"Unknown Rigidbody constraint bit accepted");
         invalid=document;for(auto& component:invalid["Objects"][0]["Components"])
             if(component["Type"]=="GameSproutRuntime.BoxCollider")component["Settings"]["CollisionMask"]=16;
         Check(!SceneDocument::Validate(invalid,error),"Removed per-Collider collision mask accepted");

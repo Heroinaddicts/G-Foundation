@@ -139,8 +139,22 @@ bool Runtime::InitializePendingComponents(std::string& error,bool allowScripts) 
                 prepared.push_back(record);
                 ready.push_back(record);
             }
-            // All peers in the batch have their native instances and authored
-            // fields before any of their OnCreate callbacks can query them.
+            // Constructors for every peer finish before resolving component
+            // references. A later peer can be the target of an earlier script.
+            for(const auto& record:prepared) {
+                auto* entry=resolve(record);if(!entry||!eligible(*entry))continue;
+                auto* script=dynamic_cast<ScriptComponent*>(entry->Pointer);if(!script)continue;
+                bool success=false;std::string message;
+                {
+                    RuntimeOperation operation(*this);
+                    success=script->ApplyPreparedFields();
+                    if(!success)message=script->GetScriptError();
+                }
+                if(!success)fail(record,message.empty()?"Cannot restore native script fields":message);
+            }
+            if(!error.empty())break;
+            RefreshScriptObjectReferences();
+            // Every reference is restored before the first OnCreate callback.
             for(const auto& record:prepared) {
                 if(_ConstructionDepth) break;
                 auto* entry=resolve(record);

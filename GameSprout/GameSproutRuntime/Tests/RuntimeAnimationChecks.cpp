@@ -45,6 +45,11 @@ public:
 class Events final : public GameSproutRuntime::IRuntimeListener {
 public:int Changes=0;void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& e)override{if(e.Type==GameSproutRuntime::SceneNodeEventType::ComponentChanged)++Changes;}
 };
+class PoseObserver final : public GameSproutRuntime::IRuntimePropertyObserver {
+public:
+    unsigned Changes=0;
+    void OnRuntimeObjectPropertiesChanged(std::uint64_t,std::uint64_t) override {++Changes;}
+};
 struct Character{GameSproutRuntime::IGameObject* Root;GameSproutRuntime::IGameObject* Bone;GameSproutRuntime::IAnimatorComponent* Animator;};
 static Character Create(GameSproutRuntime::IScene& scene){
     Character c;c.Root=scene.CreateGameObject("Character");auto* importedRoot=scene.CreateGameObject("Root",c.Root);c.Bone=scene.CreateGameObject("Bone",importedRoot);
@@ -57,6 +62,8 @@ int main(int argc,char** argv){
     Resources resources;runtime->SetResourceProvider(&resources);
     try{
         auto* scene=runtime->CreateScene("Animation");auto first=Create(*scene),second=Create(*scene);
+        PoseObserver observer;
+        Check(runtime->RegisterObjectPropertyObserver(first.Bone->GetInstanceID(),&observer),"Cannot observe animated bone properties");
         Check(first.Animator->Play("Idle",.5f),first.Animator->GetLastError());
         Check(second.Animator->Play("Idle",.2f),second.Animator->GetLastError());
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),5),"Pose interpolation is incorrect");
@@ -64,13 +71,17 @@ int main(int argc,char** argv){
         Check(Near(first.Bone->GetTransform()->GetLocalPosition().X,0),"Animation overwrote authoring TRS");
         Check(resources.SkeletonLoads==1&&resources.ControllerLoads==1,"Immutable resources were not shared");
         Events events;runtime->RegisterListener(&events);runtime->Update(0);events.Changes=0;
+        Check(observer.Changes==1,"Animated pose did not push selected-object changes");observer.Changes=0;
         first.Animator->Pause();runtime->Update(.1f);
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),5)&&Near(second.Bone->GetTransform()->GetWorldMatrix()(0,3),3),"Pause or instance isolation failed");
         Check(events.Changes==0,"Animation evaluation emitted authoring change events");
+        Check(observer.Changes==0,"Unchanged paused bone emitted live property changes");
         Check(!first.Animator->SetBool("Speed",true),"Parameter type mismatch was accepted");
         Check(first.Animator->SetInt("Index",2)&&first.Animator->SetBool("Flag",true),"Typed parameters failed");
         Check(first.Animator->CrossFade("Run",.2f),first.Animator->GetLastError());runtime->Update(.1f);
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),8.5f),"CrossFade did not sample both advancing clips");
+        Check(observer.Changes==1,"CrossFade pose change did not notify the selected bone");
+        runtime->UnregisterObjectPropertyObserver(first.Bone->GetInstanceID(),&observer);
         Check(first.Animator->CrossFade("Jump",.2f),first.Animator->GetLastError());runtime->Update(0);
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),8.5f),"Interrupted crossfade discarded the mixed pose");
         runtime->Update(.2f);Check(first.Animator->GetPlaybackState().CurrentState=="Jump","CrossFade completion failed");

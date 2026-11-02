@@ -44,6 +44,7 @@ bool Runtime::BindSceneObjectIdentities(IScene* scene,const std::vector<SceneObj
         if(!IsInScene(node) || node->SceneOwner!=scene) {error="Object belongs to another scene";return false;}
         if(node->IsSceneRoot()!=(identity.FileID==0)) {error="FileID 0 is reserved for the scene root";return false;}
         const auto key=std::make_pair(root->ID,identity.FileID);
+        if(_SceneComponentIDs.contains(key)){error="Object FileID collides with a component";return false;}
         const auto collision=byFile.find(key);
         if(collision!=byFile.end() && collision->second!=node->ID) {error="Scene FileID is already bound";return false;}
         const auto previous=byObject.find(node->ID);
@@ -72,7 +73,8 @@ IGameObject* Runtime::QuerySceneObjectByFileID(const IScene* scene,std::uint64_t
 
 bool Runtime::GetSceneObjectFileID(const IGameObject* object,std::uint64_t& fileID) const {
     auto* node=Find(const_cast<IGameObject*>(object));
-    if(!IsInScene(node)) return false;
+    // Bound identity remains readable during destruction so fixups retain Missing IDs.
+    if(!node||!node->SceneOwner) return false;
     const auto found=_ObjectFileIDs.find(node->ID);
     if(found==_ObjectFileIDs.end() || found->second.SceneID!=node->SceneOwner->GetInstanceID()) return false;
     fileID=found->second.FileID;return true;

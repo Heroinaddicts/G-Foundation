@@ -326,6 +326,25 @@ void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject&
         ids.BindComponentFileID(component,id);
     }
 }
+// Publish once after every component exists, before any native script callback.
+// Existing scene bindings are retained when a Prefab adds another subtree.
+void PublishComponentIdentities(GameSproutRuntime::IScene& scene,const SceneDocument::ObjectIDs& ids,
+    GameSproutRuntime::IGameSproutRuntime& runtime) {
+    std::vector<GameSproutRuntime::SceneComponentIdentity> identities;
+    std::vector<GameSproutRuntime::IGameObject*> pending{&scene};
+    while(!pending.empty()) {
+        auto* object=pending.back();pending.pop_back();
+        for(std::size_t index=0;index<object->GetComponentCount();++index) {
+            auto* component=object->GetComponentAt(index);
+            auto fileID=ids.FindComponentFileID(component);
+            if(!fileID)runtime.GetSceneComponentFileID(component,fileID);
+            if(fileID)identities.push_back({component,fileID});
+        }
+        for(std::size_t index=0;index<object->GetChildCount();++index)pending.push_back(object->GetChild(index));
+    }
+    std::string error;
+    if(!runtime.SetSceneComponentIdentities(&scene,identities,error))Fail("Component.Identity",error);
+}
 Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     Members(document,"Scene",{"Version","Name","RootActive","RootLayer","RootTagID","RootStaticFlags","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations"});
     if(document.isMember("Annotations")&&!document["Annotations"].isObject())Fail("Scene.Annotations","expected object");
@@ -668,6 +687,7 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
             ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]",&runtime);
         ComponentIdentities(plan.RootComponents,*candidate,candidateIDs);
         for(const auto& node:plan.Nodes)ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs);
+        PublishComponentIdentities(*candidate,candidateIDs,runtime);
         SceneAnimationDocument::Bind(document,*candidate,objects);
         if(!candidate->SetLayer(plan.RootLayer)||!candidate->SetTagID(plan.RootTagID))
             Fail("Scene.TagLayer","Runtime rejected root Layer or undefined TagID");
@@ -722,6 +742,8 @@ bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSprou
             auto* object=pending.back();pending.pop_back();
             if(++count>MaximumObjects+1)Fail("Prefab","target scene is oversized");
             std::uint64_t id=0;if(runtime.GetSceneObjectFileID(object,id))maximum=std::max(maximum,id);
+            for(std::size_t index=0;index<object->GetComponentCount();++index)
+                if(runtime.GetSceneComponentFileID(object->GetComponentAt(index),id))maximum=std::max(maximum,id);
             for(std::size_t index=0;index<object->GetChildCount();++index)pending.push_back(object->GetChild(index));
         }
         if(count-1+sourcePlan.Nodes.size()>MaximumObjects)Fail("Prefab","combined scene exceeds object limit");
@@ -768,6 +790,8 @@ bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSprou
             result.push_back({node.ID,object->GetInstanceID()});
         }
         if(!runtime.BindSceneObjectIdentities(&scene,identities,error))Fail("Prefab.Identity",error);
+        ObjectIDs prefabIDs;
+        prefabIDs.Next=translated["NextObjectID"].asUInt64();
         for(const auto& node:plan.Nodes) {
             auto* object=objects.at(node.ID);
             for(const auto& component:*node.Components)ComponentData(component,object,"Prefab.Component",&runtime);
@@ -775,7 +799,9 @@ bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSprou
                 Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
             if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
+            ComponentIdentities(node.Components,*object,prefabIDs);
         }
+        PublishComponentIdentities(scene,prefabIDs,runtime);
         SceneAnimationDocument::Bind(translated,scene,objects);
         for(const auto& node:plan.Nodes)for(float value:objects.at(node.ID)->GetTransform()->GetWorldMatrix().Data)
             if(!std::isfinite(value))Fail("Prefab.Transform","world transform overflows");
@@ -857,6 +883,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             object->SetActive(node.Active);
             ComponentIdentities(node.Components,*object,candidateIDs);
         }
+        PublishComponentIdentities(scene,candidateIDs,runtime);
         SceneAnimationDocument::Bind(document,scene,objects);
         auto* restored=objects.at(root->ID);
         if(!restored->SetSiblingIndex(siblingIndex))Fail("Subtree","Runtime rejected restored sibling order");

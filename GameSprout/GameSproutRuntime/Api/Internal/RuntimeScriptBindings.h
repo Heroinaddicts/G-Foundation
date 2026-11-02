@@ -2,6 +2,7 @@
 // Compiler-generated bindings and host integration only. Gameplay sources use
 // RuntimeScriptModule.h and GAMESPROUT_SCRIPT(Type).
 #include "../RuntimeScriptModule.h"
+#include "ScriptNativeValues.h"
 #include <cmath>
 #include <limits>
 #include <iterator>
@@ -17,70 +18,38 @@
 #endif
 
 namespace GameSproutRuntime::Internal {
-template<typename T> ScriptValue ScriptValueOf(const T& value) {
-    ScriptValue result;
-    if constexpr (std::is_same_v<T,bool>) { result.Kind=ScriptValueKind::Boolean; result.Boolean=value; }
-    else if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) { result.Kind=ScriptValueKind::Integer; result.Integer=value; }
-    else if constexpr (std::is_floating_point_v<T>) { result.Kind=ScriptValueKind::Number; result.Number=value; }
-    else if constexpr (std::is_same_v<T,std::string>) { result.Kind=ScriptValueKind::String; result.String=value; }
-    else if constexpr (std::is_same_v<T,Vector3>) { result.Kind=ScriptValueKind::Vector3; result.Vector=value; }
-    else if constexpr (std::is_same_v<T,ResourceReference>) { result.Kind=ScriptValueKind::Resource; result.Resource=value; }
-    else if constexpr (std::is_same_v<T,IGameObject*>) {
-        if(value)throw std::invalid_argument("Serialized object reference defaults must be null");
-        result.Kind=ScriptValueKind::SceneObject;
-    }
-    else static_assert(!sizeof(T),"Unsupported script field type");
-    return result;
+template<typename T> ScriptValue ScriptValueOf(const T& input) {
+    ScriptValue value;std::string error;
+    if(!ReadNativeValue(input,value,{},error))throw std::invalid_argument(error);
+    return value;
 }
 template<typename T> bool ReadScriptValue(const ScriptValue& value,T& output,std::string& error) {
-    if constexpr (std::is_same_v<T,IGameObject*>) {
-        error="Object references require Runtime identity resolution";return false;
-    }
-    if(value.Kind!=ScriptValueOf(T{}).Kind) {error="Script field value has the wrong kind";return false;}
-    if constexpr (std::is_same_v<T,bool>) output=value.Boolean;
-    else if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
-        if(value.Integer<std::numeric_limits<T>::min()||value.Integer>std::numeric_limits<T>::max()) {error="Integer is out of range";return false;}
-        output=static_cast<T>(value.Integer);
-    } else if constexpr (std::is_floating_point_v<T>) {
-        if(!std::isfinite(value.Number)||std::fabs(value.Number)>std::numeric_limits<T>::max()) {error="Number is not finite or out of range";return false;}
-        output=static_cast<T>(value.Number);
-    } else if constexpr (std::is_same_v<T,std::string>) output=value.String;
-    else if constexpr (std::is_same_v<T,Vector3>) {
-        if(!std::isfinite(value.Vector.X)||!std::isfinite(value.Vector.Y)||!std::isfinite(value.Vector.Z)) {error="Vector is not finite";return false;}
-        output=value.Vector;
-    } else if constexpr (std::is_same_v<T,ResourceReference>) output=value.Resource;
-    error.clear();return true;
+    return WriteNativeValue(output,value,{},error);
+}
+template<typename C,typename T>
+ScriptFieldRegistration MakeField(const std::string& id,const std::string& name,T C::* member,ScriptFieldInfo schema) {
+    ScriptFieldRegistration result;schema.ID=id;schema.Name=name;result.Info=std::move(schema);
+    result.Write=[member](IScript& instance,const ScriptValue& value,const ScriptReferenceContext& context,std::string& error) {
+        C* object=dynamic_cast<C*>(&instance);
+        if(!object){error="Script field instance type mismatch";return false;}
+        return WriteNativeValue(object->*member,value,context,error);
+    };
+    result.Read=[member](const IScript& instance,ScriptValue& value,const ScriptReferenceContext& context,std::string& error) {
+        const C* object=dynamic_cast<const C*>(&instance);
+        if(!object){error="Script field instance type mismatch";return false;}
+        return ReadNativeValue(object->*member,value,context,error);
+    };
+    result.Validate=[](const ScriptValue& value,const ScriptReferenceContext& context,std::string& error) {
+        return ValidateNativeValue<T>(value,context,error);
+    };
+    return result;
 }
 template<typename C,typename T>
 ScriptFieldRegistration MakeField(const std::string& id,const std::string& name,T C::* member,
     const std::type_identity_t<T>& defaultValue,ScriptResourceKind resourceKind=ScriptResourceKind::Any,
     const std::string& declaringType={}) {
-    ScriptFieldRegistration result;
-    result.Info={id,name,ScriptValueOf(defaultValue),resourceKind};
-    result.Info.DeclaringType=declaringType;
-    if constexpr (std::is_same_v<T,IGameObject*>) {
-        result.WriteObject=[member](IScript& instance,IGameObject* target,std::string& error) {
-            C* object=dynamic_cast<C*>(&instance);
-            if(!object) {error="Script field instance type mismatch";return false;}
-            object->*member=target;error.clear();return true;
-        };
-        result.ReadObject=[member](const IScript& instance)->IGameObject* {
-            const C* object=dynamic_cast<const C*>(&instance);
-            return object?object->*member:nullptr;
-        };
-    } else {
-    result.Write=[member](IScript& instance,const ScriptValue& value,std::string& error) {
-        C* object=dynamic_cast<C*>(&instance);
-        if(!object) {error="Script field instance type mismatch";return false;}
-        return ReadScriptValue(value,object->*member,error);
-    };
-    result.Read=[member](const IScript& instance,ScriptValue& value,std::string& error) {
-        const C* object=dynamic_cast<const C*>(&instance);
-        if(!object) {error="Script field instance type mismatch";return false;}
-        value=ScriptValueOf(object->*member);error.clear();return true;
-    };
-    }
-    return result;
+    ScriptFieldInfo schema;schema.Default=ScriptValueOf(defaultValue);schema.ResourceKind=resourceKind;schema.DeclaringType=declaringType;
+    return MakeField<C>(id,name,member,std::move(schema));
 }
 // Hidden visibility is essential: each loaded project library owns its own
 // collector; inline symbols must not be interposed by another loaded library.

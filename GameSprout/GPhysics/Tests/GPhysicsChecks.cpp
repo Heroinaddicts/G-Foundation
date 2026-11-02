@@ -66,8 +66,8 @@ void World() {
     sticky.Shapes[0].Surface.FrictionCombine = GPhysics::CombineMode::Maximum;
     Check(world.PutBody(sticky, error), error);
     auto invalid = slippery;
-    invalid.AllowedDOFs = 0;
-    Check(!world.PutBody(invalid, error) && !error.empty(), "Backend accepted unsupported freeze-all DOFs");
+    invalid.AllowedDOFs = 64;
+    Check(!world.PutBody(invalid, error) && !error.empty(), "Backend accepted unknown DOF bits");
     GPhysics::BodyState original;
     Check(world.GetBodyState(2, original) && original.Transform.Position.X == -4,
           "Invalid replacement destroyed the original body");
@@ -87,11 +87,44 @@ void World() {
               std::isfinite(stopped.Transform.Position.Y) && std::isfinite(stopped.LinearVelocity.X),
           "Finite large friction produced a NaN/Inf simulation state");
 }
+void FreezeAll() {
+    std::string error;GPhysics::World world;Check(world.Initialize(error),error);
+    GPhysics::BodySettings frozen;frozen.Key=1;frozen.Motion=GPhysics::MotionType::Dynamic;
+    frozen.AllowedDOFs=0;frozen.Transform.Position={0,3,0};frozen.LinearVelocity={10,20,30};
+    frozen.AngularVelocity={1,2,3};GPhysics::Shape shape;shape.Collider=1;frozen.Shapes={shape};
+    Check(world.PutBody(frozen,error),error);
+    GPhysics::BodySettings fixed;fixed.Key=2;fixed.Transform.Position={0,3,0.9f};
+    fixed.Shapes={shape};fixed.Shapes[0].Collider=2;Check(world.PutBody(fixed,error),error);
+    Check(world.SetVelocity(1,{50,60,70},{2,3,4})&&world.AddForce(1,{10000,0,0},false)&&
+          world.AddForce(1,{10000,0,0},true)&&world.AddTorque(1,{10000,0,0},false),
+          "Fully frozen semantic dynamic body rejected finite commands");
+    unsigned enters=0;std::vector<GPhysics::Contact> contacts;
+    for(unsigned i=0;i<60;++i) {
+        Check(world.Step(1.f/60,contacts,error),error);
+        for(const auto& contact:contacts)if(contact.State==GPhysics::Contact::Phase::Enter&&!contact.Trigger)++enters;
+    }
+    GPhysics::BodyState state;
+    Check(world.GetBodyState(1,state)&&state.Transform==frozen.Transform&&
+          state.LinearVelocity==GPhysics::Vector3{}&&state.AngularVelocity==GPhysics::Vector3{}&&enters==1,
+          "FreezeAll moved, retained velocity or lost semantic dynamic/static collision callbacks");
+    auto invalid=frozen;invalid.AllowedDOFs=64;
+    Check(!world.PutBody(invalid,error)&&world.GetBodyState(1,state)&&state.Transform==frozen.Transform,
+          "Invalid replacement damaged a frozen body");
+    world.RemoveBody(2);frozen.AllowedDOFs=63;frozen.LinearVelocity={};frozen.AngularVelocity={};frozen.GravityFactor=0;
+    Check(world.PutBody(frozen,error),error);
+    for(unsigned i=0;i<10;++i)Check(world.Step(1.f/60,contacts,error),error);
+    Check(world.GetBodyState(1,state)&&state.Transform.Position==frozen.Transform.Position,
+          "Unlock replayed force or velocity from the frozen interval");
+    Check(world.AddForce(1,{1,0,0},true),"Unlocked dynamic body rejected a new impulse");
+    for(unsigned i=0;i<30;++i)Check(world.Step(1.f/60,contacts,error),error);
+    Check(world.GetBodyState(1,state)&&state.Transform.Position.X>0.4f,"Unlock did not restore dynamic motion");
+}
 } // namespace
 int main() {
     try {
         Materials();
         World();
+        FreezeAll();
         std::cout << "PASS material combine priority/numeric limits and actual Jolt friction simulation\n";
         return 0;
     } catch (const std::exception &error) {

@@ -1,5 +1,6 @@
 #include "RuntimeRenderer.h"
 #include "RuntimeMath.h"
+#include "Resources/BuiltinMeshes.h"
 #include <cmath>
 #include <bit>
 #include <cstring>
@@ -115,7 +116,9 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
     auto [position,inserted]=_Meshes.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
-            if(_Resources.LoadMesh(reference,entry.Data,entry.Error) && ValidateMesh(entry.Data,entry.Error)) {
+            const bool loaded=IsBuiltinResource(reference)?BuiltinMeshes::Load(reference,entry.Data,entry.Error):
+                _Resources.LoadMesh(reference,entry.Data,entry.Error);
+            if(loaded && ValidateMesh(entry.Data,entry.Error)) {
                 // 仅在载入/修订变化时解包一次；GPU 上传后丢弃交错原始字节，保留紧密拾取数据。
                 entry.Positions.reserve(entry.Data.VertexCount);
                 for(std::uint32_t vertex=0;vertex<entry.Data.VertexCount;++vertex) {

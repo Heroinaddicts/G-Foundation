@@ -1,29 +1,35 @@
 #include "ScriptComponent.h"
 #include "../GameObject.h"
+#include "../Api/RuntimeScriptFieldValues.h"
 #include <algorithm>
 #include <cmath>
 #include <exception>
 
 namespace GameSproutRuntime {
-namespace {
-bool Valid(const ScriptValue& value) {
-    if(value.Kind==ScriptValueKind::Number) return std::isfinite(value.Number);
-    if(value.Kind==ScriptValueKind::Vector3) return std::isfinite(value.Vector.X)&&std::isfinite(value.Vector.Y)&&std::isfinite(value.Vector.Z);
-    if(value.Kind==ScriptValueKind::SceneObject) return value.SceneObject.Assigned || value.SceneObject.ObjectFileID==0;
-    return value.Kind>=ScriptValueKind::Boolean&&value.Kind<=ScriptValueKind::SceneObject;
-}
-}
 ScriptComponent::ScriptComponent(Runtime& runtime,IGameObject* owner,std::string type,ResourceReference source,std::uint64_t id)
     :IScriptComponent(owner),_Runtime(runtime),_TypeID(std::move(type)),_Source(std::move(source)),_InstanceID(id) {BindDefaults();}
 ScriptComponent::~ScriptComponent() {Stop();}
-ScriptComponent::InvocationScope::InvocationScope(ScriptComponent& owner)
-    :Owner(owner),Previous(owner._Runtime.ExchangeInvokingScript(&owner)) {++Owner._InvocationDepth;}
+ScriptComponent::InvocationScope::InvocationScope(ScriptComponent& owner,bool captureChanges)
+    :Owner(owner),Previous(owner._Runtime.ExchangeInvokingScript(&owner)),CaptureChanges(captureChanges) {++Owner._InvocationDepth;}
 ScriptComponent::InvocationScope::~InvocationScope() {
     Owner._Runtime.ExchangeInvokingScript(Previous);
-    if(--Owner._InvocationDepth==0 && (Owner._StopRequested||!Owner._Enabled||!Owner.IsAttached())) Owner.Stop();
+    if(--Owner._InvocationDepth==0) {
+        if(Owner._StopRequested||!Owner._Enabled||!Owner.IsAttached())Owner.Stop();
+        if(CaptureChanges)Owner._Runtime.MarkNativeScriptPropertiesChanged();
+    }
 }
 bool ScriptComponent::IsScriptTypeAvailable() const {return _Runtime.FindScriptType(_TypeID)!=nullptr;}
 void ScriptComponent::BindDefaults() {
+    if(!_Runtime.IsScriptExecutionEnabled()) {
+        const auto clearTransient=[](auto&& self,ScriptValue& value)->void {
+            if(value.Kind==ScriptValueKind::SceneObject&&value.SceneObject.RuntimeObjectID)value.SceneObject={};
+            if(value.Kind==ScriptValueKind::Component&&value.Component.RuntimeComponentID)value.Component={};
+            for(auto& [id,child]:value.Fields)self(self,child);
+            for(auto& child:value.Elements)self(self,child);
+            for(auto& item:value.Entries){self(self,item.first);self(self,item.second);}
+        };
+        for(auto& [id,value]:_Fields)clearTransient(clearTransient,value);
+    }
     if(const auto* type=_Runtime.FindScriptType(_TypeID))
         for(const auto& field:type->Info.Fields) _Fields.try_emplace(field.ID,field.Default);
     _Failed=false;_Error.clear();
@@ -40,10 +46,14 @@ bool ScriptComponent::IsAttached() const {
 void ScriptComponent::Stop() noexcept {
     // Disabling oneself from Update must not delete the user object while its
     // method is still on the stack. Finish the callback, then release it.
+    if(_Stopping)return;
     if(_InvocationDepth) {_StopRequested=true;return;}
+    _Stopping=true;
+    struct StopScope {bool& Value;~StopScope(){Value=false;}} stopping{_Stopping};
+    try {_Runtime.InvalidateNativeScriptReferences(this);}catch(...) {}
     _StopRequested=false;
-    _Created=false;_Initialized=false;
-    _MissingObjectFields.clear();
+    _Created=false;_Initialized=false;_FieldsApplied=false;
+    _MissingReferences.clear();
     IScript* instance=_Instance;
     auto destroy=_Destroy;
     _Instance=nullptr;_Destroy=nullptr;
@@ -53,6 +63,7 @@ void ScriptComponent::Stop() noexcept {
     _Runtime.ExchangeInvokingScript(previous);
     _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
     try {destroy(instance);} catch(...) {}
+    _Runtime.MarkNativeScriptPropertiesChanged();
 }
 void ScriptComponent::InvokeExternal(const std::function<void()>& callback) {
     if(!callback || !IsInitialized() || !_Enabled || !IsAttached()) return;
@@ -80,11 +91,12 @@ void ScriptComponent::SetEnabled(bool enabled) {
     if(auto* node=_Runtime.Find(_GameObject)) _Runtime.Notify(*node,SceneNodeEventType::ComponentChanged,GetTypeName());
 }
 bool ScriptComponent::SetField(const std::string& id,const ScriptValue& value,std::string& error) {
-    if(id.empty()||!Valid(value)) {error="Invalid script field value";return false;}
+    if(id.empty()||!ValidateScriptValue(value,error)) {error="Invalid script field value";return false;}
     const ScriptFieldRegistration* bridge=nullptr;
     if(const auto* type=_Runtime.FindScriptType(_TypeID)) {
         for(const auto& field:type->Fields) if(field.Info.ID==id) {bridge=&field;break;}
         if(!bridge||bridge->Info.Default.Kind!=value.Kind) {error="Unknown script field or mismatched value kind: "+id;return false;}
+        if(!ValidateScriptFieldValue(bridge->Info,value,error)||!ValidateReferences(bridge->Info,value,error)||!bridge->Validate(value,ReferenceContext(),error))return false;
     }
     RuntimeOperation operation(_Runtime);
     InvocationScope invocation(*this);
@@ -104,12 +116,13 @@ bool ScriptComponent::ReplaceFields(const std::map<std::string,ScriptValue>& val
     if(_Instance||_InvocationDepth) {error="Replace authored script fields before native execution starts";return false;}
     const auto* type=_Runtime.FindScriptType(_TypeID);
     for(const auto& value:values) {
-        if(value.first.empty()||!Valid(value.second)){error="Invalid authored script field";return false;}
+        if(value.first.empty()||!ValidateScriptValue(value.second,error,true)){error="Invalid authored script field";return false;}
         if(type) {
             const auto bridge=std::find_if(type->Fields.begin(),type->Fields.end(),[&](const auto& field){return field.Info.ID==value.first;});
             if(bridge==type->Fields.end()||bridge->Info.Default.Kind!=value.second.Kind) {
                 error="Unknown script field or mismatched value kind: "+value.first;return false;
             }
+            if(!ValidateScriptFieldValue(bridge->Info,value.second,error)||!ValidateReferences(bridge->Info,value.second,error)||!bridge->Validate(value.second,ReferenceContext(),error))return false;
         }
     }
     try {
@@ -117,7 +130,7 @@ bool ScriptComponent::ReplaceFields(const std::map<std::string,ScriptValue>& val
         RuntimeOperation operation(_Runtime);
         _Runtime.QueueScriptInitialization(*this);
         if(auto* node=_Runtime.Find(_GameObject))_Runtime.Notify(*node,SceneNodeEventType::ComponentChanged,GetTypeName());
-        _Fields.swap(next);_MissingObjectFields.clear();_Failed=false;_Error.clear();
+        _Fields.swap(next);_MissingReferences.clear();_Failed=false;_Error.clear();
         return true;
     }catch(const std::exception& exception){error=exception.what();return false;}
 }
@@ -139,18 +152,29 @@ IScript* ScriptComponent::PrepareInstance() {
         if(_Instance->GetGameObject()!=_GameObject) {Fail("Native script factory returned an instance for another object");return nullptr;}
         if(!type->CppType||typeid(*_Instance)!=*type->CppType) {Fail("Native script factory returned a different C++ type");return nullptr;}
         _Instance->_ComponentInstanceID=GetComponentInstanceID();
-        for(const auto& value:_Fields) {
-            const auto bridge=std::find_if(type->Fields.begin(),type->Fields.end(),[&](const auto& field){return field.Info.ID==value.first;});
-            std::string error;
-            if(bridge==type->Fields.end()||!ApplyNativeField(*bridge,value.second,error)) {
-                Fail("Cannot restore script field "+value.first+": "+error);return nullptr;
-            }
-        }
         if(!IsAttached()||!_Enabled||_StopRequested) return nullptr;
         return IsAttached()&&_Enabled&&!_StopRequested?_Instance:nullptr;
     } catch(const std::exception& exception) {Fail(exception.what());}
     catch(...) {Fail("Native script callback threw an exception: "+_TypeID);}
     return nullptr;
+}
+bool ScriptComponent::ApplyPreparedFields() {
+    if(_FieldsApplied)return !_Failed;
+    if(!_Instance||_Failed||_StopRequested)return false;
+    const auto* type=_Runtime.FindScriptType(_TypeID);if(!type)return false;
+    InvocationScope invocation(*this);
+    try {
+        for(const auto& value:_Fields) {
+            const auto bridge=std::find_if(type->Fields.begin(),type->Fields.end(),[&](const auto& field){return field.Info.ID==value.first;});
+            std::string error;
+            if(bridge==type->Fields.end()||!ApplyNativeField(*bridge,value.second,error)) {
+                Fail("Cannot restore script field "+value.first+": "+error);return false;
+            }
+        }
+        _FieldsApplied=true;return true;
+    }catch(const std::exception& exception){Fail(exception.what());}
+    catch(...){Fail("Cannot restore native script fields");}
+    return false;
 }
 bool ScriptComponent::InvokeCreate() {
     if(!_Instance||_Created||!_Enabled||!IsAttached()) return !_Failed;
@@ -176,6 +200,7 @@ IScript* ScriptComponent::EnsureStarted() {
     // During session startup Get/AddComponent may retrieve a prepared peer, but
     // cannot recursively run its callbacks ahead of the global startup phases.
     if(_Runtime.IsStartingScripts()) return _Instance;
+    if(!ApplyPreparedFields())return nullptr;
     // Return a configurable native instance. Initialization belongs to the
     // assembly scheduler, never to an individual Add/GetComponent call.
     const auto* node=_Runtime.Find(_GameObject);

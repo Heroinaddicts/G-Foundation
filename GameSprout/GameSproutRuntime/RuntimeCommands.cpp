@@ -117,6 +117,7 @@ void Runtime::DestroyNow(GameObjectState& state) {
         InvalidateScriptObjectReferences(object);
         ForgetSceneObjectIdentity(current->ID);
         ForgetObjectAnimationBindings(current->ID);
+        _PropertyObservations.erase(current->ID);
         current->ReleaseComponents();
         if(parent) std::erase(parent->Children,current);
         if(current->IsSceneRoot()) std::erase(_Scenes,current->SceneOwner);

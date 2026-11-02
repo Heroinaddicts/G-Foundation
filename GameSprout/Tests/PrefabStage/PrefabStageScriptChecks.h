@@ -6,10 +6,9 @@ struct MetadataOnlyIdentity {};
 static int MetadataNativeCalls=0;
 static GameSproutRuntime::ScriptFieldRegistration MetadataField(const std::string& id,const GameSproutRuntime::ScriptValue& value) {
     GameSproutRuntime::ScriptFieldRegistration field;field.Info.ID=id;field.Info.Name=id;field.Info.Default=value;
-    field.Read=[](const GameSproutRuntime::IScript&,GameSproutRuntime::ScriptValue&,std::string&){return false;};
-    field.Write=[](GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,std::string&){return false;};
-    field.ReadObject=[](const GameSproutRuntime::IScript&)->GameSproutRuntime::IGameObject*{return nullptr;};
-    field.WriteObject=[](GameSproutRuntime::IScript&,GameSproutRuntime::IGameObject*,std::string&){return false;};
+    field.Read=[](const GameSproutRuntime::IScript&,GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string&){return false;};
+    field.Write=[](GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string&){return false;};
+    field.Validate=[](const GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string& error){error.clear();return true;};
     return field;
 }
 static GameSproutRuntime::ScriptTypeRegistration CurrentMetadata(const std::string& typeID,const GameSproutRuntime::ResourceReference& source,bool evolved) {

@@ -18,6 +18,9 @@ public:
         if(!State().Owner.IsInScene(node) || node->SceneOwner!=this) {error="Object belongs to another scene";return false;}
         return State().Owner.BindSceneObjectIdentity(object,fileID,error);
     }
+    bool SetComponentIdentities(const std::vector<SceneComponentIdentity>& values,std::string& error) override {
+        return State().Owner.SetSceneComponentIdentities(this,values,error);
+    }
     bool BindObjectIdentities(const std::vector<SceneObjectIdentity>& identities,std::string& error) override {
         return State().Owner.BindSceneObjectIdentities(this,identities,error);
     }

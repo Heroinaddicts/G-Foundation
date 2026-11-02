@@ -9,4 +9,6 @@ bool AllowsMultipleBuiltinComponents(const std::type_info& type);
 bool SetLocalTransform(ITransformComponent* transform, const Mat4& matrix);
 // 由 Runtime 对象管理器实现，排队通知编辑器；组件不依赖 Editor。
 void NotifyComponentChanged(IGameObject* owner, IComponent* component);
+// Live pose notifications are separate from authored scene mutations.
+void NotifyRuntimePropertiesChanged(IGameObject* owner);
 }

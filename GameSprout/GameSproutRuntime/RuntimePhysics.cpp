@@ -4,6 +4,12 @@
 #include "Scene.h"
 
 namespace GameSproutRuntime {
+bool Runtime::SynchronizePhysics(std::string& error) {
+    error.clear();
+    if(IsExecuting()||IsConstructing()||_ShuttingDown) {error="Synchronize physics outside Runtime callbacks and construction";return false;}
+    if(!PreparePhysics(error))return false;
+    RefreshObservedScriptProperties();DispatchObjectPropertyChanges();return true;
+}
 bool Runtime::PreparePhysics(std::string &error) {
     if (!_PhysicsSystem)
         _PhysicsSystem = new RuntimePhysicsSystem(*this);

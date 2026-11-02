@@ -9,6 +9,64 @@ public:
     // Invalid values leave all settings unchanged. Disabling retains settings;
     // associated enabled colliders become static collision geometry.
     virtual bool SetSettings(const RigidbodySettings&) = 0;
+
+    // Individual script-facing properties use the same atomic validation and
+    // change notifications as SetSettings; unrelated current values are retained.
+    bool IsEnabled() const { return GetSettings().Enabled; }
+    bool SetEnabled(bool enabled) {
+        auto settings=GetSettings();settings.Enabled=enabled;return SetSettings(settings);
+    }
+    PhysicsMotionType GetMotionType() const { return GetSettings().MotionType; }
+    bool SetMotionType(PhysicsMotionType motionType) {
+        auto settings=GetSettings();settings.MotionType=motionType;return SetSettings(settings);
+    }
+    float GetMass() const { return GetSettings().Mass; }
+    bool SetMass(float mass) {
+        auto settings=GetSettings();settings.Mass=mass;return SetSettings(settings);
+    }
+    float GetGravityFactor() const { return GetSettings().GravityFactor; }
+    bool SetGravityFactor(float factor) {
+        auto settings=GetSettings();settings.GravityFactor=factor;return SetSettings(settings);
+    }
+    float GetLinearDamping() const { return GetSettings().LinearDamping; }
+    bool SetLinearDamping(float damping) {
+        auto settings=GetSettings();settings.LinearDamping=damping;return SetSettings(settings);
+    }
+    float GetAngularDamping() const { return GetSettings().AngularDamping; }
+    bool SetAngularDamping(float damping) {
+        auto settings=GetSettings();settings.AngularDamping=damping;return SetSettings(settings);
+    }
+    bool IsContinuous() const { return GetSettings().Continuous; }
+    bool SetContinuous(bool continuous) {
+        auto settings=GetSettings();settings.Continuous=continuous;return SetSettings(settings);
+    }
+    std::uint32_t GetConstraints() const { return GetSettings().Constraints; }
+    bool SetConstraints(std::uint32_t constraints) {
+        auto settings=GetSettings();settings.Constraints=constraints;return SetSettings(settings);
+    }
+    bool SetConstraints(PhysicsConstraint constraints) {
+        return SetConstraints(static_cast<std::uint32_t>(constraints));
+    }
+    // Freeze uses world axes. An invalid axis or an unsupported combination
+    // returns false without changing any settings.
+    // FreezeAll keeps collision/trigger participation; force and velocity
+    // commands cannot accumulate motion while locked. Teleport remains explicit.
+    bool IsPositionFrozen(PhysicsAxis axis) const {
+        return axis<=PhysicsAxis::Z && (GetConstraints() & (1u<<static_cast<unsigned>(axis)))!=0;
+    }
+    bool SetPositionFrozen(PhysicsAxis axis,bool frozen) {
+        if(axis>PhysicsAxis::Z)return false;
+        const auto bit=1u<<static_cast<unsigned>(axis);
+        return SetConstraints(frozen?GetConstraints()|bit:GetConstraints()&~bit);
+    }
+    bool IsRotationFrozen(PhysicsAxis axis) const {
+        return axis<=PhysicsAxis::Z && (GetConstraints() & (8u<<static_cast<unsigned>(axis)))!=0;
+    }
+    bool SetRotationFrozen(PhysicsAxis axis,bool frozen) {
+        if(axis>PhysicsAxis::Z)return false;
+        const auto bit=8u<<static_cast<unsigned>(axis);
+        return SetConstraints(frozen?GetConstraints()|bit:GetConstraints()&~bit);
+    }
     virtual Vector3 GetLinearVelocity() const = 0;
     virtual bool SetLinearVelocity(Vector3) = 0; // World space, m/s.
     virtual Vector3 GetAngularVelocity() const = 0;

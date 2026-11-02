@@ -1,5 +1,6 @@
 #pragma once
 #include "PrefabDocument.h"
+#include "ScriptReferenceDocument.h"
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -72,8 +73,9 @@ inline void RemapReferences(Json::Value& data,const std::map<uint64_t,uint64_t>&
             if(component["Type"]=="GameSproutRuntime.Animator")
                 for(auto& binding:component["Bindings"])remap(binding["ObjectFileID"]);
             else if(component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer")remap(component["AnimatorObjectFileID"]);
-            else if(component["Type"]=="GameSproutRuntime.ScriptComponent")
-                for(auto& field:component["Fields"])if(field["Kind"]=="SceneObject"&&!field["Value"].isNull())remap(field["Value"]["ObjectFileID"],false);
+            else ScriptReferenceDocument::Fields(component,[&](Json::Value& field,bool isComponent) {
+                remap(field["Value"][isComponent?"ComponentFileID":"ObjectFileID"],false);
+            });
         }
     }
 }
@@ -99,12 +101,34 @@ inline Json::Value Canonicalize(Json::Value data,bool keepIDs=false,std::map<uin
     return data;
 }
 inline bool IsAtomicReference(const Json::Value& value) {
-    return value.isObject()&&((value.isMember("Guid")&&value.isMember("LocalID"))||value.isMember("ObjectFileID"));
+    return value.isObject()&&((value.isMember("Guid")&&value.isMember("LocalID"))||value.isMember("ObjectFileID")||value.isMember("ComponentFileID"));
 }
 struct Patch {uint64_t ObjectID=0,ComponentID=0;std::vector<std::string> Path;Json::Value Before,After;bool Remove=false;};
+inline std::string DictionaryKey(const Json::Value& key) {
+    const auto kind=key["Kind"].asString();const auto& value=key["Value"];
+    if(kind=="String")return "$Dictionary:String:"+value.asString();
+    if(kind=="Integer")return "$Dictionary:Integer:"+std::to_string(value.asInt64());
+    if(kind=="Unsigned")return "$Dictionary:Unsigned:"+std::to_string(value.asUInt64());
+    if(kind=="Boolean")return value.asBool()?"$Dictionary:Boolean:1":"$Dictionary:Boolean:0";
+    throw std::runtime_error("Unsupported script dictionary override key");
+}
 inline void DiffValues(const Json::Value& before,const Json::Value& after,std::vector<std::string> path,
     uint64_t object,uint64_t component,std::vector<Patch>& output) {
     if(Equivalent(before,after))return;
+    if(before.isObject()&&after.isObject()&&before.get("Kind","")=="Dictionary"&&after.get("Kind","")=="Dictionary") {
+        std::map<std::string,const Json::Value*> oldEntries,newEntries;
+        for(const auto& entry:before["Value"])oldEntries.emplace(DictionaryKey(entry["Key"]),&entry["Value"]);
+        for(const auto& entry:after["Value"])newEntries.emplace(DictionaryKey(entry["Key"]),&entry["Value"]);
+        bool sameKeys=oldEntries.size()==newEntries.size();
+        for(const auto& [key,value]:oldEntries)if(!newEntries.count(key))sameKeys=false;
+        // Structural edits override the container. Value edits follow a typed
+        // key, so a source insertion/reorder cannot redirect an instance override.
+        if(!sameKeys)output.push_back({object,component,std::move(path),before,after,false});
+        else for(const auto& [key,value]:oldEntries) {
+            auto child=path;child.push_back(key);DiffValues(*value,*newEntries.at(key),std::move(child),object,component,output);
+        }
+        return;
+    }
     if(before.isObject()&&after.isObject()&&!IsAtomicReference(before)&&!IsAtomicReference(after)) {
         std::set<std::string> keys;for(const auto& key:before.getMemberNames())keys.insert(key);for(const auto& key:after.getMemberNames())keys.insert(key);
         for(const auto& key:keys) {
@@ -146,11 +170,33 @@ inline std::vector<Patch> Diff(const Json::Value& baseline,const Json::Value& cu
     for(const auto& [id,node]:now)if(!old.count(id))result.push_back({id,0,{"$Object"},{},node,false});
     return result;
 }
+inline const Json::Value* FindPath(const Json::Value& value,const std::vector<std::string>& path) {
+    const Json::Value* target=&value;
+    for(const auto& key:path) {
+        if(target->isObject()&&target->get("Kind","")=="Dictionary"&&key.starts_with("$Dictionary:")) {
+            const Json::Value* next=nullptr;
+            for(const auto& entry:(*target)["Value"])if(DictionaryKey(entry["Key"])==key){next=&entry["Value"];break;}
+            if(!next)return nullptr;target=next;
+        }else if(target->isObject()&&target->isMember(key))target=&(*target)[key];
+        else if(target->isArray()) {
+            if(key.empty()||key.find_first_not_of("0123456789")!=std::string::npos)return nullptr;
+            try {const auto index=std::stoull(key);if(index>=target->size())return nullptr;target=&(*target)[static_cast<Json::ArrayIndex>(index)];}
+            catch(...){return nullptr;}
+        }else return nullptr;
+    }
+    return target;
+}
 inline void SetPath(Json::Value& value,const Patch& patch) {
     Json::Value* target=&value;
     for(std::size_t i=0;i<patch.Path.size();++i) {
         const auto& key=patch.Path[i];const bool last=i+1==patch.Path.size();
-        if(target->isArray()) {
+        if(target->isObject()&&target->get("Kind","")=="Dictionary"&&key.starts_with("$Dictionary:")) {
+            Json::Value* value=nullptr;
+            for(auto& entry:(*target)["Value"])if(DictionaryKey(entry["Key"])==key){value=&entry["Value"];break;}
+            if(!value)throw std::runtime_error("Override dictionary key was removed from source");
+            if(last){if(patch.Remove)throw std::runtime_error("Cannot remove dictionary value without its key");*value=patch.After;return;}
+            target=value;
+        }else if(target->isArray()) {
             const auto index=static_cast<Json::ArrayIndex>(std::stoul(key));
             if(index>=target->size())throw std::runtime_error("Override array target no longer exists");
             if(last){if(patch.Remove)throw std::runtime_error("Cannot remove array element as property override");(*target)[index]=patch.After;return;}target=&(*target)[index];

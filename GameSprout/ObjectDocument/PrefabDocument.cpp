@@ -1,4 +1,5 @@
 #include "PrefabDocument.h"
+#include "ScriptReferenceDocument.h"
 #include <set>
 #include <stdexcept>
 
@@ -8,18 +9,20 @@ bool Validate(const Json::Value& data,std::string& error) {
     if(!data["RootComponents"].empty()||data.get("RootMainCamera",false).asBool()) {
         error="Prefab must not contain scene-root components or a scene-root camera";return false;
     }
-    std::set<std::uint64_t> ids;unsigned roots=0;
+    std::set<std::uint64_t> ids,componentIDs;unsigned roots=0;
     for(const auto& node:data["Objects"]) {
         ids.insert(node["ID"].asUInt64());
+        for(const auto& component:node["Components"])if(component.isMember("ID"))componentIDs.insert(component["ID"].asUInt64());
         if(node.get("ParentID",Json::UInt64(0)).asUInt64()==0)++roots;
     }
     if(roots!=1){error="Prefab requires exactly one object root";return false;}
+    bool closed=true;
     for(const auto& node:data["Objects"])for(const auto& component:node["Components"])
-        if(component["Type"]=="GameSproutRuntime.ScriptComponent")
-            for(const auto& field:component["Fields"])if(field["Kind"]=="SceneObject"&&!field["Value"].isNull())
-                if(!ids.count(field["Value"]["ObjectFileID"].asUInt64())) {
-                    error="Prefab script object reference points outside the template";return false;
-                }
+        ScriptReferenceDocument::Fields(component,[&](const Json::Value& field,bool isComponent) {
+            const auto id=field["Value"][isComponent?"ComponentFileID":"ObjectFileID"].asUInt64();
+            if(!(isComponent?componentIDs:ids).count(id))closed=false;
+        });
+    if(!closed){error="Prefab script reference points outside the template";return false;}
     error.clear();return true;
 }
 bool Encode(const Json::Value& data,std::vector<std::uint8_t>& bytes,std::string& error) {
@@ -55,8 +58,9 @@ bool Remap(Json::Value& data,const std::map<std::uint64_t,std::uint64_t>& ids,st
                 if(component["Type"]=="GameSproutRuntime.Animator")
                     for(auto& binding:component["Bindings"])remap(binding["ObjectFileID"]);
                 else if(component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer")remap(component["AnimatorObjectFileID"]);
-                else if(component["Type"]=="GameSproutRuntime.ScriptComponent")
-                    for(auto& field:component["Fields"])if(field["Kind"]=="SceneObject"&&!field["Value"].isNull())remap(field["Value"]["ObjectFileID"],false);
+                else ScriptReferenceDocument::Fields(component,[&](Json::Value& field,bool isComponent) {
+                    remap(field["Value"][isComponent?"ComponentFileID":"ObjectFileID"],false);
+                });
             }
         }
         data.swap(result);error.clear();return true;

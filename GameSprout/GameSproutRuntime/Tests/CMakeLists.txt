@@ -219,3 +219,19 @@ endif()
 add_test(NAME Runtime.StaticDeclarations COMMAND RuntimeStaticFlagsChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.StaticDeclarations PROPERTIES TIMEOUT 60)
+
+add_executable(RuntimeLivePropertiesChecks RuntimeLivePropertiesChecks.cpp)
+target_link_libraries(RuntimeLivePropertiesChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeLivePropertiesChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.LiveProperties COMMAND RuntimeLivePropertiesChecks "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.LiveProperties PROPERTIES TIMEOUT 60)
+
+add_executable(RuntimeRecursiveScriptChecks RuntimeRecursiveScriptChecks.cpp)
+target_link_libraries(RuntimeRecursiveScriptChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeRecursiveScriptChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.RecursiveScriptFields COMMAND RuntimeRecursiveScriptChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")

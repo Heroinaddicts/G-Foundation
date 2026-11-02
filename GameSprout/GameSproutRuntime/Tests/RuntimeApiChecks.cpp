@@ -10,6 +10,14 @@ static void Check(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 static bool Near(float a, float b) { return std::fabs(a-b) < 0.0002f; }
+template<typename T>
+constexpr bool HasPublicComponentLifecycle = requires(T& component) {
+    component.OnCreate(nullptr);
+    component.OnInitialized(nullptr);
+    component.Update(nullptr,0.f);
+    component.FixedUpdate(nullptr,0.f);
+    component.OnRelease(nullptr);
+};
 static void CheckVector(GameSproutRuntime::Vector3 a, GameSproutRuntime::Vector3 b) {
     Check(Near(a.X,b.X) && Near(a.Y,b.Y) && Near(a.Z,b.Z), "Vector mismatch");
 }
@@ -86,7 +94,6 @@ private:
         if(type!=typeid(GameSproutRuntime::IImageComponent)) return nullptr;
         auto* image=new Image(this);
         Components.emplace(std::type_index(type),image);
-        image->OnCreate(nullptr);
         return image;
     }
     GameSproutRuntime::IComponent* GetComponent(const std::type_info& type) const override {
@@ -96,7 +103,7 @@ private:
     bool RemoveComponent(const std::type_info& type) override {
         const auto found=Components.find(std::type_index(type));
         if(found==Components.end()) return false;
-        found->second->OnRelease(nullptr); delete found->second; Components.erase(found); return true;
+        delete found->second; Components.erase(found); return true;
     }
     std::string Name;
     std::uint8_t Layer=0;
@@ -108,6 +115,7 @@ private:
 
 int main() {
     try {
+        static_assert(!HasPublicComponentLifecycle<GameSproutRuntime::IComponent>);
         static_assert(sizeof(GameSproutRuntime::Vector2)==8);
         static_assert(sizeof(GameSproutRuntime::Vector3)==12);
         static_assert(sizeof(GameSproutRuntime::Vector4)==16);

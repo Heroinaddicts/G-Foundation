@@ -51,6 +51,8 @@ void Runtime::ProcessPendingEvents() {
         {RuntimeOperation operation(*this);}
         DispatchAnimationEvents();
         DispatchEvents();
+        RefreshObservedScriptProperties();
+        DispatchObjectPropertyChanges();
     } catch(...) {_Updating=false;throw;}
     _Updating=false;
 }

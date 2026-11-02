@@ -115,8 +115,8 @@ void CheckFallingAndCallbackSafety(GameSproutRuntime::IGameSproutRuntime &runtim
     runtime.FixedUpdate(0.5f);
     Check(object->GetTransform()->GetLocalPosition().Y == 4, "Editing automatically simulated gravity");
     auto invalid = body->GetSettings();
-    invalid.Constraints = 63;
-    Check(!body->SetSettings(invalid), "Freeze-all invalid Jolt DOFs were accepted");
+    invalid.Constraints = 64;
+    Check(!body->SetSettings(invalid), "Unknown constraint bits were accepted");
     Check(runtime.BeginExecution(error), error);
     Steps(runtime, 150);
     const auto settled = object->GetTransform()->GetLocalPosition();
@@ -256,6 +256,89 @@ void CheckRigidbodyWithoutColliderAndParents(GameSproutRuntime::IGameSproutRunti
     Check(body->GetLinearVelocity().Y==0,"Restart reused inactive body session state");
     Check(runtime.EndExecution(error) && runtime.DestroyScene(scene), "Cannot clean Body-only fixture");
 }
+void CheckPublicRigidbodyPropertiesAndFreeze(GameSproutRuntime::IGameSproutRuntime &runtime) {
+    std::string error;
+    auto* scene=runtime.CreateScene("Public Rigidbody properties");
+    auto* object=scene->CreateGameObject("Controlled body");
+    object->GetTransform()->SetLocalPosition({0,2,0});
+    auto* collider=object->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
+    auto* body=object->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
+    Check(body->SetMass(3)&&body->GetMass()==3&&body->SetGravityFactor(0)&&body->GetGravityFactor()==0&&
+          body->SetLinearDamping(0)&&body->GetLinearDamping()==0&&body->SetAngularDamping(0)&&
+          body->GetAngularDamping()==0&&body->SetContinuous(true)&&body->IsContinuous(),
+          "Public Rigidbody properties are inaccessible");
+    Check(body->SetMotionType(GameSproutRuntime::PhysicsMotionType::Kinematic)&&
+          body->GetMotionType()==GameSproutRuntime::PhysicsMotionType::Kinematic&&
+          body->SetMotionType(GameSproutRuntime::PhysicsMotionType::Dynamic),"Cannot change motion through public API");
+    Check(body->SetEnabled(false)&&!body->IsEnabled()&&!collider->GetAttachedRigidbody()&&
+          body->SetEnabled(true)&&collider->GetAttachedRigidbody()==body,"Public enabled state is not a Rigidbody boundary");
+    Check(!body->SetMass(0)&&!body->SetLinearDamping(-1)&&
+          !body->SetAngularDamping(std::numeric_limits<float>::quiet_NaN())&&
+          !body->SetMotionType(static_cast<GameSproutRuntime::PhysicsMotionType>(255))&&
+          body->GetMass()==3&&body->GetLinearDamping()==0&&body->GetAngularDamping()==0&&body->IsContinuous(),
+          "Invalid individual settings overwrote current properties");
+    Check(body->SetPositionFrozen(GameSproutRuntime::PhysicsAxis::X,true)&&
+          body->SetRotationFrozen(GameSproutRuntime::PhysicsAxis::Y,true)&&
+          body->IsPositionFrozen(GameSproutRuntime::PhysicsAxis::X)&&
+          !body->IsPositionFrozen(GameSproutRuntime::PhysicsAxis::Z)&&
+          body->IsRotationFrozen(GameSproutRuntime::PhysicsAxis::Y)&&
+          !body->SetPositionFrozen(static_cast<GameSproutRuntime::PhysicsAxis>(3),true)&&
+          !body->SetRotationFrozen(static_cast<GameSproutRuntime::PhysicsAxis>(255),true),
+          "Per-axis constraint access or invalid-axis rejection failed");
+    Check(body->SetLinearVelocity({3,0,2})&&body->SetAngularVelocity({0,2,0}),"Cannot initialize constrained velocities");
+    Check(runtime.BeginExecution(error),error);Steps(runtime,30);
+    const auto partial=object->GetTransform()->GetLocalPosition();
+    Check(std::fabs(partial.X)<0.001f&&partial.Z>0.5f&&std::fabs(body->GetAngularVelocity().Y)<0.001f,
+          "Public per-axis constraints did not reach simulation");
+    Check(body->SetConstraints(GameSproutRuntime::PhysicsConstraint::FreezeAll),"Cannot freeze all six axes");
+    const auto locked=object->GetTransform()->GetLocalPosition();
+    Check(body->GetMotionType()==GameSproutRuntime::PhysicsMotionType::Dynamic&&body->GetConstraints()==63&&
+          body->SetLinearVelocity({30,40,50})&&body->SetAngularVelocity({1,2,3})&&
+          body->GetLinearVelocity().X==0&&body->GetAngularVelocity().Y==0&&
+          body->AddForce({1000,2000,3000})&&body->AddImpulse({1000,2000,3000}),
+          "FreezeAll changed motion semantics or retained velocity commands");
+    const auto constraints=body->GetConstraints();
+    Check(!body->SetConstraints(64)&&body->GetConstraints()==constraints&&body->GetMass()==3,
+          "An invalid freeze edit changed previous settings");
+    Check(runtime.SynchronizePhysics(error),error);
+    auto* obstacle=scene->CreateGameObject("Overlapping static contact");
+    obstacle->GetTransform()->SetLocalPosition({locked.X,locked.Y,locked.Z+0.9f});
+    obstacle->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
+    unsigned staticContacts=0,dynamicContacts=0;
+    const auto staticID=obstacle->GetInstanceID();
+    std::uint64_t movingID=0;
+    collider->RegisterCollisionEnter([&](const auto& event){
+        if(event.Other.ObjectID==staticID)++staticContacts;
+        if(event.Other.ObjectID==movingID)++dynamicContacts;
+    });
+    Steps(runtime,3);Check(staticContacts==1,"Frozen dynamic body lost collision callbacks against static geometry");
+    Check(scene->DestroyGameObject(obstacle),"Cannot remove static freeze fixture");
+    auto* moving=scene->CreateGameObject("Incoming dynamic body");movingID=moving->GetInstanceID();
+    moving->GetTransform()->SetLocalPosition({locked.X+3,locked.Y,locked.Z});
+    moving->AddComponent<GameSproutRuntime::ISphereColliderComponent>();
+    auto* movingBody=moving->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
+    Check(movingBody->SetGravityFactor(0)&&movingBody->SetLinearDamping(0)&&movingBody->SetLinearVelocity({-3,0,0}),
+          "Cannot launch incoming contact fixture");
+    Steps(runtime,90);
+    const auto after=object->GetTransform()->GetLocalPosition();
+    Check(std::fabs(after.X-locked.X)<0.001f&&std::fabs(after.Y-locked.Y)<0.001f&&
+          std::fabs(after.Z-locked.Z)<0.001f&&dynamicContacts==1&&
+          moving->GetTransform()->GetLocalPosition().X>locked.X+0.9f,
+          "FreezeAll allowed motion or lost blocking collision and callback participation");
+    GameSproutRuntime::PhysicsRaycastHit hit;
+    Check(runtime.Raycast(scene,{{locked.X,locked.Y+3,locked.Z},{0,-1,0}},10,hit,{},error)&&
+          hit.Collider.ComponentID==collider->GetComponentInstanceID(),"FreezeAll collider vanished from queries");
+    Check(scene->DestroyGameObject(moving)&&body->SetConstraints(GameSproutRuntime::PhysicsConstraint::None),
+          "Cannot release FreezeAll");
+    Steps(runtime,10);
+    const auto unlocked=object->GetTransform()->GetLocalPosition();
+    Check(std::fabs(unlocked.X-locked.X)<0.001f&&std::fabs(unlocked.Y-locked.Y)<0.001f&&
+          std::fabs(unlocked.Z-locked.Z)<0.001f,"Unlock replayed velocity, force or impulse accumulated while frozen");
+    Check(body->AddImpulse({3,0,0}),"Cannot apply a fresh impulse after unlocking");Steps(runtime,30);
+    Check(object->GetTransform()->GetLocalPosition().X>unlocked.X+0.4f,
+          "Unlock did not restore dynamic simulation");
+    Check(runtime.EndExecution(error)&&runtime.DestroyScene(scene),"Cannot clean public Rigidbody fixture");
+}
 GameSproutRuntime::IScriptComponent *ScriptWrapper = nullptr;
 unsigned ScriptDestroyed = 0, ScriptReleased = 0, OwnedCalls = 0;
 bool InOwnedCallback = false, SafeRelease = true, DisableInCallback = true;
@@ -346,6 +429,8 @@ int main(int argc, char **argv) {
         CheckCompoundAndWorldIsolation(*runtime);
         std::cout << "physics body only/parents\n";
         CheckRigidbodyWithoutColliderAndParents(*runtime);
+        std::cout << "physics public properties/freeze\n";
+        CheckPublicRigidbodyPropertiesAndFreeze(*runtime);
         std::cout << "physics script subscriptions\n";
         CheckScriptSubscriptionLifetime(*runtime);
         delete runtime;

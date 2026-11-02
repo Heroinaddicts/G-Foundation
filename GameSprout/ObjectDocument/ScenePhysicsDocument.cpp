@@ -70,7 +70,7 @@ GameSproutRuntime::RigidbodySettings Rigidbody(const Json::Value& value,const st
     settings.LinearDamping=Number(value,"LinearDamping",settings.LinearDamping,path);settings.AngularDamping=Number(value,"AngularDamping",settings.AngularDamping,path);
     if(settings.Mass<=0||settings.LinearDamping<0||settings.AngularDamping<0)Fail(path,"mass must be positive and damping nonnegative");
     if(value.isMember("Constraints"))settings.Constraints=Unsigned(value["Constraints"],path+".Constraints");
-    if((settings.Constraints&~63u)||settings.Constraints==63)Fail(path+".Constraints","unknown constraint bits or no remaining degree of freedom");
+    if(settings.Constraints&~63u)Fail(path+".Constraints","unknown constraint bits");
     return settings;
 }
 struct Settings {

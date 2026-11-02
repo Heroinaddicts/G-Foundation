@@ -11,6 +11,7 @@ Runtime::~Runtime() {
     ResetPhysics();
     _ShuttingDown=true;
     _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
+    _PropertyObservations.clear();
     while (!_Scenes.empty()) DestroyNow(_Scenes.back()->State());
     // 包括尚未挂载的创建请求，保证异常/关闭时没有遗留对象。
     while (!_Nodes.empty()) DestroyNow(*_Nodes.begin()->second);
@@ -145,6 +146,8 @@ void Runtime::TickComponents(float deltaSeconds,bool fixed) {
         if(fixed)StepPhysics(deltaSeconds);
         DispatchAnimationEvents();
         DispatchEvents();
+        RefreshObservedScriptProperties();
+        DispatchObjectPropertyChanges();
     } catch (...) { _Updating=false;throw; }
     _Updating=false;
 }

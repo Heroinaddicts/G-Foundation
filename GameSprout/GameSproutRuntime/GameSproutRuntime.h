@@ -29,6 +29,12 @@ public:
     std::size_t GetSceneCount() const override { return _Scenes.size(); }
     IScene* GetScene(std::size_t index) const override;
     IGameObject* QueryGameObject(std::uint64_t id) const override;
+    bool RegisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
+    void UnregisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
+    bool SynchronizePhysics(std::string&) override;
+    void MarkObjectPropertiesChanged(std::uint64_t objectID);
+    void CheckObservedScriptProperties(std::uint64_t objectID);
+    void MarkNativeScriptPropertiesChanged() {if(!_PropertyObservations.empty())_ObservedScriptFieldsDirty=true;}
     const RuntimeProjectSettings& GetProjectSettings() const override { return _ProjectSettings; }
     bool CanApplyProjectSettings(const RuntimeProjectSettings&,std::string&) const override;
     bool SetProjectSettings(const RuntimeProjectSettings&,std::string&) override;
@@ -48,6 +54,14 @@ public:
     IGameObject* QuerySceneObjectByFileID(const IScene*,std::uint64_t) const override;
     bool GetSceneObjectFileID(const IGameObject*,std::uint64_t&) const override;
     bool BindSceneObjectIdentities(IScene*,const std::vector<SceneObjectIdentity>&,std::string&) override;
+    bool SetSceneComponentIdentities(IScene*,const std::vector<SceneComponentIdentity>&,std::string&) override;
+    IComponent* QuerySceneComponentByFileID(const IScene*,std::uint64_t) const override;
+    bool GetSceneComponentFileID(const IComponent*,std::uint64_t&) const override;
+    bool IsComponentType(const IComponent*,const std::string&) const override;
+    IComponent* NormalizeComponent(const IComponent*) const;
+    void InvalidateScriptComponentReferences(IComponent*);
+    void InvalidateNativeScriptReferences(ScriptComponent*);
+    void ForgetSceneComponentIdentity(const IComponent*);
     void InvalidateScriptObjectReferences(IGameObject*);
     void RefreshScriptObjectReferences();
     void ForgetSceneObjectIdentity(std::uint64_t);
@@ -139,6 +153,8 @@ private:
     void DestroyNow(GameObjectState& state);
     void FlushCommands() noexcept;
     void DispatchEvents();
+    void RefreshObservedScriptProperties();
+    void DispatchObjectPropertyChanges();
     void DispatchAnimationEvents();
     AnimatorComponent* ResolveAnimation(const AnimationRecord&) const;
     bool QueueAnimationRecord(AnimatorComponent&,AnimationRecord);
@@ -162,6 +178,16 @@ private:
     std::deque<AnimationRecord> _AnimationEvents;
     std::uint64_t _AnimationSequence=0;
     std::map<std::uint64_t,Listener> _Listeners;
+    struct ObjectPropertyObservation {
+        std::uint64_t SceneID=0;
+        std::map<IRuntimePropertyObserver*,std::uint64_t> Observers;
+        std::map<std::uint64_t,std::map<std::string,ScriptValue>> ScriptFields;
+        bool Pending=false;
+    };
+    std::map<std::uint64_t,ObjectPropertyObservation> _PropertyObservations;
+    std::uint64_t _NextPropertyObserver=0;
+    bool _ReadingObservedProperties=false;
+    bool _ObservedScriptFieldsDirty=false;
     std::uint64_t _NextID = 0;
     std::uint64_t _EventSequence = 0;
     std::uint64_t _NextListener = 0;
@@ -180,6 +206,9 @@ private:
     struct ObjectIdentity {std::uint64_t SceneID=0,FileID=0;};
     std::map<std::uint64_t,ObjectIdentity> _ObjectFileIDs;
     std::map<std::pair<std::uint64_t,std::uint64_t>,std::uint64_t> _SceneObjectIDs;
+    struct ComponentIdentity {std::uint64_t SceneID=0,FileID=0,ObjectID=0,InstanceID=0;};
+    std::map<const IComponent*,ComponentIdentity> _ComponentFileIDs;
+    std::map<std::pair<std::uint64_t,std::uint64_t>,std::pair<std::uint64_t,std::uint64_t>> _SceneComponentIDs;
     AnimationResources _AnimationResources;
     GRHI::GRHIApi* _RenderApi=nullptr;
     GRHI::IDevice* _RenderDevice=nullptr;

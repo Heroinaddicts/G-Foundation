@@ -93,13 +93,8 @@ bool Runtime::ReplaceScriptTypes(const std::vector<std::string>& removeTypes,
             ScriptTypeRegistration type=registration;
             type.Info.Fields.clear();
             for(const auto& field:type.Fields) {
-                const bool objectField=field.Info.Default.Kind==ScriptValueKind::SceneObject;
-                if(field.Info.ID.empty()||!fields.insert(field.Info.ID).second||
-                   (objectField?(!field.ReadObject||!field.WriteObject):(!field.Read||!field.Write))) {error="Invalid or duplicate script field";return false;}
-                if(field.Info.Default.Kind<ScriptValueKind::Boolean||field.Info.Default.Kind>ScriptValueKind::SceneObject ||
-                    (objectField && (!field.Info.Default.SceneObject.Assigned && field.Info.Default.SceneObject.ObjectFileID)) ||
-                    (field.Info.Default.Kind==ScriptValueKind::Number&&!std::isfinite(field.Info.Default.Number)) ||
-                    (field.Info.Default.Kind==ScriptValueKind::Vector3&&(!std::isfinite(field.Info.Default.Vector.X)||!std::isfinite(field.Info.Default.Vector.Y)||!std::isfinite(field.Info.Default.Vector.Z)))) {error="Invalid script field default";return false;}
+                if(field.Info.ID.empty()||!fields.insert(field.Info.ID).second||!field.Read||!field.Write||!field.Validate) {error="Invalid or duplicate script field";return false;}
+                if(!ValidateScriptValue(field.Info.Default,error,true)||!ValidateScriptFieldValue(field.Info,field.Info.Default,error)) {error="Invalid script field default: "+error;return false;}
                 type.Info.Fields.push_back(field.Info);
             }
             candidate.emplace(id,std::move(type));
@@ -189,11 +184,14 @@ bool Runtime::SetScriptExecutionEnabled(bool enabled,std::string& error) {
     if(IsExecuting()||_ShuttingDown||_ConstructionDepth) {error="Cannot change script execution during a Runtime callback or construction";return false;}
     if(!enabled)SetInputEnabled(false);
     if(_ScriptExecutionEnabled==enabled) return true;
-    _ScriptExecutionEnabled=enabled;
     RuntimeOperation operation(*this);
     std::vector<ScriptComponent*> scripts;
     for(const auto& node:_Nodes) for(const auto& entry:node.second->Components)
         if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer)) scripts.push_back(script);
+    // Resolve native cross-references while every instance is still alive.
+    // OnRelease ordering must never expose a peer that has already been freed.
+    if(!enabled)for(auto* script:scripts)InvalidateNativeScriptReferences(script);
+    _ScriptExecutionEnabled=enabled;
     for(auto* script:scripts) {
         script->Stop();script->BindDefaults();
         QueueScriptInitialization(*script);

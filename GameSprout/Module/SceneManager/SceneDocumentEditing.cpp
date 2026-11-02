@@ -42,7 +42,7 @@ GameSproutRuntime::IComponent* FindComponent(GameSproutRuntime::IGameObject& obj
 void References(const Json::Value& value,std::set<uint64_t>& output) {
     if(value.isArray()) {for(const auto& item:value)References(item,output);}
     else if(value.isObject())for(const auto& key:value.getMemberNames()) {
-        if((key=="ObjectFileID"||key=="AnimatorObjectFileID")&&value[key].isUInt64())output.insert(value[key].asUInt64());
+        if((key=="ObjectFileID"||key=="ComponentFileID"||key=="AnimatorObjectFileID")&&value[key].isUInt64())output.insert(value[key].asUInt64());
         else References(value[key],output);
     }
 }
@@ -82,6 +82,7 @@ void FillResult(const Json::Value& subtree,const std::map<uint64_t,uint64_t>& so
         if(!node["ParentID"].asUInt64())output.RootObjectID=runtimeID;
         for(const auto& component:node["Components"])if(component["ID"].isUInt64()) {
             const auto componentID=component["ID"].asUInt64();
+            local.insert(componentID);
             output.ObjectIDs.push_back({sceneToSource.count(componentID)?sceneToSource.at(componentID):componentID,componentID,runtimeID,true});
         }
         References(node["Components"],external);
@@ -338,6 +339,17 @@ bool SceneManager::ApplyDocument(const Json::Value& before,const Json::Value& af
                 if(data["ID"].isUInt64())_ObjectIDs.BindComponentFileID(component,data["ID"].asUInt64());
             }
         }
+        std::vector<GameSproutRuntime::SceneComponentIdentity> componentIdentities;
+        const auto collectComponentIdentities=[&](GameSproutRuntime::IGameObject& object) {
+            for(std::size_t index=0;index<object.GetComponentCount();++index) {
+                auto* component=object.GetComponentAt(index);
+                const auto id=_ObjectIDs.FindComponentFileID(component);
+                if(id)componentIdentities.push_back({component,id});
+            }
+        };
+        collectComponentIdentities(*scene);
+        for(const auto& node:document["Objects"])collectComponentIdentities(*objects.at(node["ID"].asUInt64()));
+        if(!runtime->SetSceneComponentIdentities(scene,componentIdentities,reason))return false;
         // Surviving descendants have already moved. Destroy only obsolete roots;
         // Runtime owns recursive destruction and no node pointer escapes this call.
         std::vector<uint64_t> obsolete;

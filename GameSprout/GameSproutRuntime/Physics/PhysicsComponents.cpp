@@ -208,7 +208,7 @@ bool RigidbodyComponent::SetSettings(const RigidbodySettings &value) {
     if (value.MotionType > PhysicsMotionType::Kinematic || !std::isfinite(value.Mass) || value.Mass <= 0 ||
         !std::isfinite(value.GravityFactor) || !std::isfinite(value.LinearDamping) ||
         value.LinearDamping < 0 || !std::isfinite(value.AngularDamping) || value.AngularDamping < 0 ||
-        (value.Constraints & ~63u) || value.Constraints == 63u)
+        (value.Constraints & ~63u))
         return false;
     if (Settings.Enabled == value.Enabled && Settings.MotionType == value.MotionType &&
         Settings.Mass == value.Mass && Settings.GravityFactor == value.GravityFactor &&
@@ -216,6 +216,14 @@ bool RigidbodyComponent::SetSettings(const RigidbodySettings &value) {
         Settings.Constraints == value.Constraints && Settings.Continuous == value.Continuous)
         return true;
     Settings = value;
+    if (Settings.Constraints == 63u) {
+        LinearVelocity = {};
+        AngularVelocity = {};
+        Force = {};
+        Impulse = {};
+        HasKinematicTarget = false;
+        ++VelocityRevision;
+    }
     ++Revision;
     NotifyComponentChanged(_GameObject, this);
     return true;
@@ -223,14 +231,14 @@ bool RigidbodyComponent::SetSettings(const RigidbodySettings &value) {
 bool RigidbodyComponent::SetLinearVelocity(Vector3 value) {
     if (!RuntimeMath::IsFinite(value))
         return false;
-    LinearVelocity = value;
+    LinearVelocity = Settings.Constraints == 63u ? Vector3{} : value;
     ++VelocityRevision;
     return true;
 }
 bool RigidbodyComponent::SetAngularVelocity(Vector3 value) {
     if (!RuntimeMath::IsFinite(value))
         return false;
-    AngularVelocity = value;
+    AngularVelocity = Settings.Constraints == 63u ? Vector3{} : value;
     ++VelocityRevision;
     return true;
 }
@@ -239,7 +247,8 @@ bool RigidbodyComponent::AddForce(Vector3 value) {
     if (!Settings.Enabled || Settings.MotionType != PhysicsMotionType::Dynamic ||
         !RuntimeMath::IsFinite(value) || !RuntimeMath::IsFinite(sum))
         return false;
-    Force = sum;
+    if (Settings.Constraints != 63u)
+        Force = sum;
     return true;
 }
 bool RigidbodyComponent::AddImpulse(Vector3 value) {
@@ -247,11 +256,12 @@ bool RigidbodyComponent::AddImpulse(Vector3 value) {
     if (!Settings.Enabled || Settings.MotionType != PhysicsMotionType::Dynamic ||
         !RuntimeMath::IsFinite(value) || !RuntimeMath::IsFinite(sum))
         return false;
-    Impulse = sum;
+    if (Settings.Constraints != 63u)
+        Impulse = sum;
     return true;
 }
 bool RigidbodyComponent::MoveKinematic(Vector3 position, Quaternion rotation) {
-    if (!Settings.Enabled || Settings.MotionType != PhysicsMotionType::Kinematic ||
+    if (!Settings.Enabled || Settings.MotionType != PhysicsMotionType::Kinematic || Settings.Constraints == 63u ||
         !RuntimeMath::IsFinite(position) || !rotation.TryNormalize(rotation))
         return false;
     TargetPosition = position;
