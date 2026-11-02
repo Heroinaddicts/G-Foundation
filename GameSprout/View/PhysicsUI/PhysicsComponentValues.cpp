@@ -20,11 +20,11 @@ bool Write(GameSproutRuntime::IColliderComponent& collider,const Collider& value
     Collider previous;if(!Read(collider,previous)){error="不支持的碰撞器类型。";return false;}
     if(Shape(collider,value)&&collider.SetColliderSettings(value.Settings))return true;
     Shape(collider,previous);collider.SetColliderSettings(previous.Settings);
-    error="碰撞器设置无效。尺寸和半径须为正，胶囊总高度不能小于直径，碰撞层须在 0..31。";return false;
+    error="碰撞器设置无效。尺寸和半径须为正，胶囊总高度不能小于直径。";return false;
 }
 bool Equal(const Collider& a,const Collider& b) {
     const auto& x=a.Settings;const auto& y=b.Settings;
-    if(a.Kind!=b.Kind||x.Enabled!=y.Enabled||x.IsTrigger!=y.IsTrigger||!Equal(x.Center,y.Center)||x.Material!=y.Material||x.CollisionLayer!=y.CollisionLayer||x.CollisionMask!=y.CollisionMask||
+    if(a.Kind!=b.Kind||x.Enabled!=y.Enabled||x.IsTrigger!=y.IsTrigger||!Equal(x.Center,y.Center)||x.Material!=y.Material||
        x.Rotation.X!=y.Rotation.X||x.Rotation.Y!=y.Rotation.Y||x.Rotation.Z!=y.Rotation.Z||x.Rotation.W!=y.Rotation.W)return false;
     if(a.Kind==ShapeKind::Box)return Equal(a.Box.Size,b.Box.Size);
     if(a.Kind==ShapeKind::Sphere)return a.Sphere.Radius==b.Sphere.Radius;

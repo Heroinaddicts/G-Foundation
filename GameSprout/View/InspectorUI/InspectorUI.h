@@ -6,6 +6,7 @@
 #include "ILibraryManager.h"
 #include "ISceneManager.h"
 #include <map>
+#include <QPointer>
 namespace Ui { class InspectorUIWindow; }
 class AssetInfoInspector;
 class InspectorUI final : public IInspectorUI, public ISelectionListener, public IAssetListener,
@@ -59,7 +60,11 @@ private:
     InspectorTarget _Target;
     std::vector<IInspectorExtension*> _Extensions;
     std::map<IInspectorExtension*, InspectorPanel*> _Panels;
-    std::map<IInspectorExtension*, InspectorSection*> _SceneSections;
+    struct SceneSectionEntry {
+        QPointer<InspectorSection> Section;
+        QPointer<QWidget> Host;
+    };
+    std::map<IInspectorExtension*, SceneSectionEntry> _SceneSections;
     InspectorPanel* _ActivePanel = nullptr;
     IInspectorExtension* _ActiveExtension = nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime = nullptr;

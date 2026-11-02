@@ -66,6 +66,17 @@
        </widget>
       </item>
       <item>
+       <widget class="QWidget" name="objectHeaderExtensions">
+        <property name="visible"><bool>false</bool></property>
+        <property name="sizePolicy"><sizepolicy hsizetype="Minimum" vsizetype="Maximum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+        <layout class="QHBoxLayout" name="objectHeaderExtensionsLayout">
+         <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+         <property name="spacing"><number>2</number></property>
+        </layout>
+       </widget>
+      </item>
+      <item>
        <widget class="QToolButton" name="objectLockButton">
         <property name="text">
          <string>锁</string>
@@ -114,6 +125,14 @@
      </layout>
     </widget>
    </item>
+   <item><widget class="QWidget" name="classificationRow"><layout class="QHBoxLayout" name="classificationLayout">
+    <property name="leftMargin"><number>6</number></property><property name="rightMargin"><number>6</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>4</number></property><property name="spacing"><number>4</number></property>
+    <item><widget class="QLabel" name="tagLabel"><property name="text"><string>Tag</string></property></widget></item>
+    <item><widget class="QComboBox" name="tagCombo"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>40</width><height>24</height></size></property><property name="maximumSize"><size><width>16777215</width><height>26</height></size></property><property name="accessibleName"><string>对象 Tag</string></property></widget></item>
+    <item><widget class="QLabel" name="layerLabel"><property name="text"><string>Layer</string></property></widget></item>
+    <item><widget class="QComboBox" name="layerCombo"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>40</width><height>24</height></size></property><property name="maximumSize"><size><width>16777215</width><height>26</height></size></property><property name="accessibleName"><string>对象 Layer</string></property></widget></item>
+    <item><widget class="QToolButton" name="classificationSettingsButton"><property name="text"><string>⋮</string></property><property name="toolTip"><string>编辑项目的 Tags 和 Layers</string></property><property name="maximumSize"><size><width>24</width><height>26</height></size></property></widget></item>
+   </layout></widget></item>
    <item>
     <widget class="QScrollArea" name="componentScroll">
      <property name="widgetResizable">

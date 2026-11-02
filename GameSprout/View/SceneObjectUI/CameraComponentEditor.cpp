@@ -5,7 +5,8 @@
 
 CameraComponentEditor::CameraComponentEditor(QWidget* parent) : ComponentEditor(parent), _Ui(new Ui::CameraComponentEditorForm()) {
     _Ui->setupUi(this);
-    for (QLineEdit* edit : {_Ui->cameraFovEdit,_Ui->cameraOrthoHeightEdit,_Ui->cameraNearEdit,_Ui->cameraFarEdit,_Ui->cameraMaskEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues();});
+    for (QLineEdit* edit : {_Ui->cameraFovEdit,_Ui->cameraOrthoHeightEdit,_Ui->cameraNearEdit,_Ui->cameraFarEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues();});
+    _Ui->cameraMaskCombo->MaskChanged=[this](std::uint32_t){if(!_Loading)CommitValues();};
     QObject::connect(_Ui->cameraProjectionCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitValues();});
     QObject::connect(_Ui->setMainCameraButton,&QPushButton::clicked,this,[this]{SetMainCamera();});
 }
@@ -15,7 +16,8 @@ void CameraComponentEditor::ReadValues(GameSproutRuntime::IComponent& component)
     const auto v = c.GetSettings();
     _Ui->cameraProjectionCombo->setCurrentIndex(static_cast<int>(v.Projection));
     ShowNumbers({_Ui->cameraFovEdit,_Ui->cameraOrthoHeightEdit,_Ui->cameraNearEdit,_Ui->cameraFarEdit},{GameSproutRuntime::RadiansToDegrees(v.VerticalFovRadians),v.OrthographicHeight,v.NearPlane,v.FarPlane});
-    _Ui->cameraMaskEdit->setText("0x"+QString::number(v.CullingMask,16).rightJustified(8,'0'));
+    if(_Context.Runtime)_Ui->cameraMaskCombo->SetLayers(_Context.Runtime->GetProjectSettings().LayerNames);
+    _Ui->cameraMaskCombo->SetMask(v.CullingMask);
     auto* scene = c.GetGameObject()->GetScene();
     _Ui->setMainCameraButton->setEnabled(scene && scene->GetMainCamera() != &c);
 }
@@ -23,9 +25,7 @@ void CameraComponentEditor::CommitValues() {
     if (_Loading) return;
     std::vector<float> a;
     if (!ReadNumbers({_Ui->cameraFovEdit,_Ui->cameraOrthoHeightEdit,_Ui->cameraNearEdit,_Ui->cameraFarEdit},a)) { Fail("请输入有限的相机参数。"); return; }
-    bool valid = false;
-    const auto mask = _Ui->cameraMaskEdit->text().trimmed().toULongLong(&valid,0);
-    if (!valid || mask > std::numeric_limits<std::uint32_t>::max()) { Fail("可见层掩码需要 32 位无符号整数，支持 0x 十六进制。"); return; }
+    const auto mask=_Ui->cameraMaskCombo->GetMask();
     auto* object = _Context.Resolve();
     auto* component = object ? object->GetComponent<GameSproutRuntime::ICameraComponent>() : nullptr;
     if (!component) { Fail("Camera 组件已失效。"); return; }

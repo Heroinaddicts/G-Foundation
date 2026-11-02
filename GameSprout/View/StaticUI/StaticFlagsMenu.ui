@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StaticFlagsMenuForm</class>
+ <widget class="QMenu" name="StaticFlagsMenuForm">
+  <property name="title"><string>Static</string></property>
+  <property name="toolTipsVisible"><bool>true</bool></property>
+  <addaction name="nothingAction"/>
+  <addaction name="everythingAction"/>
+  <addaction name="separator"/>
+  <addaction name="contributeGIAction"/>
+  <addaction name="occluderAction"/>
+  <addaction name="batchingAction"/>
+  <addaction name="navigationAction"/>
+  <addaction name="occludeeAction"/>
+  <addaction name="offMeshLinkAction"/>
+  <addaction name="reflectionAction"/>
+  <action name="nothingAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Nothing</string></property></action>
+  <action name="everythingAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Everything</string></property></action>
+  <action name="contributeGIAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Contribute GI</string></property></action>
+  <action name="occluderAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Occluder Static</string></property></action>
+  <action name="batchingAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Batching Static</string></property></action>
+  <action name="navigationAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Navigation Static</string></property></action>
+  <action name="occludeeAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Occludee Static</string></property></action>
+  <action name="offMeshLinkAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Off Mesh Link Generation</string></property></action>
+  <action name="reflectionAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Reflection Probe Static</string></property></action>
+ </widget>
+ <resources/><connections/>
+</ui>

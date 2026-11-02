@@ -1,17 +1,14 @@
 #include "ColliderComponentEditor.h"
 #include "ui_ColliderComponentEditor.h"
 #include <QLineEdit>
-#include <limits>
 
 ColliderComponentEditor::ColliderComponentEditor(QWidget* parent):ComponentEditor(parent),_Ui(new Ui::ColliderComponentEditorForm()) {
     _Ui->setupUi(this);
-    for(QLineEdit* field:{_Ui->centerXEdit,_Ui->centerYEdit,_Ui->centerZEdit,_Ui->sizeXEdit,_Ui->sizeYEdit,_Ui->sizeZEdit,_Ui->radiusEdit,_Ui->heightEdit,_Ui->maskEdit})
+    for(QLineEdit* field:{_Ui->centerXEdit,_Ui->centerYEdit,_Ui->centerZEdit,_Ui->sizeXEdit,_Ui->sizeYEdit,_Ui->sizeZEdit,_Ui->radiusEdit,_Ui->heightEdit})
         QObject::connect(field,&QLineEdit::editingFinished,this,[this]{CommitValues();});
     for(QCheckBox* field:{_Ui->enabledCheck,_Ui->triggerCheck})QObject::connect(field,&QCheckBox::clicked,this,[this]{CommitValues();});
     QObject::connect(_Ui->axisCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitValues();});
-    QObject::connect(_Ui->layerSpin,qOverload<int>(&QSpinBox::valueChanged),this,[this]{CommitValues();});
     _Ui->materialField->Changed=[this](const GameSproutRuntime::ResourceReference&){CommitValues();};
-    _Ui->maskEdit->setToolTip(tr("32 位十六进制掩码，例如 FFFFFFFF 表示允许全部层。"));
 }
 ColliderComponentEditor::~ColliderComponentEditor(){_Ui->materialField->Changed={};delete _Ui;}
 void ColliderComponentEditor::ContextChanged() {
@@ -31,8 +28,6 @@ void ColliderComponentEditor::ReadValues(GameSproutRuntime::IComponent& componen
     if(box)ShowNumbers({_Ui->sizeXEdit,_Ui->sizeYEdit,_Ui->sizeZEdit},{data.Box.Size.X,data.Box.Size.Y,data.Box.Size.Z});
     else ShowNumber(_Ui->radiusEdit,capsule?data.Capsule.Radius:data.Sphere.Radius);
     if(capsule){ShowNumber(_Ui->heightEdit,data.Capsule.Height);_Ui->axisCombo->setCurrentIndex(static_cast<int>(data.Capsule.Axis));}
-    _Ui->layerSpin->setValue(data.Settings.CollisionLayer);
-    _Ui->maskEdit->setText(QString::number(data.Settings.CollisionMask,16).toUpper().rightJustified(8,'0'));
     _Ui->materialField->SetValue(data.Settings.Material);
 }
 void ColliderComponentEditor::CommitValues() {
@@ -42,10 +37,7 @@ void ColliderComponentEditor::CommitValues() {
     auto next=previous;std::vector<float> center;
     if(!ReadNumbers({_Ui->centerXEdit,_Ui->centerYEdit,_Ui->centerZEdit},center)){Fail("中心坐标必须为有限数值。");return;}
     next.Settings.Center={center[0],center[1],center[2]};next.Settings.Enabled=_Ui->enabledCheck->isChecked();next.Settings.IsTrigger=_Ui->triggerCheck->isChecked();
-    next.Settings.Material=_Ui->materialField->GetValue();next.Settings.CollisionLayer=static_cast<std::uint8_t>(_Ui->layerSpin->value());
-    bool maskValid=false;const auto mask=_Ui->maskEdit->text().trimmed().toULongLong(&maskValid,16);
-    if(!maskValid||mask>std::numeric_limits<std::uint32_t>::max()){Fail("碰撞掩码须为 32 位十六进制数。");return;}
-    next.Settings.CollisionMask=static_cast<std::uint32_t>(mask);
+    next.Settings.Material=_Ui->materialField->GetValue();
     if(_Kind==PhysicsComponentValues::ShapeKind::Box){std::vector<float> size;if(!ReadNumbers({_Ui->sizeXEdit,_Ui->sizeYEdit,_Ui->sizeZEdit},size)){Fail("尺寸必须为有限数值。");return;}next.Box.Size={size[0],size[1],size[2]};}
     else if(_Kind==PhysicsComponentValues::ShapeKind::Sphere){if(!ReadNumber(_Ui->radiusEdit,next.Sphere.Radius)){Fail("半径必须为有限数值。");return;}}
     else if(!ReadNumber(_Ui->radiusEdit,next.Capsule.Radius)||!ReadNumber(_Ui->heightEdit,next.Capsule.Height)){Fail("半径和高度必须为有限数值。");return;}

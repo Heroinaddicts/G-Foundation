@@ -22,6 +22,9 @@ public:
     void Load(GameSproutRuntime::IGameObject& object);
     void Clear();
     void SetLocked(bool locked);
+    QWidget* HeaderExtensionsHost() const;
+    void SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings&);
+    std::function<void()> OpenProjectSettings;
     void SetReadOnly(bool value);
     void SetDebugMode(bool debug);
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
@@ -34,10 +37,14 @@ private:
     void dragMoveEvent(QDragMoveEvent*) override;
     void dropEvent(QDropEvent*) override;
     void CommitName();
+    void RefreshClassification();
+    void CommitTag(int);
+    void CommitLayer(int);
     void CommitActive(bool active);
     Ui::GameObjectInspectorForm* _Ui = nullptr;
     std::vector<ComponentInfoSection*> _Sections; // Qt 子控件，不保存任何 Runtime 节点指针。
     ComponentEditContext _Context;
+    GameSproutRuntime::RuntimeProjectSettings _ProjectSettings;
     bool _Loading = false;
     bool _ReadOnly = false;
     bool _DebugMode = false;

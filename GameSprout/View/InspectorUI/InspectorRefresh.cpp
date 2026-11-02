@@ -1,5 +1,6 @@
 #include "InspectorUI.h"
 #include "ui_InspectorUI.h"
+#include <QLayout>
 void InspectorUI::Clear(const QString& message) {
     DeactivateSceneSections();
     if (_ActivePanel) { _ActivePanel->Deactivate(); _ActivePanel->hide(); }
@@ -63,30 +64,42 @@ void InspectorUI::Refresh() {
 }
 
 void InspectorUI::DeactivateSceneSections() {
-    for(auto& entry:_SceneSections)if(entry.second){entry.second->Deactivate();entry.second->hide();}
+    for(auto& entry:_SceneSections)if(auto* section=entry.second.Section.data()){section->Deactivate();section->hide();}
+    if(_ActivePanel)if(auto* header=_ActivePanel->SceneObjectHeaderHost())header->hide();
     if(_Window)_Ui->sceneSectionsHost->hide();
 }
 void InspectorUI::RefreshSceneSections(const InspectorTarget& target,bool changed) {
     if(!target.Scene.ObjectID){DeactivateSceneSections();return;}
-    bool visible=false;
+    QWidget* header=_ActivePanel?_ActivePanel->SceneObjectHeaderHost():nullptr;
+    bool bodyVisible=false,headerVisible=false;
     for(auto* extension:_Extensions) {
-        auto found=_SceneSections.find(extension);
-        if(found==_SceneSections.end()) {
-            auto* section=extension->CreateSceneObjectSection(_Services,_Ui->sceneSectionsHost);
-            found=_SceneSections.emplace(extension,section).first;
-            if(section) {
-                _Ui->sceneSectionsLayout->addWidget(section);
+        const bool inHeader=extension->SceneObjectSectionPlacement()==InspectorSectionPlacement::ObjectHeader;
+        QWidget* parent=inHeader?header:_Ui->sceneSectionsHost;
+        auto& entry=_SceneSections[extension];
+        if(!parent||!parent->layout()) {
+            if(entry.Section){entry.Section->Deactivate();entry.Section->hide();}
+            continue;
+        }
+        // Header hosts belong to the selected functional panel. QPointer prevents
+        // stale entries if that panel is unregistered or the window is destroyed.
+        if(entry.Host!=parent) {
+            if(entry.Section){entry.Section->Deactivate();delete entry.Section.data();}
+            entry.Host=parent;entry.Section=extension->CreateSceneObjectSection(_Services,parent);
+            if(auto* section=entry.Section.data()) {
+                parent->layout()->addWidget(section);
                 section->ReportError=[this](const std::string& error){_OperationError=QString::fromStdString(error);UpdateButtons();};
                 section->RequestRefresh=[this]{RequestRefresh();};
                 section->RequestSelection=[this](const ProjectAssetSelection& asset){_Services.Selection->SetAssetSelection({asset});};
             }
         }
-        if(auto* section=found->second) {
+        if(auto* section=entry.Section.data()) {
             std::string error;
             const bool applicable=section->Load(target,changed,error);
-            section->setVisible(applicable);visible=visible||applicable;
+            section->setVisible(applicable);
+            if(inHeader)headerVisible=headerVisible||applicable;else bodyVisible=bodyVisible||applicable;
             if(!error.empty())_OperationError=QString::fromStdString(error);
         }
     }
-    _Ui->sceneSectionsHost->setVisible(visible);
+    if(header)header->setVisible(headerVisible);
+    _Ui->sceneSectionsHost->setVisible(bodyVisible);
 }

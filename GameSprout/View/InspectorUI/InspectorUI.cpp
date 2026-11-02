@@ -88,7 +88,7 @@ void InspectorUI::UnregisterExtension(IInspectorExtension* extension) {
     _Extensions.erase(found);
     const auto section=_SceneSections.find(extension);
     if(section!=_SceneSections.end()) {
-        if(section->second){section->second->Deactivate();delete section->second;}
+        if(section->second.Section){section->second.Section->Deactivate();delete section->second.Section.data();}
         _SceneSections.erase(section);
     }
     // Remaining node pages can contain component editors created by this extension.
@@ -114,9 +114,9 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if (_SceneSubscribed && _Services.Scenes) _Services.Scenes->UnregisterSceneListener(this);
     if (_Subscribed) { _Services.Assets->UnregisterAssetListener(this); _Services.Selection->UnregisterSelectionListener(this); }
     _Subscribed = false; _RuntimeSubscribed = false; _SceneSubscribed = false;
-    for(auto& entry:_SceneSections)if(entry.second) {
-        entry.second->ReportError={};entry.second->RequestSelection={};entry.second->RequestRefresh={};
-        entry.second->Deactivate();delete entry.second;
+    for(auto& entry:_SceneSections)if(auto* section=entry.second.Section.data()) {
+        section->ReportError={};section->RequestSelection={};section->RequestRefresh={};
+        section->Deactivate();delete section;
     }
     _SceneSections.clear();
     for (auto& entry : _Panels) {

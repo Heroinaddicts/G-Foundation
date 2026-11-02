@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StaticChildrenDialogForm</class>
+ <widget class="QDialog" name="StaticChildrenDialogForm">
+  <property name="windowTitle"><string>修改静态用途</string></property>
+  <property name="minimumSize"><size><width>360</width><height>0</height></size></property>
+  <layout class="QVBoxLayout" name="dialogLayout">
+   <property name="spacing"><number>16</number></property>
+   <item><widget class="QLabel" name="questionLabel"><property name="text"><string>是否将本次修改的静态用途同时应用到子节点？</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="detailLabel"><property name="text"><string>仅修改所选用途，保留各节点其他标记。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><layout class="QHBoxLayout" name="buttonsLayout">
+    <item><widget class="QPushButton" name="cancelButton"><property name="text"><string>取消</string></property><property name="default"><bool>true</bool></property></widget></item>
+    <item><widget class="QPushButton" name="selfButton"><property name="text"><string>仅当前节点</string></property></widget></item>
+    <item><widget class="QPushButton" name="childrenButton"><property name="text"><string>包含子节点</string></property></widget></item>
+   </layout></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

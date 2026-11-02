@@ -3,16 +3,24 @@
 #include "IInspectorUI.h"
 #include "IRuntimeHost.h"
 #include "IScriptEditor.h"
+#include "IProjectSettingsUI.h"
 #include "ui_SceneObjectPanel.h"
 #include <QStringList>
 SceneObjectPanel::SceneObjectPanel(const InspectorServices& services, QWidget* parent)
     : InspectorPanel(services, parent), _Ui(new Ui::SceneObjectPanelForm) {
     _Ui->setupUi(this);
+    _ProjectSettings=services.Editor?services.Editor->GetGameSproutModule<IProjectSettings>("ProjectSettings"):nullptr;
+    if(_ProjectSettings){_SettingsSubscribed=_ProjectSettings->RegisterSettingsListener(this);_Ui->objectInspector->SetProjectSettings(_ProjectSettings->GetSettings());}
+    else if(services.Editor&&services.Editor->_Runtime)_Ui->objectInspector->SetProjectSettings(services.Editor->_Runtime->GetProjectSettings());
+    _Ui->objectInspector->OpenProjectSettings=[this]{
+        auto* view=_Services.Editor?_Services.Editor->GetGameSproutView<IProjectSettingsUI>("ProjectSettingsUI"):nullptr;
+        if(view)view->Show();
+    };
     _PlayMode=services.Editor?services.Editor->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     _Ui->objectInspector->LockChanged = [this](bool locked) { if (RequestLock) RequestLock(locked); };
 }
-SceneObjectPanel::~SceneObjectPanel() { if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this); _Ui->objectInspector->LockChanged = {}; delete _Ui; }
+SceneObjectPanel::~SceneObjectPanel() { if(_SettingsSubscribed&&_ProjectSettings)_ProjectSettings->UnregisterSettingsListener(this);_Ui->objectInspector->OpenProjectSettings={}; if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this); _Ui->objectInspector->LockChanged = {}; delete _Ui; }
 bool SceneObjectPanel::Load(const InspectorTarget& target, bool, std::string& error) {
     error.clear(); _Target = target;
     ComponentEditContext context;
@@ -43,10 +51,15 @@ InspectorPresentation SceneObjectPanel::Describe() const {
 }
 void SceneObjectPanel::Deactivate() { _Ui->objectInspector->Clear(); _Target = {}; }
 void SceneObjectPanel::SetDebugMode(bool debug) { _Ui->objectInspector->SetDebugMode(debug); }
+QWidget* SceneObjectPanel::SceneObjectHeaderHost() const {return _Ui->objectInspector->HeaderExtensionsHost();}
 void SceneObjectPanel::SetLocked(bool locked) { _Ui->objectInspector->SetLocked(locked); }
 void SceneObjectPanel::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) { _Ui->objectInspector->OnAnimationEvent(event); }
 
 void SceneObjectPanel::OnPlayModeStateChanged(const PlayModeState& state) {
     _ReadOnly=state.State!=EditorPlayState::Edit;
     if(_Ui)_Ui->objectInspector->SetReadOnly(_ReadOnly);
+}
+
+void SceneObjectPanel::OnProjectSettingsChanged(const GameSproutRuntime::RuntimeProjectSettings& settings,std::uint64_t) {
+    if(_Ui)_Ui->objectInspector->SetProjectSettings(settings);
 }

@@ -56,6 +56,8 @@ public:
     virtual void Deactivate() {}
     virtual void SetDebugMode(bool) {}
     virtual void SetLocked(bool) {}
+    // Optional .ui-defined slot for additive object-header controls.
+    virtual QWidget* SceneObjectHeaderHost() const {return nullptr;}
     virtual void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) {}
     std::function<void()> Changed;
     std::function<void(const std::string&)> ReportError;
@@ -84,6 +86,8 @@ protected:
     InspectorServices _Services;
 };
 
+enum class InspectorSectionPlacement {BeforeObject,ObjectHeader};
+
 // 注册表只在 InspectorUI 实例中保存。扩展注销后，其页面由宿主销毁。
 class IInspectorExtension {
 public:
@@ -94,4 +98,5 @@ public:
     virtual ComponentEditor* CreateComponentEditor(const std::type_info&, QWidget*) { return nullptr; }
     // Does not compete with CanInspect/CreatePanel; component pages stay active.
     virtual InspectorSection* CreateSceneObjectSection(const InspectorServices&,QWidget*) { return nullptr; }
+    virtual InspectorSectionPlacement SceneObjectSectionPlacement() const {return InspectorSectionPlacement::BeforeObject;}
 };

@@ -49,6 +49,8 @@ void HierarchyUI::CreateNode(NodeKind kind, bool child) {
     case NodeKind::UIEmpty: configured = object->AddComponent<GameSproutRuntime::IRectTransformComponent>() != nullptr; break;
     case NodeKind::Count: configured = false; break;
     }
+    if(kind==NodeKind::Canvas||kind==NodeKind::Image||kind==NodeKind::UIEmpty)
+        configured=configured&&object->SetLayer(GameSproutRuntime::UILayer);
     if (!configured) {
         scene->DestroyGameObject(object);
         _Ui->statusLabel->setText(QStringLiteral("组件创建失败，已撤销新节点。"));

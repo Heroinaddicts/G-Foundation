@@ -5,6 +5,12 @@
 #include "IAssetsManager.h"
 #include "../Shared/AssetDragPayload.h"
 #include "ui_GameObjectInspector.h"
+#include "ui_LayerChildrenDialog.h"
+#include "LayerMaskCombo.h"
+#include <QDialog>
+#include <QComboBox>
+#include <QToolButton>
+#include <limits>
 #include <QApplication>
 #include <QSignalBlocker>
 #include <QDragEnterEvent>
@@ -15,13 +21,17 @@ GameObjectInspector::GameObjectInspector(QWidget* parent) : QWidget(parent), _Ui
     _Ui->setupUi(this);
     setAcceptDrops(true);
     QObject::connect(_Ui->addComponentButton,&QPushButton::clicked,this,[this]{OpenAddComponent();});
+    QObject::connect(_Ui->tagCombo,QOverload<int>::of(&QComboBox::activated),this,[this](int index){CommitTag(index);});
+    QObject::connect(_Ui->layerCombo,QOverload<int>::of(&QComboBox::activated),this,[this](int index){CommitLayer(index);});
+    QObject::connect(_Ui->classificationSettingsButton,&QToolButton::clicked,this,[this]{if(OpenProjectSettings)OpenProjectSettings();});
     QObject::connect(_Ui->objectNameEdit,&QLineEdit::editingFinished,this,[this]{CommitName();});
     QObject::connect(_Ui->objectActiveCheck,&QCheckBox::clicked,this,[this](bool active){CommitActive(active);});
     QObject::connect(_Ui->objectLockButton,&QToolButton::toggled,this,[this](bool locked) {
         if (LockChanged) LockChanged(locked);
     });
 }
-GameObjectInspector::~GameObjectInspector() { if(_AddPopup)delete _AddPopup;LockChanged={};delete _Ui; }
+GameObjectInspector::~GameObjectInspector() { if(_AddPopup)delete _AddPopup;LockChanged={};OpenProjectSettings={};delete _Ui; }
+QWidget* GameObjectInspector::HeaderExtensionsHost() const {return _Ui->objectHeaderExtensions;}
 void GameObjectInspector::SetLocked(bool locked) {
     const QSignalBlocker blocker(_Ui->objectLockButton);
     _Ui->objectLockButton->setChecked(locked);
@@ -31,6 +41,7 @@ void GameObjectInspector::SetDebugMode(bool debug) {
     _Ui->componentScroll->setVisible(!_SceneRoot || debug);
     _Ui->emptySceneSpace->setVisible(_SceneRoot && !debug);
     _Ui->addComponentButton->setVisible(!_SceneRoot);
+    _Ui->classificationRow->setVisible(!_SceneRoot);
     for (auto* section:_Sections) {
         section->SetDebugMode(debug);
         section->setVisible(!_SceneRoot || debug);
@@ -39,6 +50,7 @@ void GameObjectInspector::SetDebugMode(bool debug) {
 void GameObjectInspector::Clear() {
     if(_AddPopup)delete _AddPopup;
     _Loading=true;_Context={};_LoadedID=0;_SceneRoot=false;setEnabled(false);
+    _Ui->tagCombo->clear();_Ui->layerCombo->clear();
     _Ui->objectNameEdit->clear();_Ui->objectActiveCheck->setChecked(false);
     for(auto* section:_Sections) delete section;
     _Sections.clear();
@@ -60,6 +72,7 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
     _LoadedID=object.GetInstanceID();
     _SceneRoot=object.GetScene()==&object;
     SetDebugMode(_DebugMode);
+    RefreshClassification();
     _Ui->objectActiveCheck->setVisible(!_SceneRoot);
     _Ui->objectActiveCheck->setChecked(object.IsActiveSelf());
     while(_Sections.size()>object.GetComponentCount()) {delete _Sections.back();_Sections.pop_back();}
@@ -163,7 +176,69 @@ void GameObjectInspector::SetReadOnly(bool value) {
     if(value&&_AddPopup)delete _AddPopup;
     _Ui->objectNameEdit->setReadOnly(value);
     _Ui->objectActiveCheck->setEnabled(!value);
+    _Ui->tagCombo->setEnabled(!value);_Ui->layerCombo->setEnabled(!value);
+    _Ui->classificationSettingsButton->setEnabled(!value);
     _Ui->addComponentButton->setEnabled(!value);
     setAcceptDrops(!value);
     for(auto* section:_Sections)section->SetReadOnly(value);
+}
+
+void GameObjectInspector::SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& settings) {
+    _ProjectSettings=settings;if(_LoadedID) {
+        RefreshClassification();
+        for(auto* widget:findChildren<QWidget*>())if(auto* mask=dynamic_cast<LayerMaskCombo*>(widget))mask->SetLayers(settings.LayerNames);
+    }
+}
+void GameObjectInspector::RefreshClassification() {
+    const QSignalBlocker tagBlock(_Ui->tagCombo),layerBlock(_Ui->layerCombo);
+    _Ui->tagCombo->clear();_Ui->layerCombo->clear();
+    auto* object=_Context.Resolve();if(!object)return;
+    const auto tagID=object->GetTagID();const auto layer=object->GetLayer();
+    int selectedTag=-1,selectedLayer=-1;
+    for(const auto& tag:_ProjectSettings.Tags) {
+        const int index=_Ui->tagCombo->count();
+        _Ui->tagCombo->addItem(QString::fromStdString(tag.Name),QVariant::fromValue<qulonglong>(tag.ID));
+        if(tag.ID==tagID)selectedTag=index;
+    }
+    if(selectedTag<0){selectedTag=_Ui->tagCombo->count();_Ui->tagCombo->addItem(QStringLiteral("Missing Tag"),QVariant::fromValue<qulonglong>(tagID));}
+    for(std::uint8_t index=0;index<32;++index)if(!_ProjectSettings.LayerNames[index].empty()||index==layer) {
+        const auto& name=_ProjectSettings.LayerNames[index];
+        if(index==layer)selectedLayer=_Ui->layerCombo->count();
+        _Ui->layerCombo->addItem(name.empty()?QStringLiteral("未命名 Layer %1").arg(index):QString::fromStdString(name),index);
+    }
+    _Ui->tagCombo->setCurrentIndex(selectedTag);_Ui->layerCombo->setCurrentIndex(selectedLayer);
+    _Ui->tagCombo->setToolTip(QString::fromStdString(object->GetTag()));
+    _Ui->layerCombo->setToolTip(QStringLiteral("Layer %1").arg(layer));
+}
+void GameObjectInspector::CommitTag(int index) {
+    if(_Loading||_ReadOnly||_SceneRoot||index<0)return;
+    auto* object=_Context.Resolve();if(!object)return;
+    const auto previous=object->GetTagID();const auto next=_Ui->tagCombo->itemData(index).toULongLong();
+    if(previous==next)return;
+    const auto change=[](std::uint64_t id){return [id](GameSproutRuntime::IGameObject& target,std::string& error){
+        if(target.SetTagID(id))return true;error="Runtime 拒绝修改 Tag，定义可能已经删除。";return false;
+    };};
+    _Context.Execute("修改对象 Tag",change(next),change(previous));RefreshClassification();
+}
+void GameObjectInspector::CommitLayer(int index) {
+    if(_Loading||_ReadOnly||_SceneRoot||index<0)return;
+    auto* object=_Context.Resolve();if(!object)return;
+    const auto next=static_cast<std::uint8_t>(_Ui->layerCombo->itemData(index).toUInt());
+    const auto previous=object->GetLayer();if(previous==next)return;
+    const ComponentEditContext context=_Context;
+    bool children=false;
+    if(object->GetChildCount()) {
+        QPointer<GameObjectInspector> self(this);QPointer<QDialog> dialog=new QDialog(this);
+        Ui::LayerChildrenDialogForm form;form.setupUi(dialog);
+        QObject::connect(form.selfButton,&QPushButton::clicked,dialog,[dialog]{if(dialog)dialog->done(1);});
+        QObject::connect(form.childrenButton,&QPushButton::clicked,dialog,[dialog]{if(dialog)dialog->done(2);});
+        QObject::connect(form.cancelButton,&QPushButton::clicked,dialog,&QDialog::reject);
+        const int choice=dialog->exec();delete dialog.data();if(!self)return;
+        if(choice!=1&&choice!=2){RefreshClassification();return;}children=choice==2;
+    }
+    std::string error;
+    if(!context.Resolve()||!context.Scenes)error="对象或场景已改变。";
+    else context.Scenes->SetObjectLayer(context.ObjectID,next,children,error);
+    if(context.Report)context.Report(error);
+    RefreshClassification();
 }
