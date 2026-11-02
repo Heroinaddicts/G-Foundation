@@ -2,6 +2,7 @@
 #define GAMESPROUT_IDE_DOCKER_FINAL_H
 
 #include "IIDEWindow.h"
+#include <QMetaObject>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -35,12 +36,26 @@ public:
     void SetTitle(const QString& title) override;
     IIDEMenu* CreateChildMenu(const QString& name) override;
     IContextMenuManager* GetContextMenuManager() const override;
+    bool IsContentVisible() const override { return _ContentVisible; }
+    bool RegisterContentVisibilityCallback(const void*, const fContentVisibilityCallback&) override;
+    void UnregisterContentVisibilityCallback(const void*) override;
 
     QDockWidget* GetDockWidget() const { return _Dock; }
     QMenu* GetContextMenu() const { return _Menu; }
     void SetTabbedTitle(bool tabbed);
 
 private:
+    void OnContentVisibilityChanged(bool visible);
+    struct VisibilitySubscription {
+        const void* Owner;
+        std::uint64_t ID;
+        fContentVisibilityCallback Callback;
+    };
+    bool _ContentVisible = false;
+    std::uint64_t _NextVisibilityID = 1;
+    std::vector<VisibilitySubscription> _VisibilitySubscriptions;
+    QMetaObject::Connection _VisibilityConnection;
+    QMetaObject::Connection _FloatingConnection;
     QDockWidget* _Dock = nullptr;
     QMainWindow* _Window = nullptr; // 借用，IDEWindow 先销毁面板再销毁主窗口。
     IDEDockerManager* _Manager = nullptr; // 借用，晚于所有 Docker 销毁。

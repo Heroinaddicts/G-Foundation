@@ -100,6 +100,10 @@ public:
     void Activate() override{if(Widget)Widget->show();}void SetTitle(const QString&) override{}
     IIDEMenu* CreateChildMenu(const QString&) override{return nullptr;}
     IContextMenuManager* GetContextMenuManager() const override{return nullptr;}
+    bool IsContentVisible() const override{return Widget&&Widget->isVisible();}
+    std::map<const void*,fContentVisibilityCallback> VisibilityCallbacks;
+    bool RegisterContentVisibilityCallback(const void* owner,const fContentVisibilityCallback& callback) override{return owner&&callback&&VisibilityCallbacks.emplace(owner,callback).second;}
+    void UnregisterContentVisibilityCallback(const void* owner) override{VisibilityCallbacks.erase(owner);}
 };
 class IDE final:public IIDEWindow {
 public:

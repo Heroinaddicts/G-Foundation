@@ -56,6 +56,7 @@ private:
     Ui::SceneViewUIWindow* _Ui=nullptr;
     SceneViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
+    bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;
     ISceneManager* _Scenes=nullptr;
     IRuntimeHost* _Host=nullptr;
     GameSproutRuntime::IScene* _ActiveScene=nullptr;

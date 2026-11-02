@@ -62,11 +62,14 @@ bool SceneViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     _Docker=g_IIDEWindow->CreateDocker(QStringLiteral("Scene"));
     if(!_Docker||!_Docker->AttachWidget(_Window))return false;
     _Attached=true;_Docker->SetTitle(QStringLiteral("Scene"));
+    _DockerVisibilitySubscribed=_Docker->RegisterContentVisibilityCallback(this,
+        [this](bool visible){_DockerContentVisible=visible;_Timer.start();});
+    _DockerContentVisible=_Docker->IsContentVisible();
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();_Timer.start();
-    return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
+    return _DockerVisibilitySubscribed && (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
 }
 void SceneViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
 void SceneViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
@@ -78,9 +81,11 @@ void SceneViewUI::OnActiveSceneChanged() {
 void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
     // Editor camera navigation continues while simulation is paused.
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
-    if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed);
+    if(_DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_DockerVisibilitySubscribed && _Docker)_Docker->UnregisterContentVisibilityCallback(this);
+    _DockerVisibilitySubscribed=false;_DockerContentVisible=false;
     if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
     _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);

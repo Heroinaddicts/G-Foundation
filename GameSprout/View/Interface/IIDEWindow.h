@@ -6,6 +6,7 @@
 #include <QString>
 #include <QList>
 #include <cstdint>
+#include <functional>
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -88,6 +89,15 @@ public:
 
     // 内容区右键菜单，与标签栏的面板管理菜单独立；借用至 Docker 销毁。
     virtual IContextMenuManager * GetContextMenuManager() const = 0;
+
+    // 主线程使用。标签组中只有当前页为 true；区别于 QWidget::isVisible()。
+    // 注册后读取一次快照，后续由事件更新；不代表窗口未被其他应用遮挡。
+    using fContentVisibilityCallback = std::function<void(bool visible)>;
+    virtual bool IsContentVisible() const = 0;
+    // owner 唯一且非空；注册不立即回调。释放 owner 前必须注销。
+    virtual bool RegisterContentVisibilityCallback(const void* owner,
+        const fContentVisibilityCallback& callback) = 0;
+    virtual void UnregisterContentVisibilityCallback(const void* owner) = 0;
 };
 
 class IIDEWindow : public GameSproutEditor::IGameSproutView {

@@ -96,6 +96,7 @@ static std::vector<QRect> BlankRegions(QMainWindow* host) {
 }
 #include "DockDragChecks.h"
 #include "DockRestoreChecks.h"
+#include "DockVisibilityChecks.h"
 int main(int argc,char** argv) {
     DockTestApplication app(argc,argv);const bool explore=QCoreApplication::arguments().contains("--explore");
     IIDEWindow* ide=nullptr;IProjectAssetsUI* project=nullptr;IConsoleUI* console=nullptr;IDockerLayoutManager* layouts=nullptr;
@@ -123,6 +124,17 @@ int main(int argc,char** argv) {
         Check(host,"IDE host missing");host->resize(1280,800);Settle();
         if(explore)app.Trace=host;
         Check(layouts->ResetDefaultLayout(),"Default layout failed");Settle(400);
+        auto* originalWindowMenu=host->findChild<QMenu*>("DockerWindowMenu");
+        Check(originalWindowMenu,"Designer Window menu missing");
+        const auto originalWindowActions=originalWindowMenu->actions();
+        auto* windowMenu=ide->GetMenuBar()->CreateChildMenu(originalWindowMenu->title());
+        Check(windowMenu&&windowMenu==ide->GetMenuBar()->CreateChildMenu(originalWindowMenu->title()),"Window menu wrapper not reused");
+        Check(windowMenu->CreateChildMenu("环境照明"),"Cannot add feature action to Window menu");
+        int windowMenuCount=0;for(auto* action:host->menuBar()->actions())if(action->text()==originalWindowMenu->title())++windowMenuCount;
+        Check(windowMenuCount==1,"Feature registration duplicated Designer Window menu");
+        Check(originalWindowActions.size()>=4&&originalWindowMenu->actions().size()==originalWindowActions.size()+1,"Feature Window action did not share dock toggle menu");
+        for(auto* action:originalWindowActions)Check(originalWindowMenu->actions().contains(action),"Feature registration discarded a dock toggle action");
+        CheckDockContentVisibility(ide,layouts,host);
         auto* projectDock=host->findChild<QDockWidget*>("ProjectAssets");auto* consoleDock=host->findChild<QDockWidget*>("Console");auto* sceneDock=host->findChild<QDockWidget*>("Scene");
         Check(projectDock&&consoleDock&&sceneDock&&projectDock->widget()&&consoleDock->widget(),"Real dock content missing");
         Describe("Host",host);Describe("Project",projectDock);Describe("Project.ui",projectDock->widget());Describe("Console",consoleDock);Describe("Console.ui",consoleDock->widget());Describe("Scene",sceneDock);

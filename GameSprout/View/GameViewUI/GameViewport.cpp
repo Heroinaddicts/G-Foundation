@@ -128,6 +128,8 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
     if (!_Renderer->Render(view)) {Status(_Renderer->GetLastError());return;}
     if(!diagnostic.empty()){Status(diagnostic);return;}
     const auto& statistics=_Renderer->GetStatistics();
-    Status(std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+
-        std::to_string(statistics.DrawCalls)+" draws · "+std::to_string(statistics.Triangles)+" triangles");
+    std::string status=std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+
+        std::to_string(statistics.DrawCalls)+" draws · "+std::to_string(statistics.Triangles)+" triangles";
+    if(statistics.InstancedDrawCalls)status+=" · instanced "+std::to_string(statistics.InstancedInstances)+" · saved "+std::to_string(statistics.SavedDrawCalls)+" draws";
+    Status(status);
 }

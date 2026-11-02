@@ -3,6 +3,12 @@
 #include <QAction>
 #include <QMenu>
 #include <QKeySequence>
+#include <stdexcept>
+
+IDEMenuFinal::IDEMenuFinal(QMenu* menu)
+    : _Owner(menu), _Action(menu ? menu->menuAction() : nullptr), _Menu(menu), _OwnsQtObjects(false) {
+    if (!menu) throw std::invalid_argument("Cannot wrap a null menu");
+}
 
 IDEMenuFinal::IDEMenuFinal(QWidget* owner, const QString& name, bool submenu)
     : _Owner(owner) {
@@ -31,8 +37,10 @@ IDEMenuFinal::~IDEMenuFinal() {
     for (auto it = _Children.rbegin(); it != _Children.rend(); ++it) {
         delete *it;
     }
-    delete _Action;
-    delete _Menu;
+    if (_OwnsQtObjects) {
+        delete _Action;
+        delete _Menu;
+    }
 }
 
 IIDEMenu* IDEMenuFinal::CreateChildMenu(const QString& name) {

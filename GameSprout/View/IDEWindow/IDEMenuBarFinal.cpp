@@ -3,6 +3,7 @@
 
 #include <QMenuBar>
 #include <QAction>
+#include <QMenu>
 
 IDEMenuBarFinal::IDEMenuBarFinal(QMenuBar* menuBar) : _MenuBar(menuBar) {
 }
@@ -20,7 +21,16 @@ IIDEMenu* IDEMenuBarFinal::CreateChildMenu(const QString& name) {
     }
     for (IDEMenuFinal* existing : _Menus)
         if (existing->GetAction()->text() == name) return existing;
-    IDEMenuFinal* menu = new IDEMenuFinal(_MenuBar, name, true);
+    IDEMenuFinal* menu = nullptr;
+    // .ui menus already belong to the main window and can contain dock toggle
+    // actions. Extend that same menu instead of creating a duplicate title.
+    for (QAction* action : _MenuBar->actions()) {
+        if (action->text() == name && action->menu()) {
+            menu = new IDEMenuFinal(action->menu());
+            break;
+        }
+    }
+    if (!menu) menu = new IDEMenuFinal(_MenuBar, name, true);
     try {
         _Menus.push_back(menu);
     } catch (...) {

@@ -11,6 +11,8 @@
 #include <QDockWidget>
 #include <QMainWindow>
 #include <QMenu>
+#include <QPointer>
+#include <algorithm>
 
 IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDockerManager* manager)
     : _Window(window), _Manager(manager) {
@@ -18,6 +20,12 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
     try {
         _DockUi = new Ui::IDEDockerWidget();
         _DockUi->setupUi(_Dock);
+        _VisibilityConnection = QObject::connect(_Dock, &QDockWidget::visibilityChanged,
+            _Dock, [this](bool visible) { OnContentVisibilityChanged(visible); });
+        _FloatingConnection = QObject::connect(_Dock, &QDockWidget::topLevelChanged,
+            _Dock, [this](bool floating) {
+                if (floating) OnContentVisibilityChanged(_Dock->isVisible());
+            });
         _Dock->setObjectName(name);
         _ContextMenuManager = new IDEContextMenuManagerFinal(_Dock);
         _Dock->setWindowTitle(name);
@@ -74,6 +82,9 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
 }
 
 IDEDockerFinal::~IDEDockerFinal() {
+    QObject::disconnect(_VisibilityConnection);
+    QObject::disconnect(_FloatingConnection);
+    _VisibilitySubscriptions.clear();
     _Manager->UnregisterDocker(this);
     delete _ContextMenuManager;
     for (auto it = _Menus.rbegin(); it != _Menus.rend(); ++it) {
@@ -176,4 +187,38 @@ void IDEDockerFinal::SetTitle(const QString& title) {
 
 IContextMenuManager* IDEDockerFinal::GetContextMenuManager() const {
     return _ContextMenuManager;
+}
+
+bool IDEDockerFinal::RegisterContentVisibilityCallback(const void* owner,
+    const fContentVisibilityCallback& callback) {
+    if (!owner || !callback || std::any_of(_VisibilitySubscriptions.begin(),
+        _VisibilitySubscriptions.end(), [owner](const auto& entry) { return entry.Owner == owner; })) {
+        return false;
+    }
+    _VisibilitySubscriptions.push_back({owner, _NextVisibilityID++, callback});
+    return true;
+}
+
+void IDEDockerFinal::UnregisterContentVisibilityCallback(const void* owner) {
+    std::erase_if(_VisibilitySubscriptions,
+        [owner](const auto& entry) { return entry.Owner == owner; });
+}
+
+void IDEDockerFinal::OnContentVisibilityChanged(bool visible) {
+    // Qt may still report the old, inactive tab state while detaching a dock.
+    // An independent floating window has no tab selection; its widget state is
+    // authoritative. Reconcile on events only, never in the rendering loop.
+    if (_Dock->isFloating()) visible = _Dock->isVisible() && !_Dock->isMinimized();
+    if (_ContentVisible == visible) return;
+    _ContentVisible = visible;
+    const auto subscriptions = _VisibilitySubscriptions;
+    const QPointer<QDockWidget> guard(_Dock);
+    for (const auto& entry : subscriptions) {
+        const auto live = std::find_if(_VisibilitySubscriptions.begin(), _VisibilitySubscriptions.end(),
+            [&entry](const auto& value) { return value.Owner == entry.Owner && value.ID == entry.ID; });
+        if (live == _VisibilitySubscriptions.end()) continue;
+        const auto callback = live->Callback;
+        callback(visible);
+        if (!guard) return;
+    }
 }

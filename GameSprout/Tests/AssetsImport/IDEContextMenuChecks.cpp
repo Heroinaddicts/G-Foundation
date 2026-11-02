@@ -129,10 +129,23 @@ int main(int argc, char** argv) {
         RightClick(assetTree->viewport());
         Check(projectMenu->isVisible(), "Project asset area menu missing");
         QMenu* projectCreate = FindAction(projectMenu, "Create")->menu();
-        Check(projectCreate && FindAction(projectCreate, "Scene") && FindAction(projectCreate, "Material"),
-              "Project Create commands missing");
-        QAction* fragment = FindAction(FindAction(projectCreate, "Shader")->menu(), "Fragment Shader");
-        Check(!fragment->isEnabled() && FindAction(projectMenu, "Refresh")->isEnabled(), "Placeholder commands were enabled");
+        Check(projectCreate && !FindAction(projectCreate, "Folder")->isEnabled() &&
+              FindAction(projectMenu, "Refresh")->isEnabled(), "Incorrect browser command states");
+        // The browser owns generic commands only. Scene/Shader feature Views
+        // register their own actions in their independent integration fixtures.
+        // Exercise the real browser extension bridge without loading those Views.
+        const int extensionOwner=0;
+        Check(project->RegisterContextAction(&extensionOwner,{"Create","Test Feature","Nested Command"},&OnClick),
+              "Cannot register browser menu extension");
+        QAction* extension=FindAction(FindAction(projectCreate,"Test Feature")->menu(),"Nested Command");
+        Check(extension->isEnabled(),"Registered browser extension is disabled");
+        const int clicksBeforeExtension=Clicks;
+        extension->trigger();
+        Check(Clicks==clicksBeforeExtension+1,"Browser extension callback missing or duplicated");
+        project->UnregisterExtensions(&extensionOwner);
+        Check(!extension->isEnabled(),"Unregistered browser extension remained enabled");
+        extension->trigger();
+        Check(Clicks==clicksBeforeExtension+1,"Unregistered browser extension retained its callback");
         projectMenu->grab().save("/tmp/gamesprout-context-menu.png");
         projectMenu->hide();
         RightClick(folderTree->viewport());

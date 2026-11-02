@@ -13,6 +13,8 @@ QT_END_NAMESPACE
 class IDEMenuFinal final : public IIDEMenu {
 public:
     IDEMenuFinal(QWidget* owner, const QString& name, bool submenu);
+    // Wrap an existing Designer/host menu without taking its Qt ownership.
+    explicit IDEMenuFinal(QMenu* menu);
     ~IDEMenuFinal() override;
 
     IDEMenuFinal(const IDEMenuFinal&) = delete;
@@ -30,6 +32,7 @@ private:
     QWidget* _Owner = nullptr;  // 借用的父控件，销毁本对象前必须保持有效。
     QAction* _Action = nullptr;
     QMenu* _Menu = nullptr;
+    bool _OwnsQtObjects = true;
     fMenuClickCallback _Callback = nullptr;
     std::vector<IDEMenuFinal*> _Children;
 };

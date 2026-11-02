@@ -46,19 +46,22 @@ bool GameViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     _Docker=g_IIDEWindow->CreateDocker("Game");
     if(!_Docker||!_Docker->AttachWidget(_Window))return false;
     _Docker->SetTitle("Game");_Attached=true;
+    _DockerVisibilitySubscribed=_Docker->RegisterContentVisibilityCallback(this,
+        [this](bool visible){_DockerContentVisible=visible;});
+    _DockerContentVisible=_Docker->IsContentVisible();
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
     if(_Preview)_PreviewSubscribed=_Preview->RegisterPreviewListener(this);
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
-    return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed && (!_Preview || _PreviewSubscribed);
+    return _DockerVisibilitySubscribed && (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed && (!_Preview || _PreviewSubscribed);
 }
 void GameViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
 void GameViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
 void GameViewUI::Hide(){if(_Window)_Window->hide();}
 void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
-    if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene);
+    if(_DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene);
 }
 void GameViewUI::OnActiveSceneChanged() {
     _ActiveScene=_Scenes?_Scenes->GetMainScene():nullptr;
@@ -68,6 +71,8 @@ void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
     const QSignalBlocker blocker(_Ui->playButton);_Ui->playButton->setChecked(scenePlaying);
 }
 void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_DockerVisibilitySubscribed && _Docker)_Docker->UnregisterContentVisibilityCallback(this);
+    _DockerVisibilitySubscribed=false;_DockerContentVisible=false;
     if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
     _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);
