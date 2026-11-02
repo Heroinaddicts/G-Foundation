@@ -1,0 +1,22 @@
+#pragma once
+#include "RuntimeScriptModule.h"
+
+class #CLASSNAME# final : public GameSproutRuntime::ScriptBehaviour {
+public:
+    void OnCreate(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    }
+
+    // Called after this construction batch's components, fields and hierarchy are ready.
+    void OnInitialized(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    }
+
+    void Update(GameSproutRuntime::IGameSproutRuntime* const runtime, float deltaSeconds) override {
+    }
+
+    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime* const runtime, float fixedDeltaSeconds) override {
+    }
+
+    void OnRelease(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    }
+};
+GAMESPROUT_SCRIPT(#CLASSNAME#)
