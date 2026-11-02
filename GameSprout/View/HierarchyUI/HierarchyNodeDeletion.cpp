@@ -4,6 +4,7 @@
 void HierarchyUI::DeleteContextMenu(){if(g_Self)g_Self->DeleteNode(true);}
 
 void HierarchyUI::DeleteNode(bool context) {
+    if(!_CanEdit)return;
     if(!_Window||!_Ui||!_SceneManager||!BindRuntime()||!_Runtime)return;
     auto* scene=_SceneManager->GetActiveScene();
     const auto contextScene=_ContextSceneID,contextObject=_ContextObjectID;

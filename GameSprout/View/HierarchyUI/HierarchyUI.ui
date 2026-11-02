@@ -16,7 +16,7 @@ QLabel { color:#adb4bf; padding:2px; }</string></property>
    <property name="spacing"><number>4</number></property>
    <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
    <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>搜索场景节点…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
-   <item><widget class="QTreeView" name="hierarchyTree">
+   <item><widget class="HierarchyTreeView" name="hierarchyTree">
     <property name="headerHidden"><bool>true</bool></property>
     <property name="alternatingRowColors"><bool>true</bool></property>
     <property name="uniformRowHeights"><bool>true</bool></property>
@@ -24,7 +24,9 @@ QLabel { color:#adb4bf; padding:2px; }</string></property>
     <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
     <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
     <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
-    <property name="dragEnabled"><bool>false</bool></property>
+    <property name="dragEnabled"><bool>true</bool></property>
+    <property name="dragDropMode"><enum>QAbstractItemView::DragOnly</enum></property>
+    <property name="defaultDropAction"><enum>Qt::CopyAction</enum></property>
     <property name="acceptDrops"><bool>false</bool></property>
    </widget></item>
    <item><widget class="QLabel" name="statusLabel"><property name="text"><string>正在读取场景…</string></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
@@ -34,6 +36,9 @@ QLabel { color:#adb4bf; padding:2px; }</string></property>
    <property name="panelText" stdset="0"><string>刷新节点树</string></property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget><class>HierarchyTreeView</class><extends>QTreeView</extends><header>HierarchyTreeView.h</header></customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

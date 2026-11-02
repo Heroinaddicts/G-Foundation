@@ -54,8 +54,15 @@ void HierarchyUI::RestoreVisibleSelection() {
 
 void HierarchyUI::OnSceneObjectSelectionChanged(const SceneObjectSelection&) {
     // 总是读取服务当前值；合并派发期间其他监听者可能已经改变了选择。
+    const auto previous=_SelectedID;
     ReadSharedSelection();
     if (!_Window) return;
+    if(_Ui->hierarchyTree->IsPointerSelecting()) {
+        // A queued notification for the already committed Mesh must not change
+        // the local TestGO press selection before Qt builds its drag payload.
+        if(previous==_SelectedID) {UpdateStatus();return;}
+        _Ui->hierarchyTree->CancelPointerSelection(false);
+    }
     if (_SelectedID && _Runtime) {
         GameSproutRuntime::IGameObject* object = _Runtime->QueryGameObject(_SelectedID);
         for (GameSproutRuntime::IGameObject* parent = object ? object->Parent() : nullptr; parent; parent = parent->Parent()) {

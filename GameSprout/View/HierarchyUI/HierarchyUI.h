@@ -2,10 +2,13 @@
 #define __HierarchyUI_h__
 
 #include "Header.h"
+#include "IPlayMode.h"
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
 #include <array>
 #include <set>
+#include <vector>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -18,14 +21,16 @@ class HierarchyUIWindow;
 QT_END_NAMESPACE
 
 class HierarchyTreeModel;
+class IScriptEditor;
 
-class HierarchyUI : public IHierarchyUI, public ISceneListener, public GameSproutRuntime::IRuntimeListener, public ISelectionListener {
+class HierarchyUI : public IHierarchyUI, public ISceneListener, public GameSproutRuntime::IRuntimeListener, public ISelectionListener, public IPlayModeListener {
 public:
     ~HierarchyUI() override;
     HierarchyUI() = default;
     HierarchyUI(const HierarchyUI&) = delete;
     HierarchyUI& operator=(const HierarchyUI&) = delete;
 
+    void OnPlayModeStateChanged(const PlayModeState&) override;
     void Show() override;
     void Hide() override;
     std::uint64_t GetSelectedObjectID() const override { return _SelectedID; }
@@ -36,6 +41,10 @@ public:
     void OnSceneObjectSelectionChanged(const SceneObjectSelection& selection) override;
 
 private:
+    IPlayMode* _PlayMode=nullptr;
+    IScriptEditor* _Scripts=nullptr;
+    bool _PlaySubscribed=false;
+    bool _CanEdit=true;
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;
@@ -50,6 +59,8 @@ private:
     void InstallContextCapture();
     void RememberContext(const QModelIndex& index);
     void RegisterContextMenus();
+    void RegisterCreateMenu(IContextMenu*,fMenuClickCallback);
+    std::vector<std::pair<IContextMenu*,fMenuClickCallback>> _CreateMenus;
     void PublishSelection();
     void FocusDoubleClickedNode(const QModelIndex& index);
     void ReadSharedSelection();
@@ -81,6 +92,7 @@ private:
     bool _RebuildRequested = false;
     bool _Rebuilding = false;
     std::uint64_t _SceneID = 0;
+    std::uint64_t _DragSessionID = 0;
     std::uint64_t _SelectedID = 0;
     std::uint64_t _ContextSceneID = 0;
     std::uint64_t _ContextObjectID = 0;

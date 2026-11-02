@@ -1,4 +1,5 @@
 #include "HierarchyTreeModel.h"
+#include "../Shared/SceneObjectDragPayload.h"
 #include <vector>
 
 QStandardItem* HierarchyTreeModel::MakeItem(GameSproutRuntime::IGameObject* object, bool sceneRoot, const QColor& inactiveColor) {
@@ -6,10 +7,12 @@ QStandardItem* HierarchyTreeModel::MakeItem(GameSproutRuntime::IGameObject* obje
     if (!id || _Nodes.count(id)) return nullptr;
     auto* item = new QStandardItem(QString::fromStdString(object->GetName()));
     item->setEditable(false);
+    item->setDragEnabled(true);
     item->setData(QVariant::fromValue<qulonglong>(id), NodeIDRole);
     const bool active = object->IsActiveInHierarchy();
     item->setData(active, ActiveRole);
     item->setData(sceneRoot, SceneRootRole);
+    item->setData(QVariant::fromValue<qulonglong>(_SceneID), SceneIDRole);
     if (!active) item->setForeground(inactiveColor);
     item->setToolTip(QStringLiteral("%1\nID: %2").arg(item->text()).arg(id));
     try { _Nodes.emplace(id, item); }
@@ -21,6 +24,7 @@ void HierarchyTreeModel::Build(GameSproutRuntime::IScene* scene, const QColor& i
     _Nodes.clear();
     clear();
     setColumnCount(1);
+    _SceneID=scene?scene->GetInstanceID():0;
     if (!scene) return;
     QStandardItem* root = MakeItem(scene, true, inactiveColor);
     if (!root) return;
@@ -40,6 +44,23 @@ void HierarchyTreeModel::Build(GameSproutRuntime::IScene* scene, const QColor& i
             pending.push_back({child, item});
         }
     }
+}
+
+QStringList HierarchyTreeModel::mimeTypes() const {
+    return {QString::fromLatin1(SceneObjectDragPayload::MimeType())};
+}
+
+QMimeData* HierarchyTreeModel::mimeData(const QModelIndexList& indexes) const {
+    QModelIndex selected;
+    for (const QModelIndex& index:indexes) {
+        if (!index.isValid() || index.column()!=0) continue;
+        if (selected.isValid() && selected!=index) return nullptr;
+        selected=index;
+    }
+    if (!selected.isValid() || !_DragSource) return nullptr;
+    return _DragSource(
+        selected.data(SceneIDRole).toULongLong(),
+        selected.data(NodeIDRole).toULongLong());
 }
 
 QModelIndex HierarchyTreeModel::FindNode(std::uint64_t id) const {

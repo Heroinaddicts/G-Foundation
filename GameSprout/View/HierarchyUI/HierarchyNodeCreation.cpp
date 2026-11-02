@@ -5,6 +5,7 @@
 #include <limits>
 
 void HierarchyUI::CreateNode(NodeKind kind, bool child) {
+    if(!_CanEdit)return;
     if (!_Window || !_SceneManager || !BindRuntime() || !_Runtime || _Runtime->IsExecuting()) return;
     GameSproutRuntime::IScene* scene = _SceneManager->GetActiveScene();
     if (!scene) { _Ui->statusLabel->setText(QStringLiteral("当前没有打开的场景，无法创建节点。")); return; }

@@ -1,5 +1,7 @@
 #include "HierarchyUI.h"
 #include "HierarchyTreeModel.h"
+#include "IScriptEditor.h"
+#include "../Shared/SceneObjectDragPayload.h"
 #include "ui_HierarchyUI.h"
 #include <QApplication>
 #include <QAction>
@@ -13,6 +15,8 @@ void HierarchyUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi * const e
     g_Self = this;
     g_GameSproutEditor = editor;
     if (editor) {
+        _PlayMode=editor->GetGameSproutModule<IPlayMode>("PlayMode");
+        _Scripts=editor->GetGameSproutModule<IScriptEditor>("ScriptEditor");
         GetGameSproutView(editor, g_IIDEWindow, IDEWindow);
         GetGameSproutModule(editor, _SceneManager, SceneManager);
         GetGameSproutModule(editor, _Selection, SelectionManager);
@@ -29,6 +33,13 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
         _Ui = new Ui::HierarchyUIWindow();
         _Ui->setupUi(_Window);
         _Model = new HierarchyTreeModel(_Window);
+        _Model->SetDragSource([this](std::uint64_t worldID,std::uint64_t objectID)->QMimeData* {
+            ScriptObjectTarget source;std::string error;
+            if(!_Scripts || !_DragSessionID || !_Scripts->ReadObjectTarget(objectID,source,error) ||
+               source.SessionID!=_DragSessionID || source.WorldID!=worldID)
+                return nullptr;
+            return SceneObjectDragPayload::Encode({source.SessionID,source.WorldID,source.ObjectID});
+        });
         _Proxy = new QSortFilterProxyModel(_Window);
         _Proxy->setSourceModel(_Model);
         _Proxy->setFilterKeyColumn(0);
@@ -38,6 +49,13 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
         _Proxy->setAutoAcceptChildRows(true);
 #endif
         _Ui->hierarchyTree->setModel(_Proxy);
+        _Ui->hierarchyTree->ClickCommitted=[this] {
+            if(_Rebuilding)return;
+            const auto rows=_Ui->hierarchyTree->selectionModel()->selectedRows();
+            _SelectedID=rows.empty()?0:rows.front().data(HierarchyTreeModel::NodeIDRole).toULongLong();
+            PublishSelection();UpdateStatus();
+        };
+        _Ui->hierarchyTree->PointerSelectionFinished=[this] {QueueRefresh(false);};
         QObject::connect(_Ui->hierarchyTree, &QTreeView::doubleClicked, _Dispatch,
             [this](const QModelIndex& index) { FocusDoubleClickedNode(index); });
         QObject::connect(_Window, &QObject::destroyed, _Dispatch, [this]() {
@@ -52,14 +70,14 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
         });
         QObject::connect(_Ui->hierarchyTree->selectionModel(), &QItemSelectionModel::currentChanged, _Dispatch,
             [this](const QModelIndex& index, const QModelIndex&) {
-                if (_Rebuilding) return;
+                if (_Rebuilding || _Ui->hierarchyTree->IsPointerSelecting()) return;
                 _SelectedID = index.isValid() ? index.data(HierarchyTreeModel::NodeIDRole).toULongLong() : 0;
                 PublishSelection();
                 UpdateStatus();
             });
         QObject::connect(_Ui->hierarchyTree->selectionModel(), &QItemSelectionModel::selectionChanged, _Dispatch,
             [this]() {
-                if (_Rebuilding) return;
+                if (_Rebuilding || _Ui->hierarchyTree->IsPointerSelecting()) return;
                 const QModelIndexList rows = _Ui->hierarchyTree->selectionModel()->selectedRows();
                 _SelectedID = rows.empty() ? 0 : rows.front().data(HierarchyTreeModel::NodeIDRole).toULongLong();
                 PublishSelection();
@@ -79,6 +97,7 @@ bool HierarchyUI::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     _Docker->SetTitle(QStringLiteral("Hierarchy"));
     if (IIDEMenu* menu = _Docker->CreateChildMenu(_Ui->actionRefresh->property("panelText").toString())) menu->SetClickCallback(&HierarchyUI::RefreshMenu);
     RegisterContextMenus();
+    if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     // Docker 刚为内容安装了弹出过滤器；重新安装上下文捕获，使真实目标先被记录。
     InstallContextCapture();
     if (_SceneManager) {
@@ -108,18 +127,29 @@ void HierarchyUI::Update(GameSproutEditor::GameSproutViewApi * const) {}
 
 void HierarchyUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     (void)editor;
+    if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
+    _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if (_SceneSubscribed && _SceneManager) _SceneManager->UnregisterSceneListener(this);
     if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _SceneSubscribed = false; _RuntimeSubscribed = false; _SelectionSubscribed = false;
     _Runtime = nullptr; _SceneManager = nullptr; _Selection = nullptr;
+    if(_Model)_Model->SetDragSource({});
+    if(_Window&&_Ui) {
+        _Ui->hierarchyTree->ClickCommitted={};
+        _Ui->hierarchyTree->PointerSelectionFinished={};
+    }
+    _Scripts=nullptr;
+    if(_Docker)for(const auto& menu:_CreateMenus)menu.first->SetClickCalback(nullptr);
+    _CreateMenus.clear();
+    if(_DeleteMenu)_DeleteMenu->SetClickCalback(nullptr);
     delete _Dispatch; _Dispatch = nullptr;
     _ContextCapture = nullptr;
     if (!_Attached) delete _Window;
     _Window = nullptr; _Docker = nullptr; _DeleteMenu=nullptr; _Attached = false;
     _Model = nullptr; _Proxy = nullptr;
     delete _Ui; _Ui = nullptr;
-    _SceneID = 0; _SelectedID = 0; _ExpandedIDs.clear();
+    _SceneID = 0; _DragSessionID=0; _SelectedID = 0; _ExpandedIDs.clear();
     _ContextSceneID = 0; _ContextObjectID = 0; _ContextCaptured = false;
     _Launched=false;_RefreshQueued = false; _RebuildRequested = false; _Rebuilding = false;
     if (g_Self == this) g_Self = nullptr;
@@ -139,6 +169,8 @@ bool HierarchyUI::BindRuntime() {
 }
 
 void HierarchyUI::OnActiveSceneChanged() {
+    if(_Window&&_Ui)_Ui->hierarchyTree->CancelPointerSelection(false);
+    _DragSessionID=0;
     _SceneID = 0; _SelectedID = 0; _ExpandedIDs.clear();
     _ContextSceneID = 0; _ContextObjectID = 0; _ContextCaptured = false;
     QueueRefresh();
@@ -185,7 +217,7 @@ void HierarchyUI::RefreshPresentation() {
     }
     _Proxy->setFilterFixedString(_Ui->searchEdit->text());
     if(!_Ui->searchEdit->text().isEmpty())_Ui->hierarchyTree->expandAll();
-    RestoreVisibleSelection();
+    if(!_Ui->hierarchyTree->IsPointerSelecting())RestoreVisibleSelection();
     UpdateStatus();
 }
 
@@ -200,6 +232,12 @@ void HierarchyUI::Refresh() {
         if (sceneID) _ExpandedIDs.insert(sceneID);
     }
     _SceneID = sceneID;
+    _DragSessionID=0;
+    if(_Scripts&&scene) {
+        ScriptObjectTarget scope;std::string error;
+        if(_Scripts->ReadObjectTarget(sceneID,scope,error)&&scope.WorldID==sceneID)
+            _DragSessionID=scope.SessionID;
+    }
     ReadSharedSelection();
     const int scroll = _Ui->hierarchyTree->verticalScrollBar()->value();
     _Rebuilding = true;
@@ -238,4 +276,14 @@ void HierarchyUI::UpdateStatus() {
         _Ui->statusLabel->setText(QStringLiteral("%1 个对象%2").arg(static_cast<qulonglong>(count ? count - 1 : 0))
             .arg(_SelectedID ? QStringLiteral(" · 已选择节点") : QString{}));
     }
+}
+
+void HierarchyUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    _CanEdit=state.State==EditorPlayState::Edit;
+    if(!_Docker)return;
+    for(const auto& menu:_CreateMenus)menu.first->SetClickCalback(_CanEdit?menu.second:nullptr);
+    if(_DeleteMenu)_DeleteMenu->SetClickCalback(nullptr);
+}
+void HierarchyUI::RegisterCreateMenu(IContextMenu* menu,fMenuClickCallback callback) {
+    _CreateMenus.emplace_back(menu,callback);menu->SetClickCalback(_CanEdit?callback:nullptr);
 }

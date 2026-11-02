@@ -66,7 +66,7 @@ void HierarchyUI::RememberContext(const QModelIndex& index) {
     _ContextCaptured = true;
     auto* object=_Runtime?_Runtime->QueryGameObject(_ContextObjectID):nullptr;
     if(_DeleteMenu)_DeleteMenu->SetClickCalback(scene&&object&&object!=scene&&object->GetScene()==scene&&
-        _SceneManager&&!_SceneManager->HasTransformEdit()?&HierarchyUI::DeleteContextMenu:nullptr);
+        _CanEdit&&_SceneManager&&!_SceneManager->HasTransformEdit()?&HierarchyUI::DeleteContextMenu:nullptr);
 }
 
 template<HierarchyUI::NodeKind Kind, bool Child>
@@ -98,12 +98,12 @@ void HierarchyUI::RegisterContextMenus() {
                 if (kind < 0 || kind >= static_cast<int>(NodeKind::Count)) continue;
                 _NodeNames[static_cast<std::size_t>(kind)] = action->property("nodeName").toString().toStdString();
                 switch (static_cast<NodeKind>(kind)) {
-                case NodeKind::Empty: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::Empty,true> : &CreateNodeMenu<NodeKind::Empty,false>); break;
-                case NodeKind::Camera: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::Camera,true> : &CreateNodeMenu<NodeKind::Camera,false>); break;
-                case NodeKind::Mesh: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::Mesh,true> : &CreateNodeMenu<NodeKind::Mesh,false>); break;
-                case NodeKind::Canvas: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::Canvas,true> : &CreateNodeMenu<NodeKind::Canvas,false>); break;
-                case NodeKind::Image: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::Image,true> : &CreateNodeMenu<NodeKind::Image,false>); break;
-                case NodeKind::UIEmpty: menu->SetClickCalback(child ? &CreateNodeMenu<NodeKind::UIEmpty,true> : &CreateNodeMenu<NodeKind::UIEmpty,false>); break;
+                case NodeKind::Empty: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Empty,true> : &CreateNodeMenu<NodeKind::Empty,false>); break;
+                case NodeKind::Camera: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Camera,true> : &CreateNodeMenu<NodeKind::Camera,false>); break;
+                case NodeKind::Mesh: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Mesh,true> : &CreateNodeMenu<NodeKind::Mesh,false>); break;
+                case NodeKind::Canvas: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Canvas,true> : &CreateNodeMenu<NodeKind::Canvas,false>); break;
+                case NodeKind::Image: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Image,true> : &CreateNodeMenu<NodeKind::Image,false>); break;
+                case NodeKind::UIEmpty: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::UIEmpty,true> : &CreateNodeMenu<NodeKind::UIEmpty,false>); break;
                 case NodeKind::Count: break;
                 }
             }
