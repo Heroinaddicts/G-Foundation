@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PrimitiveActionsForm</class>
+ <widget class="QMenu" name="PrimitiveActionsForm">
+  <widget class="QMenu" name="objectsMenu">
+   <property name="title"><string>3D Object</string></property>
+   <addaction name="cubeAction"/><addaction name="sphereAction"/><addaction name="capsuleAction"/>
+   <addaction name="cylinderAction"/><addaction name="planeAction"/><addaction name="quadAction"/>
+  </widget>
+  <addaction name="objectsMenu"/>
+  <action name="cubeAction"><property name="text"><string>Cube</string></property></action>
+  <action name="sphereAction"><property name="text"><string>Sphere</string></property></action>
+  <action name="capsuleAction"><property name="text"><string>Capsule</string></property></action>
+  <action name="cylinderAction"><property name="text"><string>Cylinder</string></property></action>
+  <action name="planeAction"><property name="text"><string>Plane</string></property></action>
+  <action name="quadAction"><property name="text"><string>Quad</string></property></action>
+ </widget>
+ <resources/><connections/>
+</ui>
