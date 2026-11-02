@@ -103,6 +103,7 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
     // Native resource documents can contain arbitrary GUID references.
     switch (request.Importer) {
     case eAssetImporterType::Mesh: case eAssetImporterType::Material: case eAssetImporterType::Scene:
+    case eAssetImporterType::Prefab:
     case eAssetImporterType::AnimationClip: case eAssetImporterType::AnimatorController:
     case eAssetImporterType::AnimatorOverrideController: case eAssetImporterType::AvatarMask:
     case eAssetImporterType::AudioMixer: case eAssetImporterType::PhysicsMaterial:

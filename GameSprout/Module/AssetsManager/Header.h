@@ -112,6 +112,7 @@ inline eAssetImporterType GetAssetImporterType(const std::string & extension) {
         {"js", eAssetImporterType::Script},
         {"ts", eAssetImporterType::Script},
         {"scene", eAssetImporterType::Scene},
+        {"prefab", eAssetImporterType::Prefab},
         {"unity", eAssetImporterType::Scene},
         {"anim", eAssetImporterType::AnimationClip},
         {"controller", eAssetImporterType::AnimatorController},

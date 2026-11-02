@@ -1,4 +1,5 @@
 #pragma once
+#include "RuntimePhysicsData.h"
 #include "GameSproutRuntimeApi.h"
 #include "RuntimeAnimationData.h"
 
@@ -60,7 +61,11 @@ public:
     virtual bool LoadMesh(const ResourceReference& reference, MeshRenderData& data, std::string& error) = 0;
     virtual bool LoadTexture(const ResourceReference& reference, TextureRenderData& data, std::string& error) = 0;
     virtual bool LoadMaterial(const ResourceReference& reference, MaterialRenderData& data, std::string& error) = 0;
+    virtual bool LoadPhysicsMaterial(const ResourceReference&,PhysicsMaterialData& data,std::string& error) {
+        data={};error="Physics material loading is unavailable";return false;
+    }
     virtual bool LoadModel(const ResourceReference&, ModelData& data, std::string& error) { data={};error="Model loading is unavailable";return false; }
+    virtual bool LoadPrefab(const ResourceReference&, PrefabData& data, std::string& error) { data={};error="Prefab loading is unavailable";return false; }
     virtual bool LoadSkeleton(const ResourceReference&, SkeletonData& data, std::string& error) { data={};error="Skeleton loading is unavailable";return false; }
     virtual bool LoadAnimationClip(const ResourceReference&, AnimationClipData& data, std::string& error) { data={};error="AnimationClip loading is unavailable";return false; }
     virtual bool LoadAnimatorController(const ResourceReference&, AnimatorControllerData& data, std::string& error) { data={};error="AnimatorController loading is unavailable";return false; }

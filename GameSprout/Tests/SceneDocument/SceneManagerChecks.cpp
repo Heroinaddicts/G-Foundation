@@ -89,9 +89,12 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 #include "SceneClipPreviewChecks.h"
 #include "SceneSessionChecks.h"
 #include "SceneComponentChecks.h"
+#include "ScenePhysicsComponentChecks.h"
 #include "SceneScriptReferenceChecks.h"
+#include "SceneDocumentEditingChecks.h"
 #include "ScenePlaySessionChecks.h"
 #include "ScenePlaySelectionChecks.h"
+#include "SceneDocumentSessionChecks.h"
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
@@ -200,11 +203,15 @@ int main(int argc,char** argv) {
         CheckRootMotionEditing(manager,root,editor._Runtime);
         CheckDirectClipPreview(manager,api,root,editor.Host,editor.Preview,editor._Runtime);
         CheckComponentTransactions(manager,root,editor._Runtime);
+        CheckPhysicsComponentTransactions(manager,editor._Runtime);
         CheckScriptReferences(manager,root,editor._Runtime);
+        CheckDocumentEditing(manager,root,editor._Runtime);
         CheckPlaySceneSession(manager,api,root,editor._Runtime);
         CheckPlaySceneSelection(manager,api,editor._Runtime);
+        CheckDocumentSession(manager,api,root,editor._Runtime);
         manager.UnregisterSceneListener(&listener);
         auto* retainedRuntime=editor._Runtime;
+        Check(manager.BeginDocumentSession(TemporaryDocument(),error),"Cannot prepare document release regression: "+error);
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Preview,api);
         GameSproutEditor::GameSproutEditorFinal::Release(manager,api);
         Check(retainedRuntime&&editor._Runtime==retainedRuntime&&retainedRuntime->GetSceneCount()==0,

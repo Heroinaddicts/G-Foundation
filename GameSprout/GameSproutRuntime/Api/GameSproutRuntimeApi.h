@@ -19,6 +19,7 @@
 #include "Math/Viewport.h"
 #include "ResourceReference.h"
 #include "RuntimeInputApi.h"
+#include "RuntimePrefabApi.h"
 
 
 namespace GameSproutRuntime {
@@ -32,6 +33,8 @@ namespace GameSproutRuntime {
     struct ScriptTypeRegistration;
     struct ScriptTypeInfo;
     struct BuiltinComponentInfo;
+    struct PhysicsQuerySettings;
+    struct PhysicsRaycastHit;
     class IObject {
     public:
         virtual ~IObject() {}
@@ -63,11 +66,19 @@ namespace GameSproutRuntime {
         virtual const std::type_info& GetComponentType() const = 0;
         // 场景序列化使用稳定标识，例如 GameSproutRuntime.Image；不能保存 RTTI/hash_code。
         virtual const char* GetTypeName() const = 0;
+        // Owner-local live identity, assigned by Runtime, monotonic and never
+        // reused. Scene/Prefab file IDs are separate and restored by ObjectDocument.
+        virtual std::uint64_t GetComponentInstanceID() const { return _ComponentInstanceID; }
         IGameObject* GetGameObject() const { return _GameObject; }
         // 借用所属对象，组件不可迁移到另一个对象。
         IGameObject * const _GameObject;
         IComponent(const IComponent&) = delete;
         IComponent& operator=(const IComponent&) = delete;
+    private:
+        std::uint64_t _ComponentInstanceID = 0;
+        friend class GameObjectState;
+        friend class Runtime;
+        friend class ScriptComponent;
     };
 
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScript : public IComponent {
@@ -116,7 +127,8 @@ namespace GameSproutRuntime {
         virtual ITransformComponent* GetTransform() const = 0;
 
         // C 是已注册的公开接口；工厂在 Runtime 内部创建实现，不在模板中 new。
-        // 内置接口重复添加返回已有对象；用户脚本同类型只能挂一个，重复添加返回 nullptr。
+        // 多实例 Collider 每次创建新组件；其他内置接口重复添加返回已有对象。
+        // 用户脚本同类型只能挂一个，重复添加返回 nullptr。
         template<typename C>
         C* AddComponent() {
             static_assert(std::is_convertible_v<C*, IComponent*>, "C must publicly derive from IComponent");
@@ -126,6 +138,14 @@ namespace GameSproutRuntime {
         C* GetComponent() const {
             static_assert(std::is_convertible_v<C*, IComponent*>, "C must publicly derive from IComponent");
             return static_cast<C*>(GetComponent(typeid(C)));
+        }
+        template<typename C>
+        std::vector<C*> GetComponents() const {
+            static_assert(std::is_convertible_v<C*, IComponent*>, "C must publicly derive from IComponent");
+            std::vector<C*> result;
+            for (std::size_t i=0;i<GetComponentCount();++i)
+                if (auto* value=dynamic_cast<C*>(GetComponentAt(i))) result.push_back(value);
+            return result;
         }
         template<typename C>
         bool RemoveComponent() {
@@ -138,6 +158,8 @@ namespace GameSproutRuntime {
         virtual void ForeachComponent(const fForeachComponentCallback& callback) const = 0;
         // Inspector undo restores a component's original slot without rebuilding the object.
         virtual bool SetComponentIndex(IComponent*, std::size_t) { return false; }
+        // Remove this exact live component; required for repeated Collider types.
+        virtual bool RemoveComponentInstance(std::uint64_t) { return false; }
         IGameObject(const IGameObject&) = delete;
         IGameObject& operator=(const IGameObject&) = delete;
 
@@ -163,6 +185,11 @@ namespace GameSproutRuntime {
         virtual IGameObject* CreateGameObject(const std::string& name, IGameObject* parent = nullptr) = 0;
         // 销毁对象和整棵子树；场景根通过 IGameSproutRuntime::DestroyScene 销毁。
         virtual bool DestroyGameObject(IGameObject* gameObject) = 0;
+        // Host-owned simulation gate, default true. It pauses Update/FixedUpdate
+        // without changing hierarchy activation, visibility or renderability.
+        // This transient host state is not part of a scene authoring document.
+        virtual void SetSimulationEnabled(bool enabled) { (void)enabled; }
+        virtual bool IsSimulationEnabled() const { return true; }
         // 默认游戏相机必须属于本场景；nullptr 清除。Scene 观察相机由 Editor 独立管理。
         virtual bool SetMainCamera(ICameraComponent* camera) = 0;
         virtual ICameraComponent* GetMainCamera() const = 0;
@@ -372,7 +399,18 @@ namespace GameSproutRuntime {
         // The service must outlive this Runtime or be detached before it is destroyed.
         virtual void SetResourceProvider(IRuntimeResourceProvider*) {}
         virtual IRuntimeResourceProvider* GetResourceProvider() const { return nullptr; }
+        // Owner-thread physics query. Synchronizes pending author transforms
+        // without advancing time; succeeds only when a Collider is hit.
+        virtual bool Raycast(IScene*,const Ray&,float maxDistance,PhysicsRaycastHit&,
+            const PhysicsQuerySettings&,std::string& error) {error="Physics queries are unavailable";return false;}
         virtual IGameObject* InstantiateModel(IScene*, const ResourceReference&, IGameObject*, std::string& error) { error="Model instantiation is unavailable";return nullptr; }
+        // Atomic template assembly; output mappings change only on success.
+        // parent=nullptr denotes the scene root. All internal authored references
+        // are remapped to fresh scene identities before any initialization runs.
+        virtual IGameObject* InstantiatePrefabData(IScene*, const PrefabData&, IGameObject*,
+            std::vector<PrefabObjectMapping>&, std::string& error) { error="Prefab instantiation is unavailable";return nullptr; }
+        virtual IGameObject* InstantiatePrefab(IScene*, const ResourceReference&, IGameObject*,
+            std::vector<PrefabObjectMapping>&, std::string& error) { error="Prefab instantiation is unavailable";return nullptr; }
         virtual void Update(float deltaSeconds) = 0;
         // Explicit host fixed-step dispatch; editing and animation preview do not run player code.
         virtual void FixedUpdate(float fixedDeltaSeconds) {} // 有限且非负，单位秒。
@@ -402,5 +440,6 @@ namespace GameSproutRuntime {
 
 #include "RuntimeAnimationApi.h"
 #include "RuntimeScriptApi.h"
+#include "RuntimePhysicsApi.h"
 
 #endif //__GameSproutRuntimeApi_h__

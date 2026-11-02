@@ -10,6 +10,17 @@ LibraryRuntimeResources::~LibraryRuntimeResources() {
     if (_Subscribed) _Assets->UnregisterAssetListener(this);
 }
 
+bool LibraryRuntimeResources::LoadPrefab(const GameSproutRuntime::ResourceReference& reference,
+    GameSproutRuntime::PrefabData& output,std::string& error) {
+    Json::Value descriptor;QByteArray bytes;
+    if(!Read(reference,eAssetType::Prefab,descriptor,bytes,error))return false;
+    if(descriptor["Encoding"]!="BinaryValueLE1"||descriptor["Format"]!="GameSproutPrefab") {
+        error="Invalid prepared Prefab descriptor";return false;
+    }
+    output.Bytes.assign(reinterpret_cast<const uint8_t*>(bytes.constData()),reinterpret_cast<const uint8_t*>(bytes.constData())+bytes.size());
+    return true;
+}
+
 bool LibraryRuntimeResources::Read(const GameSproutRuntime::ResourceReference& reference, eAssetType type,
     Json::Value& descriptor, QByteArray& bytes, std::string& error) {
     error.clear(); bytes.clear(); descriptor = Json::Value();

@@ -8,6 +8,7 @@
 
 namespace GameSproutRuntime {
 Runtime::~Runtime() {
+    ResetPhysics();
     _ShuttingDown=true;
     _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
     while (!_Scenes.empty()) DestroyNow(_Scenes.back()->State());
@@ -127,10 +128,10 @@ void Runtime::TickComponents(float deltaSeconds,bool fixed) {
             for(const auto& entry:_Nodes) objects.push_back(entry.first);
             for(auto id:objects) {
                 GameObjectState* node=Find(id);
-                if(!IsInScene(node) || !node->IsActiveInHierarchy()) continue;
+                if(!IsInScene(node) || !node->IsActiveInHierarchy() || !node->SceneOwner->IsSimulationEnabled()) continue;
                 const auto components=node->Components;
                 for(const auto& component:components) {
-                    if(!IsUsable(node)) break;
+                    if(!IsUsable(node) || !node->SceneOwner->IsSimulationEnabled()) break;
                     const auto current=std::find_if(node->Components.begin(),node->Components.end(),[&](const auto& item){return item.Serial==component.Serial;});
                     if(current==node->Components.end() || current->PendingRemove || !current->Initialized || current->InitializationFailed) continue;
                     try {
@@ -141,6 +142,7 @@ void Runtime::TickComponents(float deltaSeconds,bool fixed) {
             }
         }
         InitializePendingComponents(initializationError,deltaSeconds>0);
+        if(fixed)StepPhysics(deltaSeconds);
         DispatchAnimationEvents();
         DispatchEvents();
     } catch (...) { _Updating=false;throw; }

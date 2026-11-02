@@ -1,5 +1,7 @@
 #include "AssetImportJob.h"
 #include "../Shared/MaterialDefinition.h"
+#include "../Shared/PrefabDefinition.h"
+#include "../Shared/PhysicsMaterialDefinition.h"
 #include <QStringDecoder>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -163,6 +165,7 @@ bool ImportDocument(AssetImportJob & job) {
     case eAssetImporterType::Mesh: type=eAssetType::Mesh;break;
     case eAssetImporterType::Material:type=eAssetType::Material;break;
     case eAssetImporterType::Scene:type=eAssetType::Scene;break;
+    case eAssetImporterType::Prefab:type=eAssetType::Prefab;break;
     case eAssetImporterType::AnimationClip:type=eAssetType::AnimationClip;break;
     case eAssetImporterType::AnimatorController:type=eAssetType::AnimatorController;break;
     case eAssetImporterType::AnimatorOverrideController:return job.Fail("AnimatorOverrideController execution is not implemented yet");
@@ -188,6 +191,8 @@ bool ImportDocument(AssetImportJob & job) {
     Json::Value document;
     if (!AssetArtifactIO::Parse(job.SourceBytes.toStdString(),document) || !document.isObject()) return job.Fail("Native resource must be a JSON object in GameSprout format");
     if (!document.isMember("Version") || document["Version"]!=1) return job.Fail("Native resource Version must be 1");
+    // Recompose from current source snapshots before removing authoring records.
+    if(type==eAssetType::Scene&&!ResolveScenePrefabInstances(job,document))return false;
     if (type==eAssetType::Material && !MaterialValues(job,document)) return false;
     if (!References(job,document)) return false;
     // The current native format has one main object. Preserve an explicitly assigned ID.
@@ -208,7 +213,20 @@ bool ImportDocument(AssetImportJob & job) {
             job.Identities.append(identity);
         }
     }
+    if(type==eAssetType::PhysicsMaterial) {
+        GameSproutRuntime::PhysicsMaterialData material;std::vector<std::uint8_t> encoded;std::string error;
+        if(!PhysicsMaterialDefinition::Read(document,material,error)||!PhysicsMaterialDefinition::Encode(material,encoded,error))return job.Fail(error);
+        metadata=Json::Value(Json::objectValue);metadata["Format"]="PhysicsMaterial1";
+        metadata["Layout"]="F32F32U32U32LE";
+        const QByteArray payload(reinterpret_cast<const char*>(encoded.data()),static_cast<qsizetype>(encoded.size()));
+        return job.Emit(type,"main",name,metadata,payload);
+    }
     if (type==eAssetType::AnimatorController || type==eAssetType::AnimationClip || type==eAssetType::AvatarMask) return ImportAnimationDocument(job,type,document);
-    metadata["Format"]="GameSproutDocument";metadata["Data"]=document;
+    if(type==eAssetType::Prefab) {
+        Json::Value data;std::string error;
+        if(!PrefabDefinition::Validate(document,data,error))return job.Fail(error);
+        metadata=Json::Value(Json::objectValue);
+        metadata["Format"]="GameSproutPrefab";metadata["Data"]=std::move(data);
+    } else {metadata["Format"]="GameSproutDocument";metadata["Data"]=document;}
     return job.Emit(type,"main",name,metadata);
 }

@@ -38,6 +38,10 @@ target_link_libraries(GameSproutRuntime PUBLIC
     GameSproutRuntime::GameSproutRuntimeApi
 )
 target_link_libraries(GameSproutRuntime PRIVATE GRHI::GRHIApi)
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../GPhysics" "${CMAKE_CURRENT_BINARY_DIR}/GPhysics")
+target_link_libraries(GameSproutRuntime PRIVATE GPhysics::GPhysics)
+include("${CMAKE_CURRENT_LIST_DIR}/../ObjectDocument/ObjectDocument.cmake")
+target_link_libraries(GameSproutRuntime PRIVATE ObjectDocument::ObjectDocument)
 target_include_directories(GameSproutRuntime PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )

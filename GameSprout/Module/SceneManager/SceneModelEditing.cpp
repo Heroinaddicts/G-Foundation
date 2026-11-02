@@ -5,7 +5,7 @@ GameSproutRuntime::IGameObject* SceneManager::InstantiateModel(
     const GameSproutRuntime::ResourceReference& reference, uint64_t parentID, std::string& error) {
     if (!Ready(error)) return nullptr;
     auto* scene=GetActiveScene();
-    auto* parent=parentID?Runtime()->QueryGameObject(parentID):scene;
+    auto* parent=parentID?Runtime()->QueryGameObject(parentID):GetDocumentContentRoot();
     if (!parent||parent->GetScene()!=scene) {error="模型父节点已失效。";return nullptr;}
     _ExecutingEdit=true;
     struct Scope {bool& Flag;~Scope(){Flag=false;}} scope{_ExecutingEdit};

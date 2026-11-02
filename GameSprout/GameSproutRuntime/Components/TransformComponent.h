@@ -5,9 +5,9 @@ namespace GameSproutRuntime {
 class TransformComponent final : public BuiltinComponent<ITransformComponent> {
 public:
     explicit TransformComponent(IGameObject* owner);
-    Vector3 GetLocalPosition() const override { return _Position; }
+    Vector3 GetLocalPosition() const override { return _HasPhysicsPose ? _PhysicsPosition : _Position; }
     void SetLocalPosition(Vector3 value) override;
-    Quaternion GetLocalRotation() const override { return _Rotation; }
+    Quaternion GetLocalRotation() const override { return _HasPhysicsPose ? _PhysicsRotation : _Rotation; }
     bool SetLocalRotation(Quaternion value) override;
     Vector3 GetLocalScale() const override { return _Scale; }
     void SetLocalScale(Vector3 value) override;
@@ -17,15 +17,30 @@ public:
     bool SetLocalMatrix(const Mat4& value);
     // Evaluation changes the displayed pose, never the serialized authoring TRS.
     bool SetEvaluatedPose(std::uint64_t animatorID, const Mat4& matrix);
-    bool CanSetEvaluatedPose(std::uint64_t animatorID) const {return animatorID&&!IsSceneRoot()&&(!_PoseOwner||_PoseOwner==animatorID);}
+    bool CanSetEvaluatedPose(std::uint64_t animatorID) const {return animatorID&&!IsSceneRoot()&&!(_HasPhysicsPose&&_PhysicsDynamic)&&(!_PoseOwner||_PoseOwner==animatorID);}
     void ClearEvaluatedPose(std::uint64_t animatorID);
+    // Simulation poses are visible to Runtime/scripts but never emit authoring
+    // ComponentChanged events. Resetting gameplay restores the authored TRS.
+    bool SetPhysicsPose(const Mat4& local,bool dynamic);
+    void ClearPhysicsPose();
+    std::uint64_t GetAuthoringRevision() const { return _AuthoringRevision; }
+    // Accumulated animation deltas use the authored baseline, not a physics
+    // result that already contains the previous frame's animation movement.
+    Vector3 GetAuthoringLocalPosition() const { return _Position; }
+    Quaternion GetAuthoringLocalRotation() const { return _Rotation; }
 
 private:
     bool IsSceneRoot() const;
+    void PrepareAuthoringChange();
     Vector3 _Position;
     Quaternion _Rotation;
     Vector3 _Scale{1.0f, 1.0f, 1.0f};
     std::uint64_t _PoseOwner = 0;
     Mat4 _EvaluatedMatrix;
+    bool _HasPhysicsPose=false,_PhysicsDynamic=false;
+    Vector3 _PhysicsPosition;
+    Quaternion _PhysicsRotation;
+    Mat4 _PhysicsMatrix;
+    std::uint64_t _AuthoringRevision=0;
 };
 }

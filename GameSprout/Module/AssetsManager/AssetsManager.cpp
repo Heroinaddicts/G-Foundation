@@ -12,6 +12,7 @@
 #include "TextAssetFactory.hpp"
 #include "ScriptAssetFactory.hpp"
 #include "SceneAssetFactory.hpp"
+#include "PrefabAssetFactory.hpp"
 #include "AnimationClipAssetFactory.hpp"
 #include "AnimatorControllerAssetFactory.hpp"
 #include "AnimatorOverrideControllerAssetFactory.hpp"
@@ -70,6 +71,7 @@ bool AssetsManager::Initialize(GameSproutModuleApi * const api) {
     AssetsManager::RegistFactory(eAssetImporterType::Text, OnTextAssetCreate);
     AssetsManager::RegistFactory(eAssetImporterType::Script, OnScriptAssetCreate);
     AssetsManager::RegistFactory(eAssetImporterType::Scene, OnSceneAssetCreate);
+    AssetsManager::RegistFactory(eAssetImporterType::Prefab, OnPrefabAssetCreate);
     AssetsManager::RegistFactory(eAssetImporterType::AnimationClip, OnAnimationClipAssetCreate);
     AssetsManager::RegistFactory(eAssetImporterType::AnimatorController, OnAnimatorControllerAssetCreate);
     AssetsManager::RegistFactory(eAssetImporterType::AnimatorOverrideController, OnAnimatorOverrideControllerAssetCreate);

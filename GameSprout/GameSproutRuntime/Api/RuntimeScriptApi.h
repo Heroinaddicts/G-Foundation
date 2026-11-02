@@ -67,6 +67,7 @@ struct ScriptTypeRegistration {
 struct BuiltinComponentInfo {
     std::string TypeID, Name, Category;
     bool Intrinsic = false;
+    bool AllowMultiple = false;
 };
 
 // This is the authored component. The native gameplay instance is created only
@@ -82,6 +83,18 @@ public:
     virtual void SetEnabled(bool) = 0;
     virtual const std::map<std::string, ScriptValue>& GetFields() const = 0;
     virtual bool SetField(const std::string&, const ScriptValue&, std::string& error) = 0;
+    // Exact authored snapshot replacement before a native instance starts.
+    // Rejected values leave every field unchanged; omitted fields are removed.
+    virtual bool ReplaceFields(const std::map<std::string, ScriptValue>&, std::string& error) {
+        error="Script field replacement is unavailable";return false;
+    }
+    // Restore a persisted document against the current declared field schema.
+    // Matching IDs/kinds retain their values; missing or changed kinds use the
+    // declared defaults, and removed fields are ignored. Unknown types retain
+    // the complete snapshot until their registration becomes available.
+    virtual bool RestoreSerializedFields(const std::map<std::string, ScriptValue>& values, std::string& error) {
+        return ReplaceFields(values,error);
+    }
     virtual const std::string& GetScriptError() const = 0;
 };
 

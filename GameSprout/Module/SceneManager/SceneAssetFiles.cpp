@@ -81,6 +81,7 @@ bool SceneManager::CreateSceneAsset(const std::string& directory,const std::stri
 
 bool SceneManager::OpenScene(const std::string& path,std::string& error) {
     error.clear();
+    if(IsDocumentSessionActive()){error="请先关闭当前临时文档，再打开场景。";return false;}
     if(IsPlaySessionActive()){error="请先停止运行，再打开其他编辑场景。";return false;}
     if(!Runtime() || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
     if(Runtime()->IsExecuting()) {error="Runtime 正在执行更新、渲染、遍历或事件回调，不能同步加载场景。";return false;}
@@ -104,7 +105,8 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
         if(success) {
             const QString assetsPath=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
             const QDir assets(QFileInfo(assetsPath).canonicalFilePath());
-            Activate(candidate,assets.relativeFilePath(source).toStdString(),std::move(ids),AssetArtifactIO::Hash(bytes));
+            Activate(candidate,assets.relativeFilePath(source).toStdString(),std::move(ids),AssetArtifactIO::Hash(bytes),
+                     document.isMember("Annotations")?document["Annotations"]:Json::Value(Json::objectValue));
         }
     } catch(const std::exception& exception) {error=exception.what();success=false;}
     catch(...) {error="场景加载失败。";success=false;}
@@ -114,11 +116,13 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
 }
 
 bool SceneManager::SaveScene(std::string& error) {
+    if(IsDocumentSessionActive()){error="临时文档应由其所属模块保存，不能写为.scene。";return false;}
     if (!Ready(error)) return false;
     if (_ActivePath.empty()) {error="尚未指定场景路径，请先另存为 .scene 文件。";return false;}
     return SaveTo(_ActivePath,false,error);
 }
 bool SceneManager::SaveSceneAs(const std::string& relativePath,std::string& error) {
+    if(IsDocumentSessionActive()){error="临时文档不能另存为.scene。";return false;}
     if (!Ready(error)) return false;
     return SaveTo(relativePath,true,error);
 }

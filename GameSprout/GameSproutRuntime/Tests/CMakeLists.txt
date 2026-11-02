@@ -8,6 +8,17 @@ add_executable(RuntimeApiChecks RuntimeApiChecks.cpp)
 target_link_libraries(RuntimeApiChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
 add_test(NAME Runtime.ApiAndCoordinates COMMAND RuntimeApiChecks)
 
+foreach(physics_check RuntimePhysicsChecks RuntimeComponentIdentityChecks)
+    add_executable(${physics_check} ${physics_check}.cpp)
+    target_link_libraries(${physics_check} PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+    if(TARGET GameSproutRuntime)
+        add_dependencies(${physics_check} GameSproutRuntime)
+    endif()
+endforeach()
+add_test(NAME Runtime.Physics COMMAND RuntimePhysicsChecks "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+add_test(NAME Runtime.ComponentIdentities COMMAND RuntimeComponentIdentityChecks "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.Physics Runtime.ComponentIdentities PROPERTIES TIMEOUT 60)
+
 # All fixture outputs stay in the test build tree, never in the product Bin.
 foreach(fixture IN ITEMS RuntimeExportGood RuntimeExportNull)
     add_library(${fixture} SHARED RuntimeExportFixture.cpp)
@@ -178,3 +189,15 @@ endif()
 add_test(NAME Runtime.ScriptObjectReferences COMMAND RuntimeScriptObjectReferenceChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.ScriptObjectReferences PROPERTIES TIMEOUT 30)
+
+if(NOT TARGET ObjectDocument::ObjectDocument)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../ObjectDocument/ObjectDocument.cmake")
+endif()
+add_executable(RuntimePrefabChecks RuntimePrefabChecks.cpp)
+target_link_libraries(RuntimePrefabChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi ObjectDocument::ObjectDocument)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimePrefabChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.PrefabAssembly COMMAND RuntimePrefabChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.PrefabAssembly PROPERTIES TIMEOUT 30)

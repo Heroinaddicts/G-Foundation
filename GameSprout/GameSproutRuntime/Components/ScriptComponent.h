@@ -17,6 +17,8 @@ public:
     void SetEnabled(bool) override;
     const std::map<std::string,ScriptValue>& GetFields() const override {return _Fields;}
     bool SetField(const std::string&,const ScriptValue&,std::string&) override;
+    bool ReplaceFields(const std::map<std::string,ScriptValue>&,std::string&) override;
+    bool RestoreSerializedFields(const std::map<std::string,ScriptValue>&,std::string&) override;
     const std::string& GetScriptError() const override {return _Error;}
     IScript* GetNativeInstance() const;
     IScript* EnsureStarted();
@@ -31,6 +33,8 @@ public:
     void FixedUpdate(IGameSproutRuntime*,float) override;
     void OnRelease(IGameSproutRuntime*) override {Stop();}
     void Stop() noexcept;
+    // External subscriptions execute under the same lifetime barrier as Update.
+    void InvokeExternal(const std::function<void()>& callback);
     void BindDefaults();
     void ReplaceAuthoredFields(std::map<std::string,ScriptValue>& fields) noexcept;
     bool InvalidateObjectReference(IGameObject* object);
@@ -38,7 +42,8 @@ public:
 private:
     struct InvocationScope {
         ScriptComponent& Owner;
-        explicit InvocationScope(ScriptComponent& owner):Owner(owner) {++Owner._InvocationDepth;}
+        ScriptComponent* Previous;
+        explicit InvocationScope(ScriptComponent& owner);
         ~InvocationScope();
     };
     bool IsAttached() const;

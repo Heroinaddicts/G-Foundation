@@ -47,7 +47,7 @@ enum class eAssetImporterType : uint16_t {
     LightmapParameters = 29,
 
     Folder = 254, // 目录的身份和 Meta 管理，不生成可渲染的模型等产物。
-    Prefab = 255  // 预留，暂不注册和处理。
+    Prefab = 255  // 单根模板；Nested/Variant组合字段预留。
 };
 
 // 一个可独立引用的资源对象是什么，由 IAsset 及其具体资源接口使用。
@@ -90,7 +90,7 @@ enum class eAssetType : uint16_t {
 
     // 场景、物理、地形和光照相关资源。
     Scene = 13,
-    Prefab = 255, // 预留，暂不注册和处理。
+    Prefab = 255, // 可由Runtime装配的对象模板。
     PhysicsMaterial = 19,
     PhysicsMaterial2D = 20,
     TerrainData = 24,

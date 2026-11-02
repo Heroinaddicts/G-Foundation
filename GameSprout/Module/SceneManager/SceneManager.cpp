@@ -1,5 +1,6 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
+#include "IRuntimeHost.h"
 #include <QDebug>
 #include <limits>
 
@@ -7,6 +8,7 @@ SceneManager::~SceneManager() { Release(nullptr); }
 void SceneManager::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api) {
     _Runtime=api&&api->_EditorApi?api->_EditorApi->_Runtime:nullptr;
     _Project=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IProject>("Project") : nullptr;
+    _Host=api&&api->_EditorApi?api->_EditorApi->GetGameSproutModule<IRuntimeHost>("RuntimeHost"):nullptr;
 }
 bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
     if(_RuntimeSubscribed) return true;
@@ -34,13 +36,13 @@ GameSproutRuntime::IGameSproutRuntime* SceneManager::Runtime() const {
 GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
     return Runtime() ? dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(_ActiveID)) : nullptr;
 }
-void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash) {
+void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash,Json::Value annotations) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
     _TransformEdit={};
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
-    _ObjectIDs=std::move(ids);_History.clear();_HistoryPosition=0;_BaselineText.clear();_LastStateText.clear();
+    _ObjectIDs=std::move(ids);_Annotations.swap(annotations);_History.clear();_HistoryPosition=0;_BaselineText.clear();_LastStateText.clear();
     Json::Value document;std::string text,error;
     if (Capture(document,text,error)) {
         _LastStateText=text;
@@ -64,11 +66,17 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     if(_RuntimeSubscribed && Runtime()) Runtime()->UnregisterListener(this);
     _RuntimeSubscribed=false;
     delete _PlaySession;_PlaySession=nullptr;
+    if(_DocumentSession) {
+        if(auto* main=GetMainScene())main->SetSimulationEnabled(_DocumentSession->MainSimulationEnabled);
+        if(auto* suspended=Runtime()?dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(_DocumentSession->Main.ActiveID)):nullptr)
+            if(suspended!=GetActiveScene())Runtime()->DestroyScene(suspended);
+        delete _DocumentSession;_DocumentSession=nullptr;
+    }
     // The Editor application owns Runtime; this module releases only its own scene.
     if(auto* scene=GetActiveScene())Runtime()->DestroyScene(scene);
-    _Project=nullptr;_Runtime=nullptr;_ActiveID=0;_ActivePath.clear();
+    _Project=nullptr;_Host=nullptr;_Runtime=nullptr;_ActiveID=0;_ActivePath.clear();_EditingSuspended=false;
     _Switching=false;_Notifying=false;_NotifyAgain=false;_StateNotifyAgain=false;_ExecutingEdit=false;_StatePending=false;
-    _ObjectIDs={};_BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
+    _ObjectIDs={};_Annotations=Json::Value(Json::objectValue);_BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
 }
 bool SceneManager::RegisterSceneListener(ISceneListener* listener) {
     if(!listener || _NextListener==std::numeric_limits<std::uint64_t>::max()) return false;
@@ -87,6 +95,7 @@ void SceneManager::NotifyStateChanged() {
     NotifyListeners(false);
 }
 void SceneManager::NotifyListeners(bool active) {
+    if(_EditingSuspended)return;
     if(_Notifying) {if(active) _NotifyAgain=true;else _StateNotifyAgain=true;return;}
     _Notifying=true;
     bool state=!active;
@@ -121,7 +130,7 @@ void SceneManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& eve
     }
     if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
         _TransformEdit={};
-        _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_History.clear();_HistoryPosition=0;
+        _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_Annotations=Json::Value(Json::objectValue);_History.clear();_HistoryPosition=0;
         _BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_Unsaved=false;_StatePending=false;NotifySceneChanged();
     } else if(event.SceneID==_ActiveID && event.Type!=GameSproutRuntime::SceneNodeEventType::OperationFailed) _StatePending=true;
 }

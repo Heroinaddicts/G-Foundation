@@ -81,6 +81,15 @@ int main(int argc,char** argv){
         Check(!standalone.Animator->GetClipPlaybackState().Active,"Deleting a bound bone did not stop direct playback");
         Check(animator->PlayClip({Guid,2}),animator->GetLastError());resources.InvalidClip=true;++resources.Revision;runtime->Update(.1f);
         Check(!animator->GetClipPlaybackState().Active&&!animator->GetLastError().empty()&&Near(Position(model),7),"Invalid reimport left a stale direct pose");
+        resources.InvalidClip=false;++resources.Revision;
+        auto* background=runtime->CreateScene("Suspended animation");auto suspendedModel=Make(*background,false);auto active=Make(*scene,false);
+        Check(suspendedModel.Animator->PlayClip({Guid,2},.1f)&&active.Animator->PlayClip({Guid,2},.1f),"Cannot prepare scene-isolated animation");
+        const float frozenPosition=Position(suspendedModel);background->SetSimulationEnabled(false);runtime->Update(.25f);
+        Check(Near(suspendedModel.Animator->GetClipPlaybackState().Time,.1f)&&Near(Position(suspendedModel),frozenPosition)&&
+              Near(active.Animator->GetClipPlaybackState().Time,.35f)&&background->IsActiveInHierarchy()&&suspendedModel.Root->IsActiveInHierarchy(),
+            "Animation preview advanced the disabled background scene or hid its rendered objects");
+        background->SetSimulationEnabled(true);runtime->Update(.1f);
+        Check(Near(suspendedModel.Animator->GetClipPlaybackState().Time,.2f),"Resuming scene simulation did not resume its animator");
         runtime->UnregisterListener(&listener);runtime->SetResourceProvider(nullptr);delete runtime;std::cout<<"Direct Clip playback isolation, switching, seeking and lifecycle checks passed\n";return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';delete runtime;return 1;}
 }

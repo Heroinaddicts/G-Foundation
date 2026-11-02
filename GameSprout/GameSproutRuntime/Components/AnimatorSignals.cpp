@@ -34,7 +34,7 @@ bool AnimatorComponent::ApplyRootMotion(const RootMotionDelta& delta) {
     if(!Owner().IsInScene(Owner().Find(_GameObject)))return false;
     auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform());if(!transform)return false;
     const auto accumulated=AnimationMotion::Compose(_AccumulatedMotion,delta);
-    const Mat4 authoring=RuntimeMath::ComposeTRS(transform->GetLocalPosition(),transform->GetLocalRotation(),transform->GetLocalScale());
+    const Mat4 authoring=RuntimeMath::ComposeTRS(transform->GetAuthoringLocalPosition(),transform->GetAuthoringLocalRotation(),transform->GetLocalScale());
     if(!transform->SetEvaluatedPose(_GameObject->GetInstanceID(),authoring*AnimationMotion::Matrix(accumulated)))return false;
     _AccumulatedMotion=accumulated;return true;
 }

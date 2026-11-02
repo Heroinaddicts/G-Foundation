@@ -27,6 +27,8 @@ bool SceneManager::Capture(Json::Value& document,std::string& text,std::string& 
     if (!scene || !Runtime() || Runtime()->IsExecuting()) {error="场景不可用或 Runtime 正在执行回调。";return false;}
     try {
         if (!SceneDocument::Serialize(*scene,_ObjectIDs,document,error)) return false;
+        if(!ValidateDocumentContent(document,error))return false;
+        if(!_Annotations.empty())document["Annotations"]=_Annotations;
         text=AssetArtifactIO::JsonText(document);return true;
     }
     catch (const std::exception& exception) {error=exception.what();return false;}
@@ -37,7 +39,7 @@ bool SceneManager::HasUnsavedChanges() const {
     if (!GetActiveScene()) return false;
     if (Runtime()->IsExecuting()) return _Unsaved;
     Json::Value document;std::string text,error;
-    _Unsaved=_ActivePath.empty() || !Capture(document,text,error) || text!=_BaselineText;
+    _Unsaved=(_ActivePath.empty()&&!IsTemporaryDocumentContext()) || !Capture(document,text,error) || text!=_BaselineText;
     return _Unsaved;
 }
 void SceneManager::RefreshState(bool force) {
@@ -46,7 +48,7 @@ void SceneManager::RefreshState(bool force) {
     Json::Value document;std::string text,error;
     const bool captured=Capture(document,text,error);
     if (!captured) text="Invalid scene: "+error;
-    const bool dirty=GetActiveScene() && (_ActivePath.empty() || !captured || text!=_BaselineText);
+    const bool dirty=GetActiveScene() && ((_ActivePath.empty()&&!IsTemporaryDocumentContext()) || !captured || text!=_BaselineText);
     const bool changed=force || text!=_LastStateText || dirty!=_Unsaved;
     _Unsaved=dirty;_LastStateText.swap(text);
     if (changed) NotifyStateChanged();
@@ -55,6 +57,7 @@ bool SceneManager::RunEdit(const Edit& edit,bool forward,std::string& error) {
     if(edit.Type==Edit::Kind::Deletion)return RunDeletion(edit,forward,error);
     if(edit.Type==Edit::Kind::Creation)return RunDeletion(edit,!forward,error);
     if(edit.Type==Edit::Kind::Component)return RunComponentEdit(edit,forward,error);
+    if(edit.Type==Edit::Kind::Document)return RunDocumentEdit(edit,forward,error);
     const auto sceneID=_ActiveID;
     auto resolve=[&]() -> GameSproutRuntime::IGameObject* {
         auto* scene=GetActiveScene();

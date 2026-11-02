@@ -45,7 +45,7 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
     const uint64_t id = ID(type, key, name);
     const bool structured = type == eAssetType::AnimatorController || type == eAssetType::Model || type == eAssetType::Skeleton
         || type == eAssetType::Avatar || type == eAssetType::AvatarMask || type == eAssetType::Material
-        || metadata["Format"] == "GameSproutDocument";
+        || metadata["Format"] == "GameSproutDocument" || metadata["Format"] == "GameSproutPrefab";
     QByteArray bytes;
     Json::Value descriptor;
     if (structured) {
@@ -262,7 +262,6 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     case eAssetImporterType::Video: success = ImportMedia(job); break;
     case eAssetImporterType::Font: success = ImportFont(job); break;
     case eAssetImporterType::Folder: return job.Fail("Folders do not produce runtime assets");
-    case eAssetImporterType::Prefab: return job.Fail("Prefab importing is not enabled");
     default: success = ImportDocument(job); break;
     }
     if (!success || context.IsCancellationRequested()) return job.Fail(job.Result.Error.empty() ? "Import cancelled or failed" : job.Result.Error);

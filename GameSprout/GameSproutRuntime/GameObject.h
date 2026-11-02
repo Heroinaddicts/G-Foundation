@@ -25,6 +25,7 @@ public:
     IComponent* AddComponent(const std::type_info& type);
     IComponent* GetComponent(const std::type_info& type) const;
     bool RemoveComponent(const std::type_info& type);
+    bool RemoveComponentInstance(std::uint64_t instanceID);
     bool RemoveComponentNow(IComponent* component, std::uint64_t serial);
     void ForeachChild(const IGameObject::fForeachChildCallback& callback) const;
     void ForeachComponent(const IGameObject::fForeachComponentCallback& callback) const;
@@ -96,6 +97,7 @@ public:
     IComponent* GetComponentAt(std::size_t index) const override { return index < _State.Components.size() ? _State.Components[index].Pointer : nullptr; }
     void ForeachComponent(const IGameObject::fForeachComponentCallback& callback) const override { _State.ForeachComponent(callback); }
     bool SetComponentIndex(IComponent* component, std::size_t index) override { return _State.SetComponentIndex(component,index); }
+    bool RemoveComponentInstance(std::uint64_t instanceID) override {return _State.RemoveComponentInstance(instanceID);}
 protected:
     IComponent* AddComponent(const std::type_info& type) override { return _State.AddComponent(type); }
     IComponent* GetComponent(const std::type_info& type) const override { return _State.GetComponent(type); }

@@ -14,6 +14,7 @@ bool Runtime::BeginExecution(std::string& error) {
     try {
         FlushCommands();
         success=InitializePendingComponents(error,true);
+        if(success)success=PreparePhysics(error);
         if(success && _ConstructionDepth) {
             error="A script left an object construction scope open during startup";
             success=false;
@@ -26,6 +27,7 @@ bool Runtime::BeginExecution(std::string& error) {
         _ConstructionDepth=0;
         std::string cleanup;
         SetScriptExecutionEnabled(false,cleanup);
+        ResetPhysics();
         _ConstructionDepth=0;
         if(error.empty()) error="Native script initialization failed";
         return false;
@@ -36,7 +38,9 @@ bool Runtime::BeginExecution(std::string& error) {
 bool Runtime::EndExecution(std::string& error) {
     if(IsExecuting()||_ShuttingDown){error="Cannot end gameplay during a Runtime callback";return false;}
     SetInputEnabled(false);
-    return SetScriptExecutionEnabled(false,error);
+    const bool result=SetScriptExecutionEnabled(false,error);
+    if(result)ResetPhysics();
+    return result;
 }
 void Runtime::ProcessPendingEvents() {
     if(IsExecuting()||_ShuttingDown) return;

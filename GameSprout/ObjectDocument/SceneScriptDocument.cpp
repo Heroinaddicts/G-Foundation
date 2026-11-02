@@ -1,4 +1,5 @@
 #include "SceneScriptDocument.h"
+#include "RuntimeScriptFieldValues.h"
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -117,8 +118,39 @@ Json::Value Value(const GameSproutRuntime::ScriptValue& value) {
 }
 
 namespace SceneScriptDocument {
+bool AlignFields(Json::Value& document,
+    const std::vector<GameSproutRuntime::ScriptTypeInfo>& schemas,std::string& error) {
+    error.clear();
+    try {
+        if(!document.isObject()||!document["Objects"].isArray())Reject("Script.Document","expected object graph");
+        std::map<std::string,const GameSproutRuntime::ScriptTypeInfo*> types;
+        for(const auto& schema:schemas)if(!types.emplace(schema.TypeID,&schema).second)
+            Reject("Script.Schema","duplicate script type");
+        Json::Value candidate=document;
+        const auto align=[&](Json::Value& components) {
+            for(auto& component:components) {
+                if(component["Type"]!="GameSproutRuntime.ScriptComponent")continue;
+                Validate(component,"Script");
+                const auto schema=types.find(component["ScriptTypeID"].asString());
+                if(schema==types.end())continue;
+                std::map<std::string,GameSproutRuntime::ScriptValue> stored;
+                for(const auto& key:component["Fields"].getMemberNames())
+                    stored.emplace(key,Value(component["Fields"][key],"Script.Fields."+key));
+                const auto projected=GameSproutRuntime::ProjectSerializedScriptFields(stored,schema->second);
+                Json::Value fields(Json::objectValue);
+                for(const auto& [key,value]:projected)fields[key]=Value(value);
+                component["Fields"].swap(fields);
+            }
+        };
+        if(candidate.isMember("RootComponents"))align(candidate["RootComponents"]);
+        for(auto& node:candidate["Objects"])align(node["Components"]);
+        document.swap(candidate);return true;
+    }catch(const std::exception& exception){error=exception.what();return false;}
+    catch(...){error="Cannot align serialized script fields";return false;}
+}
 void Validate(const Json::Value& data,const std::string& path) {
-    Members(data,path,{"Type","InstanceID","ScriptTypeID","Source","Enabled","Fields"});
+    Members(data,path,{"ID","Type","InstanceID","ScriptTypeID","Source","Enabled","Fields"});
+    if(data.isMember("ID"))ID(data["ID"],path+".ID");
     if(data["Type"]!="GameSproutRuntime.ScriptComponent")Reject(path,"invalid script component type");
     ID(data["InstanceID"],path+".InstanceID");Text(data["ScriptTypeID"],path+".ScriptTypeID",1024);
     if(Reference(data["Source"],path+".Source").Guid.empty())Reject(path+".Source","script source asset is required");
@@ -132,15 +164,26 @@ void Validate(const Json::Value& data,const std::string& path) {
 void Create(const Json::Value& data,GameSproutRuntime::IGameObject& object,GameSproutRuntime::IGameSproutRuntime& runtime) {
     Validate(data,"Script");
     std::string error;
-    auto* component=runtime.AddScriptComponent(&object,data["ScriptTypeID"].asString(),
+    GameSproutRuntime::IScriptComponent* component=nullptr;
+    for(std::size_t index=0;index<object.GetComponentCount();++index)
+        if(auto* candidate=dynamic_cast<GameSproutRuntime::IScriptComponent*>(object.GetComponentAt(index));
+            candidate&&candidate->GetScriptInstanceID()==data["InstanceID"].asUInt64()) {component=candidate;break;}
+    const bool existing=component!=nullptr;
+    if(existing) {
+        const auto source=Reference(data["Source"],"Script.Source");
+        if(component->GetScriptTypeID()!=data["ScriptTypeID"].asString()||component->GetScriptSource()!=source)
+            Reject("Script","existing component has another script identity");
+    }else component=runtime.AddScriptComponent(&object,data["ScriptTypeID"].asString(),
         Reference(data["Source"],"Script.Source"),data["InstanceID"].asUInt64(),error);
     if(!component)Reject("Script",error.empty()?"Runtime rejected script component":error);
     try {
-        component->SetEnabled(data["Enabled"].asBool());
+        std::map<std::string,GameSproutRuntime::ScriptValue> fields;
         for(const auto& key:data["Fields"].getMemberNames())
-            if(!component->SetField(key,Value(data["Fields"][key],"Script.Fields."+key),error))Reject("Script.Fields."+key,error);
+            fields.emplace(key,Value(data["Fields"][key],"Script.Fields."+key));
+        if(!component->RestoreSerializedFields(fields,error))Reject("Script.Fields",error);
+        component->SetEnabled(data["Enabled"].asBool());
     } catch(...) {
-        runtime.RemoveScriptComponent(&object,component->GetScriptInstanceID(),error);throw;
+        if(!existing)runtime.RemoveScriptComponent(&object,component->GetScriptInstanceID(),error);throw;
     }
 }
 Json::Value Serialize(GameSproutRuntime::IComponent& value) {

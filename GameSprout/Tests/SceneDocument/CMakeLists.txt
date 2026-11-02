@@ -4,6 +4,11 @@ project(SceneDocumentChecks LANGUAGES CXX)
 get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${gamesprout_root}/Foundation/FoundationApi.cmake")
 include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
+include("${gamesprout_root}/ObjectDocument/ObjectDocument.cmake")
+set(GAMESPROUT_TEST_RUNTIME_LIBRARY "" CACHE FILEPATH "Independent Runtime library for verification")
+if(GAMESPROUT_TEST_RUNTIME_LIBRARY)
+    set_target_properties(GameSproutRuntime::GameSproutRuntime PROPERTIES IMPORTED_LOCATION "${GAMESPROUT_TEST_RUNTIME_LIBRARY}")
+endif()
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
@@ -13,8 +18,6 @@ if(TARGET GameSproutRuntime)
 endif()
 add_executable(SceneDocumentChecks
     SceneDocumentChecks.cpp
-    "${gamesprout_root}/Module/SceneManager/SceneDocument.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneSerialization.cpp"
 )
 target_include_directories(SceneDocumentChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager"
@@ -22,6 +25,7 @@ target_include_directories(SceneDocumentChecks PRIVATE
 target_link_libraries(SceneDocumentChecks PRIVATE
     Foundation::FoundationApi
     GameSproutRuntime::GameSproutRuntime
+    ObjectDocument::ObjectDocument
 )
 add_custom_command(TARGET SceneDocumentChecks POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -31,7 +35,6 @@ add_custom_command(TARGET SceneDocumentChecks POST_BUILD
 )
 source_group(TREE "${gamesprout_root}" FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/SceneDocumentChecks.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneDocument.cpp"
 )
 enable_testing()
 add_test(NAME SceneDocument.Instantiation COMMAND SceneDocumentChecks)
@@ -42,10 +45,10 @@ add_executable(SceneManagerChecks
     "${gamesprout_root}/Module/SceneManager/SceneManager.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneAssetFiles.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneEditing.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneDocumentEditing.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneDocumentSession.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneDeletion.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneTransformEditing.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneDocument.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneSerialization.cpp"
 )
 target_include_directories(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager"
@@ -55,6 +58,7 @@ target_include_directories(SceneManagerChecks PRIVATE
 target_link_libraries(SceneManagerChecks PRIVATE
     Foundation::FoundationApi
     GameSproutRuntime::GameSproutRuntime
+    ObjectDocument::ObjectDocument
     Qt${QT_VERSION_MAJOR}::Core
 )
 add_custom_command(TARGET SceneManagerChecks POST_BUILD
@@ -66,14 +70,11 @@ add_custom_command(TARGET SceneManagerChecks POST_BUILD
 add_test(NAME SceneDocument.EditingAndPersistence COMMAND SceneManagerChecks)
 set_tests_properties(SceneDocument.EditingAndPersistence PROPERTIES TIMEOUT 30)
 
-# Animation source serialization is an editor Module implementation, never a View dependency.
-target_sources(SceneDocumentChecks PRIVATE
-    "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneScriptDocument.cpp")
+# Scene business fixtures consume the same standalone object-document codec.
+
 target_sources(SceneManagerChecks PRIVATE
-    "${gamesprout_root}/Module/SceneManager/SceneAnimationDocument.cpp"
-    "${gamesprout_root}/Module/SceneManager/SceneScriptDocument.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneComponents.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneComponentIdentity.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneSession.cpp")
 target_sources(SceneManagerChecks PRIVATE

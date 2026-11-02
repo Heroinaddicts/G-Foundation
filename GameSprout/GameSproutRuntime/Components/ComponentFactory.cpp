@@ -8,6 +8,7 @@
 #include "CameraComponent.h"
 #include "AnimatorComponent.h"
 #include "SkinnedMeshRendererComponent.h"
+#include "Physics/PhysicsComponents.h"
 
 namespace GameSproutRuntime {
 IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owner) {
@@ -22,7 +23,12 @@ IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owne
     if (type == typeid(ICameraComponent)) return new CameraComponent(owner);
     if (type == typeid(IAnimatorComponent)) return new AnimatorComponent(owner);
     if (type == typeid(ISkinnedMeshRendererComponent)) return new SkinnedMeshRendererComponent(owner);
-    return nullptr;
+    if (owner==owner->GetScene()) return nullptr;
+    return CreatePhysicsComponent(type,owner);
+}
+bool AllowsMultipleBuiltinComponents(const std::type_info& type) {
+    return type==typeid(IBoxColliderComponent) || type==typeid(ISphereColliderComponent) ||
+        type==typeid(ICapsuleColliderComponent);
 }
 
 bool SetLocalTransform(ITransformComponent* transform, const Mat4& matrix) {

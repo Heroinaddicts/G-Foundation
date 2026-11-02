@@ -26,8 +26,10 @@ bool TransformComponent::IsSceneRoot() const {
 
 void TransformComponent::SetLocalPosition(Vector3 value) {
     if (IsSceneRoot() || !RuntimeMath::IsFinite(value) ||
-        (value.X == _Position.X && value.Y == _Position.Y && value.Z == _Position.Z)) return;
+        (value.X == GetLocalPosition().X && value.Y == GetLocalPosition().Y && value.Z == GetLocalPosition().Z)) return;
+    PrepareAuthoringChange();
     _Position = value;
+    ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
 }
 
@@ -35,8 +37,11 @@ bool TransformComponent::SetLocalRotation(Quaternion value) {
     Quaternion unit;
     if (!UnitRotation(value,unit)) return false;
     if (IsSceneRoot()) return unit.X == 0.0f && unit.Y == 0.0f && unit.Z == 0.0f;
-    if (unit.X == _Rotation.X && unit.Y == _Rotation.Y && unit.Z == _Rotation.Z && unit.W == _Rotation.W) return true;
+    const auto current=GetLocalRotation();
+    if (unit.X == current.X && unit.Y == current.Y && unit.Z == current.Z && unit.W == current.W) return true;
+    PrepareAuthoringChange();
     _Rotation = unit;
+    ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
     return true;
 }
@@ -44,17 +49,21 @@ bool TransformComponent::SetLocalRotation(Quaternion value) {
 void TransformComponent::SetLocalScale(Vector3 value) {
     if (IsSceneRoot() || !RuntimeMath::IsFinite(value) ||
         (value.X == _Scale.X && value.Y == _Scale.Y && value.Z == _Scale.Z)) return;
+    PrepareAuthoringChange();
     _Scale = value;
+    ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
 }
 
 Mat4 TransformComponent::GetLocalMatrix() const {
+    if (_HasPhysicsPose && _PhysicsDynamic) return _PhysicsMatrix;
     if (_PoseOwner) return _EvaluatedMatrix;
+    if (_HasPhysicsPose) return _PhysicsMatrix;
     return RuntimeMath::ComposeTRS(_Position, _Rotation, _Scale);
 }
 
 bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& matrix) {
-    if(!animatorID || IsSceneRoot() || !RuntimeMath::IsFinite(matrix) || (_PoseOwner && _PoseOwner!=animatorID)) return false;
+    if(!animatorID || IsSceneRoot() || (_HasPhysicsPose&&_PhysicsDynamic) || !RuntimeMath::IsFinite(matrix) || (_PoseOwner && _PoseOwner!=animatorID)) return false;
     _EvaluatedMatrix=matrix;_PoseOwner=animatorID;return true;
 }
 void TransformComponent::ClearEvaluatedPose(std::uint64_t animatorID) {if(_PoseOwner==animatorID)_PoseOwner=0;}
@@ -78,7 +87,23 @@ bool TransformComponent::SetLocalMatrix(const Mat4& value) {
     _Position = position;
     _Rotation = unit;
     _Scale = scale;
+    _HasPhysicsPose=false;
+    ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
     return true;
 }
+void TransformComponent::PrepareAuthoringChange() {
+    if(!_HasPhysicsPose)return;
+    _Position=_PhysicsPosition;
+    _Rotation=_PhysicsRotation;
+    _HasPhysicsPose=false;
+}
+bool TransformComponent::SetPhysicsPose(const Mat4& local,bool dynamic) {
+    Vector3 position,scale;Quaternion rotation;
+    if(IsSceneRoot()||!RuntimeMath::TryDecomposeTRS(local,position,rotation,scale))return false;
+    _PhysicsPosition=position;_PhysicsRotation=rotation;_PhysicsMatrix=local;
+    _HasPhysicsPose=true;_PhysicsDynamic=dynamic;
+    return true;
+}
+void TransformComponent::ClearPhysicsPose(){_HasPhysicsPose=false;_PhysicsDynamic=false;}
 }

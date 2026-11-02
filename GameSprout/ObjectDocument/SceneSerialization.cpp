@@ -1,6 +1,7 @@
 #include "SceneDocument.h"
 #include "SceneAnimationDocument.h"
 #include "SceneScriptDocument.h"
+#include "ScenePhysicsDocument.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -75,6 +76,8 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
             data["Visible"]=value->IsVisible();data["Materials"]=Json::Value(Json::arrayValue);
             if (value->GetMaterialCount()>1024) throw std::runtime_error("Too many material slots");
             for (std::size_t slot=0;slot<value->GetMaterialCount();++slot) data["Materials"].append(Reference(value->GetMaterial(slot)));
+        } else if (ScenePhysicsDocument::Handles(type)) {
+            data=ScenePhysicsDocument::Serialize(component);
         } else if (SceneAnimationDocument::Handles(type)) {
             data=SceneAnimationDocument::Serialize(component,ids);
         } else if (type=="GameSproutRuntime.Camera") {
@@ -87,6 +90,8 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
         } else if (type=="GameSproutRuntime.ScriptComponent") {
             data=SceneScriptDocument::Serialize(component);
         } else throw std::runtime_error("Unknown component cannot be saved: "+type);
+    const auto identity=ids.FindComponentFileID(&component);
+    if(identity)data["ID"]=Json::UInt64(identity);
     return data;
 }
 
@@ -117,11 +122,33 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
                 pending.push_back({child,entry.Depth+1});
             }
         }
+        // Preserve authored component identities before assigning anything new.
+        // Only current snapshot pointers are looked up; stale keys are dropped.
+        std::vector<GameSproutRuntime::IComponent*> components;
+        const auto collect=[&](GameSproutRuntime::IGameObject& object) {
+            for(std::size_t index=0;index<object.GetComponentCount();++index) {
+                auto* component=object.GetComponentAt(index);
+                if(!component)throw std::runtime_error("Invalid Runtime component");
+                components.push_back(component);
+                const auto found=ids.FindComponentFileID(component);
+                if(found) {
+                    if(!fileIDs.insert(found).second||(next.Next&&found>=next.Next))
+                        throw std::runtime_error("Invalid stable component ID map");
+                    next.BindComponentFileID(component,found);
+                }
+            }
+        };
+        collect(scene);for(const auto& entry:ordered)collect(*entry.Object);
         for (const auto& entry:ordered) if (!next.RuntimeToFile.count(entry.Object->GetInstanceID())) {
             if (!next.Next) throw std::runtime_error("Scene file ID space exhausted");
             const auto id=next.Next;
             next.Next=id==std::numeric_limits<std::uint64_t>::max()?0:id+1;
             next.RuntimeToFile.emplace(entry.Object->GetInstanceID(),id);
+        }
+        for(auto* component:components)if(!next.FindComponentFileID(component)) {
+            if(!next.Next)throw std::runtime_error("Scene stable ID space exhausted");
+            const auto id=next.Next;next.Next=id==std::numeric_limits<std::uint64_t>::max()?0:id+1;
+            next.BindComponentFileID(component,id);
         }
         Json::Value document(Json::objectValue);
         document["Version"]=Json::UInt(1);document["Name"]=scene.GetName();document["RootActive"]=scene.IsActiveSelf();
@@ -146,7 +173,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
         for(const auto& entry:ordered)
             identities.push_back({entry.Object->GetInstanceID(),next.RuntimeToFile.at(entry.Object->GetInstanceID())});
         if(!scene.BindObjectIdentities(identities,error))return false;
-        output.swap(document);ids.RuntimeToFile.swap(next.RuntimeToFile);ids.Next=next.Next;
+        output.swap(document);ids.RuntimeToFile.swap(next.RuntimeToFile);ids.SwapComponentIdentities(next);ids.Next=next.Next;
         return true;
     } catch (const std::exception& exception) {error=exception.what();}
     catch (...) {error="Unexpected scene serialization failure";}

@@ -43,6 +43,8 @@ list(APPEND module_files
 )
 
 add_library(AssetsPipeline SHARED ${module_files})
+include("${CMAKE_CURRENT_LIST_DIR}/../../ObjectDocument/ObjectDocument.cmake")
+target_link_libraries(AssetsPipeline PRIVATE ObjectDocument::ObjectDocument)
 target_compile_features(AssetsPipeline PRIVATE c_std_99 cxx_std_20)
 target_link_libraries(AssetsPipeline PRIVATE
     Foundation::FoundationApi

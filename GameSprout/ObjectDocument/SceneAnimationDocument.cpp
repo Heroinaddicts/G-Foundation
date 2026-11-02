@@ -77,12 +77,14 @@ bool Handles(const std::string& type) {
     return type=="GameSproutRuntime.Animator"||type=="GameSproutRuntime.SkinnedMeshRenderer";
 }
 void Validate(const Json::Value& data, const std::string& path) {
+    if(data.isMember("ID")&&((data["ID"].type()!=Json::intValue&&data["ID"].type()!=Json::uintValue)||
+       !data["ID"].isUInt64()||!data["ID"].asUInt64()))Reject(path+".ID","expected nonzero stable component ID");
     const std::string type=data["Type"].asString();
     if (type=="GameSproutRuntime.SkinnedMeshRenderer") {
-        Fields(data,path,{"Type","AnimatorObjectFileID"});
+        Fields(data,path,{"ID","Type","AnimatorObjectFileID"});
         ID(data["AnimatorObjectFileID"],path+".AnimatorObjectFileID");return;
     }
-    Fields(data,path,{"Type","Skeleton","Avatar","Controller","DefaultClip","Speed","PlayOnStart","Loop","Bindings","RootMotionMode"});
+    Fields(data,path,{"ID","Type","Skeleton","Avatar","Controller","DefaultClip","Speed","PlayOnStart","Loop","Bindings","RootMotionMode"});
     MotionMode(data,path);
     Reference(data["Skeleton"],path+".Skeleton");Reference(data["Controller"],path+".Controller");
     Reference(data["Avatar"],path+".Avatar");

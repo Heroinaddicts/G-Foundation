@@ -1,7 +1,7 @@
 #pragma once
 #include "SceneDocument.h"
 
-// Editor source-document adaptation only. Runtime owns binding and playback.
+// Shared authoring-data adaptation. Runtime owns binding and playback.
 namespace SceneAnimationDocument {
 bool Handles(const std::string& type);
 void Validate(const Json::Value& data, const std::string& path);

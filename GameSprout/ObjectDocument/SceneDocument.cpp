@@ -1,6 +1,8 @@
 #include "SceneDocument.h"
 #include "SceneAnimationDocument.h"
 #include "SceneScriptDocument.h"
+#include "ScenePhysicsDocument.h"
+#include "PrefabDocument.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,6 +18,7 @@ namespace {
 constexpr std::size_t MaximumObjects = 100000;
 constexpr std::size_t MaximumDepth = 1024;
 constexpr std::size_t MaximumMaterials = 1024;
+constexpr std::size_t MaximumComponents = 1024;
 constexpr std::size_t MaximumNameBytes = 1024;
 
 [[noreturn]] void Fail(const std::string& path, const std::string& reason) {
@@ -120,6 +123,11 @@ Interface* Component(GameSproutRuntime::IGameObject* object, const std::string& 
 // object=nullptr 为纯校验；有对象时执行已经校验过的设置。所有可选字段均使用 API 默认值。
 void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* object, const std::string& path,
                    GameSproutRuntime::IGameSproutRuntime* runtime=nullptr) {
+    if(value.isObject()&&value.isMember("ID")) {
+        if(!Unsigned(value["ID"],path+".ID"))Fail(path+".ID","component ID must be nonzero");
+        Json::Value fields=value;fields.removeMember("ID");
+        ComponentData(fields,object,path,runtime);return;
+    }
     if (!value.isObject() || !value["Type"].isString()) Fail(path,"component requires Type string");
     const std::string type=value["Type"].asString();
     if (type=="GameSproutRuntime.Transform") {
@@ -211,6 +219,9 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if (!component->SetMaterials(materials)) Fail(path,"Runtime rejected material slots");
             component->SetVisible(visible);
         }
+    } else if (ScenePhysicsDocument::Handles(type)) {
+        ScenePhysicsDocument::Validate(value,path);
+        if(object)ScenePhysicsDocument::Create(value,*object);
     } else if (SceneAnimationDocument::Handles(type)) {
         SceneAnimationDocument::Validate(value,path);
         if (object) SceneAnimationDocument::Create(value,*object);
@@ -270,8 +281,32 @@ struct Plan {
     std::vector<Node> Nodes;
     std::map<std::uint64_t,std::size_t> Indices;
 };
+void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject& object,SceneDocument::ObjectIDs& ids) {
+    std::set<const Json::Value*> consumed;
+    for(std::size_t index=0;index<object.GetComponentCount();++index) {
+        auto* component=object.GetComponentAt(index);
+        if(!component)Fail("Component.ID","invalid Runtime component");
+        if(ids.FindComponentFileID(component))continue;
+        std::uint64_t id=0;
+        if(data)for(const auto& fields:*data) {
+            if(consumed.count(&fields))continue;
+            if(fields["Type"].asString()!=component->GetTypeName())continue;
+            if(auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(component))
+                if(fields["InstanceID"].asUInt64()!=script->GetScriptInstanceID())continue;
+            if(fields.isMember("ID"))id=fields["ID"].asUInt64();
+            consumed.insert(&fields);
+            break;
+        }
+        if(!id) {
+            if(!ids.Next)Fail("Component.ID","stable ID space exhausted");
+            id=ids.Next;ids.Next=id==std::numeric_limits<std::uint64_t>::max()?0:id+1;
+        }
+        ids.BindComponentFileID(component,id);
+    }
+}
 Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
-    Members(document,"Scene",{"Version","Name","RootActive","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects"});
+    Members(document,"Scene",{"Version","Name","RootActive","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations"});
+    if(document.isMember("Annotations")&&!document["Annotations"].isObject())Fail("Scene.Annotations","expected object");
     if (Unsigned(document["Version"],"Scene.Version")!=1) Fail("Scene.Version","only version 1 is supported");
     Plan plan;
     plan.Name=Name(document["Name"],"Scene.Name");
@@ -287,8 +322,9 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
             const std::string path="Scene.RootComponents["+std::to_string(c)+"]";
             ComponentData(component,nullptr,path);
             const std::string type=component["Type"].asString();
-            if(SceneAnimationDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/script components require a regular object, not the scene root");
-            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):type;
+            if(SceneAnimationDocument::Handles(type)||ScenePhysicsDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/physics/script components require a regular object, not the scene root");
+            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):
+                ScenePhysicsDocument::IsCollider(type)?type+":"+(component.isMember("ID")?std::to_string(component["ID"].asUInt64()):"new"+std::to_string(c)):type;
             if (!types.insert(identity).second) Fail(path,"duplicate component identity");
             rootCamera=rootCamera || type=="GameSproutRuntime.Camera";
             if (type=="GameSproutRuntime.Transform") {
@@ -319,14 +355,15 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
         node.Name=Name(object["Name"],path+".Name");
         node.Active=BoolMember(object,"Active",true,path);
         node.Components=&object["Components"];
-        if (!node.Components->isArray() || node.Components->size()>16) Fail(path+".Components","expected at most 16 components");
+        if (!node.Components->isArray() || node.Components->size()>MaximumComponents) Fail(path+".Components","expected at most 1024 components");
         std::set<std::string> types;
         for (Json::ArrayIndex c=0;c<node.Components->size();++c) {
             const auto& component=(*node.Components)[c];
             const std::string componentPath=path+".Components["+std::to_string(c)+"]";
             ComponentData(component,nullptr,componentPath);
             const std::string type=component["Type"].asString();
-            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):type;
+            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):
+                ScenePhysicsDocument::IsCollider(type)?type+":"+(component.isMember("ID")?std::to_string(component["ID"].asUInt64()):"new"+std::to_string(c)):type;
             if (!types.insert(identity).second) Fail(componentPath+".Type","duplicate component identity");
             if(type=="GameSproutRuntime.ScriptComponent" &&
                 !types.insert("ScriptType:"+component["ScriptTypeID"].asString()).second)
@@ -338,7 +375,17 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     for (const auto& node:plan.Nodes)
         if (node.ParentID && !plan.Indices.count(node.ParentID)) Fail("Scene.Objects","missing parent for ID "+std::to_string(node.ID));
     std::uint64_t maximum=0;
-    for (const auto& node:plan.Nodes) maximum=std::max(maximum,node.ID);
+    std::set<std::uint64_t> stableIDs;
+    for (const auto& node:plan.Nodes) {maximum=std::max(maximum,node.ID);stableIDs.insert(node.ID);}
+    const auto componentIDs=[&](const Json::Value& components) {
+        for(const auto& component:components)if(component.isMember("ID")) {
+            const auto id=Unsigned(component["ID"],"Component.ID");
+            if(!id||!stableIDs.insert(id).second)Fail("Component.ID","zero or duplicate stable ID");
+            maximum=std::max(maximum,id);
+        }
+    };
+    if(plan.RootComponents)componentIDs(*plan.RootComponents);
+    for(const auto& node:plan.Nodes)componentIDs(*node.Components);
     plan.Next=maximum==std::numeric_limits<std::uint64_t>::max()?0:maximum+1;
     if (document.isMember("NextObjectID")) {
         plan.Next=Unsigned(document["NextObjectID"],"Scene.NextObjectID");
@@ -389,6 +436,37 @@ bool RestoreComponent(const Json::Value& data,GameSproutRuntime::IGameObject& ob
     if(runtime.IsExecuting()) {error="Cannot restore a component inside a Runtime callback";return false;}
     const auto objectID=object.GetInstanceID();
     if(runtime.QueryGameObject(objectID)!=&object) {error="Component owner is not a live Runtime object";return false;}
+    if(data.isObject()&&data["Type"].isString()&&ScenePhysicsDocument::IsCollider(data["Type"].asString())) {
+        // Colliders are repeatable. Restoring one always creates a new instance;
+        // the owning transaction restores its document ID and original slot.
+        std::set<std::uint64_t> previous;
+        for(std::size_t index=0;index<object.GetComponentCount();++index)
+            previous.insert(object.GetComponentAt(index)->GetComponentInstanceID());
+        bool open=false;
+        try {
+            ComponentData(data,nullptr,"Component");
+            if(!runtime.BeginConstruction(error))return false;
+            open=true;
+            auto* restored=ScenePhysicsDocument::Create(data,object);
+            const auto id=restored->GetComponentInstanceID();
+            open=false;
+            if(!runtime.EndConstruction(error))Fail("Component",error);
+            if(runtime.QueryGameObject(objectID)!=&object)Fail("Component","owner destroyed during initialization");
+            for(std::size_t index=0;index<object.GetComponentCount();++index)
+                if(object.GetComponentAt(index)->GetComponentInstanceID()==id)return true;
+            Fail("Component","restored Collider destroyed during initialization");
+        } catch(const std::exception& exception){error=exception.what();}
+        catch(...){error="Unexpected Collider restoration failure";}
+        if(runtime.QueryGameObject(objectID)==&object) {
+            std::vector<std::uint64_t> added;
+            for(std::size_t index=0;index<object.GetComponentCount();++index) {
+                const auto id=object.GetComponentAt(index)->GetComponentInstanceID();
+                if(!previous.count(id))added.push_back(id);
+            }
+            for(auto id:added)if(!object.RemoveComponentInstance(id))error+="; Collider rollback failed";
+        }
+        FinishConstructionRollback(runtime,open,error);return false;
+    }
     bool constructionOpen=false,changed=false;
     Json::Value previous;
     std::string type;
@@ -448,9 +526,7 @@ bool RestoreComponent(const Json::Value& data,GameSproutRuntime::IGameObject& ob
                 if(current && !(type=="GameSproutRuntime.ScriptComponent"?
                     runtime.RemoveScriptComponent(&object,scriptID,cleanup):runtime.RemoveBuiltinComponent(&object,type,cleanup)))
                     error+="; component rollback failed: "+cleanup;
-            } else if(type!="GameSproutRuntime.ScriptComponent") {
-                // Script restoration only creates a new wrapper; an existing
-                // wrapper is rejected before its fields can be modified.
+            } else {
                 ComponentData(previous,&object,"Component.Rollback",&runtime);
                 current=find();
                 if(auto* animator=dynamic_cast<GameSproutRuntime::IAnimatorComponent*>(current)) {
@@ -550,6 +626,8 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         }
         if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
             ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]",&runtime);
+        ComponentIdentities(plan.RootComponents,*candidate,candidateIDs);
+        for(const auto& node:plan.Nodes)ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs);
         SceneAnimationDocument::Bind(document,*candidate,objects);
         candidate->SetActive(plan.RootActive);
         for (const auto& node:plan.Nodes) {
@@ -563,6 +641,7 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         if(!runtime.EndConstruction(error))Fail("Scene",error.empty()?"Runtime could not finish scene initialization":error);
         if(runtime.QueryGameObject(candidateID)!=candidate)Fail("Scene","Scene was destroyed during initialization");
         ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.Next=candidateIDs.Next;
+        ids.SwapComponentIdentities(candidateIDs);
         output=candidate;
         return true;
     } catch (const std::exception& exception) {
@@ -577,6 +656,95 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
     }
     FinishConstructionRollback(runtime,constructionOpen,error);
     return false;
+}
+
+bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSproutRuntime& runtime,
+    GameSproutRuntime::IScene& scene,GameSproutRuntime::IGameObject& parent,
+    GameSproutRuntime::IGameObject*& output,
+    std::vector<GameSproutRuntime::PrefabObjectMapping>& mappings,std::string& error) {
+    error.clear();
+    if(runtime.IsExecuting()||runtime.QueryGameObject(scene.GetInstanceID())!=&scene||
+       runtime.QueryGameObject(parent.GetInstanceID())!=&parent||parent.GetScene()!=&scene) {
+        error="Prefab requires a live scene and parent outside Runtime callbacks";return false;
+    }
+    std::vector<std::uint64_t> created;bool constructionOpen=false;
+    const auto sceneID=scene.GetInstanceID();
+    try {
+        if(!PrefabDocument::Validate(document,error))return false;
+        const auto sourcePlan=ValidatePlan(document);
+        std::uint64_t maximum=0;
+        std::vector<GameSproutRuntime::IGameObject*> pending{&scene};std::size_t count=0;
+        while(!pending.empty()) {
+            auto* object=pending.back();pending.pop_back();
+            if(++count>MaximumObjects+1)Fail("Prefab","target scene is oversized");
+            std::uint64_t id=0;if(runtime.GetSceneObjectFileID(object,id))maximum=std::max(maximum,id);
+            for(std::size_t index=0;index<object->GetChildCount();++index)pending.push_back(object->GetChild(index));
+        }
+        if(count-1+sourcePlan.Nodes.size()>MaximumObjects)Fail("Prefab","combined scene exceeds object limit");
+        std::size_t parentDepth=0;
+        for(auto* object=&parent;object!=&scene;object=object->Parent())
+            if(!object||++parentDepth>MaximumDepth)Fail("Prefab","invalid target parent hierarchy");
+        for(const auto& node:sourcePlan.Nodes) {
+            std::size_t depth=1;auto id=node.ParentID;
+            while(id) {++depth;id=sourcePlan.Nodes.at(sourcePlan.Indices.at(id)).ParentID;}
+            if(parentDepth+depth>MaximumDepth)Fail("Prefab","combined hierarchy exceeds depth limit");
+        }
+        std::map<std::uint64_t,std::uint64_t> remap;
+        const auto allocate=[&](std::uint64_t source) {
+            if(maximum==std::numeric_limits<std::uint64_t>::max())Fail("Prefab","scene identity space exhausted");
+            remap.emplace(source,++maximum);
+        };
+        for(const auto& node:document["Objects"]) {
+            allocate(node["ID"].asUInt64());
+            for(const auto& component:node["Components"])if(component.isMember("ID"))allocate(component["ID"].asUInt64());
+        }
+        Json::Value translated=document;
+        if(!PrefabDocument::Remap(translated,remap,error))return false;
+        translated["NextObjectID"]=Json::UInt64(maximum==std::numeric_limits<std::uint64_t>::max()?0:maximum+1);
+        const auto plan=ValidatePlan(translated);
+        std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
+        std::vector<GameSproutRuntime::PrefabObjectMapping> result;
+        if(!runtime.BeginConstruction(error))return false;
+        constructionOpen=true;
+        for(const auto& node:plan.Nodes) {
+            auto* object=scene.CreateGameObject(node.Name);
+            if(!object)Fail("Prefab","Runtime could not create template node");
+            created.push_back(object->GetInstanceID());objects.emplace(node.ID,object);
+        }
+        GameSproutRuntime::IGameObject* root=nullptr;
+        for(const auto& node:plan.Nodes) {
+            auto* object=objects.at(node.ID);auto* owner=node.ParentID?objects.at(node.ParentID):&parent;
+            if(!owner->AddChild(object,false))Fail("Prefab","Runtime rejected template hierarchy");
+            if(!node.ParentID)root=object;
+        }
+        std::vector<GameSproutRuntime::SceneObjectIdentity> identities;
+        for(const auto& node:sourcePlan.Nodes) {
+            auto* object=objects.at(remap.at(node.ID));
+            identities.push_back({object->GetInstanceID(),remap.at(node.ID)});
+            result.push_back({node.ID,object->GetInstanceID()});
+        }
+        if(!runtime.BindSceneObjectIdentities(&scene,identities,error))Fail("Prefab.Identity",error);
+        for(const auto& node:plan.Nodes) {
+            auto* object=objects.at(node.ID);
+            for(const auto& component:*node.Components)ComponentData(component,object,"Prefab.Component",&runtime);
+            object->SetActive(node.Active);
+        }
+        SceneAnimationDocument::Bind(translated,scene,objects);
+        for(const auto& node:plan.Nodes)for(float value:objects.at(node.ID)->GetTransform()->GetWorldMatrix().Data)
+            if(!std::isfinite(value))Fail("Prefab.Transform","world transform overflows");
+        const auto rootID=root->GetInstanceID();constructionOpen=false;
+        if(!runtime.EndConstruction(error))Fail("Prefab",error.empty()?"Runtime could not finish template initialization":error);
+        if(runtime.QueryGameObject(rootID)!=root)Fail("Prefab","template root was destroyed during initialization");
+        for(const auto id:created)if(!runtime.QueryGameObject(id))Fail("Prefab","template node was destroyed during initialization");
+        output=root;mappings.swap(result);return true;
+    }catch(const std::exception& exception){error=exception.what();}
+    catch(...){error="Unexpected Prefab assembly failure";}
+    if(runtime.QueryGameObject(sceneID)==&scene)for(const auto id:created)
+        if(auto* object=runtime.QueryGameObject(id)) {
+            try {if(!scene.DestroyGameObject(object))error+="; Prefab rollback rejected";}
+            catch(...){error+="; Prefab rollback failed";}
+        }
+    FinishConstructionRollback(runtime,constructionOpen,error);return false;
 }
 
 bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRuntime& runtime,
@@ -636,6 +804,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             for(Json::ArrayIndex index=0;index<node.Components->size();++index)
                 ComponentData((*node.Components)[index],object,"Subtree.Components",&runtime);
             object->SetActive(node.Active);
+            ComponentIdentities(node.Components,*object,candidateIDs);
         }
         SceneAnimationDocument::Bind(document,scene,objects);
         auto* restored=objects.at(root->ID);
@@ -648,7 +817,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
         constructionOpen=false;
         if(!runtime.EndConstruction(error))Fail("Subtree",error.empty()?"Runtime could not finish subtree initialization":error);
         if(runtime.QueryGameObject(restoredID)!=restored)Fail("Subtree","Restored root was destroyed during initialization");
-        ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.Next=candidateIDs.Next;output=restored;return true;
+        ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.SwapComponentIdentities(candidateIDs);ids.Next=candidateIDs.Next;output=restored;return true;
     } catch(const std::exception& exception) {error=exception.what();}
     catch(...) {error="Unexpected subtree restoration failure";}
     if(runtime.QueryGameObject(sceneID)==&scene) {

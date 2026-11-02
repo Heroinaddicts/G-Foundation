@@ -8,6 +8,8 @@ public:
         : GameObjectBase<IScene>(runtime,nullptr,name,id) { State().SceneOwner = this; }
     IGameObject* CreateGameObject(const std::string& name, IGameObject* parent = nullptr) override;
     bool DestroyGameObject(IGameObject* object) override;
+    void SetSimulationEnabled(bool enabled) override;
+    bool IsSimulationEnabled() const override;
     bool SetMainCamera(ICameraComponent* camera) override;
     ICameraComponent* GetMainCamera() const override;
     void ClearMainCameraForNode(std::uint64_t id);
@@ -21,5 +23,6 @@ public:
     }
 private:
     std::uint64_t _MainCameraID = 0;
+    bool _SimulationEnabled = true;
 };
 }

@@ -1,5 +1,5 @@
 #pragma once
-#include "../../Module/SceneManager/SceneDocument.h"
+#include "../../ObjectDocument/SceneDocument.h"
 #include "../../Module/Shared/AnimationImportSettingsJson.h"
 #include <thread>
 

@@ -36,6 +36,7 @@ GameSproutRuntime::IGameObject* SceneManager::QueryObjectByFileID(uint64_t fileI
 }
 bool SceneManager::CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& edit,std::string& error) const {
     auto* scene=GetActiveScene();auto* parent=object.Parent();
+    if(IsTemporaryDocumentContext() && &object==GetDocumentContentRoot()){error="不能删除临时文档的内容根。";return false;}
     if(!scene||&object==scene||object.GetScene()!=scene||!parent){error="不能删除场景根或无效节点。";return false;}
     Json::Value document;std::string text;
     if(!Capture(document,text,error))return false;

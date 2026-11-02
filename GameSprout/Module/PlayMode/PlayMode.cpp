@@ -71,6 +71,7 @@ void PlayMode::UnregisterPlayModeListener(IPlayModeListener* listener) {
 bool PlayMode::Play(std::string& error) {
     if(!Ready(error)) return false;
     if(!_Launched||_State.State!=EditorPlayState::Edit) {error="只有编辑模式可以开始运行。";return false;}
+    if(_Scenes->IsDocumentSessionActive()){error="请先返回主场景，再启动运行。";return false;}
     if(!_Scenes->GetActiveScene()) {error="当前没有可运行的场景。";return false;}
     if(_Scenes->HasTransformEdit()) {error="请先完成或取消 Scene 中的变换拖拽。";return false;}
     TransitionScope transition(_Changing);

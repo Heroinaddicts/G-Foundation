@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 static void Check(bool condition,const char* error) {if(!condition) throw std::runtime_error(error);}
+#include "RuntimeScriptFieldRestoreChecks.h"
 class Events : public GameSproutRuntime::IRuntimeListener {
 public:
     std::string Error;
@@ -16,6 +17,7 @@ int main(int argc,char** argv) {
     auto* runtime=Export(argv[1]);
     try {
         Check(runtime,"Cannot load Runtime");
+        CheckSerializedFieldEvolution(*runtime);
 #if defined(_WIN32)
         auto module=LoadLibraryW(std::filesystem::path(argv[2]).c_str());
         auto entry=reinterpret_cast<GameSproutRuntime::fGetScriptModule>(GetProcAddress(module,GameSproutRuntime::ScriptModuleEntryName));

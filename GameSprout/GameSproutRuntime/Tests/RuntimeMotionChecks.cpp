@@ -117,7 +117,26 @@ int main(int argc,char** argv){
         c.Animator->Play("Walk");listener.EventAction=[&]{c.Object->RemoveComponent<GameSproutRuntime::IAnimatorComponent>();};runtime->Update(.3f);
         Check(!c.Object->GetComponent<GameSproutRuntime::IAnimatorComponent>(),"Animation callback removal failed");
         auto burst=Make(*scene);burst.Animator->Play("Walk");runtime->Update(3000);Check(!burst.Animator->GetPlaybackState().Playing&&burst.Animator->GetLastError().find("4096")!=std::string::npos,"Event burst was silently dropped or unbounded");
-        runtime->UnregisterListener(&listener);runtime->SetResourceProvider(nullptr);delete runtime;
+        runtime->UnregisterListener(&listener);
+        Check(runtime->DestroyScene(scene),"Cannot clean animation fixture");
+        // Physics getters expose the latest simulated pose. Accumulated root
+        // motion must still compose against authored TRS, or Kinematic movement
+        // will be added a second time after every physics write-back.
+        auto* motionScene=runtime->CreateScene("Kinematic root motion");
+        auto kinematic=Make(*motionScene);
+        auto* body=kinematic.Object->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
+        auto settings=body->GetSettings();settings.MotionType=GameSproutRuntime::PhysicsMotionType::Kinematic;
+        Check(body->SetSettings(settings),"Cannot configure Kinematic root-motion body");
+        Check(kinematic.Animator->SetRootMotionMode(GameSproutRuntime::RootMotionMode::ApplyToObject),"Cannot enable Kinematic root motion");
+        std::string error;Check(runtime->BeginExecution(error),error);
+        Check(kinematic.Animator->Play("Walk"),kinematic.Animator->GetLastError());runtime->Update(0);
+        for(int i=0;i<10;++i){runtime->Update(.1f);runtime->FixedUpdate(.1f);}
+        Check(Near(kinematic.Object->GetTransform()->GetWorldMatrix()(0,3),11.0f),"Kinematic root motion accumulated the physics result twice");
+        Check(Near(kinematic.Object->GetTransform()->GetLocalPosition().X,11.0f),"Gameplay Transform getter did not expose simulated position");
+        Check(runtime->EndExecution(error),error);
+        kinematic.Animator->Stop();
+        Check(Near(kinematic.Object->GetTransform()->GetLocalPosition().X,10.0f),"Kinematic root motion changed the authored baseline");
+        runtime->SetResourceProvider(nullptr);delete runtime;
         std::cout<<"Root motion, marker/state notifications and callback lifetime checks passed\n";return 0;
     }catch(const std::exception& exception){std::cerr<<exception.what()<<'\n';delete runtime;return 1;}
 }

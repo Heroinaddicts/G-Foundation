@@ -21,6 +21,7 @@ inline const char * ImporterTypeName(const eAssetImporterType type) {
     case eAssetImporterType::Text: return "Text";
     case eAssetImporterType::Script: return "Script";
     case eAssetImporterType::Scene: return "Scene";
+    case eAssetImporterType::Prefab: return "Prefab";
     case eAssetImporterType::AnimationClip: return "AnimationClip";
     case eAssetImporterType::AnimatorController: return "AnimatorController";
     case eAssetImporterType::AnimatorOverrideController: return "AnimatorOverrideController";
@@ -71,7 +72,7 @@ inline bool Validate(const Json::Value & value, std::string & error) {
         return fail("Meta requires a valid Guid");
     if (!value["ImporterType"].isString()) return fail("Meta requires ImporterType");
     bool importerKnown = false;
-    for (uint16_t type = 1; type <= 254; ++type) {
+    for (uint16_t type = 1; type <= 255; ++type) {
         const char * name = ImporterTypeName(static_cast<eAssetImporterType>(type));
         if (name && value["ImporterType"].asString() == name) { importerKnown = true; break; }
     }

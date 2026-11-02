@@ -417,6 +417,11 @@ public:
     virtual ~ISceneImportSettings() {}
 };
 
+class IPrefabImportSettings : public INativeAssetImportSettings {
+public:
+    virtual ~IPrefabImportSettings() {}
+};
+
 class IPhysicsMaterialImportSettings : public INativeAssetImportSettings {
 public:
     virtual ~IPhysicsMaterialImportSettings() {}

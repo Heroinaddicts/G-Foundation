@@ -15,7 +15,9 @@ constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     case eAssetImporterType::AnimationClip: return 5;
     case eAssetImporterType::AnimatorController: return 5;
     case eAssetImporterType::AvatarMask: return 4;
+    case eAssetImporterType::Scene: return 3; // Resolve current Prefab source snapshots and dependency edges.
     case eAssetImporterType::Material:
+    case eAssetImporterType::PhysicsMaterial:
     case eAssetImporterType::Shader:
     case eAssetImporterType::ComputeShader: return 3;
     default: return 2;
@@ -90,6 +92,7 @@ bool ImportModel(AssetImportJob & job);
 bool ImportMedia(AssetImportJob & job);
 bool ImportFont(AssetImportJob & job);
 bool ImportDocument(AssetImportJob & job);
+bool ResolveScenePrefabInstances(AssetImportJob&,Json::Value& document);
 bool ImportShader(AssetImportJob & job);
 
 bool ImportAnimationDocument(AssetImportJob&,eAssetType,const Json::Value&);

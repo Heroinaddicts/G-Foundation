@@ -1,8 +1,10 @@
 #include "SceneManager.h"
 #include "SceneAnimationDocument.h"
+#include "ScenePhysicsDocument.h"
 #include <algorithm>
 #include <exception>
 #include <stdexcept>
+#include <set>
 
 namespace {
 class ComponentEditingScope {
@@ -13,10 +15,11 @@ private:
     bool& _Flag;
 };
 GameSproutRuntime::IComponent* Find(GameSproutRuntime::IGameObject& object,const std::string& type,
-                                   uint64_t instanceID,std::size_t* index=nullptr) {
+                                   uint64_t instanceID,std::size_t* index=nullptr,uint64_t componentInstanceID=0) {
     for(std::size_t i=0;i<object.GetComponentCount();++i) {
         auto* component=object.GetComponentAt(i);
         if(!component||!component->GetTypeName()||type!=component->GetTypeName())continue;
+        if(componentInstanceID&&component->GetComponentInstanceID()!=componentInstanceID)continue;
         if(type=="GameSproutRuntime.ScriptComponent") {
             auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(component);
             if(!script||script->GetScriptInstanceID()!=instanceID)continue;
@@ -26,7 +29,14 @@ GameSproutRuntime::IComponent* Find(GameSproutRuntime::IGameObject& object,const
     }
     return nullptr;
 }
-GameSproutRuntime::IComponent* Find(GameSproutRuntime::IGameObject& object,const Json::Value& data) {
+GameSproutRuntime::IComponent* Find(GameSproutRuntime::IGameObject& object,const Json::Value& data,const SceneDocument::ObjectIDs& ids) {
+    if(data["ID"].isUInt64()) {
+        for(std::size_t i=0;i<object.GetComponentCount();++i) {
+            auto* component=object.GetComponentAt(i);const auto found=ids.FindComponentFileID(component);
+            if(found==data["ID"].asUInt64()&&data["Type"]==component->GetTypeName())return component;
+        }
+        return nullptr;
+    }
     return Find(object,data["Type"].asString(),data["InstanceID"].isUInt64()?data["InstanceID"].asUInt64():0);
 }
 Json::Value& Components(Json::Value& document,uint64_t fileID) {
@@ -35,7 +45,12 @@ Json::Value& Components(Json::Value& document,uint64_t fileID) {
     throw std::runtime_error("编辑目标不在场景快照中。");
 }
 bool Remove(GameSproutRuntime::IGameSproutRuntime& runtime,GameSproutRuntime::IGameObject& object,
-            const Json::Value& data,std::string& error) {
+            const Json::Value& data,const SceneDocument::ObjectIDs& ids,std::string& error) {
+    if(auto* component=Find(object,data,ids)) {
+        if(object.RemoveComponentInstance(component->GetComponentInstanceID()))return true;
+        error="Runtime 拒绝移除组件实例。";return false;
+    }
+    if(data["ID"].isUInt64()){error="组件文档身份已经不存在。";return false;}
     if(data["Type"]=="GameSproutRuntime.ScriptComponent")
         return runtime.RemoveScriptComponent(&object,data["InstanceID"].asUInt64(),error);
     return runtime.RemoveBuiltinComponent(&object,data["Type"].asString(),error);
@@ -66,7 +81,7 @@ bool SceneManager::RemoveScriptComponent(uint64_t objectID,uint64_t instanceID,s
 }
 
 bool SceneManager::ChangeComponent(uint64_t objectID,const std::string& typeName,uint64_t scriptInstanceID,
-    const std::string& scriptTypeID,const GameSproutRuntime::ResourceReference& source,bool adding,std::string& error) {
+    const std::string& scriptTypeID,const GameSproutRuntime::ResourceReference& source,bool adding,std::string& error,uint64_t componentInstanceID) {
     if(!Ready(error))return false;
     auto* scene=GetActiveScene();auto* object=Runtime()->QueryGameObject(objectID);
     if(!object||object->GetScene()!=scene||object==scene) {error="组件操作需要当前场景中的普通节点。";return false;}
@@ -82,7 +97,8 @@ bool SceneManager::ChangeComponent(uint64_t objectID,const std::string& typeName
     if(!Capture(document,text,error))return false;
     Edit edit;edit.Type=Edit::Kind::Component;edit.FileID=_ObjectIDs.RuntimeToFile.at(objectID);
     edit.Label=adding?"添加组件":"移除组件";
-    auto* existing=Find(*object,typeName,scriptInstanceID,&edit.ComponentIndex);
+    auto* existing=adding&&ScenePhysicsDocument::IsCollider(typeName)?nullptr:
+        Find(*object,typeName,scriptInstanceID,&edit.ComponentIndex,componentInstanceID);
     if(adding&&existing) {error="节点已经挂载该组件。";return false;}
     if(!adding&&!existing) {error="要移除的组件已经不存在。";return false;}
     try {
@@ -102,8 +118,8 @@ bool SceneManager::ChangeComponent(uint64_t objectID,const std::string& typeName
                 created=Runtime()->AddScriptComponent(object,scriptTypeID,source,0,error);
             else created=Runtime()->AddBuiltinComponent(object,typeName,error);
             if(created) {
-                edit.ComponentAfter=SceneDocument::SerializeComponent(*created,_ObjectIDs);
                 success=Capture(document,text,error);
+                if(success)edit.ComponentAfter=SceneDocument::SerializeComponent(*created,_ObjectIDs);
             }
         } catch(const std::exception& exception) {error=exception.what();}
         catch(...) {error="添加组件时发生异常。";}
@@ -111,9 +127,7 @@ bool SceneManager::ChangeComponent(uint64_t objectID,const std::string& typeName
             std::string rollbackError;
             // 即使序列化失败，也能按公共接口标识移除本次创建的组件。
             bool rolledBack=false;
-            if(auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(created))
-                rolledBack=Runtime()->RemoveScriptComponent(object,script->GetScriptInstanceID(),rollbackError);
-            else rolledBack=Runtime()->RemoveBuiltinComponent(object,typeName,rollbackError);
+            rolledBack=object->RemoveComponentInstance(created->GetComponentInstanceID());
             if(!rolledBack)error+=" 恢复添加前状态失败："+rollbackError;
         }
     }
@@ -130,7 +144,7 @@ bool SceneManager::RunComponentEdit(const Edit& edit,bool forward,std::string& e
     const auto& before=forward?edit.ComponentBefore:edit.ComponentAfter;
     const auto& after=forward?edit.ComponentAfter:edit.ComponentBefore;
     const auto& identity=before.isNull()?after:before;
-    auto* existing=Find(*object,identity);
+    auto* existing=Find(*object,identity,_ObjectIDs);
     Json::Value document;std::string text;
     if(!Capture(document,text,error))return false;
     try {
@@ -170,9 +184,16 @@ bool SceneManager::RunComponentEdit(const Edit& edit,bool forward,std::string& e
     if(!runtime->BeginConstruction(error))return false;
     constructionOpen=true;
     const auto restore=[&](const Json::Value& data,std::string& reason) {
+        std::set<uint64_t> previous;
+        for(std::size_t i=0;i<object->GetComponentCount();++i)previous.insert(object->GetComponentAt(i)->GetComponentInstanceID());
         if(!SceneDocument::RestoreComponent(data,*object,*Runtime(),reason))return false;
-        auto* component=Find(*object,data);
+        auto* component=Find(*object,data,_ObjectIDs);
+        if(!component)for(std::size_t i=0;i<object->GetComponentCount();++i) {
+            auto* candidate=object->GetComponentAt(i);
+            if(!previous.count(candidate->GetComponentInstanceID())&&data["Type"]==candidate->GetTypeName()){component=candidate;break;}
+        }
         if(!component||!object->SetComponentIndex(component,edit.ComponentIndex)) {reason="Runtime 拒绝恢复组件顺序。";return false;}
+        if(data["ID"].isUInt64())_ObjectIDs.BindComponentFileID(component,data["ID"].asUInt64());
         BindComponent(data,edit.FileID,*Runtime(),*scene,_ObjectIDs);
         if(edit.ComponentWasMainCamera&&!scene->SetMainCamera(object->GetComponent<GameSproutRuntime::ICameraComponent>())) {
             reason="Runtime 拒绝恢复主相机。";return false;
@@ -181,8 +202,9 @@ bool SceneManager::RunComponentEdit(const Edit& edit,bool forward,std::string& e
     };
     try {
         if(after.isNull()) {
-            changed=Remove(*runtime,*object,before,error);
+            changed=Remove(*runtime,*object,before,_ObjectIDs,error);
             if(!changed)throw std::runtime_error(error.empty()?"Runtime 拒绝移除组件。":error);
+            _ObjectIDs.ForgetComponentFileID(existing);
         }
         else {
             changed=true;
@@ -204,7 +226,7 @@ bool SceneManager::RunComponentEdit(const Edit& edit,bool forward,std::string& e
             if(!constructionOpen)constructionOpen=runtime->BeginConstruction(rollbackError);
             object=runtime->QueryGameObject(objectID);scene=GetActiveScene();
             bool restored=constructionOpen&&object&&scene&&object->GetScene()==scene;
-            if(restored&&!after.isNull()&&Find(*object,after))restored=Remove(*runtime,*object,after,rollbackError);
+            if(restored&&!after.isNull()&&Find(*object,after,_ObjectIDs))restored=Remove(*runtime,*object,after,_ObjectIDs,rollbackError);
             if(restored&&!before.isNull())restored=restore(before,rollbackError);
             if(!restored)error+=" 恢复组件原值失败："+rollbackError;
         } catch(...) {error+=" 恢复组件原值时发生异常。";}

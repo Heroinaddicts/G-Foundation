@@ -13,6 +13,7 @@ class GameObjectState;
 class Scene;
 class AnimatorComponent;
 class ScriptComponent;
+class RuntimePhysicsSystem;
 
 class Runtime final : public IGameSproutRuntime {
 public:
@@ -48,6 +49,10 @@ public:
     bool IsScriptExecutionEnabled() const override {return _ScriptExecutionEnabled;}
     bool BeginExecution(std::string&) override;
     bool EndExecution(std::string&) override;
+    ScriptComponent* ExchangeInvokingScript(ScriptComponent* value) {auto* previous=_InvokingScript;_InvokingScript=value;return previous;}
+    ScriptComponent* GetInvokingScript() const {return _InvokingScript;}
+    void DropPhysicsSubscriptions(std::uint64_t objectID,std::uint64_t componentID);
+    bool Raycast(IScene*,const Ray&,float,PhysicsRaycastHit&,const PhysicsQuerySettings&,std::string&) override;
     void ProcessPendingEvents() override;
     bool BeginConstruction(std::string&) override;
     bool EndConstruction(std::string&) override;
@@ -70,6 +75,8 @@ public:
     void SetResourceProvider(IRuntimeResourceProvider*) override;
     IRuntimeResourceProvider* GetResourceProvider() const override {return _AnimationResources.GetProvider();}
     IGameObject* InstantiateModel(IScene*,const ResourceReference&,IGameObject*,std::string&) override;
+    IGameObject* InstantiatePrefabData(IScene*,const PrefabData&,IGameObject*,std::vector<PrefabObjectMapping>&,std::string&) override;
+    IGameObject* InstantiatePrefab(IScene*,const ResourceReference&,IGameObject*,std::vector<PrefabObjectMapping>&,std::string&) override;
     AnimationResources& GetAnimationResources() {return _AnimationResources;}
     void ForgetObjectAnimationBindings(std::uint64_t objectID);
     void ForgetAnimatorReferences(std::uint64_t objectID);
@@ -93,6 +100,8 @@ public:
     void Notify(GameObjectState& object, SceneNodeEventType type, const char* component = "", std::uint64_t oldParent = 0);
     bool IsShuttingDown() const { return _ShuttingDown; }
     bool IsConstructing() const { return _ConstructionDepth!=0; }
+    bool PreparePhysics(std::string& error);
+    void ResetPhysics();
 
 private:
     enum class CommandType { Attach, Reparent, DestroyObject, DestroyScene, RemoveComponent };
@@ -128,6 +137,7 @@ private:
     void RenderWorld();
     void RenderUI();
     void TickComponents(float deltaSeconds, bool fixed);
+    void StepPhysics(float deltaSeconds);
     bool InitializePendingComponents(std::string& error,bool allowScripts);
     void NotifyInitializationError(GameObjectState&,IComponent&,const std::string&);
     std::vector<Scene*> _Scenes;
@@ -161,6 +171,9 @@ private:
     AnimationResources _AnimationResources;
     GRHI::GRHIApi* _RenderApi=nullptr;
     GRHI::IDevice* _RenderDevice=nullptr;
+    RuntimePhysicsSystem* _PhysicsSystem=nullptr;
+    ScriptComponent* _InvokingScript=nullptr;
+    std::string _LastPhysicsError;
 };
 
 // 所有回调与树/组件遍历共用一个屏障。退出最外层后再执行结构命令。

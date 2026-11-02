@@ -16,7 +16,10 @@ bool Valid(const ScriptValue& value) {
 ScriptComponent::ScriptComponent(Runtime& runtime,IGameObject* owner,std::string type,ResourceReference source,std::uint64_t id)
     :IScriptComponent(owner),_Runtime(runtime),_TypeID(std::move(type)),_Source(std::move(source)),_InstanceID(id) {BindDefaults();}
 ScriptComponent::~ScriptComponent() {Stop();}
+ScriptComponent::InvocationScope::InvocationScope(ScriptComponent& owner)
+    :Owner(owner),Previous(owner._Runtime.ExchangeInvokingScript(&owner)) {++Owner._InvocationDepth;}
 ScriptComponent::InvocationScope::~InvocationScope() {
+    Owner._Runtime.ExchangeInvokingScript(Previous);
     if(--Owner._InvocationDepth==0 && (Owner._StopRequested||!Owner._Enabled||!Owner.IsAttached())) Owner.Stop();
 }
 bool ScriptComponent::IsScriptTypeAvailable() const {return _Runtime.FindScriptType(_TypeID)!=nullptr;}
@@ -44,9 +47,20 @@ void ScriptComponent::Stop() noexcept {
     IScript* instance=_Instance;
     auto destroy=_Destroy;
     _Instance=nullptr;_Destroy=nullptr;
-    if(!instance) return;
+    if(!instance) { _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());return; }
+    ScriptComponent* previous=_Runtime.ExchangeInvokingScript(this);
     try {instance->OnRelease(&_Runtime);} catch(...) {}
+    _Runtime.ExchangeInvokingScript(previous);
+    _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
     try {destroy(instance);} catch(...) {}
+}
+void ScriptComponent::InvokeExternal(const std::function<void()>& callback) {
+    if(!callback || !IsInitialized() || !_Enabled || !IsAttached()) return;
+    RuntimeOperation operation(_Runtime);
+    InvocationScope invocation(*this);
+    try { callback(); }
+    catch(const std::exception& exception) {Fail(exception.what());}
+    catch(...) {Fail("Native physics callback threw an exception");}
 }
 void ScriptComponent::Fail(const std::string& message) {
     Stop();_Failed=true;_Error=message;
@@ -85,6 +99,28 @@ bool ScriptComponent::SetField(const std::string& id,const ScriptValue& value,st
 IScript* ScriptComponent::GetNativeInstance() const {
     return _Runtime.IsScriptExecutionEnabled()&&!_Failed&&IsAttached()?_Instance:nullptr;
 }
+bool ScriptComponent::ReplaceFields(const std::map<std::string,ScriptValue>& values,std::string& error) {
+    error.clear();
+    if(_Instance||_InvocationDepth) {error="Replace authored script fields before native execution starts";return false;}
+    const auto* type=_Runtime.FindScriptType(_TypeID);
+    for(const auto& value:values) {
+        if(value.first.empty()||!Valid(value.second)){error="Invalid authored script field";return false;}
+        if(type) {
+            const auto bridge=std::find_if(type->Fields.begin(),type->Fields.end(),[&](const auto& field){return field.Info.ID==value.first;});
+            if(bridge==type->Fields.end()||bridge->Info.Default.Kind!=value.second.Kind) {
+                error="Unknown script field or mismatched value kind: "+value.first;return false;
+            }
+        }
+    }
+    try {
+        auto next=values;
+        RuntimeOperation operation(_Runtime);
+        _Runtime.QueueScriptInitialization(*this);
+        if(auto* node=_Runtime.Find(_GameObject))_Runtime.Notify(*node,SceneNodeEventType::ComponentChanged,GetTypeName());
+        _Fields.swap(next);_MissingObjectFields.clear();_Failed=false;_Error.clear();
+        return true;
+    }catch(const std::exception& exception){error=exception.what();return false;}
+}
 IScript* ScriptComponent::PrepareInstance() {
     if(!_Enabled||!_Runtime.IsScriptExecutionEnabled()||_Failed||!IsAttached()) return nullptr;
     if(_Starting) return nullptr;
@@ -102,6 +138,7 @@ IScript* ScriptComponent::PrepareInstance() {
         if(!_Instance) {Fail("Native script factory returned null: "+_TypeID);return nullptr;}
         if(_Instance->GetGameObject()!=_GameObject) {Fail("Native script factory returned an instance for another object");return nullptr;}
         if(!type->CppType||typeid(*_Instance)!=*type->CppType) {Fail("Native script factory returned a different C++ type");return nullptr;}
+        _Instance->_ComponentInstanceID=GetComponentInstanceID();
         for(const auto& value:_Fields) {
             const auto bridge=std::find_if(type->Fields.begin(),type->Fields.end(),[&](const auto& field){return field.Info.ID==value.first;});
             std::string error;

@@ -19,13 +19,15 @@ static void CheckSerialization(GameSproutRuntime::IGameSproutRuntime& runtime,co
     Check(renderer->SetMaterials({material,{},material}),"Cannot configure material slot round trip");
     renderer->SetVisible(false);
     first->GetComponent<GameSproutRuntime::IImageComponent>()->SetUVRect({{0.2f,0.3f},{0.4f,0.5f}});
+    const auto addedFileID=ids.Next;
     auto* added=scene->CreateGameObject("Added",parent);
     Json::Value saved;
     Check(SceneDocument::Serialize(*scene,ids,saved,error),error);
     Check(saved["Name"].asString()=="Round trip scene" && !saved["RootActive"].asBool(),"Root name/active not serialized");
     Check(FileNode(saved,"First")["ID"].asUInt64()==30 && FileNode(saved,"Parent")["ID"].asUInt64()==20 &&
-          FileNode(saved,"Added")["ID"].asUInt64()==41,"Loaded IDs changed or new ID was not allocated monotonically");
-    Check(saved["MainCameraID"].asUInt64()==30 && saved["NextObjectID"].asUInt64()==42,"Main camera/File ID high water mark mismatch");
+          FileNode(saved,"Added")["ID"].asUInt64()==addedFileID,"Loaded IDs changed or new ID was not allocated monotonically");
+    Check(saved["MainCameraID"].asUInt64()==30 && saved["NextObjectID"].asUInt64()>addedFileID,"Main camera/File ID high water mark mismatch");
+    Check(FileNode(saved,"Added")["Components"][0]["ID"].asUInt64()>addedFileID,"Intrinsic component has no stable ID");
     Check(FileNode(saved,"First")["Components"][4]["Mesh"]["LocalID"].asUInt64()==91,"Mesh resource identity lost");
     Check(FileNode(saved,"First")["Components"][5]["Materials"][1].isNull(),"Unbound slot must remain null");
     Check(!FileNode(saved,"First")["Components"][4].isMember("Bounds"),"Derived mesh data was written to source");
@@ -46,9 +48,10 @@ static void CheckSerialization(GameSproutRuntime::IGameSproutRuntime& runtime,co
     Check(scene->DestroyGameObject(added),"Cannot delete highest File ID object");
     Check(SceneDocument::Serialize(*scene,ids,saved,error),error);
     Check(SceneDocument::Instantiate(saved,runtime,loaded,loadedIDs,error),error);
+    const auto afterDeletionFileID=loadedIDs.Next;
     loaded->CreateGameObject("After deletion");
     Check(SceneDocument::Serialize(*loaded,loadedIDs,savedAgain,error),error);
-    Check(FileNode(savedAgain,"After deletion")["ID"].asUInt64()==42,"Deleted File ID was reused after reopening");
+    Check(FileNode(savedAgain,"After deletion")["ID"].asUInt64()==afterDeletionFileID,"Deleted File ID was reused after reopening");
     const auto oldIDs=loadedIDs.RuntimeToFile;const auto oldNext=loadedIDs.Next;const auto oldDocument=savedAgain;
     loaded->SetName("");
     Check(!SceneDocument::Serialize(*loaded,loadedIDs,savedAgain,error) && savedAgain==oldDocument &&

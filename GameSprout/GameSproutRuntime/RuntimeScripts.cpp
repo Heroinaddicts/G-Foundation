@@ -1,6 +1,8 @@
 #include "GameSproutRuntime.h"
 #include "GameObject.h"
 #include "Components/ScriptComponent.h"
+#include "Api/RuntimeScriptFieldValues.h"
+#include "Components/ComponentFactory.h"
 #include <algorithm>
 #include <cmath>
 #include <exception>
@@ -20,14 +22,18 @@ const std::vector<BuiltinEntry>& Builtins() {
         {"GameSproutRuntime.MeshRenderer","Mesh Renderer","Rendering",&typeid(IMeshRendererComponent),false},
         {"GameSproutRuntime.SkinnedMeshRenderer","Skinned Mesh Renderer","Rendering",&typeid(ISkinnedMeshRendererComponent),false},
         {"GameSproutRuntime.Camera","Camera","Rendering",&typeid(ICameraComponent),false},
-        {"GameSproutRuntime.Animator","Animator","Animation",&typeid(IAnimatorComponent),false}
+        {"GameSproutRuntime.Animator","Animator","Animation",&typeid(IAnimatorComponent),false},
+        {"GameSproutRuntime.Rigidbody","Rigidbody","Physics",&typeid(IRigidbodyComponent),false},
+        {"GameSproutRuntime.BoxCollider","Box Collider","Physics",&typeid(IBoxColliderComponent),false},
+        {"GameSproutRuntime.SphereCollider","Sphere Collider","Physics",&typeid(ISphereColliderComponent),false},
+        {"GameSproutRuntime.CapsuleCollider","Capsule Collider","Physics",&typeid(ICapsuleColliderComponent),false}
     };
     return entries;
 }
 }
 std::vector<BuiltinComponentInfo> Runtime::GetBuiltinComponentTypes() const {
     std::vector<BuiltinComponentInfo> result;
-    for(const auto& entry:Builtins()) result.push_back({entry.ID,entry.Name,entry.Category,entry.Intrinsic});
+    for(const auto& entry:Builtins()) result.push_back({entry.ID,entry.Name,entry.Category,entry.Intrinsic,AllowsMultipleBuiltinComponents(*entry.Type)});
     return result;
 }
 IComponent* Runtime::AddBuiltinComponent(IGameObject* object,const std::string& type,std::string& error) {
@@ -35,7 +41,7 @@ IComponent* Runtime::AddBuiltinComponent(IGameObject* object,const std::string& 
     auto* node=Find(object);
     if(!IsUsable(node)||object==object->GetScene()) {error="Select a game object before adding a component";return nullptr;}
     for(const auto& entry:Builtins()) if(type==entry.ID) {
-        if(entry.Intrinsic||node->GetComponent(*entry.Type)) {error="Component already exists";return nullptr;}
+        if(entry.Intrinsic||(!AllowsMultipleBuiltinComponents(*entry.Type) && node->GetComponent(*entry.Type))) {error="Component already exists";return nullptr;}
         auto* result=node->AddComponent(*entry.Type);
         if(!result) error="Cannot create component: "+type;
         return result;
@@ -110,11 +116,7 @@ bool Runtime::ReplaceScriptTypes(const std::vector<std::string>& removeTypes,
             // Missing types retain all values. Present types use exactly their
             // current declared fields, retaining values only of matching kinds.
             if(type==candidate.end()) continue;
-            AuthoredFields item{script,{}};
-            for(const auto& field:type->second.Info.Fields) {
-                const auto previous=script->GetFields().find(field.ID);
-                item.Values.emplace(field.ID,previous!=script->GetFields().end()&&previous->second.Kind==field.Default.Kind?previous->second:field.Default);
-            }
+            AuthoredFields item{script,ProjectSerializedScriptFields(script->GetFields(),&type->second.Info)};
             authored.push_back(std::move(item));
         }
         // Every validation and allocation precedes publication. These swaps
@@ -161,6 +163,7 @@ IScriptComponent* Runtime::AddScriptComponent(IGameObject* object,const std::str
     if(node->NextComponentSerial==std::numeric_limits<std::uint64_t>::max()) {error="Component serials are exhausted";return nullptr;}
     RuntimeOperation operation(*this);
     auto* script=new ScriptComponent(*this,object,type,source,id);
+    script->_ComponentInstanceID=node->NextComponentSerial+1;
     try {node->Components.push_back({script,++node->NextComponentSerial,false});}
     catch(...) {delete script;error="Cannot allocate script component";return nullptr;}
     node->NextScriptID=std::max(node->NextScriptID,id);

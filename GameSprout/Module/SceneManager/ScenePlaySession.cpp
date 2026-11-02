@@ -33,6 +33,7 @@ void SceneManager::NotifyPlaySession(bool changing,bool active) {
 
 bool SceneManager::BeginPlaySession(std::string& error) {
     error.clear();
+    if(IsDocumentSessionActive()){error="请先关闭当前临时文档，再开始运行。";return false;}
     if(IsPlaySessionActive()) {error="已经存在运行场景会话。";return false;}
     if(!Ready(error)) return false;
     if(Runtime()->IsScriptExecutionEnabled()) {error="捕获场景前必须先停止脚本执行。";return false;}
@@ -46,6 +47,7 @@ bool SceneManager::BeginPlaySession(std::string& error) {
         snapshot->Path=_ActivePath;snapshot->BaselineText=_BaselineText;
         snapshot->DiskHash=_DiskHash;snapshot->LastStateText=_LastStateText;
         snapshot->HistoryPosition=_HistoryPosition;
+        snapshot->Annotations=_Annotations;
         const auto count=Runtime()->GetSceneCount();
         snapshot->Scenes.reserve(count);previous.reserve(count);candidates.reserve(count);candidateIDs.reserve(count);
         for(std::size_t index=0;index<count;++index) {
@@ -55,6 +57,7 @@ bool SceneManager::BeginPlaySession(std::string& error) {
             PlaySession::SceneSnapshot item;
             if(scene->GetInstanceID()==_ActiveID) {snapshot->ActiveIndex=index;item.IDs=_ObjectIDs;}
             if(!SceneDocument::Serialize(*scene,item.IDs,item.Document,error)) throw std::runtime_error(error);
+            if(scene->GetInstanceID()==_ActiveID&&!_Annotations.empty())item.Document["Annotations"]=_Annotations;
             snapshot->Scenes.push_back(std::move(item));
         }
         const auto& author=snapshot->Scenes.at(snapshot->ActiveIndex);
@@ -122,6 +125,7 @@ bool SceneManager::EndPlaySession(std::string& error) {
     _DiskHash.swap(snapshot->DiskHash);_LastStateText.swap(snapshot->LastStateText);
     _History.swap(snapshot->History);_HistoryPosition=snapshot->HistoryPosition;
     _Unsaved=snapshot->Unsaved;_StatePending=false;
+    _Annotations.swap(snapshot->Annotations);
     _PlaySession=nullptr;
     NotifySceneChanged();
     DestroyCandidates(*Runtime(),previous);

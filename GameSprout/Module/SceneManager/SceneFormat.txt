@@ -6,11 +6,12 @@ AssetsPipeline 导入为 Library/Artifact 内的二进制产物；SceneManager �
 顶层字段：Version=1、Name、Objects，以及可选 MainCameraID（0 表示未指定）。
 RootActive 默认 true，RootComponents 可记录场景根自身的组件，根 Transform 必须为单位变换。
 RootMainCamera=true 表示根上的 Camera 是主相机，此时 MainCameraID 必须为 0。
-NextObjectID 保存节点文件 ID 分配高水位，新增节点单调分配，删除后重开也不复用。
+NextObjectID 保存节点和组件共用的文件 ID 分配高水位，新增身份单调分配，删除后重开也不复用。
 NextObjectID 缺省使用已有最大 ID+1；0 表示 uint64 ID 空间耗尽。
 Objects 每项包含 ID、Name、Components；ParentID 默认 0，Active 默认 true。
 ID 是本场景文件内稳定的节点标识，不能使用每次创建后变化的 Runtime InstanceID。
 ParentID=0 代表直接位于场景根下。文件可以先写子节点，再写父节点。
+组件序列化也保存非零稳定 ID，与节点 ID 在同一文档内唯一；它不是脚本 InstanceID 或 Runtime 指针。
 
 当前支持的组件 Type：
 GameSproutRuntime.Transform
@@ -22,6 +23,7 @@ GameSproutRuntime.MeshRenderer
 GameSproutRuntime.Camera
 GameSproutRuntime.Animator
 GameSproutRuntime.SkinnedMeshRenderer
+GameSproutRuntime.ScriptComponent
 
 资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
 未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
@@ -58,6 +60,16 @@ HasUnsavedChanges 比较当前完整快照与保存基线，也能发现尚未�
 常规 Update 仅在本批 Runtime 事件发生后比较快照；迟到事件不会把刚保存的相同数据重新标脏。
 OnSceneStateChanged 通知属性/历史/保存状态变化，不触发场景切换及选择清空。
 编辑/Undo/Redo/Save/Open 不能从 Runtime 更新、遍历或事件回调重入执行。
+
+Prefab 作者记录
+Annotations.PrefabInstances 保存实例 Source(Guid/LocalID)、RootFileID、SourcePath、SourceHash、
+Baseline、Mappings 与 Overrides。Objects 仍保留完整展开对象图，普通 Inspector 编辑同一组 Runtime 对象。
+Mappings 同时保存源节点/组件 ID 与场景文件 ID；脚本内部对象引用随实例重映射，资源引用保持原 GUID/LocalID。
+PrefabManager 负责来源追踪与覆盖合并；SceneManager 只提供通用子树捕获/替换事务和 annotations 持久化。
+EditObjectDocument 在一个撤销事务内提交对象图和作者记录，支持失败回滚，不通过私有实现耦合 PrefabManager。
+打开、保存、Undo/Redo 和 Play 作者快照保留 annotations。场景离线导入先根据最新 Prefab 源合并实例覆盖，
+记录源依赖，再剥离 annotations，Player 产物只包含完成展开的当前对象图，运行时不处理 Apply/Revert。
+Nested/Variant 仅预留数据边界，本版拒绝嵌套实例及非空 Base/NestedInstances。
 
 职责与生命周期
 编辑器应用组合层创建并销毁 Runtime，经 EditorApi 的 const _Runtime 指针统一注入；Module 和 View 只借用。

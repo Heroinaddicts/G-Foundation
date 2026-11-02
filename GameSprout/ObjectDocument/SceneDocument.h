@@ -9,6 +9,33 @@ namespace SceneDocument {
 struct ObjectIDs {
     std::map<std::uint64_t,std::uint64_t> RuntimeToFile;
     std::uint64_t Next = 1; // 0 表示 uint64 文件 ID 空间耗尽，不能再分配。
+    // Only pass live components to lookup/bind. The lifetime stamp rejects an
+    // address reused by a later component, including one on another owner.
+    std::uint64_t FindComponentFileID(const GameSproutRuntime::IComponent* component) const {
+        if(!component||!component->GetGameObject())return 0;
+        const auto identity=_ComponentToFile.find(component);
+        const auto stamp=_ComponentLifetimes.find(component);
+        if(identity==_ComponentToFile.end()||stamp==_ComponentLifetimes.end()||
+           stamp->second.OwnerID!=component->GetGameObject()->GetInstanceID()||
+           stamp->second.InstanceID!=component->GetComponentInstanceID())return 0;
+        return identity->second;
+    }
+    void BindComponentFileID(const GameSproutRuntime::IComponent* component,std::uint64_t id) {
+        if(!component||!component->GetGameObject()||!id)return;
+        _ComponentToFile[component]=id;
+        _ComponentLifetimes[component]={component->GetGameObject()->GetInstanceID(),component->GetComponentInstanceID()};
+    }
+    // Forget compares pointer keys only; a destroyed component is permitted.
+    void ForgetComponentFileID(const GameSproutRuntime::IComponent* component) {
+        _ComponentToFile.erase(component);_ComponentLifetimes.erase(component);
+    }
+    void SwapComponentIdentities(ObjectIDs& other) noexcept {
+        _ComponentToFile.swap(other._ComponentToFile);_ComponentLifetimes.swap(other._ComponentLifetimes);
+    }
+private:
+    struct ComponentLifetime {std::uint64_t OwnerID=0,InstanceID=0;};
+    std::map<const GameSproutRuntime::IComponent*,std::uint64_t> _ComponentToFile;
+    std::map<const GameSproutRuntime::IComponent*,ComponentLifetime> _ComponentLifetimes;
 };
 // V1 编辑器源场景。只生成数据，不做文件 IO，也不创建预处理产物。
 Json::Value CreateDefault(const std::string& name);
@@ -24,6 +51,11 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
 bool Serialize(GameSproutRuntime::IScene& scene, ObjectIDs& ids,
                Json::Value& output, std::string& error);
 bool Validate(const Json::Value& document, std::string& error);
+// Validated, closed template -> fresh identities in the target scene.
+bool InstantiatePrefab(const Json::Value&, GameSproutRuntime::IGameSproutRuntime&,
+    GameSproutRuntime::IScene&, GameSproutRuntime::IGameObject& parent,
+    GameSproutRuntime::IGameObject*& output,
+    std::vector<GameSproutRuntime::PrefabObjectMapping>& mappings, std::string& error);
 // 单组件快照用于编辑事务。调用者负责在完整场景中校验跨对象引用。
 Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const ObjectIDs& ids);
 bool RestoreComponent(const Json::Value& data, GameSproutRuntime::IGameObject& object,

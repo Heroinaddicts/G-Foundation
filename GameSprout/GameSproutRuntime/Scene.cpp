@@ -9,6 +9,8 @@ bool Scene::DestroyGameObject(IGameObject* object) {
     GameObjectState* node = State().Owner.Find(object);
     return node && node->SceneOwner == this && object != this && State().Owner.RequestDestroy(node,false);
 }
+void Scene::SetSimulationEnabled(bool enabled) { _SimulationEnabled=enabled; }
+bool Scene::IsSimulationEnabled() const { return _SimulationEnabled; }
 bool Scene::SetMainCamera(ICameraComponent* camera) {
     std::uint64_t id=0;
     if(camera) {

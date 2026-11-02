@@ -86,7 +86,10 @@ bool GameObjectState::SetComponentIndex(IComponent* component,std::size_t index)
     return true;
 }
 IComponent* GameObjectState::GetComponent(const std::type_info& type) const {
-    for (const auto& component:Components) if (component.Pointer->GetComponentType()==type) return component.Pointer;
+    for (const auto& component:Components) {
+        if (component.Pointer->GetComponentType()==type ||
+            (type==typeid(IColliderComponent) && dynamic_cast<IColliderComponent*>(component.Pointer))) return component.Pointer;
+    }
     if(const auto* registration=Owner.FindScriptType(type))
         for(const auto& component:Components) {
             const auto* script=dynamic_cast<ScriptComponent*>(component.Pointer);
@@ -124,7 +127,8 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
                 script && script->GetScriptInstanceID()==instanceID && script->GetNativeInstance()==instance) return instance;
         return nullptr;
     }
-    if (IComponent* existing=GetComponent(type)) return existing;
+    if (!AllowsMultipleBuiltinComponents(type))
+        if (IComponent* existing=GetComponent(type)) return existing;
     RuntimeOperation operation(Owner);
     IComponent* component=nullptr;
     bool registered=false;
@@ -132,6 +136,7 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
         component=CreateBuiltinComponent(type,Object);
         if (!component) return nullptr;
         if (NextComponentSerial==std::numeric_limits<std::uint64_t>::max()) { delete component; return nullptr; }
+        component->_ComponentInstanceID=NextComponentSerial+1;
         Components.push_back({component,++NextComponentSerial,false});
         registered=true;
         const auto serial=NextComponentSerial;
@@ -163,7 +168,20 @@ bool GameObjectState::RemoveComponent(const std::type_info& type) {
             }
     RuntimeOperation operation(Owner);
     for (ComponentEntry& component:Components) {
-        if (component.Pointer->GetComponentType()!=type) continue;
+        if (component.Pointer->GetComponentType()!=type &&
+            !(type==typeid(IColliderComponent) && dynamic_cast<IColliderComponent*>(component.Pointer))) continue;
+        if (component.PendingRemove) return true;
+        if (!Owner.RequestRemoveComponent(this,component.Pointer,component.Serial)) return false;
+        component.PendingRemove=true;
+        return true;
+    }
+    return false;
+}
+bool GameObjectState::RemoveComponentInstance(std::uint64_t instanceID) {
+    if (!instanceID || !Owner.IsUsable(this)) return false;
+    RuntimeOperation operation(Owner);
+    for (auto& component:Components) {
+        if (component.Serial!=instanceID || component.Pointer->GetComponentType()==typeid(ITransformComponent)) continue;
         if (component.PendingRemove) return true;
         if (!Owner.RequestRemoveComponent(this,component.Pointer,component.Serial)) return false;
         component.PendingRemove=true;

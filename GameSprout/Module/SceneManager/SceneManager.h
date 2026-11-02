@@ -3,12 +3,21 @@
 #include "IProject.h"
 #include "SceneDocument.h"
 #include <map>
+class IRuntimeHost;
 
 class SceneManager final : public ISceneManager, public GameSproutRuntime::IRuntimeListener {
 public:
     ~SceneManager() override;
     GameSproutRuntime::IScene* GetActiveScene() const override;
     const std::string& GetActiveScenePath() const override { return _ActivePath; }
+    bool BeginDocumentSession(const SceneDocumentSessionRequest&,std::string&) override;
+    bool EndDocumentSession(std::string&) override;
+    bool IsDocumentSessionActive() const override {return _DocumentSession!=nullptr;}
+    bool IsEditingSuspendedDocument() const override {return _EditingSuspended;}
+    GameSproutRuntime::IGameObject* GetDocumentContentRoot() const override;
+    GameSproutRuntime::IScene* GetMainScene() const override;
+    bool MarkDocumentSessionSaved(std::string&) override;
+    bool EditSuspendedDocument(const std::function<bool(std::string&)>&,std::string&) override;
     bool OpenScene(const std::string& path, std::string& error) override;
     bool BeginPlaySession(std::string& error) override;
     bool EndPlaySession(std::string& error) override;
@@ -20,11 +29,17 @@ public:
     bool DeleteObject(uint64_t objectID,std::string& error) override;
     bool AddBuiltinComponent(uint64_t objectID,const std::string& typeName,std::string& error) override;
     bool RemoveComponent(uint64_t objectID,const std::string& typeName,std::string& error) override;
+    bool RemoveComponentInstance(uint64_t objectID,uint64_t componentInstanceID,std::string& error) override;
+    uint64_t GetComponentFileID(uint64_t objectID,uint64_t componentInstanceID) const override;
+    GameSproutRuntime::IComponent* QueryComponentByFileID(uint64_t objectID,uint64_t componentFileID) const override;
     bool AttachScriptComponent(uint64_t objectID,const std::string& typeID,
         const GameSproutRuntime::ResourceReference& source,std::string& error) override;
     bool RemoveScriptComponent(uint64_t objectID,uint64_t instanceID,std::string& error) override;
     uint64_t GetObjectFileID(uint64_t objectID) const override;
     GameSproutRuntime::IGameObject* QueryObjectByFileID(uint64_t fileID) const override;
+    bool CaptureObjectDocument(uint64_t objectID,SceneSubtreeDocument& output,std::string& error) const override;
+    std::string GetSceneAnnotationsJson() const override;
+    bool EditObjectDocument(const SceneDocumentEditRequest& request,SceneSubtreeDocument& output,std::string& error) override;
     bool BeginTransformEdit(uint64_t objectID,const std::string& label,std::string& error) override;
     bool PreviewTransformEdit(const SceneTransformState& state,std::string& error) override;
     bool CommitTransformEdit(std::string& error) override;
@@ -51,7 +66,7 @@ private:
     void NotifyStateChanged();
     void NotifyListeners(bool active);
     void NotifyPlaySession(bool changing,bool active);
-    void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={});
+    void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={},Json::Value annotations=Json::Value(Json::objectValue));
     bool RestoreLastScene();
     void RememberActiveScene() const;
     GameSproutRuntime::IGameSproutRuntime* Runtime() const;
@@ -60,7 +75,7 @@ private:
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
     struct Edit {
-        enum class Kind {Property,Deletion,Creation,Component};
+        enum class Kind {Property,Deletion,Creation,Component,Document};
         Kind Type=Kind::Property;
         std::uint64_t FileID=0;
         std::string Label;
@@ -73,6 +88,7 @@ private:
         Json::Value ComponentBefore,ComponentAfter;
         std::size_t ComponentIndex=0;
         bool ComponentWasMainCamera=false;
+        Json::Value DocumentBefore,DocumentAfter,AnnotationsBefore,AnnotationsAfter;
     };
     struct PlaySession {
         struct SceneSnapshot {Json::Value Document;SceneDocument::ObjectIDs IDs;};
@@ -82,15 +98,33 @@ private:
         std::vector<Edit> History;
         std::size_t HistoryPosition=0;
         bool Unsaved=false;
+        Json::Value Annotations;
     };
     PlaySession* _PlaySession=nullptr;
+    struct DocumentContext {
+        uint64_t ActiveID=0;
+        SceneDocument::ObjectIDs IDs;
+        std::string Path,BaselineText,DiskHash,LastStateText;
+        std::vector<Edit> History;
+        std::size_t HistoryPosition=0;
+        Json::Value Annotations{Json::objectValue};
+        bool Unsaved=true,StatePending=false;
+    };
+    struct DocumentSession {DocumentContext Main;uint64_t ContentRootFileID=0;bool MainSimulationEnabled=true;};
+    DocumentSession* _DocumentSession=nullptr;
+    bool _EditingSuspended=false;
+    void SwapDocumentContext(DocumentContext&) noexcept;
+    bool ValidateDocumentContent(const Json::Value&,std::string&) const;
+    bool IsTemporaryDocumentContext() const {return _DocumentSession&&!_EditingSuspended;}
     bool RunEdit(const Edit& edit,bool forward,std::string& error);
     bool CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& edit,std::string& error) const;
     bool RunDeletion(const Edit& edit,bool forward,std::string& error);
     bool RunComponentEdit(const Edit& edit,bool forward,std::string& error);
+    bool RunDocumentEdit(const Edit& edit,bool forward,std::string& error);
+    bool ApplyDocument(const Json::Value& before,const Json::Value& after,std::string& error);
     bool ChangeComponent(uint64_t objectID,const std::string& typeName,uint64_t scriptInstanceID,
         const std::string& scriptTypeID,const GameSproutRuntime::ResourceReference& source,
-        bool adding,std::string& error);
+        bool adding,std::string& error,uint64_t componentInstanceID=0);
     GameSproutRuntime::IGameObject* TransformTarget(bool checkParent) const;
     struct TransformEdit {
         bool Active=false;
@@ -100,6 +134,7 @@ private:
         GameSproutRuntime::Mat4 ParentWorld;
     } _TransformEdit;
     IProject* _Project = nullptr;
+    IRuntimeHost* _Host=nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr; // Borrowed from EditorApi.
     std::uint64_t _ActiveID = 0;
     std::string _ActivePath;
@@ -112,6 +147,7 @@ private:
     bool _StatePending = false;
     mutable bool _Unsaved = true;
     mutable SceneDocument::ObjectIDs _ObjectIDs;
+    Json::Value _Annotations{Json::objectValue};
     std::string _BaselineText;
     std::string _DiskHash; // 打开/上次保存的原始文件字节 SHA256，不能用规范化快照代替。
     std::string _LastStateText;
