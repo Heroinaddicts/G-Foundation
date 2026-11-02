@@ -9,7 +9,7 @@
 namespace GameSproutRuntime {
 Runtime::~Runtime() {
     _ShuttingDown=true;
-    _Listeners.clear(); _Commands.clear(); _Events.clear();
+    _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
     while (!_Scenes.empty()) DestroyNow(_Scenes.back()->State());
     // 包括尚未挂载的创建请求，保证异常/关闭时没有遗留对象。
     while (!_Nodes.empty()) DestroyNow(*_Nodes.begin()->second);
@@ -40,6 +40,16 @@ bool Runtime::IsUsable(const GameObjectState* object) const {
     for (const GameObjectState* node=object;node;node=node->Parent) if(node->PendingDestroy) return false;
     return !object->SceneOwner || !object->SceneOwner->State().PendingDestroy;
 }
+bool Runtime::IsInScene(const GameObjectState* object) const {
+    if(!IsUsable(object) || !object->SceneOwner) return false;
+    const GameObjectState* root=object;
+    for(;;) {
+        if(root->PendingAttach || root->Destroying || root->PendingDestroy) return false;
+        if(!root->Parent) break;
+        root=root->Parent;
+    }
+    return root->Object==object->SceneOwner && Find(root->Object)==root;
+}
 IScene* Runtime::CreateScene(const std::string& name) {
     if (_ShuttingDown) return nullptr;
     RuntimeOperation operation(*this);
@@ -60,9 +70,15 @@ IScene* Runtime::CreateScene(const std::string& name) {
         return nullptr;
     }
 }
+IGameObject* Runtime::CreateGameObject(const std::string& name,IGameObject* parent) {
+    if(!parent) return CreateObject(nullptr,name,nullptr);
+    GameObjectState* parentState=Find(parent);
+    return IsUsable(parentState)?CreateObject(parentState->SceneOwner,name,parent):nullptr;
+}
 IGameObject* Runtime::CreateObject(Scene* scene,const std::string& name,IGameObject* parent) {
     GameObjectState* parentState=Find(parent);
-    if (!scene || !IsUsable(parentState) || parentState->SceneOwner!=scene || !IsUsable(Find(scene))) return nullptr;
+    if(_ShuttingDown || (parent && !IsUsable(parentState)) ||
+       (scene && (!IsUsable(Find(scene)) || !parentState || parentState->SceneOwner!=scene))) return nullptr;
     const bool deferred=_Depth!=0 || _Flushing;
     RuntimeOperation operation(*this);
     const auto id=NextID();if(!id)return nullptr;
@@ -71,20 +87,17 @@ IGameObject* Runtime::CreateObject(Scene* scene,const std::string& name,IGameObj
     try {
         object=new GameObject(*this,scene,name,id);
         RegisterNode(object->State());registered=true;
+        _DetachedObjects.insert(id);
         if(!object->State().InitializeTransform()) throw std::runtime_error("Cannot create object Transform");
-        if(deferred) {
+        object->State().Initializing=false;
+        if(parent && deferred) {
             object->State().PendingAttach=true;
             _Commands.push_back({CommandType::Attach,id,parentState->ID,false});
-        } else {
-            // 返回前完成可失败的容器分配，不能让屏障析构在返回指针后销毁创建结果。
-            parentState->Children.push_back(&object->State());
-            object->State().Parent=parentState;
-            object->State().Initializing=false;
-            Notify(object->State(),SceneNodeEventType::Create);
-        }
+        } else if(parent && !ReparentNow(object->State(),parentState,false))
+            throw std::runtime_error("Cannot attach created object");
         return object;
     } catch (...) {
-        if(registered) { _Nodes.erase(id);_ByPointer.erase(object); }
+        if(registered) { _DetachedObjects.erase(id);_Nodes.erase(id);_ByPointer.erase(object); }
         delete object;
         return nullptr;
     }
@@ -95,33 +108,46 @@ bool Runtime::DestroyScene(IScene* scene) {
     return node && node->SceneOwner==scene && RequestDestroy(node,true);
 }
 void Runtime::Update(float deltaSeconds) {
-    if (_ShuttingDown || _Updating || _Depth || !std::isfinite(deltaSeconds) || deltaSeconds<0.0f) return;
+    TickComponents(deltaSeconds,false);
+}
+void Runtime::FixedUpdate(float fixedDeltaSeconds) {
+    if(fixedDeltaSeconds<=0) return;
+    TickComponents(fixedDeltaSeconds,true);
+}
+void Runtime::TickComponents(float deltaSeconds,bool fixed) {
+    if (_ShuttingDown || _Updating || _Depth || _ConstructionDepth || _InitializingComponents || !std::isfinite(deltaSeconds) || deltaSeconds<0.0f) return;
     _Updating=true;
     try {
-        {
+        std::string initializationError;
+        InitializePendingComponents(initializationError,deltaSeconds>0);
+        if(!_ConstructionDepth) {
             RuntimeOperation operation(*this);
             std::vector<std::uint64_t> objects;
             objects.reserve(_Nodes.size());
             for(const auto& entry:_Nodes) objects.push_back(entry.first);
             for(auto id:objects) {
                 GameObjectState* node=Find(id);
-                if(!IsUsable(node) || node->PendingAttach || !node->IsActiveInHierarchy()) continue;
+                if(!IsInScene(node) || !node->IsActiveInHierarchy()) continue;
                 const auto components=node->Components;
                 for(const auto& component:components) {
                     if(!IsUsable(node)) break;
                     const auto current=std::find_if(node->Components.begin(),node->Components.end(),[&](const auto& item){return item.Serial==component.Serial;});
-                    if(current==node->Components.end() || current->PendingRemove) continue;
-                    try { component.Pointer->Update(this,deltaSeconds); } catch (...) {}
+                    if(current==node->Components.end() || current->PendingRemove || !current->Initialized || current->InitializationFailed) continue;
+                    try {
+                        if(fixed) component.Pointer->FixedUpdate(this,deltaSeconds);
+                        else component.Pointer->Update(this,deltaSeconds);
+                    } catch (...) {}
                 }
             }
         }
+        InitializePendingComponents(initializationError,deltaSeconds>0);
         DispatchAnimationEvents();
         DispatchEvents();
     } catch (...) { _Updating=false;throw; }
     _Updating=false;
 }
 void Runtime::Render() {
-    if (_ShuttingDown || _Depth) return;
+    if (_ShuttingDown || _Depth || _ConstructionDepth || _InitializingComponents) return;
     RuntimeOperation operation(*this);
     RenderWorld(); RenderUI();
 }

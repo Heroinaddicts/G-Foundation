@@ -11,6 +11,14 @@ public:
     bool SetMainCamera(ICameraComponent* camera) override;
     ICameraComponent* GetMainCamera() const override;
     void ClearMainCameraForNode(std::uint64_t id);
+    bool BindObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) override {
+        auto* node=State().Owner.Find(object);
+        if(!State().Owner.IsInScene(node) || node->SceneOwner!=this) {error="Object belongs to another scene";return false;}
+        return State().Owner.BindSceneObjectIdentity(object,fileID,error);
+    }
+    bool BindObjectIdentities(const std::vector<SceneObjectIdentity>& identities,std::string& error) override {
+        return State().Owner.BindSceneObjectIdentities(this,identities,error);
+    }
 private:
     std::uint64_t _MainCameraID = 0;
 };

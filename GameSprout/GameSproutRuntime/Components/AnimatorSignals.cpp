@@ -31,6 +31,7 @@ bool AnimatorComponent::ApplyRootMotionDelta(const RootMotionDelta& solved){
     _SolvedMotion={solved.Translation,rotation};_RootDispatchSubmitted=true;return true;
 }
 bool AnimatorComponent::ApplyRootMotion(const RootMotionDelta& delta) {
+    if(!Owner().IsInScene(Owner().Find(_GameObject)))return false;
     auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform());if(!transform)return false;
     const auto accumulated=AnimationMotion::Compose(_AccumulatedMotion,delta);
     const Mat4 authoring=RuntimeMath::ComposeTRS(transform->GetLocalPosition(),transform->GetLocalRotation(),transform->GetLocalScale());
@@ -41,6 +42,7 @@ void AnimatorComponent::EnterState(std::uint32_t layerIndex,int state) {
     if(!_ControllerData||layerIndex>=_Layers.size()||_Generation!=Owner().GetAnimationResources().GetCachedGeneration()||state<0)return;
     auto& layer=_Layers[layerIndex];const auto& definition=_ControllerData->Layers[layerIndex];
     if(!layer.EnteredStates.insert(state).second)return;
+    if(!Owner().IsInScene(Owner().Find(_GameObject)))return;
     AnimationNotification event;event.LayerIndex=layerIndex;event.LayerName=definition.Name;event.Weight=layer.Weight;event.Type=AnimationNotificationType::StateEnter;event.State=definition.States[state].Name;
     event.Name=event.State;event.Clip=definition.States[state].Clip;
     event.SceneID=_GameObject->GetScene()->GetInstanceID();event.ObjectID=_GameObject->GetInstanceID();
@@ -53,6 +55,7 @@ void AnimatorComponent::ExitState(std::uint32_t layerIndex,int state) {
     const auto& definition=_ControllerData->Layers[layerIndex];
     if(!layer.EnteredStates.erase(state))return;
     layer.StartMarkers.erase(state);
+    if(!Owner().IsInScene(Owner().Find(_GameObject)))return;
     AnimationNotification event;event.LayerIndex=layerIndex;event.LayerName=definition.Name;event.Weight=layer.Weight;event.Type=AnimationNotificationType::StateExit;event.State=definition.States[state].Name;
     event.Name=event.State;event.Clip=definition.States[state].Clip;
     event.SceneID=_GameObject->GetScene()->GetInstanceID();event.ObjectID=_GameObject->GetInstanceID();
@@ -79,6 +82,7 @@ bool AnimatorComponent::StateMotions(std::uint32_t layerIndex,int stateIndex,dou
     }return true;
 }
 bool AnimatorComponent::EvaluateMotionSignals(std::uint32_t layerIndex,const std::vector<ActiveMotion>& motions) {
+    if(!Owner().IsInScene(Owner().Find(_GameObject))){_Error="Animator is not attached to a live scene";return false;}
     auto& layer=_Layers[layerIndex];const auto& definition=_ControllerData->Layers[layerIndex];
     struct Timed {double Fraction;AnimationNotification Event;};std::vector<Timed> events;
     RootMotionDelta blended;float totalWeight=0;

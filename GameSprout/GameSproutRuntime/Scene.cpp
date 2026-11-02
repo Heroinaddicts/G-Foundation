@@ -13,7 +13,7 @@ bool Scene::SetMainCamera(ICameraComponent* camera) {
     std::uint64_t id=0;
     if(camera) {
         GameObjectState* node=State().Owner.Find(camera->GetGameObject());
-        if(!State().Owner.IsUsable(node) || node->SceneOwner!=this ||
+            if(!State().Owner.IsInScene(node) || node->SceneOwner!=this ||
            node->GetComponent(typeid(ICameraComponent))!=camera) return false;
         id=node->ID;
     }
@@ -24,7 +24,7 @@ bool Scene::SetMainCamera(ICameraComponent* camera) {
 }
 ICameraComponent* Scene::GetMainCamera() const {
     GameObjectState* node=State().Owner.Find(_MainCameraID);
-    return node && node->SceneOwner==this ? static_cast<ICameraComponent*>(node->GetComponent(typeid(ICameraComponent))) : nullptr;
+    return State().Owner.IsInScene(node) && node->SceneOwner==this ? static_cast<ICameraComponent*>(node->GetComponent(typeid(ICameraComponent))) : nullptr;
 }
 void Scene::ClearMainCameraForNode(std::uint64_t id) {
     if(_MainCameraID==id) SetMainCamera(nullptr);

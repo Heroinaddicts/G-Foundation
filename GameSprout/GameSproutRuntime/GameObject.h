@@ -4,7 +4,14 @@
 namespace GameSproutRuntime {
 class GameObjectState {
 public:
-    struct ComponentEntry { IComponent* Pointer; std::uint64_t Serial; bool PendingRemove = false; };
+    struct ComponentEntry {
+        IComponent* Pointer;
+        std::uint64_t Serial;
+        bool PendingRemove = false;
+        bool Initialized = false;
+        bool InitializationQueued = false;
+        bool InitializationFailed = false;
+    };
     GameObjectState(Runtime& owner, IGameObject* object, Scene* scene, std::string name, std::uint64_t id);
     ~GameObjectState();
     GameObjectState(const GameObjectState&) = delete;
@@ -14,6 +21,7 @@ public:
     void SetActive(bool active);
     bool IsActiveInHierarchy() const;
     IScene* GetScene() const;
+    bool IsSceneRoot() const;
     IComponent* AddComponent(const std::type_info& type);
     IComponent* GetComponent(const std::type_info& type) const;
     bool RemoveComponent(const std::type_info& type);
@@ -22,6 +30,7 @@ public:
     void ForeachComponent(const IGameObject::fForeachComponentCallback& callback) const;
     IGameObject* FindChild(const std::string& name) const;
     bool SetSiblingIndex(std::size_t index);
+    bool SetComponentIndex(IComponent* component, std::size_t index);
     void ReleaseComponents() noexcept;
 
     Runtime& Owner;
@@ -33,6 +42,7 @@ public:
     std::vector<GameObjectState*> Children;
     std::vector<ComponentEntry> Components;
     std::uint64_t NextComponentSerial = 0;
+    std::uint64_t NextScriptID = 0;
     bool Active = true;
     bool PendingDestroy = false;
     bool PendingAttach = false;
@@ -59,6 +69,11 @@ public:
     void SetName(const std::string& name) override { _State.SetName(name); }
     IScene* GetScene() const override { return _State.GetScene(); }
     IGameObject* Parent() const override { return _State.Parent ? _State.Parent->Object : nullptr; }
+    bool SetParent(IGameObject* parent,bool keepWorld) override {
+        RuntimeOperation operation(_State.Owner);
+        return (!parent || _State.Owner.Find(parent)) &&
+            _State.Owner.RequestReparent(&_State,parent?_State.Owner.Find(parent):nullptr,keepWorld);
+    }
     std::size_t GetChildCount() const override { return _State.Children.size(); }
     IGameObject* GetChild(std::size_t index) const override { return index < _State.Children.size() ? _State.Children[index]->Object : nullptr; }
     IGameObject* FindChild(const std::string& name) const override { return _State.FindChild(name); }
@@ -70,7 +85,7 @@ public:
     bool RemoveChild(IGameObject* child, bool keepWorld) override {
         RuntimeOperation operation(_State.Owner);
         GameObjectState* node = _State.Owner.Find(child);
-        return node && node->Parent == &_State && _State.Owner.RequestReparent(node, _State.Owner.Find(_State.GetScene()), keepWorld);
+        return node && node->Parent == &_State && _State.Owner.RequestReparent(node, nullptr, keepWorld);
     }
     bool SetSiblingIndex(std::size_t index) override { return _State.SetSiblingIndex(index); }
     void SetActive(bool active) override { _State.SetActive(active); }
@@ -80,6 +95,7 @@ public:
     std::size_t GetComponentCount() const override { return _State.Components.size(); }
     IComponent* GetComponentAt(std::size_t index) const override { return index < _State.Components.size() ? _State.Components[index].Pointer : nullptr; }
     void ForeachComponent(const IGameObject::fForeachComponentCallback& callback) const override { _State.ForeachComponent(callback); }
+    bool SetComponentIndex(IComponent* component, std::size_t index) override { return _State.SetComponentIndex(component,index); }
 protected:
     IComponent* AddComponent(const std::type_info& type) override { return _State.AddComponent(type); }
     IComponent* GetComponent(const std::type_info& type) const override { return _State.GetComponent(type); }

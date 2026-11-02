@@ -6,7 +6,7 @@
 namespace GameSproutRuntime {
 bool Runtime::QueueAnimationRecord(AnimatorComponent& animator,AnimationRecord record) {
     if(_ShuttingDown||_AnimationEvents.size()>=8192||_AnimationSequence==std::numeric_limits<std::uint64_t>::max())return false;
-    auto* state=Find(animator.GetGameObject());if(!IsUsable(state))return false;
+    auto* state=Find(animator.GetGameObject());if(!IsInScene(state))return false;
     for(const auto& component:state->Components)if(component.Pointer==&animator&&!component.PendingRemove) {
         record.ObjectID=state->ID;record.Serial=component.Serial;record.Version=animator.GetSignalVersion();
         record.Sequence=++_AnimationSequence;_AnimationEvents.push_back(std::move(record));return true;
@@ -19,7 +19,9 @@ bool Runtime::QueueRootMotion(AnimatorComponent& animator,const RootMotionNotifi
     AnimationRecord record;record.Motion=true;record.RootMotion=event;return QueueAnimationRecord(animator,std::move(record));
 }
 AnimatorComponent* Runtime::ResolveAnimation(const AnimationRecord& record)const {
-    auto* state=Find(record.ObjectID);if(!IsUsable(state))return nullptr;
+    auto* state=Find(record.ObjectID);if(!IsInScene(state))return nullptr;
+    const auto sceneID=record.Motion?record.RootMotion.SceneID:record.Event.SceneID;
+    if(sceneID && state->GetScene()->GetInstanceID()!=sceneID)return nullptr;
     for(const auto& component:state->Components)if(component.Serial==record.Serial&&!component.PendingRemove) {
         auto* animator=dynamic_cast<AnimatorComponent*>(component.Pointer);
         return animator&&animator->GetSignalVersion()==record.Version?animator:nullptr;
@@ -56,7 +58,7 @@ void Runtime::DispatchAnimationEvents() {
 
 namespace GameSproutRuntime {
 bool Runtime::DispatchAnimatorIK(AnimatorComponent& animator,std::uint32_t layer){
-    RuntimeOperation operation(*this);auto* state=Find(animator.GetGameObject());if(!IsUsable(state))return false;
+    RuntimeOperation operation(*this);auto* state=Find(animator.GetGameObject());if(!IsInScene(state))return false;
     AnimationRecord record;record.ObjectID=state->ID;record.Version=animator.GetSignalVersion();
     for(const auto& item:state->Components)if(item.Pointer==&animator&&!item.PendingRemove)record.Serial=item.Serial;
     if(!record.Serial)return false;

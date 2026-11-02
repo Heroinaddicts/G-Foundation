@@ -13,6 +13,9 @@ public:
     bool RegisterListener(GameSproutRuntime::IRuntimeListener*) override { return false; }
     void UnregisterListener(GameSproutRuntime::IRuntimeListener*) override {}
     bool IsExecuting() const override { return false; }
+    bool BeginConstruction(std::string& error) override { error.clear();return true; }
+    bool EndConstruction(std::string& error) override { error.clear();return true; }
+    bool EndFrame(std::string& error) override { error.clear();return true; }
     void Update(float) override {}
     void Render() override {}
 };

@@ -1,6 +1,7 @@
 #ifndef __GameSproutRuntimeApi_h__
 #define __GameSproutRuntimeApi_h__
 
+#include "RuntimeTypeVisibility.h"
 #include <string>
 #include <functional>
 #include <cstddef>
@@ -17,6 +18,7 @@
 #include "Math/Rect.h"
 #include "Math/Viewport.h"
 #include "ResourceReference.h"
+#include "RuntimeInputApi.h"
 
 
 namespace GameSproutRuntime {
@@ -26,26 +28,33 @@ namespace GameSproutRuntime {
     class IRuntimeViewport;
     struct NativeWindow;
     class IRuntimeResourceProvider;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScriptComponent;
+    struct ScriptTypeRegistration;
+    struct ScriptTypeInfo;
+    struct BuiltinComponentInfo;
     class IObject {
     public:
         virtual ~IObject() {}
     };
 
-    class IGameObject;
-    class IScene;
-    class ITransformComponent;
-    class ICameraComponent;
-    class IGameSproutRuntime;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameObject;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScene;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE ITransformComponent;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE ICameraComponent;
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameSproutRuntime;
 
-    class IComponent : IObject {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IComponent : IObject {
     public:
         virtual ~IComponent() {}
         IComponent(IGameObject * const gameObject) : _GameObject(gameObject) {}
 
         // 生命周期仅由 Runtime 调用：登记归属后 OnCreate 一次，销毁前 OnRelease 一次。
+        // OnInitialized 在本批节点、组件、属性及引用装配完成、结构修改提交后调用一次。
+        // 它保证同批组件的数据可访问，不保证其他组件已执行自己的 OnInitialized。
+        // 尚未初始化成功的组件不会进入 Update / FixedUpdate；资源引用就绪不等于 GPU 上传完成。
         // 回调中请求的结构修改与销毁延迟至当前回调/遍历结束，不直接 delete。
         virtual void OnCreate(IGameSproutRuntime * const runtime) {}
-        virtual void OnInitialize(IGameSproutRuntime * const runtime) {}
+        virtual void OnInitialized(IGameSproutRuntime * const runtime) {}
         virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
         virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
         virtual void OnRelease(IGameSproutRuntime * const runtime) {}
@@ -61,12 +70,13 @@ namespace GameSproutRuntime {
         IComponent& operator=(const IComponent&) = delete;
     };
 
-    class IScript : IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScript : public IComponent {
     public:
         virtual ~IScript() {}
+        using IComponent::IComponent;
     };
 
-    class IGameObject : IObject {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameObject : IObject {
     public:
         virtual ~IGameObject() {}
 
@@ -74,8 +84,11 @@ namespace GameSproutRuntime {
         virtual std::uint64_t GetInstanceID() const = 0; // 所属 Runtime 内唯一、不复用；不是资产 GUID。
         virtual const std::string& GetName() const = 0;
         virtual void SetName(const std::string& name) = 0;
+        // 未挂入存活场景的临时对象返回 nullptr；裸指针不会延长其帧尾寿命。
         virtual IScene* GetScene() const = 0;
         virtual IGameObject * Parent() const = 0;
+        // nullptr 表示解除挂接；Scene 根不能设置父节点。结构回调内延迟提交。
+        virtual bool SetParent(IGameObject* parent, bool keepWorldTransform = true) = 0;
         virtual std::size_t GetChildCount() const = 0;
         virtual IGameObject* GetChild(std::size_t index) const = 0; // 越界返回 nullptr。
 
@@ -86,10 +99,11 @@ namespace GameSproutRuntime {
         // 空回调无操作，遍历期间的层级修改/销毁延迟到遍历结束。
         virtual void ForeachChild(const fForeachChildCallback & callback) const = 0;
 
-        // 同一场景内重挂载，拒绝空指针、自身、祖先和场景根。
+        // 可先组装无场景子树，再整体挂入场景；已归属不同场景的对象不能直接互挂。
+        // 拒绝空子节点、自身、祖先和场景根。
         // 保留世界变换时，若新父矩阵不可逆或结果不能表示为 TRS，失败且不改原层级。
         virtual bool AddChild(IGameObject* child, bool keepWorldTransform = true) = 0;
-        // 仅解除直接父子关系，成为所属场景的顶层节点，不销毁；同样检查 TRS 可表示性。
+        // 真正解除直接父子关系，进入帧尾待回收集合；本帧重新挂接可保留。
         virtual bool RemoveChild(IGameObject* child, bool keepWorldTransform = true) = 0;
         // 调整同一父节点内的顺序，超界放到末尾，不改变父节点或任何变换。
         // 场景根、待销毁对象以及 Runtime 更新/遍历/事件回调期间拒绝；不延迟排队。
@@ -102,7 +116,7 @@ namespace GameSproutRuntime {
         virtual ITransformComponent* GetTransform() const = 0;
 
         // C 是已注册的公开接口；工厂在 Runtime 内部创建实现，不在模板中 new。
-        // 第一版同接口只允许一个组件，重复添加返回已有对象，不再触发 OnCreate。
+        // 内置接口重复添加返回已有对象；用户脚本同类型只能挂一个，重复添加返回 nullptr。
         template<typename C>
         C* AddComponent() {
             static_assert(std::is_convertible_v<C*, IComponent*>, "C must publicly derive from IComponent");
@@ -122,6 +136,8 @@ namespace GameSproutRuntime {
         virtual IComponent* GetComponentAt(std::size_t index) const = 0; // 越界返回 nullptr。
         using fForeachComponentCallback = std::function<void(IComponent* component)>;
         virtual void ForeachComponent(const fForeachComponentCallback& callback) const = 0;
+        // Inspector undo restores a component's original slot without rebuilding the object.
+        virtual bool SetComponentIndex(IComponent*, std::size_t) { return false; }
         IGameObject(const IGameObject&) = delete;
         IGameObject& operator=(const IGameObject&) = delete;
 
@@ -134,7 +150,12 @@ namespace GameSproutRuntime {
         virtual bool RemoveComponent(const std::type_info& type) = 0;
     };
 
-    class IScene : public IGameObject {
+    struct SceneObjectIdentity {
+        std::uint64_t ObjectID = 0; // InstanceID in this Runtime only.
+        std::uint64_t FileID = 0; // Stable within this scene document; root is 0.
+    };
+
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScene : public IGameObject {
     public:
         virtual ~IScene() {}
         // 场景是特殊根：Parent=nullptr，GetScene 返回自身，不允许挂到其他节点下。
@@ -145,9 +166,18 @@ namespace GameSproutRuntime {
         // 默认游戏相机必须属于本场景；nullptr 清除。Scene 观察相机由 Editor 独立管理。
         virtual bool SetMainCamera(ICameraComponent* camera) = 0;
         virtual ICameraComponent* GetMainCamera() const = 0;
+        // Host supplies stable source identities during scene assembly/save.
+        // FileID 0 denotes this scene root; ordinary nodes require nonzero IDs.
+        virtual bool BindObjectIdentity(IGameObject*, std::uint64_t, std::string& error) {
+            error="Scene object identities are unavailable";return false;
+        }
+        // Atomic publication; validation failure leaves every identity unchanged.
+        virtual bool BindObjectIdentities(const std::vector<SceneObjectIdentity>&, std::string& error) {
+            error="Scene object identities are unavailable";return false;
+        }
     };
 
-    class ITransformComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE ITransformComponent : public IComponent {
     public:
         virtual Vector3 GetLocalPosition() const = 0; // 米。
         virtual void SetLocalPosition(Vector3 position) = 0;
@@ -164,7 +194,7 @@ namespace GameSproutRuntime {
     };
 
     // UI 布局与固有 Transform 共存，由布局系统驱动变换。
-    class IRectTransformComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IRectTransformComponent : public IComponent {
     public:
         virtual Vector2 GetAnchorMin() const = 0; // 左下 (0,0)、右上 (1,1)。
         virtual Vector2 GetAnchorMax() const = 0;
@@ -179,7 +209,7 @@ namespace GameSproutRuntime {
         using IComponent::IComponent;
     };
 
-    class IImageComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IImageComponent : public IComponent {
     public:
         virtual ResourceReference GetTexture() const = 0;
         virtual void SetTexture(const ResourceReference& texture) = 0;
@@ -192,7 +222,7 @@ namespace GameSproutRuntime {
     };
 
     enum class CanvasRenderMode { ScreenSpace, WorldSpace };
-    class ICanvasComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE ICanvasComponent : public IComponent {
     public:
         virtual CanvasRenderMode GetRenderMode() const = 0;
         virtual void SetRenderMode(CanvasRenderMode mode) = 0;
@@ -206,7 +236,7 @@ namespace GameSproutRuntime {
         using IComponent::IComponent;
     };
 
-    class IMeshComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IMeshComponent : public IComponent {
     public:
         virtual ResourceReference GetMesh() const = 0;
         virtual void SetMesh(const ResourceReference& mesh) = 0;
@@ -215,7 +245,7 @@ namespace GameSproutRuntime {
         using IComponent::IComponent;
     };
 
-    class IMeshRendererComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IMeshRendererComponent : public IComponent {
     public:
         virtual std::size_t GetMaterialCount() const = 0;
         virtual ResourceReference GetMaterial(std::size_t slot) const = 0;
@@ -238,7 +268,7 @@ namespace GameSproutRuntime {
         std::uint32_t CullingMask = 0xFFFFFFFFu;
     };
 
-    class ICameraComponent : public IComponent {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE ICameraComponent : public IComponent {
     public:
         virtual const CameraSettings& GetSettings() const = 0;
         virtual bool SetSettings(const CameraSettings& settings) = 0; // 校验失败不修改。
@@ -275,7 +305,7 @@ namespace GameSproutRuntime {
         virtual bool OnRootMotion(const RootMotionNotification&) { return false; }
     };
 
-    class IGameSproutRuntime {
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameSproutRuntime {
     public:
         virtual ~IGameSproutRuntime() = default;
         // Runtime owns and shares the GPU device. Hosts pass only their native window.
@@ -288,6 +318,50 @@ namespace GameSproutRuntime {
         virtual std::size_t GetSceneCount() const = 0;
         virtual IScene* GetScene(std::size_t index) const = 0;
         virtual IGameObject* QueryGameObject(std::uint64_t instanceID) const = 0;
+        virtual std::vector<BuiltinComponentInfo> GetBuiltinComponentTypes() const;
+        virtual IComponent* AddBuiltinComponent(IGameObject*, const std::string&, std::string& error);
+        virtual bool RemoveBuiltinComponent(IGameObject*, const std::string&, std::string& error);
+        virtual bool RegisterScriptType(const ScriptTypeRegistration&, std::string& error);
+        // Host-thread, stopped execution. Validate and publish one module's
+        // complete type catalog and authored field definitions atomically.
+        virtual bool ReplaceScriptTypes(const std::vector<std::string>& removeTypes,
+            const std::vector<ScriptTypeRegistration>& addTypes, std::string& error);
+        virtual bool UnregisterScriptType(const std::string& typeID, std::string& error);
+        virtual std::vector<ScriptTypeInfo> GetScriptTypes() const;
+        // Scene-local authored identities. The Runtime performs all native
+        // reference fixups; Editor/Player hosts only supply values and IDs.
+        virtual bool BindSceneObjectIdentity(IGameObject*, std::uint64_t, std::string& error) {
+            error="Scene object identities are unavailable";return false;
+        }
+        virtual IGameObject* QuerySceneObjectByFileID(const IScene*, std::uint64_t) const {return nullptr;}
+        virtual bool GetSceneObjectFileID(const IGameObject*, std::uint64_t&) const {return false;}
+        virtual bool BindSceneObjectIdentities(IScene*, const std::vector<SceneObjectIdentity>&, std::string& error) {
+            error="Scene object identities are unavailable";return false;
+        }
+        virtual IScriptComponent* AddScriptComponent(IGameObject*, const std::string& typeID,
+            const ResourceReference& source, std::uint64_t instanceID, std::string& error);
+        virtual bool RemoveScriptComponent(IGameObject*, std::uint64_t instanceID, std::string& error);
+        virtual bool SetScriptExecutionEnabled(bool enabled, std::string& error);
+        virtual bool IsScriptExecutionEnabled() const { return false; }
+        // Host-thread gameplay session. Prepare every initially active script before
+        // OnCreate, commit their structural changes, then OnInitialized before ticks.
+        // A failed begin releases all created instances and leaves execution disabled.
+        virtual bool BeginExecution(std::string& error) { return SetScriptExecutionEnabled(true,error); }
+        virtual bool EndExecution(std::string& error) { return SetScriptExecutionEnabled(false,error); }
+        // Dispatch pending value events without evaluating components or advancing time.
+        virtual void ProcessPendingEvents() { Update(0); }
+        // Host thread. Borrowed state is stable until the next input/Host-frame
+        // operation; gameplay scripts query it during their FixedUpdate/Update.
+        virtual const RuntimeInputState& GetInputState() const {static const RuntimeInputState empty;return empty;}
+        // Only focused, unpaused gameplay accepts key/mouse input. Repeat keydown
+        // keeps Held without repeating Pressed; FocusLost releases all held keys.
+        virtual bool SubmitInputEvent(const RuntimeInputEvent&) {return false;}
+        virtual void ResetInput() {}
+        // Host only: call once after the complete fixed+variable gameplay frame,
+        // not per viewport or per fixed substep. Held persists; edge/delta reset.
+        virtual void CompleteInputFrame() {}
+        // Host only: pause/resume reset input so stale presses cannot cross modes.
+        virtual void SetInputEnabled(bool) {}
         // 主线程订阅，不持有监听者；销毁监听者前注销。事件在 Update 尾部派发。
         // 不回放注册前的事件；先订阅，再查询节点树。回调参数只在本次调用有效。
         virtual bool RegisterListener(IRuntimeListener* listener) = 0;
@@ -299,13 +373,34 @@ namespace GameSproutRuntime {
         virtual void SetResourceProvider(IRuntimeResourceProvider*) {}
         virtual IRuntimeResourceProvider* GetResourceProvider() const { return nullptr; }
         virtual IGameObject* InstantiateModel(IScene*, const ResourceReference&, IGameObject*, std::string& error) { error="Model instantiation is unavailable";return nullptr; }
-        virtual void Update(float deltaSeconds) = 0; // 有限且非负，单位秒。
+        virtual void Update(float deltaSeconds) = 0;
+        // Explicit host fixed-step dispatch; editing and animation preview do not run player code.
+        virtual void FixedUpdate(float fixedDeltaSeconds) {} // 有限且非负，单位秒。
         // 旧的无 View 帧入口不猜测窗口或游戏主相机。3D 绘制使用 CreateViewport/CreateOffscreenRenderer + RenderView。
         virtual void Render() = 0;
+        // 不指定 parent 时创建可配置的临时对象；本帧挂入场景后才能初始化，
+        // 否则 EndFrame 回收。也可显式指定 parent（包括临时父节点）。
+        // 跨 Runtime 或已销毁父节点返回 nullptr。
+        // Runtime owns the result and its intrinsic Transform. Components and
+        // local TRS can be configured immediately, including in OnInitialized.
+        // During callbacks/traversal, Parent/Children are committed at the safe
+        // operation boundary; they do not change while that callback is running.
+        virtual IGameObject* CreateGameObject(const std::string& name, IGameObject* parent = nullptr) { return nullptr; }
+        // Host-thread assembly scope, nestable. Structural APIs still commit normally;
+        // initialization, simulation and rendering wait until the outer scope closes.
+        // Use this around scene/model loading or configuration across several calls.
+        virtual bool BeginConstruction(std::string& error) = 0;
+        // Close the scope even on initialization failure. On rollback destroy partial
+        // objects before closing it. A callback's scope commits after its safe boundary.
+        virtual bool EndConstruction(std::string& error) = 0;
+        // Host 每帧调用一次，放在所有逻辑步和 Scene/Game 视口处理之后。
+        // 提交结构并回收最终无场景归属的子树；不推进时间，构建范围内暂缓回收。
+        virtual bool EndFrame(std::string& error) = 0;
     };
 
 }
 
 #include "RuntimeAnimationApi.h"
+#include "RuntimeScriptApi.h"
 
 #endif //__GameSproutRuntimeApi_h__

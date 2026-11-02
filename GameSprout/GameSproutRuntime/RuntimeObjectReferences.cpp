@@ -1,0 +1,112 @@
+#include "GameSproutRuntime.h"
+#include "GameObject.h"
+#include "Scene.h"
+#include "Components/ScriptComponent.h"
+#include <utility>
+
+namespace GameSproutRuntime {
+namespace {
+// Stable identities only across a bridge callback, never a retained component
+// pointer. Invalidating a malformed custom bridge may release its script.
+std::vector<std::pair<std::uint64_t,std::uint64_t>> Scripts(const std::map<std::uint64_t,GameObjectState*>& nodes) {
+    std::vector<std::pair<std::uint64_t,std::uint64_t>> result;
+    for(const auto& node:nodes) for(const auto& entry:node.second->Components)
+        if(auto* script=dynamic_cast<IScriptComponent*>(entry.Pointer))
+            result.emplace_back(node.first,script->GetScriptInstanceID());
+    return result;
+}
+ScriptComponent* Resolve(Runtime& runtime,const std::pair<std::uint64_t,std::uint64_t>& key) {
+    auto* node=runtime.Find(key.first);
+    if(!node) return nullptr;
+    for(const auto& entry:node->Components)
+        if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer);script && script->GetScriptInstanceID()==key.second) return script;
+    return nullptr;
+}
+}
+
+bool Runtime::BindSceneObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) {
+    auto* node=Find(object);
+    if(!IsInScene(node)) {error="Object has no live scene";return false;}
+    return BindSceneObjectIdentities(node->SceneOwner,{{node->ID,fileID}},error);
+}
+
+bool Runtime::BindSceneObjectIdentities(IScene* scene,const std::vector<SceneObjectIdentity>& identities,std::string& error) {
+    error.clear();
+    auto* root=Find(scene);
+    if(!IsInScene(root) || !root->IsSceneRoot() || _ShuttingDown || _Depth || _Updating || _Flushing) {
+        error="Bind scene identities outside Runtime callbacks, on a live scene object";return false;
+    }
+    auto byObject=_ObjectFileIDs;
+    auto byFile=_SceneObjectIDs;
+    bool changed=false;
+    for(const auto& identity:identities) {
+        auto* node=Find(identity.ObjectID);
+        if(!IsInScene(node) || node->SceneOwner!=scene) {error="Object belongs to another scene";return false;}
+        if(node->IsSceneRoot()!=(identity.FileID==0)) {error="FileID 0 is reserved for the scene root";return false;}
+        const auto key=std::make_pair(root->ID,identity.FileID);
+        const auto collision=byFile.find(key);
+        if(collision!=byFile.end() && collision->second!=node->ID) {error="Scene FileID is already bound";return false;}
+        const auto previous=byObject.find(node->ID);
+        if(previous!=byObject.end()) {
+            if(previous->second.SceneID==root->ID && previous->second.FileID==identity.FileID) continue;
+            error="A live object's stable scene identity cannot be reassigned";return false;
+        }
+        byFile.emplace(key,node->ID);
+        byObject.emplace(node->ID,ObjectIdentity{root->ID,identity.FileID});changed=true;
+    }
+    if(changed) {
+        _ObjectFileIDs.swap(byObject);_SceneObjectIDs.swap(byFile);
+        RefreshScriptObjectReferences();
+    }
+    return true;
+}
+
+IGameObject* Runtime::QuerySceneObjectByFileID(const IScene* scene,std::uint64_t fileID) const {
+    auto* sceneNode=Find(const_cast<IScene*>(scene));
+    if(!IsInScene(sceneNode) || !sceneNode->IsSceneRoot()) return nullptr;
+    const auto identity=_SceneObjectIDs.find({sceneNode->ID,fileID});
+    if(identity==_SceneObjectIDs.end()) return nullptr;
+    auto* node=Find(identity->second);
+    return IsInScene(node) && node->SceneOwner==sceneNode->SceneOwner?node->Object:nullptr;
+}
+
+bool Runtime::GetSceneObjectFileID(const IGameObject* object,std::uint64_t& fileID) const {
+    auto* node=Find(const_cast<IGameObject*>(object));
+    if(!IsInScene(node)) return false;
+    const auto found=_ObjectFileIDs.find(node->ID);
+    if(found==_ObjectFileIDs.end() || found->second.SceneID!=node->SceneOwner->GetInstanceID()) return false;
+    fileID=found->second.FileID;return true;
+}
+
+void Runtime::ForgetSceneObjectIdentity(std::uint64_t objectID) {
+    const auto found=_ObjectFileIDs.find(objectID);
+    if(found==_ObjectFileIDs.end()) return;
+    _SceneObjectIDs.erase({found->second.SceneID,found->second.FileID});
+    _ObjectFileIDs.erase(found);
+}
+
+void Runtime::InvalidateScriptObjectReferences(IGameObject* object) {
+    if(!_ScriptExecutionEnabled) return;
+    RuntimeOperation operation(*this);
+    const auto identity=_ObjectFileIDs.find(object->GetInstanceID());
+    for(const auto& key:Scripts(_Nodes)) if(auto* script=Resolve(*this,key)) {
+        bool affected=script->InvalidateObjectReference(object);
+        auto* node=Find(key.first);
+        if(identity!=_ObjectFileIDs.end() && node && node->SceneOwner && node->SceneOwner->GetInstanceID()==identity->second.SceneID)
+            for(const auto& field:script->GetFields())
+                if(field.second.Kind==ScriptValueKind::SceneObject && field.second.SceneObject.Assigned &&
+                   field.second.SceneObject.ObjectFileID==identity->second.FileID) affected=true;
+        if(affected && IsInScene(node)) Notify(*node,SceneNodeEventType::ComponentChanged,script->GetTypeName());
+    }
+}
+
+void Runtime::RefreshScriptObjectReferences() {
+    // During source-scene assembly there are no native user instances. Binding
+    // N identities must not scan N scene graphs before execution even starts.
+    if(!_ScriptExecutionEnabled) return;
+    RuntimeOperation operation(*this);
+    for(const auto& key:Scripts(_Nodes)) if(auto* script=Resolve(*this,key))
+        if(script->RebindMissingObjectReferences()) if(auto* node=Find(key.first);IsInScene(node))
+            Notify(*node,SceneNodeEventType::ComponentChanged,script->GetTypeName());
+}
+}

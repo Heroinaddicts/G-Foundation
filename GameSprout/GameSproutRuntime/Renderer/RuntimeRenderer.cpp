@@ -34,7 +34,7 @@ struct DebugBufferScope {
 namespace GameSproutRuntime {
 bool Renderer::Render(const RenderView& view) {
     _HasRenderedCamera=false;_RenderedCamera={};
-    if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsShuttingDown()) return Fail("Runtime Renderer cannot run inside a Runtime callback or another Render");
+    if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsShuttingDown() || _Runtime.IsConstructing()) return Fail("Runtime Renderer cannot run inside a Runtime callback, construction or another Render");
     _Error.clear();_Statistics={};
     if(!_Surface&&!_ColorTarget){_Statistics={};return true;}
     if(_Surface&&_ColorTarget)return Fail("Viewport has conflicting render targets");

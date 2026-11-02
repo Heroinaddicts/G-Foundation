@@ -18,6 +18,7 @@ float ClipTime(double seconds,float duration,bool loop){
 }
 
 bool AnimatorComponent::ApplyClipPlayback(AnimationClipPlaybackState& playback){
+    if(!Owner().IsInScene(Owner().Find(_GameObject))){_Error="Animator is not attached to a live scene";return false;}
     // Resolve only the Clip and its skeleton profiles. A missing/invalid Controller
     // must never prevent direct pose playback, and no borrowed resource is retained.
     auto& resources=Owner().GetAnimationResources();

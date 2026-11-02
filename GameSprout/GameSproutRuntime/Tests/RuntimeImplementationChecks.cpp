@@ -157,12 +157,13 @@ static void CheckHierarchy(GameSproutRuntime::IGameSproutRuntime* runtime) {
     const auto worldBefore = child->GetTransform()->GetWorldMatrix();
     Check(target->AddChild(child,true) && child->Parent() == target, "Valid reparent rejected");
     CheckMatrix(child->GetTransform()->GetWorldMatrix(),worldBefore,"Reparent changed world transform");
-    Check(target->RemoveChild(child,true) && child->Parent() == scene, "RemoveChild did not detach to scene root");
+    Check(target->RemoveChild(child,true) && !child->Parent() && !child->GetScene(), "RemoveChild did not detach from its scene");
     CheckMatrix(child->GetTransform()->GetWorldMatrix(),worldBefore,"Detach changed world transform");
     Check(!target->RemoveChild(child), "Non-child removal accepted");
     auto* singular = scene->CreateGameObject("Singular");
     singular->GetTransform()->SetLocalScale({0,1,1});
-    Check(!singular->AddChild(child,true) && child->Parent() == scene, "Singular reparent mutated hierarchy");
+    Check(!singular->AddChild(child,true) && !child->Parent() && !child->GetScene(), "Singular reparent mutated hierarchy");
+    Check(scene->AddChild(child,true) && child->GetScene()==scene, "Detached child could not return to its scene");
     auto* scaled = scene->CreateGameObject("Scaled");
     scaled->GetTransform()->SetLocalScale({2,1,1});
     const float angle = GameSproutRuntime::Pi / 8;

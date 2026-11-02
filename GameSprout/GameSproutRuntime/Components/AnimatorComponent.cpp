@@ -40,9 +40,11 @@ bool AnimatorComponent::SetSpeed(float value){if(!std::isfinite(value)||value<0)
 void AnimatorComponent::SetPlayOnStart(bool value){if(value==_PlayOnStart)return;_PlayOnStart=value;NotifyComponentChanged(_GameObject,this);}
 void AnimatorComponent::SetLoop(bool value){if(value==_Loop)return;_Loop=value;NotifyComponentChanged(_GameObject,this);}
 bool AnimatorComponent::ResolveBone(const std::string& path,std::uint64_t& id)const{
-    id=0;for(const auto& binding:_Bindings)if(binding.Path==path){auto* state=Owner().Find(binding.ObjectID);if(!Owner().IsUsable(state)||state->GetScene()!=_GameObject->GetScene())return false;id=binding.ObjectID;return true;}return false;
+    id=0;if(!Owner().IsInScene(Owner().Find(_GameObject)))return false;
+    for(const auto& binding:_Bindings)if(binding.Path==path){auto* state=Owner().Find(binding.ObjectID);if(!Owner().IsInScene(state)||state->GetScene()!=_GameObject->GetScene())return false;id=binding.ObjectID;return true;}return false;
 }
 bool AnimatorComponent::Ensure(){
+    if(!Owner().IsInScene(Owner().Find(_GameObject))){_Error="Animator is not attached to a live scene";return false;}
     auto& resources=Owner().GetAnimationResources();const auto generation=resources.GetGeneration();
     if(_Generation==generation&&_SkeletonData&&_ControllerData)return true;
     ++_SignalVersion;_Layers.clear();ClearPoses(_ClipPlayback.Active);_SkeletonData=nullptr;_ControllerData=nullptr;_Error.clear();

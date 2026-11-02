@@ -21,9 +21,15 @@ IGameObject* Runtime::InstantiateModel(IScene* scene,const ResourceReference& re
     if(!AnimationSampling::Validate(structure,error))return nullptr;
     for(const auto& node:model.Nodes)if(!RuntimeMath::IsFinite(node.GeometryTransform.Position)||!RuntimeMath::IsFinite(node.GeometryTransform.Scale)){error="Model geometry transform is invalid";return nullptr;}
     IGameObject* root=nullptr;
+    std::uint64_t rootID=0;
+    const auto sceneID=scene->GetInstanceID();
+    bool constructionOpen=false;
     try {
         std::string name="Model";for(const auto& node:model.Nodes)if(node.Parent<0&&!node.Name.empty()){name=node.Name;break;}
+        if(!BeginConstruction(error))return nullptr;
+        constructionOpen=true;
         root=scene->CreateGameObject(name,parent);if(!root)throw std::runtime_error("Cannot create model root");
+        rootID=root->GetInstanceID();
         std::vector<IGameObject*> nodes(model.Nodes.size(),nullptr);std::size_t remaining=nodes.size();
         while(remaining){std::size_t created=0;for(std::size_t i=0;i<model.Nodes.size();++i){const auto& data=model.Nodes[i];if(nodes[i]||(data.Parent>=0&&!nodes[data.Parent]))continue;
                 auto* object=scene->CreateGameObject(data.Name.empty()?"Root":data.Name,data.Parent>=0?nodes[data.Parent]:root);
@@ -51,8 +57,30 @@ IGameObject* Runtime::InstantiateModel(IScene* scene,const ResourceReference& re
                 for(const auto& bone:prepared.Bones){std::uint64_t id;if(!animator->ResolveBone(bone.NodePath,id))throw std::runtime_error("Model mesh bone path is missing: "+bone.NodePath);}
             }
         }
+        constructionOpen=false;
+        if(!EndConstruction(error))throw std::runtime_error(error.empty()?"Cannot finish model initialization":error);
+        if(QueryGameObject(rootID)!=root)throw std::runtime_error("Model root was destroyed during initialization");
         return root;
-    } catch(const std::exception& exception){error=exception.what();if(root)scene->DestroyGameObject(root);return nullptr;}
-    catch(...){error="Model instantiation failed";if(root)scene->DestroyGameObject(root);return nullptr;}
+    } catch(const std::exception& exception){error=exception.what();}
+    catch(...){error="Model instantiation failed";}
+    // Destroy incomplete nodes while the construction barrier is still held.
+    // EndConstruction may run lifecycle callbacks, so never publish or borrow
+    // the model root across that call without resolving its identity again.
+    if(root&&QueryGameObject(rootID)==root&&QueryGameObject(sceneID)==scene) {
+        try {if(!scene->DestroyGameObject(root))error+="; model rollback rejected";}
+        catch(...) {error+="; model rollback failed";}
+    }
+    if(constructionOpen) {
+        constructionOpen=false;
+        try {
+            std::string cleanup;
+            if(!EndConstruction(cleanup)) {
+                error+="; model construction rollback could not finish";
+                if(!cleanup.empty())error+=": "+cleanup;
+            }
+        } catch(const std::exception& exception) {error+="; model construction rollback failed: "+std::string(exception.what());}
+        catch(...) {error+="; model construction rollback failed";}
+    }
+    return nullptr;
 }
 }

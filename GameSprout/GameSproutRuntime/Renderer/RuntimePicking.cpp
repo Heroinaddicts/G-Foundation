@@ -15,7 +15,7 @@ struct QueryScope {
 }
 namespace GameSproutRuntime {
 bool Renderer::BeginQuery(IScene* scene) {
-    if(_Rendering || _Runtime.IsExecuting()) return Fail("Renderer query cannot run inside a Runtime/provider callback or Render");
+    if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsConstructing()) return Fail("Renderer query cannot run inside a Runtime/provider callback, construction or Render");
     _Error.clear();
     auto* state=_Runtime.Find(scene);
     if(!_Runtime.IsUsable(state) || state->SceneOwner!=scene) return Fail("Renderer query requires a live scene owned by this Runtime");
@@ -24,7 +24,7 @@ bool Renderer::BeginQuery(IScene* scene) {
 bool Renderer::QueryObject(IScene* scene,std::uint64_t objectID,IGameObject*& object,MeshGPU*& mesh,Mat4& model) {
     object=nullptr;mesh=nullptr;
     auto* state=_Runtime.Find(objectID);
-    if(!_Runtime.IsUsable(state) || state->SceneOwner!=scene) return false;
+    if(!_Runtime.IsInScene(state) || state->SceneOwner!=scene) return false;
     object=_Runtime.QueryGameObject(objectID);
     auto* component=object->GetComponent<IMeshComponent>();
     if(!component) return false;

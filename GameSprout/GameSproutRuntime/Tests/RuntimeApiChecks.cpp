@@ -49,6 +49,7 @@ public:
     void SetName(const std::string& name) override { Name=name; }
     GameSproutRuntime::IScene* GetScene() const override { return nullptr; }
     IGameObject* Parent() const override { return nullptr; }
+    bool SetParent(IGameObject*, bool) override { return false; }
     std::size_t GetChildCount() const override { return 0; }
     IGameObject* GetChild(std::size_t) const override { return nullptr; }
     IGameObject* FindChild(const std::string&) const override { return nullptr; }

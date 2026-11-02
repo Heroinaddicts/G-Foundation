@@ -5,7 +5,20 @@
 
 namespace GameSproutRuntime {
 void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char* component,std::uint64_t oldParent) {
-    if(_ShuttingDown || object.Initializing) return;
+    if(_ShuttingDown || object.Initializing || !object.SceneOwner) return;
+    if(type==SceneNodeEventType::Destroy) {
+        // Explicit destruction has already set PendingDestroy, and detachment
+        // emits the old scene's removal before clearing its parent/scene data.
+        // Follow committed parents without treating those destruction flags as
+        // membership loss; a merely intended scene on PendingAttach is not enough.
+        const GameObjectState* root=&object;
+        for(;;) {
+            if(root->PendingAttach) return;
+            if(!root->Parent) break;
+            root=root->Parent;
+        }
+        if(root->Object!=object.SceneOwner || Find(root->Object)!=root) return;
+    } else if(!IsInScene(&object)) return;
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。
     try {
         SceneNodeEvent event;

@@ -14,7 +14,8 @@ bool SkinnedMeshRendererComponent::GetSkinMatrices(const std::vector<SkinBinding
     output.clear();error.clear();auto* access=dynamic_cast<ObjectAccess*>(_GameObject);
     if(!access){error="SkinnedMeshRenderer has no live Runtime owner";return false;}
     auto& runtime=access->State().Owner;auto* state=runtime.Find(_AnimatorID);
-    auto* animator=runtime.IsUsable(state)&&state->GetScene()==_GameObject->GetScene()?state->Object->GetComponent<IAnimatorComponent>():nullptr;
+    if(!runtime.IsInScene(&access->State())){error="SkinnedMeshRenderer is not attached to a live scene";return false;}
+    auto* animator=runtime.IsInScene(state)&&state->GetScene()==_GameObject->GetScene()?state->Object->GetComponent<IAnimatorComponent>():nullptr;
     if(!animator){error="SkinnedMeshRenderer Animator binding is missing";return false;}
     Mat4 inverse;if(!RuntimeMath::TryInverseAffine(_GameObject->GetTransform()->GetWorldMatrix(),inverse)){error="SkinnedMeshRenderer transform is singular";return false;}
     output.reserve(bones.size());

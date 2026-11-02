@@ -3,7 +3,7 @@
 #include "RuntimeAnimationData.h"
 
 namespace GameSproutRuntime {
-class IAnimatorComponent : public IComponent {
+class GAMESPROUT_RUNTIME_PUBLIC_TYPE IAnimatorComponent : public IComponent {
 public:
     // Target human profile, authored in the scene. Empty means Generic animation.
     virtual ResourceReference GetAvatar() const = 0;
@@ -70,7 +70,7 @@ public:
 protected:
     using IComponent::IComponent;
 };
-class ISkinnedMeshRendererComponent : public IComponent {
+class GAMESPROUT_RUNTIME_PUBLIC_TYPE ISkinnedMeshRendererComponent : public IComponent {
 public:
     // This component augments Mesh + MeshRenderer on the same object.
     virtual std::uint64_t GetAnimatorObjectID() const = 0;

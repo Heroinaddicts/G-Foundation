@@ -88,6 +88,7 @@ bool AnimatorComponent::LayerPose(std::uint32_t index,const std::vector<Transfor
     return true;
 }
 bool AnimatorComponent::ApplyPose(){
+    if(!Owner().IsInScene(Owner().Find(_GameObject))){_Error="Animator is not attached to a live scene";return false;}
     if(_ClipPlayback.Active)return true;
     if(!_ControllerData||!_SkeletonData||_Layers.empty())return false;
     std::vector<TransformPose> output;for(const auto& node:_SkeletonData->Nodes)output.push_back(node.Transform);
@@ -105,6 +106,7 @@ bool AnimatorComponent::ApplyPose(){
     _Pose=std::move(output);return true;
 }
 void AnimatorComponent::Update(IGameSproutRuntime*,float delta){
+    if(!Owner().IsInScene(Owner().Find(_GameObject)))return;
     _RootMotionDelta={};_MotionEventCount=0;_ConsumedTriggers.clear();
     if(_ClipPlayback.Active){UpdateClipPlayback(delta);return;}
     if(!Ensure()||!_Playing)return;

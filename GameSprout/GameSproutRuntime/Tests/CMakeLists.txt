@@ -114,3 +114,67 @@ set_tests_properties(Runtime.DirectClipPlayback PROPERTIES TIMEOUT 30)
 add_executable(RuntimeSdkBoundaryChecks RuntimeSdkBoundaryChecks.cpp)
 target_link_libraries(RuntimeSdkBoundaryChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
 add_test(NAME Runtime.PublicSdkBoundary COMMAND RuntimeSdkBoundaryChecks)
+
+add_library(NativeScriptFixture SHARED NativeScriptFixture.cpp)
+target_link_libraries(NativeScriptFixture PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+set_target_properties(NativeScriptFixture PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
+add_executable(RuntimeScriptChecks RuntimeScriptChecks.cpp)
+target_link_libraries(RuntimeScriptChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+add_dependencies(RuntimeScriptChecks NativeScriptFixture)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeScriptChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.NativeScripts COMMAND RuntimeScriptChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>" "$<TARGET_FILE:NativeScriptFixture>")
+
+add_executable(RuntimeExecutionChecks RuntimeExecutionChecks.cpp)
+target_link_libraries(RuntimeExecutionChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeExecutionChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.ExecutionSession COMMAND RuntimeExecutionChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+
+add_executable(RuntimeInputChecks RuntimeInputChecks.cpp)
+target_link_libraries(RuntimeInputChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeInputChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.GameplayInput COMMAND RuntimeInputChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+
+add_executable(RuntimeObjectCreationChecks RuntimeObjectCreationChecks.cpp)
+target_link_libraries(RuntimeObjectCreationChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeObjectCreationChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.ObjectCreation COMMAND RuntimeObjectCreationChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.ObjectCreation PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeInitializationChecks RuntimeInitializationChecks.cpp)
+target_link_libraries(RuntimeInitializationChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeInitializationChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.ComponentInitialization COMMAND RuntimeInitializationChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.ComponentInitialization PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeDetachedObjectChecks RuntimeDetachedObjectChecks.cpp)
+target_link_libraries(RuntimeDetachedObjectChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeDetachedObjectChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.DetachedObjects COMMAND RuntimeDetachedObjectChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.DetachedObjects PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeScriptObjectReferenceChecks RuntimeScriptObjectReferenceChecks.cpp)
+target_link_libraries(RuntimeScriptObjectReferenceChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeScriptObjectReferenceChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.ScriptObjectReferences COMMAND RuntimeScriptObjectReferenceChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.ScriptObjectReferences PROPERTIES TIMEOUT 30)
