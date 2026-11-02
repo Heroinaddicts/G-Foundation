@@ -15,6 +15,7 @@ public:
 
     IAssetMeta * QueryAsset(const Guid & guid) const override;
     bool ReimportAsset(const Guid & guid) override;
+    bool DeleteSourceAsset(const Guid&,const std::string& expectedPath,std::string& error) override;
     bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,
         const std::string & expectedSettingsJson, std::string & error) override;
     bool LoadMaterialSource(const Guid & guid, std::string & json, std::string & error) const override;
@@ -63,7 +64,7 @@ private:
     static void WatcherDir(const std::string & path);
     void ScanDirectory(const std::string & path);
     void StoreAssetMeta(IAssetMeta * const meta);
-    void RemoveAssetRecords(const std::string & path, const bool recursive);
+    bool RemoveAssetRecords(const std::string & path, const bool recursive);
     static void OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & name, const std::string & extension, void * const context);
 
     static void OnFileCreate(const Foundation::FileSystemWatcherEvent & event, const std::string & name, const std::string & extension, void * const context);

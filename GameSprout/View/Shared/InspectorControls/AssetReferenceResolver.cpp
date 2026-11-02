@@ -1,4 +1,5 @@
 #include "AssetReferenceResolver.h"
+#include "RuntimeBuiltinResources.h"
 #include <QFileInfo>
 #include <QDir>
 #include <algorithm>
@@ -36,6 +37,12 @@ std::string TypeName(eAssetType type) {
 bool Resolve(IAssetsManager* assets,ILibraryManager* library,const GameSproutRuntime::ResourceReference& reference,
     eAssetType expected,AssetReferenceCandidate& result,std::string& error,bool requireReady) {
     error.clear();result={};
+    if(GameSproutRuntime::IsBuiltinResource(reference)) {
+        const char* name=GameSproutRuntime::GetBuiltinMeshName(reference);
+        if(!name){error="未知内置资源标识。";return false;}
+        if(expected!=eAssetType::Unknown&&expected!=eAssetType::Mesh){error="内置基础物体网格只能赋给 Mesh 字段。";return false;}
+        result={reference,name,"Built-in",false};return true;
+    }
     if(!assets || !library) {error="资源服务尚未就绪。";return false;}
     if(expected!=eAssetType::Unknown && expected!=eAssetType::Audio && expected!=eAssetType::Mesh && expected!=eAssetType::Texture && expected!=eAssetType::Material && expected!=eAssetType::Shader && expected!=eAssetType::Model && expected!=eAssetType::Skeleton && expected!=eAssetType::AnimationClip && expected!=eAssetType::AnimatorController && expected!=eAssetType::Avatar && expected!=eAssetType::AvatarMask && expected!=eAssetType::PhysicsMaterial) {error="此字段尚未支持该资源类型。";return false;}
     const Guid guid(reference.Guid);
@@ -79,6 +86,10 @@ bool Candidates(IAssetsManager* assets,ILibraryManager* library,const ProjectAss
 }
 std::vector<AssetReferenceCandidate> Enumerate(IAssetsManager* assets,ILibraryManager* library,eAssetType expected) {
     std::vector<AssetReferenceCandidate> result;
+    if(expected==eAssetType::Mesh||expected==eAssetType::Unknown)for(std::uint64_t id=1;id<=6;++id) {
+        GameSproutRuntime::ResourceReference reference{GameSproutRuntime::BuiltinMeshGuid,id};
+        result.push_back({reference,GameSproutRuntime::GetBuiltinMeshName(reference),"Built-in",false});
+    }
     if(!assets || !library)return result;
     for(const auto& text:library->GetManifestGuids()) {
         AssetImportManifest manifest;const Guid guid(text);

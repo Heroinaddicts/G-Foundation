@@ -4,6 +4,7 @@
 #include "IProject.h"
 #include "../Shared/PhysicsMaterialDefinition.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 
 namespace {
 bool ReadSource(const std::string& path,Json::Value& document,std::string& error) {
@@ -45,7 +46,7 @@ bool PhysicsAuthoring::SavePhysicsMaterialSource(const GameSproutRuntime::Resour
     if(!PhysicsMaterialDefinition::Valid(data,error)||!MaterialPath(reference,path,error)||!ReadSource(path,current,error))return false;
     if(!AssetArtifactIO::Parse(snapshot,expected)||expected!=current){error="物理材质已被外部修改，请重新加载后保存。";return false;}
     const auto source=PhysicsMaterialDefinition::Write(data);
-    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetArtifactIO::JsonText(source)+"\n"),error))return false;
+    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetSourceIO::JsonText(source)),error))return false;
     if(!_Assets->ReimportAsset(Guid(reference.Guid))){error="源文件已保存，但未能提交物理材质导入。";return false;}
     return true;
 }
@@ -63,7 +64,7 @@ bool PhysicsAuthoring::CreatePhysicsMaterialAsset(const std::string& directory,c
     }
     const QString target=QDir(parent.absoluteFilePath()).filePath(QString::fromStdString(name+".physicmaterial"));
     if(QFileInfo::exists(target+".meta")||QFileInfo(target+".meta").isSymLink()){error="对应 Meta 已存在，不能覆盖。";return false;}
-    QFile file(target);const QByteArray bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(PhysicsMaterialDefinition::Write({}))+"\n");
+    QFile file(target);const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(PhysicsMaterialDefinition::Write({})));
     if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)){error="文件已存在或无法创建："+file.errorString().toStdString();return false;}
     if(file.write(bytes)!=bytes.size()){error=file.errorString().toStdString();file.close();QFile::remove(target);return false;}
     file.close();path=root.relativeFilePath(target).toStdString();return true;

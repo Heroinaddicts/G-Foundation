@@ -19,6 +19,9 @@ public:
     // AssetsManager 用它原子写备份、删除资源活动记录。
     virtual bool RemoveAsset(const Guid & guid, std::string & error, const std::vector<LDBWriteOperation> & additionalWrites = {}) = 0;
     virtual std::vector<std::string> FindDependents(const std::string & sourcePath) const = 0;
+    // Includes references to deleted sources, so restoring the same GUID under
+    // another path can reimport its Scene/Prefab owners.
+    virtual std::vector<std::string> FindReferenceDependents(const Guid&) const {return {};}
     // Borrowed until the next commit/removal for this GUID or Library release.
     virtual IAsset * QueryAsset(const Guid & guid, uint64_t localID) = 0;
 

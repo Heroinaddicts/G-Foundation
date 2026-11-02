@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AssetOperationsActionsForm</class>
+ <widget class="QMenu" name="AssetOperationsActionsForm">
+  <action name="deleteAction"><property name="text"><string>Delete</string></property><property name="shortcut"><string>Del</string></property></action>
+  <action name="backspaceAction"><property name="text"><string>Delete</string></property><property name="shortcut"><string>Backspace</string></property></action>
+  <addaction name="deleteAction"/>
+ </widget>
+ <resources/><connections/>
+</ui>

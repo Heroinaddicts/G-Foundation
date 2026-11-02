@@ -15,7 +15,8 @@ constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     case eAssetImporterType::AnimationClip: return 5;
     case eAssetImporterType::AnimatorController: return 5;
     case eAssetImporterType::AvatarMask: return 4;
-    case eAssetImporterType::Scene: return 3; // Resolve current Prefab source snapshots and dependency edges.
+    case eAssetImporterType::Scene: return 4; // Preserve Missing references and stable GUID dependency edges.
+    case eAssetImporterType::Prefab: return 3;
     case eAssetImporterType::Material:
     case eAssetImporterType::PhysicsMaterial:
     case eAssetImporterType::Shader:
@@ -77,12 +78,17 @@ struct AssetImportJob {
     bool Emit(eAssetType type, const std::string & key, const std::string & name,
         Json::Value metadata, const QByteArray & payload = {});
     bool AddDependency(const std::string & relativePath, QByteArray * bytes = nullptr);
+    std::string TrackGuidReference(const std::string& guid);
     bool ReadFile(const std::string & path, QByteArray * bytes, std::string & hash);
 private:
     AssetFileFingerprintCache _LocalFingerprints; // 独立导入调用也可用，不持有堆对象。
 };
 
 bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context);
+std::string AssetGuidSourcePath(const AssetImportRequest&,const std::string& guid);
+bool AssetGuidSourcesCurrent(const AssetImportRequest&,const AssetImportManifest&);
+class IAssetsManager;
+bool AssetGuidSourcesCurrent(const AssetImportManifest&,const IAssetsManager*,const std::string& assetsRoot);
 bool ModelTextureSearchesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest,
     std::map<std::string, AssetFileStamp> * observations = nullptr, bool * observationsAvailable = nullptr);
 bool ImportTexture(AssetImportJob & job);

@@ -133,7 +133,8 @@ bool LibraryManager::BuildIndexOperations(const AssetImportManifest * oldManifes
             operations.push_back(Put("Dependents", key, value));
         }
     }
-    return BuildTextureSearchIndexOperations(oldManifest,newManifest,operations);
+    return BuildGuidReferenceIndexOperations(oldManifest,newManifest,operations)
+        && BuildTextureSearchIndexOperations(oldManifest,newManifest,operations);
 }
 
 bool LibraryManager::CommitImport(const std::string & stage, AssetImportManifest & manifest, std::string & error) {

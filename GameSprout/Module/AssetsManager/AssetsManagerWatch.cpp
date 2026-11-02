@@ -1,5 +1,6 @@
 #include "AssetsManager.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 #include <QUuid>
 
 namespace {
@@ -16,7 +17,7 @@ bool MoveSidecar(const QString & oldPath,const QString & newPath) {
 }
 }
 
-void AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) {
+bool AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) {
     const std::string relative=RelativePath(path), prefix=relative+"/";
     const bool all = recursive && relative == ".";
     std::set<std::string> guids;
@@ -24,14 +25,16 @@ void AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) 
         if (all || entry.second.Path == relative || (recursive && entry.second.Path.compare(0,prefix.size(),prefix) == 0)) guids.insert(entry.first);
     for (const auto & entry : _AssetGuidsByPath)
         if (all || entry.first == relative || (recursive && entry.first.compare(0,prefix.size(),prefix) == 0)) guids.insert(entry.second);
+    bool success=true;
     for (const std::string & guid : guids) {
         const auto found = _Assets.find(guid);
         const auto recorded = _SourceRecords.find(guid);
+        if(found==_Assets.end()&&recorded==_SourceRecords.end()){success=false;continue;}
         const std::string oldPath = found != _Assets.end() ? found->second->GetPath() : recorded->second.Path;
         _Pipeline->Invalidate(Guid(guid));
         ImportDependents(oldPath);
         std::string error;
-        if (!ArchiveSourceRecord(guid, "Deleted")) continue;
+        if (!ArchiveSourceRecord(guid, "Deleted")) {success=false;continue;}
         _AssetGuidsByPath.erase(oldPath);
         if (found != _Assets.end()) { delete found->second; _Assets.erase(found); }
     }
@@ -39,6 +42,7 @@ void AssetsManager::RemoveAssetRecords(const std::string & path,bool recursive) 
     for (auto it=_Watches.begin();it!=_Watches.end();) {
         if (*it==watchedPath || (recursive && it->compare(0,watchedPath.size()+1,watchedPath+"/")==0)) it=_Watches.erase(it);else ++it;
     }
+    return success;
 }
 
 void AssetsManager::ReloadMeta(const std::string & sourcePath) {
@@ -113,7 +117,7 @@ void AssetsManager::RenameSource(const Foundation::FileSystemWatcherEvent & even
                 value["ImporterType"]=GetAssetImporterTypeName(importer);
                 value["ImportSettings"]=Json::Value(Json::objectValue);
                 std::string error;
-                if (!AssetArtifactIO::Write(QString::fromStdString(event.Path+".meta"),QByteArray::fromStdString(AssetArtifactIO::JsonText(value)),error)) {
+                if (!AssetArtifactIO::Write(QString::fromStdString(event.Path+".meta"),QByteArray::fromStdString(AssetSourceIO::JsonText(value)),error)) {
                     GameSproutConsoleLog(g_IConsole,eConsoleLog::Error,"Cannot change importer: {}",error);return;
                 }
                 const std::string guid=meta->_Guid.GetGuidString();

@@ -2,6 +2,7 @@
 #include "ResourcePicker.h"
 #include "ui_ResourceField.h"
 #include "../AssetDragPayload.h"
+#include "RuntimeBuiltinResources.h"
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
@@ -51,14 +52,14 @@ void ResourceField::Refresh() {
     _Ui->selectResourceButton->setEnabled(_Assets&&_Library&&_Expected!=eAssetType::Unknown);
     const bool bound=!_Value.Guid.empty()||_Value.LocalID;
     _Ui->resourceMenuButton->setEnabled(bound);
-    _Ui->clearResourceAction->setEnabled(bound);_Ui->locateResourceAction->setEnabled(bound&&_Selection);
+    _Ui->clearResourceAction->setEnabled(bound);_Ui->locateResourceAction->setEnabled(bound&&_Selection&&!GameSproutRuntime::IsBuiltinResource(_Value));
     if(!bound){_Ui->resourceNameEdit->clear();_Ui->resourceNameEdit->setToolTip(tr("未绑定：从 Project 拖入资源，或点击圆形按钮选择。"));SetError({});return;}
     AssetReferenceCandidate candidate;std::string error;
     if(AssetReferenceResolver::Resolve(_Assets,_Library,_Value,_Expected,candidate,error,false)) {
         _Ui->resourceNameEdit->setText(QString::fromStdString(candidate.Name));
         _Ui->resourceNameEdit->setCursorPosition(0);
         _Ui->resourceNameEdit->setToolTip(QString::fromStdString(candidate.Name+"\n"+candidate.SourcePath+"\n"+_Value.Guid+":"+std::to_string(_Value.LocalID)));
-        IAssetMeta* meta=_Assets->QueryAsset(Guid(_Value.Guid));
+        IAssetMeta* meta=_Assets&&!GameSproutRuntime::IsBuiltinResource(_Value)?_Assets->QueryAsset(Guid(_Value.Guid)):nullptr;
         SetError(meta&&meta->GetImportState()!=eAssetImportState::Ready?"资源正在导入或导入失败；当前保留上次成功引用。":"");
     } else {
         _Ui->resourceNameEdit->setText(QStringLiteral("Missing (%1)").arg(QString::fromStdString(AssetReferenceResolver::TypeName(_Expected))));

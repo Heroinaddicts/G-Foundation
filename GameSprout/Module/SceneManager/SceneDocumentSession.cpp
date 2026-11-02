@@ -37,6 +37,9 @@ GameSproutRuntime::IScene* SceneManager::GetMainScene() const {
     if(!_DocumentSession||_EditingSuspended)return GetActiveScene();
     return Runtime()?dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(_DocumentSession->Main.ActiveID)):nullptr;
 }
+std::string SceneManager::GetMainScenePath() const {
+    return _DocumentSession&&!_EditingSuspended?_DocumentSession->Main.Path:_ActivePath;
+}
 GameSproutRuntime::IGameObject* SceneManager::GetDocumentContentRoot() const {
     return IsTemporaryDocumentContext()&&_DocumentSession->ContentRootFileID
         ?QueryObjectByFileID(_DocumentSession->ContentRootFileID):GetActiveScene();

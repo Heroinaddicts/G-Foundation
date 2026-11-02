@@ -64,6 +64,8 @@ public:
     virtual GameSproutRuntime::IScene* GetActiveScene() const = 0;
     // 相对项目 Assets 的路径，未保存的默认场景返回空字符串。
     virtual const std::string& GetActiveScenePath() const = 0;
+    // Main authoring source remains open while a temporary Prefab document is active.
+    virtual std::string GetMainScenePath() const {return GetActiveScenePath();}
     virtual bool BeginDocumentSession(const SceneDocumentSessionRequest&,std::string& error) {error="当前场景服务不支持临时文档。";return false;}
     virtual bool EndDocumentSession(std::string& error) {error.clear();return true;}
     virtual bool IsDocumentSessionActive() const {return false;}

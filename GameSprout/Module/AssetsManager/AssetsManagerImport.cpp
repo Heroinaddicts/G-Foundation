@@ -122,6 +122,10 @@ void AssetsManager::ImportDependents(const std::string & relativePath) {
     while (!paths.empty()) {
         const std::string path = paths.front(); paths.pop_front();
         auto dependents=_Library->FindDependents(path);
+        if(const auto source=_AssetGuidsByPath.find(path);source!=_AssetGuidsByPath.end()) {
+            const auto references=_Library->FindReferenceDependents(Guid(source->second));
+            dependents.insert(dependents.end(),references.begin(),references.end());
+        }
         const auto declarations=_Pipeline->FindSourceDependents(path);
         dependents.insert(dependents.end(),declarations.begin(),declarations.end());
         for (const std::string & owner : dependents) {

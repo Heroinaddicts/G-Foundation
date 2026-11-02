@@ -4,6 +4,7 @@
 #include "IProject.h"
 #include "../Shared/AnimationDefinition.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 #include <algorithm>
 #include <cctype>
 
@@ -84,7 +85,7 @@ bool AnimationEditor::SaveAnimatorControllerSource(const GameSproutRuntime::Reso
     const auto source=AnimationDefinition::ControllerJson(data,false);
     GameSproutRuntime::AnimatorControllerData verified;
     if(!AnimationDefinition::ReadController(source,false,verified,error)||!ValidClips(_Library,_Resources,verified,error))return false;
-    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetArtifactIO::JsonText(source)+"\n"),error))return false;
+    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetSourceIO::JsonText(source)),error))return false;
     if(!_Assets->ReimportAsset(Guid(reference.Guid))){error="源文件已保存，但未能提交 Controller 导入。";return false;}
     return true;
 }
@@ -128,7 +129,7 @@ bool AnimationEditor::CreateAnimatorControllerAsset(const std::string& directory
     if(canonicalRoot.isEmpty()||!parent.isDir()||(parent.canonicalFilePath()!=canonicalRoot&&!parent.canonicalFilePath().startsWith(canonicalRoot+"/"))){error="目标目录必须已经存在于 Assets 内。";return false;}
     const std::string filename=name+".controller";const QString target=QDir(parent.absoluteFilePath()).filePath(QString::fromStdString(filename));
     if(QFileInfo::exists(target+".meta")||QFileInfo(target+".meta").isSymLink()){error="Controller 的 Meta 已存在，不能覆盖。";return false;}
-    QFile output(target);const QByteArray bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(AnimationDefinition::ControllerJson(controller,false))+"\n");
+    QFile output(target);const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(AnimationDefinition::ControllerJson(controller,false)));
     if(!output.open(QIODevice::WriteOnly|QIODevice::NewOnly)){error="Controller 已存在或无法创建："+output.errorString().toStdString();return false;}
     if(output.write(bytes)!=bytes.size()){error=output.errorString().toStdString();output.close();QFile::remove(target);return false;}
     output.close();path=root.relativeFilePath(target).toStdString();return true;

@@ -2,6 +2,7 @@
 #include "IProject.h"
 #include "../Shared/PrefabDefinition.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 #include <QSaveFile>
 
 namespace {
@@ -63,7 +64,7 @@ bool PrefabStage::WriteSource(const Json::Value& data,const std::string& expecte
     Json::Value verified;const auto source=PrefabDefinition::Source(data);
     if(!PrefabDefinition::Validate(source,verified,error))return false;
     QString full;if(!Resolve(_Project,_State.Path,full,error))return false;
-    const auto bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(source));
+    const auto bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(source));
     QSaveFile file(full);file.setDirectWriteFallback(false);
     if(!file.open(QIODevice::WriteOnly)){error="无法写入Prefab源。";return false;}
     if(file.write(bytes)!=bytes.size()){error="写入Prefab源失败。";return false;}

@@ -9,6 +9,7 @@
 #include <QMouseEvent>
 #include <QTreeView>
 #include <QUrl>
+#include <QKeySequence>
 #include <algorithm>
 #include <utility>
 
@@ -28,6 +29,26 @@ bool ProjectAssetsUI::RegisterContextAction(const void* owner,const std::vector<
     _ContextActions.push_back({owner,menuPath,callback,enabled,nullptr});
     RegisterExtensionMenus();
     return true;
+}
+
+bool ProjectAssetsUI::RegisterAssetShortcut(const void* owner,const std::string& sequence,
+    fContextActionCallback callback,const fContextActionEnabled& enabled) {
+    if(!owner||!callback||QKeySequence(QString::fromStdString(sequence)).isEmpty())return false;
+    if(std::any_of(_KeyboardActions.begin(),_KeyboardActions.end(),[&](const auto& item){return item.Sequence==sequence;}))return false;
+    _KeyboardActions.push_back({owner,sequence,callback,enabled});return true;
+}
+bool ProjectAssetsUI::RouteAssetShortcut(QTreeView*,QKeyEvent* key) {
+    const QKeySequence pressed(key->keyCombination());
+    const auto actions=_KeyboardActions;
+    for(const auto& action:actions) {
+        if(pressed!=QKeySequence(QString::fromStdString(action.Sequence)))continue;
+        _HasContextDirectory=false;
+        const auto context=GetActionContext();
+        const auto registered=[&]{return std::any_of(_KeyboardActions.begin(),_KeyboardActions.end(),[&](const auto& item){return item.Owner==action.Owner&&item.Sequence==action.Sequence;});};
+        if(registered()&&(!action.Enabled||action.Enabled(context))&&registered())action.Callback();
+        key->accept();return true;
+    }
+    return false;
 }
 
 void ProjectAssetsUI::RegisterExtensionMenus() {
@@ -64,13 +85,18 @@ void ProjectAssetsUI::UnregisterExtensions(const void* owner) {
     std::erase_if(_ContextActions,[owner](const ContextAction& action) {return action.Owner==owner;});
     std::erase_if(_OpenHandlers,[owner](const OpenHandler& handler) {return handler.Owner==owner;});
     std::erase_if(_DropHandlers,[owner](const DropHandler& handler) {return handler.Owner==owner;});
+    std::erase_if(_KeyboardActions,[owner](const KeyboardAction& action) {return action.Owner==owner;});
 }
 
 ProjectAssetActionContext ProjectAssetsUI::GetActionContext() const {
     ProjectAssetActionContext context;
     context.Directory=(_HasContextDirectory?_ContextDirectory:_CurrentPath).toStdString();
     if (_HasContextDirectory) {
-        if (!_ContextAsset.GuidString.empty()) context.Selection.push_back(_ContextAsset);
+        if (!_ContextAsset.GuidString.empty()) {
+            const auto selected=GetSelection();
+            if(std::find(selected.begin(),selected.end(),_ContextAsset)!=selected.end())context.Selection=selected;
+            else context.Selection.push_back(_ContextAsset);
+        }
     } else context.Selection=GetSelection();
     return context;
 }
@@ -116,8 +142,9 @@ void ProjectAssetsUI::OpenAsset(const ProjectAssetSelection& selected) {
 class ProjectAssetsContextCapture final : public QObject {
 public:
     using Callback = std::function<void(QTreeView*, const QModelIndex&)>;
-    ProjectAssetsContextCapture(QTreeView* tree, QObject* owner, Callback callback)
-        : QObject(owner), _Tree(tree), _Callback(std::move(callback)) {
+    using Shortcut = std::function<bool(QTreeView*,QKeyEvent*)>;
+    ProjectAssetsContextCapture(QTreeView* tree, QObject* owner, Callback callback,Shortcut shortcut)
+        : QObject(owner), _Tree(tree), _Callback(std::move(callback)),_Shortcut(std::move(shortcut)) {
         tree->installEventFilter(this);
         tree->viewport()->installEventFilter(this);
     }
@@ -128,6 +155,7 @@ protected:
             if (mouse->button() == Qt::RightButton) _Callback(_Tree, _Tree->indexAt(mouse->pos()));
         } else if (event->type() == QEvent::KeyPress) {
             auto* key = static_cast<QKeyEvent*>(event);
+            if(_Shortcut&&_Shortcut(_Tree,key))return true;
             if (key->key() == Qt::Key_Menu ||
                 (key->key() == Qt::Key_F10 && key->modifiers().testFlag(Qt::ShiftModifier))) {
                 _Callback(_Tree, _Tree->currentIndex());
@@ -138,12 +166,14 @@ protected:
 private:
     QTreeView* _Tree;
     Callback _Callback;
+    Shortcut _Shortcut;
 };
 
 void ProjectAssetsUI::InstallContextCapture() {
     const auto remember = [this](QTreeView* tree, const QModelIndex& index) { RememberContextDirectory(tree,index); };
-    new ProjectAssetsContextCapture(_Ui->folderTree, _Dispatch, remember);
-    new ProjectAssetsContextCapture(_Ui->assetTree, _Dispatch, remember);
+    const auto shortcut=[this](QTreeView* tree,QKeyEvent* key){return RouteAssetShortcut(tree,key);};
+    new ProjectAssetsContextCapture(_Ui->folderTree, _Dispatch, remember,shortcut);
+    new ProjectAssetsContextCapture(_Ui->assetTree, _Dispatch, remember,shortcut);
 }
 
 void ProjectAssetsUI::RememberContextDirectory(QTreeView*, const QModelIndex& index) {

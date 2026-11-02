@@ -93,9 +93,18 @@ bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray 
     if (!AssetArtifactIO::RelativePath(relativePath)) return Fail("Invalid dependency path: " + relativePath);
     const QDir root(QString::fromStdString(Request.AssetsRoot));
     const QFileInfo info(root.filePath(QString::fromStdString(relativePath)));
-    if (!info.isFile() || !info.canonicalFilePath().startsWith(root.canonicalPath() + "/")) return Fail("Missing or external dependency: " + relativePath);
+    const auto retryDisappearedReference=[&] {
+        const QFileInfo current(info.absoluteFilePath());
+        if(current.exists()||current.isSymLink())return;
+        for(const auto& [guid,path]:Result.Manifest.GuidSourcePaths)if(path==relativePath) {
+            Result.Superseded=true;Result.Retry=true;return;
+        }
+    };
+    if (!info.isFile() || !info.canonicalFilePath().startsWith(root.canonicalPath() + "/")) {
+        retryDisappearedReference();return Fail("Missing or external dependency: " + relativePath);
+    }
     std::string sourceHash;
-    if (!ReadFile(info.absoluteFilePath().toStdString(), output, sourceHash)) return false;
+    if (!ReadFile(info.absoluteFilePath().toStdString(), output, sourceHash)) {retryDisappearedReference();return false;}
     // 依赖由集中维护的源内容 hash 与规范化 Meta 身份组合，不重新读取共享贴图。
     QByteArray fingerprint("GameSprout.Dependency.2");
     fingerprint.append('\0');
@@ -216,6 +225,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
         && job.Request.Previous.SourceHash == manifest.SourceHash && job.Request.Previous.SettingsHash == manifest.SettingsHash
         && job.Request.Previous.ToolchainHash == manifest.ToolchainHash
         && job.Request.Previous.ImporterVersion == manifest.ImporterVersion && job.Request.Previous.Target == manifest.Target;
+    if(cached&&!AssetGuidSourcesCurrent(job.Request,job.Request.Previous))cached=false;
     if(cached&&!AnimationCachedInputsCurrent(job))cached=false;
     if(cached&&!ModelTextureSearchesCurrent(job.Request,job.Request.Previous,&job.SearchDirectoryVersions,&job.ValidationAvailable))cached=false;
     if (cached) {

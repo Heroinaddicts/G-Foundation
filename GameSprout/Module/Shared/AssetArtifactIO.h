@@ -44,7 +44,7 @@ inline bool Write(const QString & path, const QByteArray & bytes, std::string & 
 }
 inline Json::Value ToJson(const AssetImportManifest & manifest) {
     Json::Value value(Json::objectValue);
-    value["Version"] = 2;
+    value["Version"] = 3;
     value["Guid"] = manifest.GuidString;
     value["SourcePath"] = manifest.SourcePath;
     value["SourceHash"] = manifest.SourceHash;
@@ -80,6 +80,10 @@ inline Json::Value ToJson(const AssetImportManifest & manifest) {
         item["Hash"] = dependency.Hash;
         value["Dependencies"].append(item);
     }
+    value["ReferencedGuids"]=Json::Value(Json::arrayValue);
+    for(const auto& guid:manifest.ReferencedGuids)value["ReferencedGuids"].append(guid);
+    value["GuidSourcePaths"]=Json::Value(Json::objectValue);
+    for(const auto& [guid,path]:manifest.GuidSourcePaths)value["GuidSourcePaths"][guid]=path;
     value["TextureSearches"] = Json::Value(Json::arrayValue);
     for(const auto& search:manifest.TextureSearches) {
         Json::Value item;
@@ -90,7 +94,7 @@ inline Json::Value ToJson(const AssetImportManifest & manifest) {
     return value;
 }
 inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) {
-    if (!value.isObject() || value["Version"] != 2
+    if (!value.isObject() || value["Version"] != 3
         || !value["Guid"].isString() || !Guid(value["Guid"].asString()).IsValid()
         || !value["SourcePath"].isString() || !RelativePath(value["SourcePath"].asString())
         || value["Directory"] != "Artifact"
@@ -99,7 +103,8 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
         || !value["Generation"].isString() || value["Generation"].asString().empty()
         || !value["TextureSearches"].isArray() || !value["Diagnostics"].isString()
         || !value["Assets"].isArray() || !value["Dependencies"].isArray()
-        || !value["SubAssets"].isArray()) return false;
+        || !value["SubAssets"].isArray() || !value["ReferencedGuids"].isArray()
+        || !value["GuidSourcePaths"].isObject()) return false;
     AssetImportManifest result;
     result.GuidString = value["Guid"].asString();
     result.SourcePath = value["SourcePath"].asString();
@@ -131,6 +136,17 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
     for (const Json::Value & item : value["Dependencies"]) {
         if (!item["Path"].isString() || !RelativePath(item["Path"].asString()) || !item["Hash"].isString()) return false;
         result.Dependencies.push_back({item["Path"].asString(), item["Hash"].asString()});
+    }
+    std::set<std::string> referenced;
+    for(const auto& item:value["ReferencedGuids"]) {
+        if(!item.isString()||!Guid(item.asString()).IsValid()||!referenced.insert(item.asString()).second)return false;
+        result.ReferencedGuids.push_back(item.asString());
+    }
+    if(value["GuidSourcePaths"].size()!=referenced.size())return false;
+    for(const auto& guid:value["GuidSourcePaths"].getMemberNames()) {
+        const auto& path=value["GuidSourcePaths"][guid];
+        if(!referenced.count(guid)||!path.isString()||(!path.asString().empty()&&!RelativePath(path.asString())))return false;
+        result.GuidSourcePaths.emplace(guid,path.asString());
     }
     const Json::Value& searches=value["TextureSearches"];
     for(const auto& item:searches) {

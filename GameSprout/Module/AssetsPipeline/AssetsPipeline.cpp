@@ -195,6 +195,9 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
             if(result.Success&&!ModelTextureSearchesCurrent(request,result.Manifest,&job->SearchDirectoryVersions,&job->ValidationAvailable)) {
                 result.Success=false;result.Superseded=true;result.Retry=true;result.Error="Texture lookup changed before commit";
             }
+            if(result.Success&&!AssetGuidSourcesCurrent(result.Manifest,_Assets,request.AssetsRoot)) {
+                result.Success=false;result.Superseded=true;result.Retry=true;result.Error="Referenced source identity changed before commit";
+            }
             if (result.Success) {
                 QFileInfo current(QString::fromStdString(request.AssetsRoot + "/" + request.SourcePath));
                 if (!current.isFile() || current.size() != job->SourceSize || current.lastModified() != job->SourceModified) {

@@ -110,6 +110,7 @@ bool AssetsPipeline::CanReuseAsset(IAssetMeta * meta) const {
     if (manifest.ToolchainHash != (shader && _ShaderCompiler ? _ShaderCompiler->GetToolchainHash() : "")) return false;
     const QDir assets(QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets"));
     const QDir library(QString::fromStdString(_Library->GetLibraryRoot()));
+    if(!AssetGuidSourcesCurrent(manifest,_Assets,assets.absolutePath().toStdString()))return false;
     std::set<std::string> required{"0:" + manifest.SourcePath};
     for (const auto & dependency : manifest.Dependencies) {
         required.insert("0:" + dependency.Path);

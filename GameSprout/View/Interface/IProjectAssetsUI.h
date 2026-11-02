@@ -35,6 +35,10 @@ public:
     // 路径不能重复；predicate 每次弹出前重新判断，false 时禁用菜单。
     virtual bool RegisterContextAction(const void* owner, const std::vector<std::string>& menuPath,
         fContextActionCallback callback, const fContextActionEnabled& enabled = {}) = 0;
+    // Generic selection-action routing, active only while an asset tree has
+    // keyboard focus. keySequence comes from the functional View's .ui action.
+    virtual bool RegisterAssetShortcut(const void*,const std::string& keySequence,
+        fContextActionCallback,const fContextActionEnabled& = {}) {return false;}
     virtual void UnregisterExtensions(const void* owner) = 0;
     virtual ProjectAssetActionContext GetActionContext() const = 0;
     // 文件创建成功后等待 AssetsManager 登记，再按身份定位选中；不主动导入或打开。

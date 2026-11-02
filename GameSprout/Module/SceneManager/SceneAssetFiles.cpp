@@ -1,6 +1,7 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -64,7 +65,7 @@ bool SceneManager::CreateSceneAsset(const std::string& directory,const std::stri
         error="场景名称无效，请使用普通文件名，不要包含路径或特殊字符。";return false;
     }
     const QString filename=QDir(folder).filePath(stem+".scene");
-    const QByteArray bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(SceneDocument::CreateDefault(stem.toStdString())));
+    const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(SceneDocument::CreateDefault(stem.toStdString())));
     QFile file(filename);
     if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)) {
         error=QFileInfo::exists(filename)?"同名场景已存在，不能覆盖。":file.errorString().toStdString();return false;
@@ -147,7 +148,7 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     if (currentPath && !DiskMatches(target,_DiskHash,error)) return false;
     Json::Value document;std::string text;
     if (!Capture(document,text,error)) return false;
-    const QByteArray bytes=QByteArray::fromStdString(text);
+    const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
     if (bytes.size()>32*1024*1024) {error="场景数据超过当前 32 MiB 文件上限。";return false;}
     // 在提交文件前准备所有拥有内存的状态，提交成功后的替换不再分配字符串。
     std::string savedPath=normalized,savedBaseline=text,savedState=text,savedHash=AssetArtifactIO::Hash(bytes);

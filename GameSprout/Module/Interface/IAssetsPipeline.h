@@ -4,6 +4,7 @@
 #include "GameSproutEditorApi.h"
 #include "IGuidCreator.h"
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,10 @@ struct AssetImportManifest {
     std::string SubAssetsJson = "[]";
     std::vector<AssetArtifact> Assets;
     std::vector<AssetDependency> Dependencies;
+    // Stable document references survive source deletion. Empty source paths
+    // record Missing; a later GUID restoration invalidates this import.
+    std::vector<std::string> ReferencedGuids;
+    std::map<std::string,std::string> GuidSourcePaths;
     std::vector<AssetTextureSearch> TextureSearches;
     std::string Diagnostics; // Nonfatal import warnings, retained on cache hits.
 };

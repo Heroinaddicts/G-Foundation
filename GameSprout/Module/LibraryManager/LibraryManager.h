@@ -18,6 +18,7 @@ public:
     bool CommitImport(const std::string & stage, AssetImportManifest & manifest, std::string & error) override;
     bool RemoveAsset(const Guid & guid, std::string & error, const std::vector<LDBWriteOperation> & additionalWrites = {}) override;
     std::vector<std::string> FindDependents(const std::string & sourcePath) const override;
+    std::vector<std::string> FindReferenceDependents(const Guid&) const override;
     IAsset * QueryAsset(const Guid & guid, uint64_t localID) override;
     bool GetImportValidation(const Guid & guid, std::string & validationJson) const override;
     bool SaveImportValidation(const Guid & guid, const std::string & generation,
@@ -56,6 +57,8 @@ private:
     bool BuildIndexOperations(const AssetImportManifest * oldManifest,
         const AssetImportManifest * newManifest, std::vector<LDBWriteOperation> & operations);
     bool BuildTextureSearchIndexOperations(const AssetImportManifest* oldManifest,
+        const AssetImportManifest* newManifest,std::vector<LDBWriteOperation>& operations);
+    bool BuildGuidReferenceIndexOperations(const AssetImportManifest* oldManifest,
         const AssetImportManifest* newManifest,std::vector<LDBWriteOperation>& operations);
 };
 

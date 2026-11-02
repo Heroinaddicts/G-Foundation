@@ -13,6 +13,7 @@ class QModelIndex;
 class QTreeView;
 class QPoint;
 class QMimeData;
+class QKeyEvent;
 namespace Ui { class ProjectAssetsUIWindow; }
 
 class ProjectAssetsUI : public IProjectAssetsUI, public IAssetListener, public ISelectionListener {
@@ -29,6 +30,7 @@ public:
     bool RegisterDropHandler(const void* owner,const fDropProbe& probe,const fDropExecute& execute) override;
     bool RegisterContextAction(const void* owner, const std::vector<std::string>& menuPath,
         fContextActionCallback callback, const fContextActionEnabled& enabled = {}) override;
+    bool RegisterAssetShortcut(const void*,const std::string&,fContextActionCallback,const fContextActionEnabled& = {}) override;
     void UnregisterExtensions(const void* owner) override;
     ProjectAssetActionContext GetActionContext() const override;
     void NotifyAssetCreated(const std::string& relativePath) override;
@@ -57,6 +59,7 @@ private:
     void RegisterExtensionMenus();
     void RefreshContextActions();
     void SelectPendingCreatedAsset(const std::vector<IAssetMeta*>& metas);
+    bool RouteAssetShortcut(QTreeView*,QKeyEvent*);
     static void RefreshMenu();
     static void OpenAssetMenu();
     QWidget * _Window = nullptr;
@@ -104,6 +107,8 @@ private:
     struct DropHandler {uint64_t ID;const void* Owner;fDropProbe Probe;fDropExecute Execute;};
     std::vector<DropHandler> _DropHandlers;
     std::vector<ContextAction> _ContextActions;
+    struct KeyboardAction {const void* Owner;std::string Sequence;fContextActionCallback Callback;fContextActionEnabled Enabled;};
+    std::vector<KeyboardAction> _KeyboardActions;
     uint64_t _NextExtensionID = 0;
 };
 #endif

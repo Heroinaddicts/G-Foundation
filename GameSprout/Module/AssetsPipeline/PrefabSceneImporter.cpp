@@ -69,16 +69,22 @@ bool ResolveScenePrefabInstances(AssetImportJob& job,Json::Value& document) {
             const auto current=Capture(resolved,root,selected);
             for(const auto id:selected)if(resolvedNodes.count(id))return job.Fail("Nested or overlapping scene Prefab instances are reserved");
             resolvedNodes.insert(selected.begin(),selected.end());
-            const auto sourcePath=job.Request.SourcePaths.find(record["Source"]["Guid"].asString());
-            if(sourcePath==job.Request.SourcePaths.end()||
-               QFileInfo(QString::fromStdString(sourcePath->second)).suffix().compare("prefab",Qt::CaseInsensitive)!=0)
-                return job.Fail("Prefab scene source GUID is missing or does not identify a .prefab source");
+            const auto sourceGuid=record["Source"]["Guid"].asString();
+            const std::string sourcePath=job.TrackGuidReference(sourceGuid);
+            if(sourcePath.empty()) {
+                // A disconnected instance still has its materialized scene
+                // nodes and overrides. Missing sources must not erase them.
+                job.Result.Diagnostics+="Missing Prefab source retained with scene instance: "+sourceGuid+"\n";
+                continue;
+            }
+            if(QFileInfo(QString::fromStdString(sourcePath)).suffix().compare("prefab",Qt::CaseInsensitive)!=0)
+                return job.Fail("Prefab scene source GUID does not identify a .prefab source");
             QByteArray bytes;
-            if(!job.AddDependency(sourcePath->second,&bytes))return false;
+            if(!job.AddDependency(sourcePath,&bytes))return false;
             if(bytes.size()>64*1024*1024)return job.Fail("Prefab scene source exceeds 64 MiB");
             Json::Value source,data;
             if(!AssetArtifactIO::Parse(bytes.toStdString(),source)||!PrefabDefinition::Validate(source,data,error))
-                return job.Fail("Invalid Prefab scene source "+sourcePath->second+": "+error);
+                return job.Fail("Invalid Prefab scene source "+sourcePath+": "+error);
             const auto normalized=PrefabRecords::Normalize(record,current);
             const auto patches=PrefabRecords::EffectivePatches(record,normalized);
             const auto merged=PrefabDefinition::Merge(record["Baseline"],normalized,data,&patches);

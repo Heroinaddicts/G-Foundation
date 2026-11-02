@@ -542,6 +542,13 @@ public:
 
     virtual IAssetMeta * QueryAsset(const Guid &guid) const = 0;
     virtual bool ReimportAsset(const Guid & guid) = 0;
+    // Main thread. Deletes a whole source (including its subassets) and its Meta
+    // through the system trash; source records are archived and import jobs
+    // invalidated. References retain Guid+LocalID and become Missing.
+    // expectedPath prevents a stale confirmation from deleting a moved source.
+    virtual bool DeleteSourceAsset(const Guid&, const std::string& expectedPath, std::string& error) {
+        error="当前资源服务不支持删除源资源。";return false;
+    }
     // 主线程：校验并保存设置后安排导入。expected 是编辑开始时的设置快照，
     // 外部修改造成冲突时返回 false；验证/保存失败不替换原设置。
     virtual bool ApplyImportSettings(const Guid & guid, const std::string & settingsJson,

@@ -1,4 +1,5 @@
 #include "AssetsManager.h"
+#include "../Shared/AssetSourceIO.h"
 #include "MaterialAssetFactory.hpp"
 #include "../Shared/MaterialDefinition.h"
 #include <QTemporaryFile>
@@ -142,7 +143,7 @@ bool AssetsManager::SaveMaterialSource(const Guid & guid, const std::string & js
     IAssetMeta * meta = QueryAsset(guid);
     QString path;
     if (!meta || !MaterialPath(_AssetsRoot, meta->GetPath(), true, path, error)) return false;
-    const std::string savedText = AssetArtifactIO::JsonText(document) + "\n";
+    const std::string savedText = AssetSourceIO::JsonText(document);
     if (savedText.size() > static_cast<std::size_t>(MaterialDefinition::MaxDocumentBytes)) {
         error = "材质源文件超过 16 MiB 大小限制。";
         return false;
@@ -229,7 +230,7 @@ bool AssetsManager::ExtractMaterial(const Guid & guid, uint64_t localID, const s
     identity["Name"] = materialName;
     targetMeta["SubAssets"].append(identity);
     if (!extracted->ConvertFromJson(targetMeta)) { delete extracted; error = "无法设置材质主资源身份。"; return false; }
-    const std::string savedText = AssetArtifactIO::JsonText(document) + "\n";
+    const std::string savedText = AssetSourceIO::JsonText(document);
     if (savedText.size() > static_cast<std::size_t>(MaterialDefinition::MaxDocumentBytes)) {
         delete extracted; error = "材质源文件超过 16 MiB 大小限制。"; return false;
     }
@@ -237,7 +238,7 @@ bool AssetsManager::ExtractMaterial(const Guid & guid, uint64_t localID, const s
         delete extracted;
         return false;
     }
-    if (!WriteNewFile(sidecar, QByteArray::fromStdString(AssetArtifactIO::JsonText(targetMeta) + "\n"), error)) {
+    if (!WriteNewFile(sidecar, QByteArray::fromStdString(AssetSourceIO::JsonText(targetMeta)), error)) {
         QFile::remove(path);
         delete extracted;
         return false;

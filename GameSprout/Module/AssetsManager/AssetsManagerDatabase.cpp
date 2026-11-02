@@ -1,4 +1,5 @@
 #include "AssetsManager.h"
+#include "../Shared/AssetSourceIO.h"
 #include "../Shared/AssetMetaFormat.h"
 #include <filesystem>
 #include <QUuid>
@@ -187,7 +188,7 @@ void AssetsManager::RestoreMissingMeta(const std::string & path) {
     std::string error;
     if (!AssetArtifactIO::Parse(previous->MetaJson, meta) || !AssetMetaFormat::Validate(meta, error)
         || meta["Guid"] != previous->GuidString) return;
-    const std::string content = AssetArtifactIO::JsonText(meta);
+    const std::string content = AssetSourceIO::JsonText(meta);
     QFile file(QString::fromStdString(path + ".meta"));
     // Create only: an external tool may have written a sidecar since the existence check.
     if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return;

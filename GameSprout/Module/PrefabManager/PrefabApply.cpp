@@ -1,4 +1,5 @@
 #include "PrefabManager.h"
+#include "../Shared/AssetSourceIO.h"
 #include "PrefabRecords.h"
 #include "PrefabScriptFields.h"
 #include <QSaveFile>
@@ -40,7 +41,7 @@ bool PrefabManager::ApplyOverrides(uint64_t objectID,std::string& error) {
         QFile old(full);if(!old.open(QIODevice::ReadOnly)||old.size()>64*1024*1024){error="无法读取Apply目标。";return false;}
         const auto before=old.readAll();old.close();
         if(AssetArtifactIO::Hash(before)!=hash){error="Prefab源文件被外部修改，请刷新后重试。";return false;}
-        const auto bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(document));
+        const auto bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
         if(!AssetArtifactIO::Write(full,bytes,error))return false;
         Json::Value mappings(Json::arrayValue);
         for(const auto& [from,to]:canonicalIDs){Json::Value item;item["Old"]=Json::UInt64(from);item["New"]=Json::UInt64(to);mappings.append(item);}

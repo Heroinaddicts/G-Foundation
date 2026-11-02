@@ -2,6 +2,7 @@
 #include "../Shared/MaterialDefinition.h"
 #include "../Shared/PrefabDefinition.h"
 #include "../Shared/PhysicsMaterialDefinition.h"
+#include "RuntimeBuiltinResources.h"
 #include <QStringDecoder>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -14,10 +15,17 @@ bool References(AssetImportJob & job,const Json::Value & value) {
             if (!value["Guid"].isString() || !Guid(value["Guid"].asString()).IsValid()
                 || !value["LocalID"].isUInt64() || value["LocalID"].asUInt64()==0) return job.Fail("Invalid resource reference");
             const std::string guid=value["Guid"].asString();
-            if (guid!=job.Request.GuidString) {
-                const auto path=job.Request.SourcePaths.find(guid);
-                if (path==job.Request.SourcePaths.end()) return job.Fail("Referenced asset GUID is missing: "+guid);
-                if (!job.AddDependency(path->second)) return false;
+            const GameSproutRuntime::ResourceReference reference{guid,value["LocalID"].asUInt64()};
+            if(GameSproutRuntime::IsBuiltinResource(reference)) {
+                if(!GameSproutRuntime::GetBuiltinMeshName(reference))return job.Fail("Unknown built-in mesh reference");
+            } else if (guid!=job.Request.GuidString) {
+                const std::string path=job.TrackGuidReference(guid);
+                if(path.empty()) {
+                    if(job.Request.Importer!=eAssetImporterType::Scene&&job.Request.Importer!=eAssetImporterType::Prefab)
+                        return job.Fail("Referenced asset GUID is missing: "+guid);
+                    const std::string diagnostic="Missing resource GUID retained: "+guid+"\n";
+                    if(job.Result.Diagnostics.find(diagnostic)==std::string::npos)job.Result.Diagnostics+=diagnostic;
+                } else if (!job.AddDependency(path)) return false;
             }
         }
         for (const auto & child : value) if (!References(job,child)) return false;

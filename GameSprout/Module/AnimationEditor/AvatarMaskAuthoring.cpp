@@ -4,6 +4,7 @@
 #include "IProject.h"
 #include "../Shared/AvatarMaskDefinition.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetSourceIO.h"
 
 namespace {
 bool ReadMaskSource(const std::string& path,Json::Value& document,std::string& error) {
@@ -45,7 +46,7 @@ bool AnimationEditor::SaveAvatarMaskSource(const GameSproutRuntime::ResourceRefe
     GameSproutRuntime::AvatarMaskData verified;GameSproutRuntime::SkeletonData skeleton;
     if(!AvatarMaskDefinition::Read(source,false,verified,error)||(verified.Mode==GameSproutRuntime::AvatarMaskMode::Transform&&!_Resources->LoadSkeleton(verified.Skeleton,skeleton,error))
         ||!AvatarMaskDefinition::Validate(verified,skeleton,error))return false;
-    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetArtifactIO::JsonText(source)+"\n"),error))return false;
+    if(!AssetArtifactIO::Write(QString::fromStdString(path),QByteArray::fromStdString(AssetSourceIO::JsonText(source)),error))return false;
     if(!_Assets->ReimportAsset(Guid(reference.Guid))){error="Mask 源文件已保存，但未能提交导入。";return false;}
     return true;
 }
@@ -68,7 +69,7 @@ bool AnimationEditor::CreateAvatarMaskSource(const std::string& directory,const 
     if(canonicalRoot.isEmpty()||!parent.isDir()||(parent.canonicalFilePath()!=canonicalRoot&&!parent.canonicalFilePath().startsWith(canonicalRoot+"/"))){error="目标目录必须已经存在于 Assets 内。";return false;}
     const QString target=QDir(parent.absoluteFilePath()).filePath(QString::fromStdString(name+".mask"));
     if(QFileInfo::exists(target+".meta")||QFileInfo(target+".meta").isSymLink()){error="Mask 的 Meta 已存在，不能覆盖。";return false;}
-    QFile output(target);const QByteArray bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(AvatarMaskDefinition::Write(mask,false))+"\n");
+    QFile output(target);const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(AvatarMaskDefinition::Write(mask,false)));
     if(!output.open(QIODevice::WriteOnly|QIODevice::NewOnly)){error="Mask 已存在或无法创建："+output.errorString().toStdString();return false;}
     if(output.write(bytes)!=bytes.size()){error=output.errorString().toStdString();output.close();QFile::remove(target);return false;}
     output.close();path=root.relativeFilePath(target).toStdString();return true;

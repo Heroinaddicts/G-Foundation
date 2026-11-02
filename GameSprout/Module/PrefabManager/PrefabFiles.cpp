@@ -1,5 +1,7 @@
 #include "PrefabManager.h"
 #include "PrefabRecords.h"
+#include "../Shared/AssetSourceIO.h"
+#include "ScriptReferenceDocument.h"
 #include <QSaveFile>
 #include <QRegularExpression>
 
@@ -7,14 +9,19 @@ namespace {
 // Source assets cannot retain scene-local identities. Clear only authored
 // object-reference slots in this copy; never mutate the captured Runtime graph.
 void ClearExternalObjectReferences(Json::Value& document) {
-    std::set<uint64_t> local;
-    for(const auto& node:document["Objects"])local.insert(node["ID"].asUInt64());
+    std::set<uint64_t> local,localComponents;
+    for(const auto& node:document["Objects"]) {
+        local.insert(node["ID"].asUInt64());
+        for(const auto& component:node["Components"])if(component.isMember("ID"))localComponents.insert(component["ID"].asUInt64());
+    }
     for(auto& node:document["Objects"])for(auto& component:node["Components"]) {
         const auto type=component["Type"].asString();
         if(type=="GameSproutRuntime.ScriptComponent") {
-            for(auto& field:component["Fields"])if(field["Kind"]=="SceneObject"&&!field["Value"].isNull())
-                // Assigned FileID 0 is the external scene root, not an unbound slot.
-                if(!local.count(field["Value"]["ObjectFileID"].asUInt64()))field["Value"]=Json::Value();
+            ScriptReferenceDocument::Fields(component,[&](Json::Value& field,bool isComponent) {
+                // Assigned FileID 0 is the external scene root, not None.
+                if(!(isComponent?localComponents:local).count(field["Value"][isComponent?"ComponentFileID":"ObjectFileID"].asUInt64()))
+                    field["Value"]=Json::Value();
+            });
         }else if(type=="GameSproutRuntime.Animator") {
             for(auto& binding:component["Bindings"])
                 if(!local.count(binding["ObjectFileID"].asUInt64()))binding["ObjectFileID"]=Json::UInt64(0);
@@ -112,7 +119,7 @@ bool PrefabManager::SaveSource(uint64_t objectID,const std::string& path,bool co
         for(auto& node:data["Objects"])if(node["ID"].asUInt64()==PrefabDefinition::RootID(data))node["Name"]=data["Name"];
         Json::Value verified;const auto source=PrefabDefinition::Source(data);
         if(!PrefabDefinition::Validate(source,verified,error))return false;
-        const auto bytes=QByteArray::fromStdString(AssetArtifactIO::JsonText(source));
+        const auto bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(source));
         PendingCreation pending;
         if(connect) {
             pending.SceneID=_Scenes->GetActiveScene()->GetInstanceID();pending.SceneEpoch=_SceneEpoch;

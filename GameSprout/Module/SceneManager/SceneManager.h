@@ -11,6 +11,7 @@ public:
     ~SceneManager() override;
     GameSproutRuntime::IScene* GetActiveScene() const override;
     const std::string& GetActiveScenePath() const override { return _ActivePath; }
+    std::string GetMainScenePath() const override;
     bool BeginDocumentSession(const SceneDocumentSessionRequest&,std::string&) override;
     bool EndDocumentSession(std::string&) override;
     bool IsDocumentSessionActive() const override {return _DocumentSession!=nullptr;}

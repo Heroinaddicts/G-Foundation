@@ -3,6 +3,7 @@
 #include "../../Module/Shared/AssetMetaFormat.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -26,6 +27,9 @@ Json::Value Meta(const std::string& guid,const std::string& path,const char* imp
 Json::Value Reference(const std::string& guid,std::uint64_t id) {
     Json::Value value;value["Guid"]=guid;value["LocalID"]=Json::UInt64(id);return value;
 }
+bool SameReference(const Json::Value& value,const std::string& guid,std::uint64_t id) {
+    return value.isObject()&&value["Guid"]==guid&&value["LocalID"].isUInt64()&&value["LocalID"].asUInt64()==id;
+}
 Json::Value Source() {
     Json::Value source(Json::objectValue);source["Version"]=1;source["Format"]="GameSproutPrefab";
     source["Base"]=Json::Value();source["NestedInstances"]=Json::Value(Json::arrayValue);
@@ -47,6 +51,7 @@ public:
     QDir Root;
     Context Task;
     Json::Value PrefabMeta=Meta(PrefabGuid,"Mesh.prefab","Prefab");
+    std::map<std::string,std::string> SourcePaths{{MeshGuid,"Shape.mesh"},{ScriptGuid,"Probe.hpp"},{PrefabGuid,"Mesh.prefab"}};
     Fixture():Root(Temporary.path()) {
         Check(Temporary.isValid()&&Root.mkpath("Assets")&&Root.mkpath("Library"),"Cannot create temporary project");
         Write(Root.filePath("Assets/Shape.mesh"),"mesh-dependency-snapshot");
@@ -55,22 +60,33 @@ public:
         meshMeta["SubAssets"].append(identity);Write(Root.filePath("Assets/Shape.mesh.meta"),QByteArray::fromStdString(AssetArtifactIO::JsonText(meshMeta)));
         Write(Root.filePath("Assets/Probe.hpp"),"// script-dependency-snapshot\n");
     }
-    Outcome Import(const Json::Value& source,bool scene=false) {
+    Outcome Import(const Json::Value& source,bool scene=false,const AssetImportManifest* previous=nullptr,bool force=true) {
         const auto path=scene?"World.scene":"Mesh.prefab";
         Write(Root.filePath(QString("Assets/")+path),QByteArray::fromStdString(AssetArtifactIO::JsonText(source)));
         AssetImportRequest request;request.GuidString=scene?SceneGuid:PrefabGuid;request.AssetsRoot=Root.filePath("Assets").toStdString();
         request.LibraryRoot=Root.filePath("Library").toStdString();request.SourcePath=path;request.Importer=scene?eAssetImporterType::Scene:eAssetImporterType::Prefab;
         request.MetaJson=AssetArtifactIO::JsonText(scene?Meta(SceneGuid,path,"Scene"):PrefabMeta);
-        request.SourcePaths={{MeshGuid,"Shape.mesh"},{ScriptGuid,"Probe.hpp"},{PrefabGuid,"Mesh.prefab"}};
-        request.Force=true;
+        request.SourcePaths=SourcePaths;
+        request.HasPrevious=previous!=nullptr;if(previous)request.Previous=*previous;
+        request.Force=force;
         AssetImportJob job(request);Outcome outcome;outcome.Success=RunAssetImport(job,Task);outcome.Result=job.Result;
         if(outcome.Success) {
             Check(job.Result.Manifest.Assets.size()==1,"Prefab importer emitted more than one main asset");
-            QFile file(QDir(QString::fromStdString(job.Stage)).filePath(QString::fromStdString(job.Result.Manifest.Assets[0].Path)));
+            const auto directory=job.Result.Cached?Root.filePath("Library/"+QString::fromStdString(job.Result.Manifest.Directory)):QString::fromStdString(job.Stage);
+            QFile file(QDir(directory).filePath(QString::fromStdString(job.Result.Manifest.Assets[0].Path)));
             Check(file.open(QIODevice::ReadOnly),"Cannot open emitted Prefab artifact");const auto bytes=file.readAll();
             outcome.Bytes.assign(reinterpret_cast<const std::uint8_t*>(bytes.constData()),reinterpret_cast<const std::uint8_t*>(bytes.constData())+bytes.size());
         }
         return outcome;
+    }
+    AssetImportManifest Publish(const Outcome& outcome) {
+        auto manifest=outcome.Result.Manifest;manifest.Generation="isolated-prefab-publication";
+        Check(manifest.Assets.size()==1,"Expected one resource for isolated publication");
+        auto& asset=manifest.Assets[0];asset.Path=manifest.GuidString+"_"+std::to_string(asset.LocalID)+".gsasset";
+        Write(Root.filePath("Library/Artifact/"+QString::fromStdString(asset.Path)),
+            QByteArray(reinterpret_cast<const char*>(outcome.Bytes.data()),static_cast<qsizetype>(outcome.Bytes.size())));
+        Json::Value identities;Check(AssetArtifactIO::Parse(manifest.SubAssetsJson,identities),"Cannot retain Prefab identities");
+        PrefabMeta["SubAssets"]=identities;return manifest;
     }
 };
 Json::Value Numbers(std::initializer_list<float> values) {
@@ -84,6 +100,57 @@ Json::Value SceneNode(std::uint64_t id,std::uint64_t parent,const char* name,std
 const Json::Value& NamedNode(const Json::Value& data,const char* name) {
     for(const auto& node:data["Objects"])if(node["Name"]==name)return node;
     throw std::runtime_error(std::string("Missing imported scene node: ")+name);
+}
+void CheckMissingReferences() {
+    Fixture fixture;std::string error;auto source=Source();
+    AssetImportRequest racedRequest;racedRequest.AssetsRoot=fixture.Root.filePath("Assets").toStdString();
+    racedRequest.SourcePaths=fixture.SourcePaths;racedRequest.GuidString=PrefabGuid;
+    AssetImportJob raced(racedRequest);
+    Check(raced.TrackGuidReference(MeshGuid)=="Shape.mesh","Cannot capture live GUID dependency fixture");
+    Check(QFile::remove(fixture.Root.filePath("Assets/Shape.mesh"))&&
+          QFile::remove(fixture.Root.filePath("Assets/Shape.mesh.meta")),"Cannot remove isolated Mesh source");
+    Check(!raced.AddDependency("Shape.mesh")&&raced.Result.Superseded&&raced.Result.Retry,
+          "A dependency deleted between GUID resolution and reading did not request a fresh Missing snapshot");
+    const auto stalePath=fixture.Import(source);
+    Check(stalePath.Success&&stalePath.Result.Manifest.GuidSourcePaths.count(MeshGuid)&&
+          stalePath.Result.Manifest.GuidSourcePaths.at(MeshGuid).empty(),
+          "A stale source-path snapshot made a deleted Mesh fatal: "+stalePath.Result.Error);
+    fixture.SourcePaths.erase(MeshGuid);
+    const auto missing=fixture.Import(source);Check(missing.Success,"Missing Mesh should not invalidate Prefab: "+missing.Result.Error);
+    Json::Value decoded;Check(PrefabDocument::Decode(missing.Bytes,decoded,error),error);
+    Check(SameReference(decoded["Objects"][0]["Components"][1]["Mesh"],MeshGuid,41),"Missing Mesh reference was cleared or rewritten");
+    const auto& manifest=missing.Result.Manifest;
+    Check(std::find(manifest.ReferencedGuids.begin(),manifest.ReferencedGuids.end(),MeshGuid)!=manifest.ReferencedGuids.end()&&
+          manifest.GuidSourcePaths.count(MeshGuid)&&manifest.GuidSourcePaths.at(MeshGuid).empty(),"Missing Mesh lost its GUID availability dependency");
+    Check(!manifest.Diagnostics.empty(),"Missing Mesh should retain an import diagnostic");
+    auto published=fixture.Publish(missing);AssetImportManifest roundtrip;
+    const auto encoded=AssetArtifactIO::ToJson(published);
+    Check(encoded["Version"]==3&&AssetArtifactIO::FromJson(encoded,roundtrip)&&
+          roundtrip.ReferencedGuids==published.ReferencedGuids&&roundtrip.GuidSourcePaths==published.GuidSourcePaths,
+          "Current Manifest format lost reference GUIDs or missing-source availability");
+    auto malformedManifest=encoded;malformedManifest["ReferencedGuids"].append("not-a-guid");
+    Check(!AssetArtifactIO::FromJson(malformedManifest,roundtrip),"Manifest accepted a malformed reference GUID");
+    const auto unchanged=fixture.Import(source,false,&published,false);
+    Check(unchanged.Success&&unchanged.Result.Cached,"Unchanged Missing reference did not retain normal cache reuse: "+unchanged.Result.Error);
+
+    Write(fixture.Root.filePath("Assets/Restored/Shape.mesh"),"restored-mesh-source");
+    auto metadata=Meta(MeshGuid,"Restored/Shape.mesh","Mesh");Json::Value identity;
+    identity["LocalID"]=Json::UInt64(41);identity["Type"]=uint16_t(eAssetType::Mesh);identity["SourceKey"]="main";identity["Name"]="Restored Shape";
+    metadata["SubAssets"].append(identity);
+    Write(fixture.Root.filePath("Assets/Restored/Shape.mesh.meta"),QByteArray::fromStdString(AssetArtifactIO::JsonText(metadata)));
+    fixture.SourcePaths[MeshGuid]="Restored/Shape.mesh";
+    const auto restored=fixture.Import(source,false,&published,false);
+    Check(restored.Success&&!restored.Result.Cached,"Restoring the same GUID at a new path reused stale Missing data: "+restored.Result.Error);
+    Check(restored.Result.Manifest.GuidSourcePaths.at(MeshGuid)=="Restored/Shape.mesh"&&
+          restored.Result.Manifest.Dependencies.size()==1&&restored.Result.Manifest.Dependencies[0].Path=="Restored/Shape.mesh",
+          "Restored Mesh failed to replace the missing availability/path dependency");
+    Check(PrefabDocument::Decode(restored.Bytes,decoded,error)&&SameReference(decoded["Objects"][0]["Components"][1]["Mesh"],MeshGuid,41),
+          "Restored Mesh changed its stable resource reference");
+
+    auto invalid=source;invalid["Data"]["Objects"][0]["Components"][1]["Mesh"]["Guid"]="bad-guid";
+    auto rejected=fixture.Import(invalid);Check(!rejected.Success,"Missing-reference support accepted malformed GUID data");
+    invalid=source;invalid["Data"]["Objects"][0]["Components"][1]["Mesh"]["LocalID"]=Json::UInt64(0);
+    rejected=fixture.Import(invalid);Check(!rejected.Success,"Missing-reference support accepted a zero LocalID");
 }
 void CheckSceneRecomposition(Fixture& fixture,std::uint64_t prefabLocalID) {
     auto oldSource=Source();auto& baseline=oldSource["Data"];
@@ -140,6 +207,30 @@ void CheckSceneRecomposition(Fixture& fixture,std::uint64_t prefabLocalID) {
     Check(ObjectDocumentBinary::Decode(sparseImported.Bytes,wrapper)&&SceneDocument::Validate(wrapper["Data"],error),"Scene Prefab merge produced an invalid optional root transform: "+error);
     const auto& sparseTransform=NamedNode(wrapper["Data"],"Placed instance")["Components"][0];
     Check(!sparseTransform.isMember("Position")&&!sparseTransform.isMember("Rotation"),"Scene Prefab merge replaced omitted transform defaults with authored values/null");
+
+    Check(QFile::remove(fixture.Root.filePath("Assets/Mesh.prefab"))&&QFile::remove(fixture.Root.filePath("Assets/Mesh.prefab.meta")),
+          "Cannot remove isolated Prefab source");
+    fixture.SourcePaths.erase(PrefabGuid);
+    const auto missingSource=fixture.Import(scene,true);
+    Check(missingSource.Success,"Missing Prefab source invalidated the existing scene instance: "+missingSource.Result.Error);
+    Check(ObjectDocumentBinary::Decode(missingSource.Bytes,wrapper)&&SceneDocument::Validate(wrapper["Data"],error),
+          "Missing Prefab source produced an invalid runtime scene: "+error);
+    const auto& retained=NamedNode(wrapper["Data"],"Placed instance");
+    Check(retained["ID"].asUInt64()==101&&retained["ParentID"].asUInt64()==50&&
+          retained["Components"][0]["Position"][0].asFloat()==8&&retained["Components"][2]["Color"][0].asFloat()==0.9f,
+          "Missing Prefab source removed its materialized instance, placement or Override");
+    Check(missingSource.Result.Manifest.GuidSourcePaths.count(PrefabGuid)&&
+          missingSource.Result.Manifest.GuidSourcePaths.at(PrefabGuid).empty()&&!missingSource.Result.Diagnostics.empty(),
+          "Missing Prefab source lost its recoverable GUID dependency/diagnostic");
+    auto currentWithDeletedMesh=scene;Check(QFile::remove(fixture.Root.filePath("Assets/Shape.mesh"))&&
+          QFile::remove(fixture.Root.filePath("Assets/Shape.mesh.meta")),"Cannot remove Mesh from scene fixture");
+    fixture.SourcePaths.erase(MeshGuid);
+    const auto missingBoth=fixture.Import(currentWithDeletedMesh,true);
+    Check(missingBoth.Success,"Scene with missing Mesh and Prefab source failed: "+missingBoth.Result.Error);
+    Check(ObjectDocumentBinary::Decode(missingBoth.Bytes,wrapper),"Cannot decode scene with missing sources");
+    const auto& missingMesh=NamedNode(wrapper["Data"],"Placed instance")["Components"][1]["Mesh"];
+    Check(SameReference(missingMesh,MeshGuid,41),
+          "Scene with missing Mesh and Prefab source lost the original resource reference: "+AssetArtifactIO::JsonText(missingMesh));
 }
 }
 int main(int argc,char** argv) {
@@ -172,6 +263,7 @@ int main(int argc,char** argv) {
         invalid=source;invalid["Data"]["Objects"][0]["Components"][0].removeMember("ID");failed=fixture.Import(invalid);
         Check(!failed.Success&&failed.Result.Error.find("stable IDs")!=std::string::npos,"Prefab source accepted a component without its stable source ID");
         CheckSceneRecomposition(fixture,artifact.LocalID);
+        CheckMissingReferences();
         std::cout<<"Prefab production import, Runtime binary codec, stable resource identity, dependency and rejection checks passed\n";return 0;
     }catch(const std::exception& exception){std::cerr<<exception.what()<<'\n';return 1;}
 }
