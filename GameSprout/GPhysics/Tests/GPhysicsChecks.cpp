@@ -87,6 +87,24 @@ void World() {
               std::isfinite(stopped.Transform.Position.Y) && std::isfinite(stopped.LinearVelocity.X),
           "Finite large friction produced a NaN/Inf simulation state");
 }
+void QueryExclusions() {
+    std::string error;GPhysics::World world;Check(world.Initialize(error),error);
+    GPhysics::BodySettings compound;compound.Key=1;compound.Motion=GPhysics::MotionType::Dynamic;
+    GPhysics::Shape first;first.Collider=10;first.Layer=3;first.LocalPose.Position={0,3,0};
+    GPhysics::Shape second=first;second.Collider=11;second.LocalPose.Position={0,1,0};compound.Shapes={first,second};
+    Check(world.PutBody(compound,error),error);
+    GPhysics::BodySettings floor;floor.Key=2;GPhysics::Shape ground=first;ground.Collider=20;ground.LocalPose.Position={0,-1,0};floor.Shapes={ground};
+    Check(world.PutBody(floor,error),error);
+    GPhysics::BodySettings triggerBody;triggerBody.Key=3;GPhysics::Shape trigger=first;trigger.Collider=30;trigger.Trigger=true;trigger.LocalPose.Position={0,4.5f,0};triggerBody.Shapes={trigger};
+    Check(world.PutBody(triggerBody,error),error);
+    GPhysics::RayHit hit;
+    Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,false,hit)&&hit.Collider==10,"Default query lost dynamic compound leaf");
+    Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,false,hit,{10})&&hit.Collider==11,"Ignored leaf removed other compound leaves");
+    Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,false,hit,{10,11})&&hit.Collider==20,"Excluded compound leaves hid same-layer independent body");
+    Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,true,hit,{10,11})&&hit.Collider==30,"IncludeTriggers changed after exclusions");
+    Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,true,hit,{10,11,30})&&hit.Collider==20,"Ignored trigger obstructed raycast");
+    Check(!world.Raycast({0,6,0},{0,-10,0},1u<<2,true,hit,{10,11})&&!hit.Collider,"Layer-filtered miss retained hit");
+}
 void FreezeAll() {
     std::string error;GPhysics::World world;Check(world.Initialize(error),error);
     GPhysics::BodySettings frozen;frozen.Key=1;frozen.Motion=GPhysics::MotionType::Dynamic;
@@ -124,6 +142,7 @@ int main() {
     try {
         Materials();
         World();
+        QueryExclusions();
         FreezeAll();
         std::cout << "PASS material combine priority/numeric limits and actual Jolt friction simulation\n";
         return 0;

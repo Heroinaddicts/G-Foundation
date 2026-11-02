@@ -1,4 +1,5 @@
 #include "GPhysics.h"
+#include "MeshCooking.h"
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
@@ -10,6 +11,7 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/ShapeFilter.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/EmptyShape.h>
@@ -112,6 +114,10 @@ class PairFilter final : public JPH::ObjectLayerPairFilter {
 };
 } // namespace
 
+namespace GPhysics::Detail {
+void AcquireMeshBackend() { AcquireJolt(); }
+void ReleaseMeshBackend() { ReleaseJolt(); }
+}
 namespace GPhysics {
 Material CombineMaterials(const Material &a, const Material &b) {
     Material result;
@@ -283,7 +289,7 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
         if (!shape.Collider || !keys.insert(shape.Collider).second || !ValidPose(shape.LocalPose) ||
             shape.Layer > 31 || !std::isfinite(shape.Surface.Friction) || shape.Surface.Friction < 0 ||
             !std::isfinite(shape.Surface.Restitution) || shape.Surface.Restitution < 0 ||
-            shape.Surface.Restitution > 1 || shape.Type > ShapeType::Capsule ||
+            shape.Surface.Restitution > 1 || shape.Type > ShapeType::ConvexHull ||
             shape.Surface.FrictionCombine > CombineMode::Maximum ||
             shape.Surface.RestitutionCombine > CombineMode::Maximum) {
             error = "Invalid physics collider settings";
@@ -309,7 +315,7 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
             JPH::SphereShapeSettings source(shape.Radius);
             source.mUserData = shape.Collider;
             result = source.Create();
-        } else {
+        } else if (shape.Type == ShapeType::Capsule) {
             if (!std::isfinite(shape.Radius) || !std::isfinite(shape.HalfHeight) || shape.Radius <= 0 ||
                 shape.HalfHeight < 0) {
                 error = "Capsule dimensions are invalid";
@@ -324,6 +330,13 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
                 source.mUserData = shape.Collider;
                 result = source.Create();
             }
+        }
+        else {
+            if (!shape.Mesh || !shape.GeometryRevision) {error="MeshCollider geometry is unavailable";return false;}
+            if (shape.Type==ShapeType::TriangleMesh && (settings.Motion==MotionType::Dynamic || shape.Trigger)) {
+                error="Non-convex MeshCollider requires a static/kinematic non-trigger body";return false;
+            }
+            result=Detail::CreateMeshShape(*shape.Mesh,shape.Type==ShapeType::ConvexHull,shape.Collider);
         }
         if (result.HasError()) {
             error = result.GetError().c_str();
@@ -367,7 +380,7 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
     description.mUseManifoldReduction = false;
     description.mCollideKinematicVsNonDynamic = true;
     description.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(frozen ? 0x3fu : settings.AllowedDOFs);
-    if (settings.Shapes.empty()) {
+    if (settings.Shapes.empty() || std::any_of(settings.Shapes.begin(),settings.Shapes.end(),[](const Shape& item){return item.Type==ShapeType::TriangleMesh;})) {
         description.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
         description.mMassPropertiesOverride.mMass = settings.Mass;
         description.mMassPropertiesOverride.mInertia =
@@ -382,9 +395,13 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
         return false;
     }
     RemoveBody(settings.Key);
-    _Impl->Bodies.emplace(settings.Key, Impl::BodyRecord{body->GetID(), settings});
-    for (const auto &item : settings.Shapes)
-        _Impl->Shapes[item.Collider] = item;
+    auto saved=settings;
+    for(auto &item:saved.Shapes)item.Mesh=nullptr;
+    _Impl->Bodies.emplace(settings.Key, Impl::BodyRecord{body->GetID(), std::move(saved)});
+    for (auto item : settings.Shapes) {
+        item.Mesh=nullptr;
+        _Impl->Shapes[item.Collider] = std::move(item);
+    }
     _Impl->Physics.GetBodyInterface().AddBody(body->GetID(), motion == JPH::EMotionType::Static
                                                                  ? JPH::EActivation::DontActivate
                                                                  : JPH::EActivation::Activate);
@@ -551,13 +568,34 @@ bool World::Step(float delta, std::vector<Contact> &events, std::string &error) 
     }
     return true;
 }
-bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool triggers, RayHit &hit) const {
+bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool triggers, RayHit &hit,
+                    const std::vector<uint64_t>& ignoredColliders) const {
     hit = {};
     if (!_Impl || !Finite(origin) || !Finite(displacement))
         return false;
+    const std::set<uint64_t> ignored(ignoredColliders.begin(),ignoredColliders.end());
+    class RayShapeFilter final : public JPH::ShapeFilter {
+      public:
+        RayShapeFilter(const std::map<uint64_t,Shape>& shapes,const std::set<uint64_t>& ignored,uint32_t mask,bool triggers)
+            : _Shapes(shapes),_Ignored(ignored),_Mask(mask),_Triggers(triggers) {}
+        bool ShouldCollide(const JPH::Shape* shape,const JPH::SubShapeID&) const override {
+            const auto found=_Shapes.find(shape->GetUserData());
+            // Compound/decorator roots carry no collider key. Let Jolt enter
+            // those shapes, then filter each registered primitive leaf.
+            if(found==_Shapes.end())return true;
+            const auto& description=found->second;
+            return !_Ignored.contains(description.Collider)&&(_Mask&(1u<<description.Layer))&&(_Triggers||!description.Trigger);
+        }
+      private:
+        const std::map<uint64_t,Shape>& _Shapes;
+        const std::set<uint64_t>& _Ignored;
+        uint32_t _Mask;
+        bool _Triggers;
+    } filter(_Impl->Shapes,ignored,mask,triggers);
     JPH::AllHitCollisionCollector<JPH::CastRayCollector> collector;
     _Impl->Physics.GetNarrowPhaseQuery().CastRay(
-        JPH::RRayCast(JPH::RVec3(Vector(origin)), Vector(displacement)), JPH::RayCastSettings{}, collector);
+        JPH::RRayCast(JPH::RVec3(Vector(origin)), Vector(displacement)), JPH::RayCastSettings{}, collector,
+        {}, {}, {}, filter);
     float fraction = 1.0f;
     bool found = false;
     for (const auto &result : collector.mHits) {
@@ -568,7 +606,7 @@ bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool tr
             continue;
         const auto &body = lock.GetBody();
         const Shape *shape = _Impl->FindShape(body, result.mSubShapeID2);
-        if (!shape || !(mask & (1u << shape->Layer)) || (!triggers && shape->Trigger))
+        if (!shape || ignored.contains(shape->Collider) || !(mask & (1u << shape->Layer)) || (!triggers && shape->Trigger))
             continue;
         fraction = result.mFraction;
         found = true;

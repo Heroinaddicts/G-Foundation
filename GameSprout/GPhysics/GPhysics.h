@@ -20,7 +20,7 @@ struct Pose {
     bool operator==(const Pose &) const = default;
 };
 enum class MotionType : uint8_t { Static, Dynamic, Kinematic };
-enum class ShapeType : uint8_t { Box, Sphere, Capsule };
+enum class ShapeType : uint8_t { Box, Sphere, Capsule, TriangleMesh, ConvexHull };
 enum class CombineMode : uint8_t { Average, Minimum, Multiply, Maximum };
 struct Material {
     float Friction = 0.6f, Restitution = 0;
@@ -29,12 +29,23 @@ struct Material {
 };
 // Used by the contact listener. Maximum > Multiply > Minimum > Average.
 Material CombineMaterials(const Material &, const Material &);
+struct MeshGeometry {
+    std::vector<Vector3> Vertices;
+    std::vector<uint32_t> Indices;
+};
+// No World or GPU is needed. Convex output is the actual cooked hull (radius 0),
+// useful for editor wireframes; invalid/non-finite/degenerate input fails.
+bool CookMeshGeometry(const MeshGeometry &, bool convex, MeshGeometry &, std::string &error);
 struct Shape {
     uint64_t Collider = 0;
     ShapeType Type = ShapeType::Box;
     Pose LocalPose;
     Vector3 HalfExtents{0.5f, 0.5f, 0.5f};
     float Radius = 0.5f, HalfHeight = 0.5f;
+    // Borrowed only for PutBody; the backend never keeps or dereferences Mesh
+    // after that call. GeometryRevision is an owner-issued monotonic identity.
+    const MeshGeometry *Mesh = nullptr;
+    uint64_t GeometryRevision = 0;
     bool Trigger = false;
     uint32_t Layer = 0, Mask = 0xffffffffu;
     Material Surface;
@@ -88,7 +99,10 @@ class World {
     bool AddTorque(uint64_t key, Vector3 value, bool impulse);
     void SetGravity(Vector3 gravity);
     bool Step(float deltaSeconds, std::vector<Contact> &events, std::string &error);
-    bool Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool triggers, RayHit &) const;
+    // Ignored collider keys reject individual compound leaves, not unrelated
+    // colliders on the same layer or the other leaves of a compound body.
+    bool Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool triggers, RayHit &,
+                 const std::vector<uint64_t>& ignoredColliders = {}) const;
 
   private:
     struct Impl;

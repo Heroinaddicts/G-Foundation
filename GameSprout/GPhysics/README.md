@@ -11,14 +11,24 @@ compute backends and sample applications are disabled. Only the current macOS
 ARM64 configuration has been built and exercised in this integration.
 
 Runtime owns fixed-step scheduling and all node/component identities. GPhysics
-only owns bodies, primitive shapes and value contacts. Shape user data preserves
+only owns bodies, collision shapes and value contacts. Shape user data preserves
 the Runtime's per-Collider mapping through compound bodies. Contact manifold
 reduction is disabled to preserve distinct Collider material/Trigger identities.
 Worker callbacks collect values under a multi-producer queue lock. Runtime
 subscribers are invoked only after `World::Step` returns.
 
-The first version provides Box, Sphere and Capsule shapes, compound bodies,
+The backend provides Box, Sphere, Capsule, triangle-mesh and convex-hull shapes, compound bodies,
 Dynamic/Kinematic/Static motion, forces/impulses, collision masks, CCD and raycasts.
+Non-convex triangle meshes support Static and Kinematic bodies; Dynamic bodies
+and Triggers require a convex hull. Convex cooking uses Jolt's 256 hull-vertex
+limit (interior input vertices are discarded) and reports a cooking failure
+rather than replacing the mesh with a primitive. Referenced vertices, indices,
+finite positions and nondegenerate triangles are validated. `CookMeshGeometry`
+returns the actual radius-zero hull for Runtime's editor/debug wireframes without
+creating a physics World. Runtime caches source decoding and body-local affine
+geometry by provider revision, mesh identity and relative transform; body-only
+translation/rotation does not re-read or re-cook the mesh. Mesh transforms bake
+nonuniform/mirrored scale (with corrected winding), including static child shear.
 Static pairs do not generate simulation contacts. EmptyShape allows a Rigidbody
 without Collider geometry to continue moving under gravity without contact.
 
@@ -58,6 +68,28 @@ linear/angular velocity at zero. Unlocking starts without accumulated movement;
 new commands then work normally. Explicit teleport remains available. Settings
 reach the backend at the next fixed step or the host's zero-time
 `SynchronizePhysics` safe point; changing a property never runs an extra game tick.
+
+Runtime raycasts can exclude the querying character without changing its Layer:
+
+```cpp
+GameSproutRuntime::PhysicsQuerySettings query;
+query.IgnoredObjectIDs = {character->GetInstanceID()};
+query.IncludeTriggers = false;
+GameSproutRuntime::PhysicsRaycastHit hit;
+std::string error;
+const bool grounded = runtime->Raycast(character->GetScene(),
+    {footPosition, {0, -1, 0}}, probeDistance, hit, query, error);
+```
+
+`IgnoredObjectIDs` contains live Runtime object identities, not Scene/Prefab
+FileIDs. An ignored object excludes all its own Colliders. A Rigidbody owner
+also excludes child Colliders attached to that compound body. Ignoring just one
+child leaves the compound's other Colliders queryable. Independent descendant
+Rigidbody bodies are not recursively excluded; add their object IDs explicitly
+when excluding an entire hierarchy. Missing, duplicate, and other-scene IDs have
+no effect. The collision mask and trigger policy still apply to every remaining
+Collider. A miss returns `false` with an empty error and a cleared hit; invalid
+parameters or synchronization failures return `false` with an error.
 
 For standalone backend checks:
 
