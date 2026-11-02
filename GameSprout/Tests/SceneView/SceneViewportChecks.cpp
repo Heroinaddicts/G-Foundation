@@ -1,4 +1,5 @@
 #include "SceneViewport.h"
+#include "SceneViewportEditing.h"
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
 #include "IHierarchyUI.h"
@@ -15,6 +16,7 @@
 #include <QScreen>
 #include <QMenu>
 #include <QAction>
+#include <QCheckBox>
 #include <cstring>
 
 class SceneFixture final : public ISceneManager {
@@ -101,6 +103,18 @@ public:
     bool LoadTexture(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::TextureRenderData& data,std::string& error) override{data={};error="No texture required by this triangle";return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MaterialRenderData& data,std::string& error) override{data={};data.DoubleSided=true;error.clear();return true;}
 };
+class FeatureToolFixture final : public ISceneTool {
+public:
+    bool Active=false,Dragging=false;
+    unsigned Activations=0,Cancellations=0;
+    void OnSceneToolActivated(bool value) override {Active=value;++Activations;}
+    void DrawSceneTool(const SceneToolContext&,GameSproutRuntime::DebugDrawList&) override {}
+    bool PressSceneTool(const SceneToolContext&,const SceneToolPointer&) override {Dragging=true;return true;}
+    bool MoveSceneTool(const SceneToolContext&,const SceneToolPointer&) override {return Dragging;}
+    bool ReleaseSceneTool(const SceneToolContext&,const SceneToolPointer&) override {const bool result=Dragging;Dragging=false;return result;}
+    void CancelSceneToolDrag() override {if(Dragging)++Cancellations;Dragging=false;}
+    bool IsSceneToolDragging() const override {return Dragging;}
+};
 static void Mouse(QWidget* target,QEvent::Type type,QPointF point,Qt::MouseButton button,Qt::MouseButtons buttons,Qt::KeyboardModifiers modifiers=Qt::NoModifier) {
     QMouseEvent event(type,point,QPointF(target->mapToGlobal(point.toPoint())),button,buttons,modifiers);QCoreApplication::sendEvent(target,&event);
 }
@@ -152,6 +166,7 @@ int main(int argc,char** argv) {
             mesh=scene->CreateGameObject("Triangle");
             mesh->AddComponent<GameSproutRuntime::IMeshComponent>()->SetMesh({"11111111111111111111111111111111",1});
             mesh->AddComponent<GameSproutRuntime::IMeshRendererComponent>()->SetMaterial(0,{"22222222222222222222222222222222",2});
+            mesh->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
             auto* cameraObject=scene->CreateGameObject("Game Camera");cameraObject->GetTransform()->SetLocalPosition({10,20,30});
             gameCamera=cameraObject->AddComponent<GameSproutRuntime::ICameraComponent>();Check(scene->SetMainCamera(gameCamera),"Cannot set Game camera");
             gameWorld=cameraObject->GetTransform()->GetWorldMatrix();nodeCount=CountNodes(scene);
@@ -172,9 +187,26 @@ int main(int argc,char** argv) {
         SceneViewport* viewport=nullptr;
         for(QWidget* window:QApplication::topLevelWidgets())if(auto* dock=window->findChild<QDockWidget*>("Scene")){viewport=dock->findChild<SceneViewport*>("sceneViewport");if(viewport)break;}
         Check(viewport,"Promoted native sceneViewport missing");
-        if(runtime)viewport->Initialize(runtime,&resources);
+        if(runtime){viewport->Initialize(runtime,&resources);viewport->BindEditingServices(&editor->Scenes,&editor->Selection);}
         QObject::connect(viewport,&QObject::destroyed,&app,[&]{viewportDestroyed=true;});
         auto* host=viewport->window();host->resize(880,650);host->raise();host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
+        auto* colliders=host->findChild<QCheckBox*>("allCollidersCheck");
+        Check(colliders&&!colliders->isChecked()&&!viewport->Editing().ShowAllColliders(),"Scene must default to selected-only collider wires");
+        colliders->setChecked(true);Check(viewport->Editing().ShowAllColliders(),"Scene .ui checkbox did not enable all collider wires");
+        colliders->setChecked(false);Check(!viewport->Editing().ShowAllColliders(),"Scene collider filter did not return to selected-only");
+        FeatureToolFixture firstTool,secondTool;
+        Check(view->RegisterSceneTool(&firstTool,&firstTool)&&!view->RegisterSceneTool(&firstTool,&firstTool)
+            &&view->RegisterSceneTool(&secondTool,&secondTool),"Feature Scene tool registration did not enforce identities");
+        Check(view->ActivateSceneTool(&firstTool)&&firstTool.Active&&view->GetActiveSceneTool()==&firstTool,"Feature Scene tool did not activate");
+        Check(view->ActivateSceneTool(&secondTool)&&!firstTool.Active&&secondTool.Active,"Feature tool replacement kept two active tools");
+        QKeyEvent switchTool(QEvent::KeyPress,Qt::Key_W,Qt::NoModifier);QCoreApplication::sendEvent(viewport,&switchTool);
+        Check(!secondTool.Active&&!view->GetActiveSceneTool(),"Transform shortcut did not deactivate feature Scene tool");
+        Check(view->ActivateSceneTool(&firstTool),"Feature tool did not reactivate");
+        editor->Selection.SetSceneObjectSelection(editor->Selection.Selected);
+        Check(!view->GetActiveSceneTool(),"Scene selection event did not deactivate feature tool");
+        Check(view->ActivateSceneTool(&secondTool),"Feature tool reactivation failed");
+        view->UnregisterSceneTools(&secondTool);Check(!secondTool.Active&&!view->ActivateSceneTool(&secondTool),"Unregistered feature retained activation access");
+        view->UnregisterSceneTools(&firstTool);
         const auto tick=[&]{QCoreApplication::processEvents();if(runtime)runtime->Update(0);editor->Host.Frame();QCoreApplication::processEvents();};
         const auto pump=[&](const std::function<bool()>& done){QElapsedTimer timer;timer.start();do{tick();if(done())return;QThread::msleep(5);}while(timer.elapsed()<15000);throw std::runtime_error("Native scene timed out: "+view->GetRenderError());};
         if(headless) {

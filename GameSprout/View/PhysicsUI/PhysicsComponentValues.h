@@ -3,13 +3,14 @@
 #include "ISceneManager.h"
 
 namespace PhysicsComponentValues {
-enum class ShapeKind { Box,Sphere,Capsule };
+enum class ShapeKind { Box,Sphere,Capsule,Mesh };
 struct Collider {
     GameSproutRuntime::ColliderSettings Settings;
     ShapeKind Kind=ShapeKind::Box;
     GameSproutRuntime::BoxColliderShape Box;
     GameSproutRuntime::SphereColliderShape Sphere;
     GameSproutRuntime::CapsuleColliderShape Capsule;
+    GameSproutRuntime::MeshColliderShape Mesh;
 };
 bool Read(const GameSproutRuntime::IColliderComponent&,Collider&);
 bool Write(GameSproutRuntime::IColliderComponent&,const Collider&,std::string&);

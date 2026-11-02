@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(PhysicsDocumentChecks LANGUAGES CXX)
 get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+include("${gamesprout_root}/Foundation/ParallelBuild.cmake")
 include("${gamesprout_root}/ObjectDocument/ObjectDocument.cmake")
 set(GAMESPROUT_TEST_RUNTIME_LIBRARY "" CACHE FILEPATH "Independent Runtime library for verification")
 if(GAMESPROUT_TEST_RUNTIME_LIBRARY)
@@ -25,3 +26,15 @@ target_compile_features(PhysicsAuthoringChecks PRIVATE cxx_std_20)
 target_include_directories(PhysicsAuthoringChecks PRIVATE "${gamesprout_root}/Module/PhysicsAuthoring" "${gamesprout_root}/Module/Interface" "${gamesprout_root}/GameSproutEditor/Api")
 target_link_libraries(PhysicsAuthoringChecks PRIVATE PhysicsAuthoring Foundation::FoundationApi Qt6::Core GameSproutRuntime::GameSproutRuntimeApi)
 add_test(NAME Physics.MaterialSourceTransactions COMMAND PhysicsAuthoringChecks)
+foreach(collider_module IN ITEMS ObjectEditing SceneManager)
+    add_subdirectory("${gamesprout_root}/Module/${collider_module}" "${collider_module}")
+    set_target_properties(${collider_module} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules")
+endforeach()
+add_executable(ColliderAuthoringChecks ColliderAuthoringChecks.cpp)
+target_compile_features(ColliderAuthoringChecks PRIVATE cxx_std_20)
+target_include_directories(ColliderAuthoringChecks PRIVATE
+    "${gamesprout_root}/Module/PhysicsAuthoring" "${gamesprout_root}/Module/ObjectEditing"
+    "${gamesprout_root}/Module/SceneManager" "${gamesprout_root}/Module/Interface" "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(ColliderAuthoringChecks PRIVATE PhysicsAuthoring ObjectEditing SceneManager
+    ObjectDocument::ObjectDocument Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core)
+add_test(NAME Physics.ColliderAuthoringTransactions COMMAND ColliderAuthoringChecks "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")

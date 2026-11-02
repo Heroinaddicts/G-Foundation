@@ -1,6 +1,7 @@
 #include "SceneViewUI.h"
 #include "SceneViewport.h"
 #include "SceneViewportEditing.h"
+#include "SceneToolRouter.h"
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
 #include "IRuntimeAssets.h"
@@ -43,7 +44,7 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     QObject::connect(_Ui->scaleToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::Scale);});
     QObject::connect(_Ui->spaceCombo,qOverload<int>(&QComboBox::currentIndexChanged),_Dispatch,[this](int index){_Viewport->Editing().SetSpace(index==0?SceneGizmoSpace::World:SceneGizmoSpace::Local);});
     QObject::connect(_Ui->pivotCombo,qOverload<int>(&QComboBox::currentIndexChanged),_Dispatch,[this](int index){_Viewport->Editing().SetPivot(index==0?SceneGizmoPivot::Pivot:SceneGizmoPivot::Center);});
-    const auto snap=[this]{_Viewport->Editing().SetSnap(_Ui->snapCheck->isChecked(),float(_Ui->moveSnapSpin->value()),float(_Ui->rotateSnapSpin->value()),float(_Ui->scaleSnapSpin->value()));};
+    const auto snap=[this]{_Viewport->Editing().SetSnap(_Ui->snapCheck->isChecked(),float(_Ui->moveSnapSpin->value()),float(_Ui->rotateSnapSpin->value()),float(_Ui->scaleSnapSpin->value()));_Viewport->Tools().SetSnap(_Ui->snapCheck->isChecked(),float(_Ui->moveSnapSpin->value()));};
     QObject::connect(_Ui->snapCheck,&QCheckBox::toggled,_Dispatch,[snap](bool){snap();});
     QObject::connect(_Ui->moveSnapSpin,qOverload<double>(&QDoubleSpinBox::valueChanged),_Dispatch,[snap](double){snap();});
     QObject::connect(_Ui->rotateSnapSpin,qOverload<double>(&QDoubleSpinBox::valueChanged),_Dispatch,[snap](double){snap();});
@@ -52,6 +53,7 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     QObject::connect(_Ui->resetCameraButton,&QToolButton::clicked,_Dispatch,[this]{ResetCamera();});
     QObject::connect(_Ui->focusSelectionButton,&QToolButton::clicked,_Dispatch,[this]{FocusSelection();});
     QObject::connect(_Ui->retryRenderButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
+    QObject::connect(_Ui->allCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowAllColliders(checked);});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
 }
@@ -92,13 +94,19 @@ void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if(g_Self==this)g_Self=nullptr;
 }
 SceneViewCameraState SceneViewUI::GetCameraState() const{return _Viewport?_Viewport->Camera().GetState():SceneViewCameraState{};}
-bool SceneViewUI::SetCameraState(const SceneViewCameraState& state){if(!_Viewport)return false;_Viewport->Editing().Cancel();return _Viewport->Camera().SetState(state);}
-void SceneViewUI::ResetCamera(){if(_Viewport){_Viewport->Editing().Cancel();_Viewport->Camera().Reset();}}
+bool SceneViewUI::SetCameraState(const SceneViewCameraState& state){if(!_Viewport)return false;_Viewport->Editing().Cancel();_Viewport->Tools().CancelDrag();return _Viewport->Camera().SetState(state);}
+void SceneViewUI::ResetCamera(){if(_Viewport){_Viewport->Editing().Cancel();_Viewport->Tools().CancelDrag();_Viewport->Camera().Reset();}}
 bool SceneViewUI::IsRenderingAvailable() const{return _Viewport&&_Viewport->IsRenderingAvailable();}
 std::string SceneViewUI::GetRenderError() const{return _Viewport?_Viewport->GetRenderError():"Scene viewport is not initialized";}
+bool SceneViewUI::RegisterSceneTool(const void* owner,ISceneTool* tool){return _Viewport&&_Viewport->Tools().Register(owner,tool);}
+bool SceneViewUI::ActivateSceneTool(ISceneTool* tool){return _Viewport&&_Viewport->Tools().Activate(tool);}
+void SceneViewUI::DeactivateSceneTool(ISceneTool* tool){if(_Viewport)_Viewport->Tools().Deactivate(tool);}
+ISceneTool* SceneViewUI::GetActiveSceneTool() const{return _Viewport?_Viewport->Tools().Active():nullptr;}
+void SceneViewUI::UnregisterSceneTools(const void* owner){if(_Viewport)_Viewport->Tools().Unregister(owner);}
 bool SceneViewUI::FocusSelection() {
     if(!_Viewport||!_Scenes||!_Selection||!_Runtime)return false;
     _Viewport->Editing().Cancel();
+    _Viewport->Tools().CancelDrag();
     auto* runtime=_Runtime;auto* scene=_Scenes->GetActiveScene();const auto selection=_Selection->GetSceneObjectSelection();
     if(!runtime||!scene||selection.SceneID!=scene->GetInstanceID())return false;
     auto* object=runtime->QueryGameObject(selection.ObjectID);if(!object||object->GetScene()!=scene)return false;
@@ -157,6 +165,8 @@ bool SceneViewUI::FocusSelection() {
 }
 
 void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    if(_Viewport&&_ToolPlayStateKnown&&_ToolPlayState!=state.State)_Viewport->Tools().Deactivate();
+    _ToolPlayStateKnown=true;_ToolPlayState=state.State;
     _CanEdit=state.State==EditorPlayState::Edit;
     if(!_Window||!_Ui)return;
     if(_Viewport)_Viewport->Editing().SetReadOnly(!_CanEdit);

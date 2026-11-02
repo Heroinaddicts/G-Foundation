@@ -9,6 +9,7 @@ class QWindow;
 class ISceneManager;
 class ISelectionManager;
 class SceneViewportEditing;
+class SceneToolRouter;
 
 class SceneViewport final : public QWidget {
     Q_OBJECT
@@ -24,11 +25,13 @@ public:
     SceneViewCamera& Camera(){return _Camera;}
     const SceneViewCamera& Camera() const{return _Camera;}
     SceneViewportEditing& Editing(){return *_Editing;}
+    SceneToolRouter& Tools(){return *_Tools;}
     void BindEditingServices(ISceneManager* scenes,ISelectionManager* selection);
     GameSproutRuntime::IRuntimeRenderer* Renderer() const{return _Renderer;}
     bool GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const{return !_ViewportChanged&&_Renderer&&_Renderer->GetRenderedCamera(camera);}
     void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error);}
     void ClearEditingError(){_EditingError.clear();}
+    void SetColliderDebugError(const std::string& error){_ColliderDebugError=error;}
     void ReleaseEditingCapture();
     bool IsRenderingAvailable() const{return _Renderer!=nullptr;}
     const std::string& GetRenderError() const{return _Error;}
@@ -60,6 +63,7 @@ private:
     void SetStatus(const std::string& message,bool error=false);
     SceneViewCamera _Camera;
     SceneViewportEditing* _Editing=nullptr;
+    SceneToolRouter* _Tools=nullptr;
     DragMode _Drag=DragMode::None;
     Qt::MouseButton _DragButton=Qt::NoButton;
     QPointF _LastMouse;
@@ -75,6 +79,7 @@ private:
     bool _Rendering=false;
     bool _ViewportChanged=true;
     std::string _EditingError;
+    std::string _ColliderDebugError;
     std::string _Error;
     std::string _Status;
 };

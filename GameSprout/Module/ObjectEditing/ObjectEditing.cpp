@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <exception>
 #include <limits>
+#include <QObject>
 
 namespace {
 struct EditingScope {
@@ -20,10 +21,20 @@ void ObjectEditing::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api)
     _Play=editor?editor->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
     _Host=editor?editor->GetGameSproutModule<IRuntimeHost>("RuntimeHost"):nullptr;
     _Runtime=editor?editor->_Runtime:nullptr;
+    _Selection=editor?editor->GetGameSproutModule<ISelectionManager>("SelectionManager"):nullptr;
 }
 bool ObjectEditing::Initialize(GameSproutEditor::GameSproutModuleApi*) {
     _OwnerThread=QThread::currentThread();
+    _Dispatch=new QObject();
     _Ready=_Scenes&&_Play&&_Host&&_Runtime;
+    return _Ready;
+}
+bool ObjectEditing::Launch(GameSproutEditor::GameSproutModuleApi*) {
+    if(_Ready) {
+        _PlaySubscribed=_Play->RegisterPlayModeListener(this);
+        _SceneSubscribed=_Scenes->RegisterSceneListener(this);
+        if(_Selection)_SelectionSubscribed=_Selection->RegisterSelectionListener(this);
+    }
     return _Ready;
 }
 bool ObjectEditing::OwnerThread() const {return _OwnerThread&&QThread::currentThread()==_OwnerThread;}
@@ -42,7 +53,7 @@ GameSproutRuntime::IGameObject* ObjectEditing::Resolve(const ObjectEditTarget& t
 }
 bool ObjectEditing::CanEdit(const ObjectEditTarget& target,std::string& error) const {
     error.clear();
-    if(!OwnerThread()||!_Ready||_Busy||_Runtime->IsExecuting()||_Host->IsFrameActive()) {
+    if(!OwnerThread()||!_Ready||_Busy||_Continuous.Active||_Runtime->IsExecuting()||_Host->IsFrameActive()) {
         error="属性只能在所属主线程的 Runtime 空闲阶段修改。";return false;
     }
     const auto state=_Play->GetState().State;
@@ -105,6 +116,13 @@ void ObjectEditing::Notify(const ObjectEditTarget& target,bool playing) {
     }
 }
 void ObjectEditing::Release(GameSproutEditor::GameSproutModuleApi*) {
+    if(_PlaySubscribed&&_Play)_Play->UnregisterPlayModeListener(this);
+    if(_SceneSubscribed&&_Scenes)_Scenes->UnregisterSceneListener(this);
+    if(_SelectionSubscribed&&_Selection)_Selection->UnregisterSelectionListener(this);
+    _SelectionSubscribed=false;_Selection=nullptr;
+    _PlaySubscribed=false;_SceneSubscribed=false;
+    std::string ignored;CancelContinuousEdit(ignored);
+    delete _Dispatch;_Dispatch=nullptr;_CancelQueued=false;
     _Listeners.clear();_Scenes=nullptr;_Play=nullptr;_Host=nullptr;_Runtime=nullptr;
     _OwnerThread=nullptr;_Ready=false;_Busy=false;_NextListener=0;
 }

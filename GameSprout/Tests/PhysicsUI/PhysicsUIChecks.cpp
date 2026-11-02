@@ -74,7 +74,7 @@ private:
 };
 class TestMeta final:public IAssetMeta {
 public:
-    TestMeta():IAssetMeta(eAssetImporterType::PhysicsMaterial,Guid("1234567890abcdef1234567890abcdef")){}
+    explicit TestMeta(eAssetImporterType type=eAssetImporterType::PhysicsMaterial):IAssetMeta(type,Guid("1234567890abcdef1234567890abcdef")){}
     std::string Path="Surface.physicmaterial";
     const std::string& GetPath() const override{return Path;}
     IAssetImportSettings* GetImportSettings() const override{return nullptr;}
@@ -85,6 +85,7 @@ public:
 };
 class Assets final:public IAssetsManager {
 public:
+    explicit Assets(eAssetImporterType type=eAssetImporterType::PhysicsMaterial):Meta(type){}
     TestMeta Meta;
     IAssetMeta* QueryAsset(const Guid& guid) const override{return guid.GetGuidString()==Meta._Guid.GetGuidString()?const_cast<TestMeta*>(&Meta):nullptr;}
     bool ReimportAsset(const Guid&) override{return true;}
@@ -101,6 +102,18 @@ private:
 class Authoring final:public IPhysicsAuthoring {
 public:
     GameSproutRuntime::PhysicsMaterialData Data;std::string Source="version-1";int Saves=0;
+    GameSproutRuntime::IGameSproutRuntime* Runtime=nullptr;int Fits=0;ColliderEditTarget LastFit;
+    bool FitCollider(const ColliderEditTarget& target,std::string& error) override {
+        LastFit=target;++Fits;auto* object=Runtime?Runtime->QueryGameObject(target.ObjectID):nullptr;
+        if(object&&object->GetScene()->GetInstanceID()==target.SceneID)for(std::size_t i=0;i<object->GetComponentCount();++i) {
+            auto* component=object->GetComponentAt(i);
+            if(component->GetComponentInstanceID()==target.ComponentID) {
+                auto* box=dynamic_cast<GameSproutRuntime::IBoxColliderComponent*>(component);
+                if(box)return box->SetShape({{2,3,4}});
+            }
+        }
+        error="Fit target unavailable";return false;
+    }
     bool CreatePhysicsMaterialAsset(const std::string&,const std::string&,std::string&,std::string&) override{return false;}
     bool LoadPhysicsMaterialSource(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::PhysicsMaterialData& data,std::string& source,std::string&) const override{data=Data;source=Source;return true;}
     bool SavePhysicsMaterialSource(const GameSproutRuntime::ResourceReference&,const GameSproutRuntime::PhysicsMaterialData& data,const std::string& expected,std::string& error) override{
@@ -173,6 +186,7 @@ static void CaptureVisuals(ComponentEditContext context,GameSproutRuntime::IGame
             QString name;
             if(dynamic_cast<GameSproutRuntime::IBoxColliderComponent*>(component))name="Box Collider";
             else if(dynamic_cast<GameSproutRuntime::ISphereColliderComponent*>(component))name="Sphere Collider";
+            else if(dynamic_cast<GameSproutRuntime::IMeshColliderComponent*>(component))name="Mesh Collider";
             else name="Capsule Collider";
             auto* panel=new ColliderComponentEditor(nullptr);context.ComponentID=component->GetComponentInstanceID();panel->Bind(context);panel->Load(*component);capture(panel,width,name);
         }
@@ -195,7 +209,8 @@ int main(int argc,char** argv){
         auto* scene=runtime->CreateScene("Physics UI");auto* object=scene->CreateGameObject("Object");
         auto* first=object->AddComponent<GameSproutRuntime::IBoxColliderComponent>();auto* second=object->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
         auto* sphere=object->AddComponent<GameSproutRuntime::ISphereColliderComponent>();auto* capsule=object->AddComponent<GameSproutRuntime::ICapsuleColliderComponent>();auto* body=object->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
-        Check(first&&second&&first!=second&&sphere&&capsule&&body,"Physics component types or multiplicity missing");
+        auto* mesh=object->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(first&&second&&first!=second&&sphere&&capsule&&mesh&&body,"Physics component types or multiplicity missing");
         SceneService scenes;scenes.Runtime=runtime;scenes.Scene=scene;Inspector inspector;std::string reported;
         ComponentEditContext context;context.Runtime=runtime;context.Scenes=&scenes;context.SceneID=scene->GetInstanceID();context.ObjectID=object->GetInstanceID();context.ComponentID=second->GetComponentInstanceID();context.Inspector=&inspector;context.Report=[&](const std::string& error){reported=error;};
         {
@@ -208,6 +223,22 @@ int main(int argc,char** argv){
             editor.Bind(context);editor.Load(*capsule);Check(editor.findChild<QLineEdit*>("heightEdit")&&!editor.findChild<QLineEdit*>("heightEdit")->isHidden(),"Capsule controls absent");
         }
         {
+            Authoring authoring;authoring.Runtime=runtime;
+            context.ComponentID=second->GetComponentInstanceID();
+            const auto previous=second->GetShape();
+            ColliderComponentEditor editor(nullptr,&authoring);editor.Bind(context);editor.Load(*second);
+            auto* fit=editor.findChild<QToolButton*>("fitColliderButton");
+            auto* edit=editor.findChild<QToolButton*>("editColliderButton");
+            Check(fit&&fit->isEnabled()&&edit&&!edit->isEnabled(),"Designer collider tools are absent or allow a missing Scene tool");
+            fit->click();
+            Check(authoring.Fits==1&&authoring.LastFit==ColliderEditTarget{context.SceneID,context.ObjectID,context.ComponentID}
+                &&first->GetShape().Size.X==1&&editor.findChild<QLineEdit*>("sizeYEdit")->text()=="3",
+                "Refit button did not route the exact collider identity through PhysicsAuthoring");
+            editor.SetEditability(false,false);fit->click();Check(authoring.Fits==1,"Read-only Inspector still invokes refit");
+            editor.SetEditability(true,true);editor.Load(*mesh);Check(edit->isHidden(),"MeshCollider exposes primitive drag handles");
+            Check(second->SetShape(previous),"Cannot restore refit UI fixture");
+        }
+        {
             Assets assets;Library library;QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create isolated material artifact");
             library.Root=temporary.path().toStdString();QDir(temporary.path()).mkpath("Artifact");library.Asset.Path=(temporary.path()+"/Artifact/surface.gsasset").toStdString();
             QFile artifact(QString::fromStdString(library.Asset.Path));Check(artifact.open(QIODevice::WriteOnly)&&artifact.write("x",1)==1,"Cannot prepare resource picker fixture");artifact.close();
@@ -216,6 +247,24 @@ int main(int argc,char** argv){
             Check(field&&field->AssignAssetSelection({assets.Meta._Guid.GetGuidString(),0,false},error),"Physics material picker rejected the prepared resource type");
             Check(second->GetColliderSettings().Material.LocalID==17&&first->GetColliderSettings().Material.Guid.empty(),"Material binding targeted the first collider");
             library.Asset.Type=eAssetType::Material;Check(!field->AssignAssetSelection({assets.Meta._Guid.GetGuidString(),0,false},error),"Rendering material was accepted in a physics material field");
+            context.Assets=nullptr;context.Library=nullptr;
+        }
+        {
+            Assets assets(eAssetImporterType::Model);assets.Meta.Path="Collision.fbx";Library library;QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create isolated mesh artifact");
+            library.Root=temporary.path().toStdString();QDir(temporary.path()).mkpath("Artifact");library.Asset.Path=(temporary.path()+"/Artifact/collision.gsasset").toStdString();
+            QFile artifact(QString::fromStdString(library.Asset.Path));Check(artifact.open(QIODevice::WriteOnly)&&artifact.write("x",1)==1,"Cannot prepare mesh picker fixture");artifact.close();
+            library.Asset.Type=eAssetType::Mesh;context.ComponentID=mesh->GetComponentInstanceID();context.Assets=&assets;context.Library=&library;
+            ColliderComponentEditor editor(nullptr);editor.Bind(context);editor.Load(*mesh);
+            auto* field=editor.findChild<ResourceField*>("meshField");auto* convex=editor.findChild<QCheckBox*>("convexCheck");auto* trigger=editor.findChild<QCheckBox*>("triggerCheck");
+            std::string error;Check(field&&!field->isHidden()&&convex&&!convex->isHidden(),"MeshCollider .ui controls missing");
+            Check(editor.findChild<QLineEdit*>("radiusEdit")->isHidden(),"MeshCollider displays primitive radius controls");
+            if(!field->AssignAssetSelection({assets.Meta._Guid.GetGuidString(),17,true},error))throw std::runtime_error("MeshCollider picker rejected a Mesh subasset: "+error);
+            Check(mesh->GetShape().Mesh.LocalID==17,"MeshCollider resource binding did not reach Runtime");
+            library.Asset.Type=eAssetType::PhysicsMaterial;Check(!field->AssignAssetSelection({assets.Meta._Guid.GetGuidString(),17,true},error),"MeshCollider accepted a physical material as geometry");
+            if(!convex->isChecked())convex->click();trigger->click();
+            Check(mesh->GetShape().Convex&&mesh->GetColliderSettings().IsTrigger,"Convex mesh trigger editing failed");
+            convex->click();Check(!mesh->GetShape().Convex&&!mesh->GetColliderSettings().IsTrigger&&!trigger->isEnabled(),"Turning off Convex must clear and disable Trigger atomically");
+            Check(scenes.Reverts.back()(*object,error)&&mesh->GetShape().Convex&&mesh->GetColliderSettings().IsTrigger,"MeshCollider undo did not restore convex trigger together");
             context.Assets=nullptr;context.Library=nullptr;
         }
         {
@@ -232,9 +281,9 @@ int main(int argc,char** argv){
             for(auto* widget:view.findChildren<QWidget*>())if(auto* candidate=dynamic_cast<ComponentInfoSection*>(widget);candidate&&candidate->GetComponentInstanceID()==second->GetComponentInstanceID())section=candidate;
             Check(section,"Second collider section absent");section->findChild<QToolButton*>("removeComponentButton")->click();
             Check(scenes.Removed==second->GetComponentInstanceID(),"Remove button did not use component instance identity");
-            AddComponentPopup popup(context,nullptr);auto* tree=popup.findChild<QTreeWidget*>("componentTree");bool colliderAvailable=false,bodyDisabled=false;
-            QTreeWidgetItemIterator items(tree);while(*items){const auto text=(*items)->text(0);if(text=="Box Collider")colliderAvailable=!(*items)->isDisabled();if(text.startsWith("Rigidbody"))bodyDisabled=(*items)->isDisabled();++items;}
-            Check(colliderAvailable&&bodyDisabled,"Add Component did not respect multiplicity");
+            AddComponentPopup popup(context,nullptr);auto* tree=popup.findChild<QTreeWidget*>("componentTree");bool colliderAvailable=false,meshAvailable=false,bodyDisabled=false;
+            QTreeWidgetItemIterator items(tree);while(*items){const auto text=(*items)->text(0);if(text=="Box Collider")colliderAvailable=!(*items)->isDisabled();if(text=="Mesh Collider")meshAvailable=!(*items)->isDisabled();if(text.startsWith("Rigidbody"))bodyDisabled=(*items)->isDisabled();++items;}
+            Check(colliderAvailable&&meshAvailable&&bodyDisabled,"Add Component did not expose repeatable mesh colliders or respect Rigidbody multiplicity");
         }
         {
             Assets assets;Authoring authoring;InspectorServices services;services.Assets=&assets;

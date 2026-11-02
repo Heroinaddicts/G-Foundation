@@ -30,42 +30,99 @@
    <property name="verticalSpacing">
     <number>4</number>
    </property>
-   <item row="0" column="0">
+   <item row="0" column="0" colspan="2">
+    <widget class="QWidget" name="colliderToolsHost">
+     <layout class="QHBoxLayout" name="colliderToolsLayout">
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>4</number>
+      </property>
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <item>
+       <widget class="QToolButton" name="editColliderButton">
+        <property name="text">
+         <string>编辑碰撞体</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>在 Scene 中拖动此碰撞体的手柄。只修改碰撞体，不改变物体的 Transform；Esc 取消本次拖动。</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QToolButton" name="fitColliderButton">
+        <property name="text">
+         <string>重新拟合</string>
+        </property>
+        <property name="toolTip">
+         <string>根据同一对象的模型局部包围盒重新计算碰撞形状，不包含子节点；此操作可以撤销。</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="colliderToolsSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>8</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="0">
     <widget class="QLabel" name="label0">
      <property name="text">
       <string>状态</string>
      </property>
     </widget>
    </item>
-   <item row="0" column="1">
+   <item row="1" column="1">
     <widget class="QCheckBox" name="enabledCheck">
      <property name="text">
       <string>启用碰撞器</string>
      </property>
     </widget>
    </item>
-   <item row="1" column="0">
+   <item row="3" column="0">
     <widget class="QLabel" name="label1">
      <property name="text">
       <string>触发器</string>
      </property>
     </widget>
    </item>
-   <item row="1" column="1">
+   <item row="3" column="1">
     <widget class="QCheckBox" name="triggerCheck">
      <property name="text">
       <string>只检测重叠，不产生阻挡</string>
      </property>
     </widget>
    </item>
-   <item row="2" column="0">
+   <item row="4" column="0">
     <widget class="QLabel" name="label2">
      <property name="text">
       <string>中心（米）</string>
      </property>
     </widget>
    </item>
-   <item row="2" column="1">
+   <item row="4" column="1">
     <widget class="QWidget" name="centerHost">
      <layout class="QHBoxLayout" name="centerLayout">
       <property name="leftMargin">
@@ -146,14 +203,14 @@
      </layout>
     </widget>
    </item>
-   <item row="3" column="0">
+   <item row="5" column="0">
     <widget class="QLabel" name="label3">
      <property name="text">
       <string>尺寸（米）</string>
      </property>
     </widget>
    </item>
-   <item row="3" column="1">
+   <item row="5" column="1">
     <widget class="QWidget" name="sizeHost">
      <layout class="QHBoxLayout" name="sizeLayout">
       <property name="leftMargin">
@@ -234,14 +291,14 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="0">
+   <item row="6" column="0">
     <widget class="QLabel" name="label4">
      <property name="text">
       <string>半径（米）</string>
      </property>
     </widget>
    </item>
-   <item row="4" column="1">
+   <item row="6" column="1">
     <widget class="QLineEdit" name="radiusEdit">
      <property name="text">
       <string>0.5</string>
@@ -254,14 +311,14 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="0">
+   <item row="7" column="0">
     <widget class="QLabel" name="label5">
      <property name="text">
       <string>总高度（米）</string>
      </property>
     </widget>
    </item>
-   <item row="5" column="1">
+   <item row="7" column="1">
     <widget class="QLineEdit" name="heightEdit">
      <property name="text">
       <string>2</string>
@@ -274,14 +331,14 @@
      </property>
     </widget>
    </item>
-   <item row="6" column="0">
+   <item row="8" column="0">
     <widget class="QLabel" name="label6">
      <property name="text">
       <string>轴向</string>
      </property>
     </widget>
    </item>
-   <item row="6" column="1">
+   <item row="8" column="1">
     <widget class="QComboBox" name="axisCombo">
      <item>
       <property name="text">
@@ -300,15 +357,52 @@
      </item>
     </widget>
    </item>
-   <item row="7" column="0">
+   <item row="9" column="0">
     <widget class="QLabel" name="label7">
      <property name="text">
       <string>物理材质</string>
      </property>
     </widget>
    </item>
-   <item row="7" column="1">
+   <item row="9" column="1">
     <widget class="ResourceField" name="materialField" />
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="convexLabel">
+     <property name="text">
+      <string>凸包</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QCheckBox" name="convexCheck">
+     <property name="text">
+      <string>Convex</string>
+     </property>
+     <property name="toolTip">
+      <string>将网格顶点生成凸包；动态刚体与网格触发器需要启用。凹陷会被填平。</string>
+     </property>
+    </widget>
+   </item>
+   <item row="10" column="0">
+    <widget class="QLabel" name="meshLabel">
+     <property name="text">
+      <string>碰撞网格</string>
+     </property>
+    </widget>
+   </item>
+   <item row="10" column="1">
+    <widget class="ResourceField" name="meshField" />
+   </item>
+   <item row="11" column="0" colspan="2">
+    <widget class="QLabel" name="meshHintLabel">
+     <property name="text">
+      <string>非凸网格支持静态或 Kinematic 刚体；Dynamic 刚体和触发器需要 Convex。使用网格原始形状，不随蒙皮动画变形。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>

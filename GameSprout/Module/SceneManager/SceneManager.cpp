@@ -39,6 +39,7 @@ GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
 void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash,Json::Value annotations) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
     _TransformEdit={};
+    _PropertyPreview=false;
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
@@ -63,6 +64,7 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Listeners.clear();
     if(_TransformEdit.Active){std::string error;CancelTransformEdit(error);}
     _TransformEdit={};
+    _PropertyPreview=false;
     if(_RuntimeSubscribed && Runtime()) Runtime()->UnregisterListener(this);
     _RuntimeSubscribed=false;
     delete _PlaySession;_PlaySession=nullptr;

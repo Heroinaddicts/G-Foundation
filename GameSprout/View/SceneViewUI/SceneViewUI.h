@@ -33,11 +33,18 @@ public:
     bool FocusSelection() override;
     bool IsRenderingAvailable() const override;
     std::string GetRenderError() const override;
+    bool RegisterSceneTool(const void*,ISceneTool*) override;
+    bool ActivateSceneTool(ISceneTool*) override;
+    void DeactivateSceneTool(ISceneTool*) override;
+    ISceneTool* GetActiveSceneTool() const override;
+    void UnregisterSceneTools(const void*) override;
 
 private:
     IPlayMode* _PlayMode=nullptr;
     bool _PlaySubscribed=false;
     bool _CanEdit=true;
+    bool _ToolPlayStateKnown=false;
+    EditorPlayState _ToolPlayState=EditorPlayState::Edit;
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;

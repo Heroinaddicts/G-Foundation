@@ -31,6 +31,9 @@ public:
     void SetSpace(SceneGizmoSpace space);
     void SetPivot(SceneGizmoPivot pivot);
     void SetSnap(bool enabled,float move,float rotation,float scale);
+    void SetShowAllColliders(bool enabled) {_ShowAllColliders=enabled;}
+    bool ShowAllColliders() const {return _ShowAllColliders;}
+    void SetExternalToolActive(bool value) {_ExternalToolActive=value;_Ready=false;}
     std::function<void(SceneEditingTool)> ToolChanged;
 private:
     bool View(SceneGizmoView& view) const;
@@ -51,4 +54,6 @@ private:
     GameSproutRuntime::Vector2 _HoverPixel;
     bool _HasHover=false;
     bool _Ready=false,_Snap=false,_ReadOnly=false;
+    bool _ShowAllColliders=false;
+    bool _ExternalToolActive=false;
 };

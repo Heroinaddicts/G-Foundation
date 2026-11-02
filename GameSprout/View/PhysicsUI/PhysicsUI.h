@@ -2,10 +2,14 @@
 #include "Header.h"
 #include "InspectorPanel.h"
 #include <QPointer>
+#include <vector>
 class IInspectorUI;
 class IProjectAssetsUI;
 class IPhysicsAuthoring;
 class IAssetsManager;
+class ISceneViewUI;
+class ColliderSceneTool;
+class ColliderComponentEditor;
 class QMenu;
 class QDialog;
 class QObject;
@@ -32,6 +36,10 @@ private:
     IProjectAssetsUI* _ProjectAssets=nullptr;
     IPhysicsAuthoring* _Authoring=nullptr;
     IAssetsManager* _Assets=nullptr;
+    ISceneViewUI* _SceneView=nullptr;
+    GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
+    ColliderSceneTool* _ColliderTool=nullptr;
+    std::vector<QPointer<ColliderComponentEditor>> _ColliderEditors;
     QMenu* _Actions=nullptr;
     Ui::PhysicsActionsForm* _Ui=nullptr;
     QObject* _Dispatch=nullptr;

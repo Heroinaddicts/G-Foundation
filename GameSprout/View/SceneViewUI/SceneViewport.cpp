@@ -1,5 +1,6 @@
 #include "SceneViewport.h"
 #include "SceneViewportEditing.h"
+#include "SceneToolRouter.h"
 #include <QGuiApplication>
 #include <QPlatformSurfaceEvent>
 #include <QWindow>
@@ -9,6 +10,7 @@
 bool SceneViewport::IsHeadless(){const QString name=QGuiApplication::platformName();return name=="offscreen"||name.startsWith("minimal");}
 SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
     _Editing=new SceneViewportEditing(*this);
+    _Tools=new SceneToolRouter(*this);
     if(!IsHeadless()) {
         setAttribute(Qt::WA_NativeWindow);
         setAttribute(Qt::WA_DontCreateNativeAncestors);
@@ -16,8 +18,8 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
         setAttribute(Qt::WA_NoSystemBackground);
     }
 }
-SceneViewport::~SceneViewport(){Shutdown();delete _Editing;_Editing=nullptr;}
-void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection){_Editing->Bind(scenes,selection);}
+SceneViewport::~SceneViewport(){Shutdown();delete _Tools;_Tools=nullptr;delete _Editing;_Editing=nullptr;}
+void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection){_Editing->Bind(scenes,selection);_Tools->Bind(scenes,selection);}
 QPaintEngine* SceneViewport::paintEngine() const{return IsHeadless()?QWidget::paintEngine():nullptr;}
 void SceneViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
     Shutdown();_Runtime=runtime;_Initialized=true;_Resources=resources;
@@ -48,6 +50,7 @@ void SceneViewport::DestroyGpu() {
     delete renderer;
 }
 void SceneViewport::Shutdown() {
+    _Tools->Shutdown();
     _Editing->Unbind();
     ClearInput();DestroyGpu();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
@@ -143,6 +146,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     GameSproutRuntime::DebugDrawList debug;
     _Editing->UpdateFrame(scene,&view.Camera);
     if(!_ViewportChanged)_Editing->BuildDraw(scene,debug);
+    if(!_ViewportChanged)_Tools->Draw(scene,debug);
     view.DebugDraw=&debug;
     // Runtime Renderer 从 SurfaceFrame 实际像素尺寸算投影，包含 resize / Retina DPI。
     if(!_Renderer->Render(view)){SetStatus(_Renderer->GetLastError(),true);return;}
@@ -153,6 +157,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
         const std::string diagnostic=_Renderer->GetLastError();
         if(!diagnostic.empty())message+=" · "+diagnostic;
         if(!_EditingError.empty())message+=" · "+_EditingError;
+        if(!_ColliderDebugError.empty())message+=" · "+_ColliderDebugError;
         SetStatus(message,!diagnostic.empty());
     }
 }

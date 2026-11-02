@@ -84,7 +84,7 @@ bool SceneManager::BeginDocumentSession(const SceneDocumentSessionRequest& reque
 }
 bool SceneManager::EndDocumentSession(std::string& error) {
     error.clear();if(!_DocumentSession)return true;
-    if(_EditingSuspended||!Runtime()||Runtime()->IsExecuting()||(_Host&&_Host->IsFrameActive())||_Switching||_ExecutingEdit||_Notifying||_TransformEdit.Active) {
+    if(_EditingSuspended||!Runtime()||Runtime()->IsExecuting()||(_Host&&_Host->IsFrameActive())||_Switching||_ExecutingEdit||_Notifying||_TransformEdit.Active||_PropertyPreview) {
         error="请先结束当前回调或编辑操作，再关闭临时文档。";return false;
     }
     auto* main=GetMainScene();if(!main){error="挂起的主场景已失效。";return false;}

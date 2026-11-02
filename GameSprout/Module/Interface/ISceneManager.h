@@ -136,6 +136,13 @@ public:
     virtual bool CommitTransformEdit(std::string& error) {error="没有连续变换编辑。";return false;}
     virtual bool CancelTransformEdit(std::string& error) {error.clear();return true;}
     virtual bool HasTransformEdit() const {return false;}
+    // Generic document reservation for a property service's continuous preview.
+    // No feature values or callbacks are retained by the scene service.
+    virtual bool BeginPropertyPreview(std::string& error) {error="当前场景不支持属性预览。";return false;}
+    virtual void EndPropertyPreview() {}
+    virtual void PublishPropertyPreview() {}
+    virtual bool ValidatePropertyPreview(std::string& error) const {error="当前场景不支持属性预览校验。";return false;}
+    virtual bool HasPropertyPreview() const {return false;}
     virtual bool Undo(std::string& error) = 0;
     virtual bool Redo(std::string& error) = 0;
     virtual bool CanUndo() const = 0;

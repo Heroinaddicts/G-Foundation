@@ -47,6 +47,11 @@ public:
     bool CommitTransformEdit(std::string& error) override;
     bool CancelTransformEdit(std::string& error) override;
     bool HasTransformEdit() const override {return _TransformEdit.Active;}
+    bool BeginPropertyPreview(std::string&) override;
+    void EndPropertyPreview() override;
+    void PublishPropertyPreview() override;
+    bool ValidatePropertyPreview(std::string&) const override;
+    bool HasPropertyPreview() const override {return _PropertyPreview;}
     bool SetObjectLayer(uint64_t,std::uint8_t,bool,std::string&) override;
     bool SetObjectStaticFlags(uint64_t,GameSproutRuntime::StaticFlags,GameSproutRuntime::StaticFlags,bool,std::string&) override;
     std::vector<std::uint64_t> GetReferencedTagIDs() const override;
@@ -150,6 +155,7 @@ private:
     bool _NotifyAgain = false;
     bool _StateNotifyAgain = false;
     bool _ExecutingEdit = false;
+    bool _PropertyPreview = false;
     bool _StatePending = false;
     mutable bool _Unsaved = true;
     mutable SceneDocument::ObjectIDs _ObjectIDs;

@@ -84,7 +84,7 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
     error.clear();
     if(IsDocumentSessionActive()){error="请先关闭当前临时文档，再打开场景。";return false;}
     if(IsPlaySessionActive()){error="请先停止运行，再打开其他编辑场景。";return false;}
-    if(!Runtime() || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
+    if(!Runtime() || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active || _PropertyPreview) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
     if(Runtime()->IsExecuting()) {error="Runtime 正在执行更新、渲染、遍历或事件回调，不能同步加载场景。";return false;}
     QString source;
     if(!Resolve(_Project,path,false,source,error)) return false;

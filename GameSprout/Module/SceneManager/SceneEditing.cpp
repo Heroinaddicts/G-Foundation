@@ -17,6 +17,7 @@ bool SceneManager::Ready(std::string& error) const {
     if (IsPlaySessionActive()) {error="运行期间不能修改或保存编辑场景，请先停止运行。";return false;}
     if (!Runtime() || !GetActiveScene()) {error="当前没有可操作的场景。";return false;}
     if (_TransformEdit.Active) {error="请先完成或取消 Scene 中的变换拖拽。";return false;}
+    if (_PropertyPreview) {error="请先完成或取消连续属性编辑。";return false;}
     if (_Switching || _ExecutingEdit || _Notifying || Runtime()->IsExecuting()) {
         error="场景或 Runtime 正在执行其他操作，不能重入编辑、撤销或保存。";return false;
     }

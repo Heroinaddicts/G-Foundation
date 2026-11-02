@@ -33,6 +33,15 @@ public:
     virtual bool EditObject(const ObjectEditTarget&, const std::string& label,
         const ISceneManager::fSceneEditOperation& apply,
         const ISceneManager::fSceneEditOperation& revert, std::string& error) = 0;
+    // A preview owns the target until commit/cancel. Values are supplied by the
+    // feature module; this service owns safe points, notifications and history.
+    virtual bool BeginContinuousEdit(const ObjectEditTarget&,const std::string&,
+        const ISceneManager::fSceneEditOperation&,std::string& error) {error="属性服务不支持连续编辑。";return false;}
+    virtual bool PreviewContinuousEdit(const ISceneManager::fSceneEditOperation&,
+        const ISceneManager::fSceneEditOperation&,std::string& error) {error="没有连续属性编辑。";return false;}
+    virtual bool CommitContinuousEdit(const ISceneManager::fSceneEditOperation&,std::string& error) {error="没有连续属性编辑。";return false;}
+    virtual bool CancelContinuousEdit(std::string& error) {error.clear();return true;}
+    virtual bool HasContinuousEdit() const {return false;}
     virtual bool SetLayer(const ObjectEditTarget&, std::uint8_t layer,
         bool includeChildren, std::string& error) = 0;
     // Owner thread, synchronous completion; listener callbacks cannot reenter edits.

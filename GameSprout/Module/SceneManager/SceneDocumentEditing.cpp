@@ -95,7 +95,7 @@ std::string SceneManager::GetSceneAnnotationsJson() const {return AssetArtifactI
 bool SceneManager::CaptureObjectDocument(uint64_t objectID,SceneSubtreeDocument& output,std::string& error) const {
     error.clear();auto* object=Runtime()?Runtime()->QueryGameObject(objectID):nullptr;
     if(!object||object==GetActiveScene()||object->GetScene()!=GetActiveScene()) {error="子树文档需要当前场景中的普通节点。";return false;}
-    if(IsPlaySessionActive()||_ExecutingEdit) {error="场景事务或运行期间不能捕获作者子树文档。";return false;}
+    if(IsPlaySessionActive()||_ExecutingEdit||_PropertyPreview) {error="场景事务、属性预览或运行期间不能捕获作者子树文档。";return false;}
     Json::Value document;std::string text;if(!Capture(document,text,error))return false;
     const auto subtree=Subtree(document,_ObjectIDs.RuntimeToFile.at(objectID));
     SceneSubtreeDocument result;FillResult(subtree,{},_ObjectIDs,result);output=std::move(result);return true;

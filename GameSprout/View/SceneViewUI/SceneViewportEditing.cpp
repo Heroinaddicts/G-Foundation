@@ -1,5 +1,6 @@
 #include "SceneViewportEditing.h"
 #include "SceneViewport.h"
+#include "SceneToolRouter.h"
 #include <algorithm>
 
 namespace {
@@ -73,7 +74,7 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
         return;
     }
     _Ready=false;
-    if(_ReadOnly||!object||_Tool==SceneEditingTool::View||!_Viewport.Renderer())return;
+    if(_ReadOnly||_ExternalToolActive||!object||_Tool==SceneEditingTool::View||!_Viewport.Renderer())return;
     SceneGizmoView view;if(!View(view))return;
     // 绘制共享本帧RenderCamera，输入仍用最近成功呈现帧的相机。
     if(drawCamera)view.Camera=*drawCamera;
@@ -90,8 +91,16 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
 }
 void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSproutRuntime::DebugDrawList& draw) {
     auto* object=Selected();auto* renderer=_Viewport.Renderer();
+    _Viewport.SetColliderDebugError("");
     if(object&&renderer)renderer->AppendSelectionOutline(scene,object->GetInstanceID(),draw);
-    if(!_ReadOnly&&_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
+    if(renderer&&scene&&(_ShowAllColliders||object)) {
+        GameSproutRuntime::ColliderDebugOptions options;
+        options.SelectedObjectID=object?object->GetInstanceID():0;
+        options.DrawAll=_ShowAllColliders;
+        renderer->AppendColliderWireframes(scene,options,draw);
+        _Viewport.SetColliderDebugError(renderer->GetLastError());
+    }
+    if(!_ExternalToolActive&&!_ReadOnly&&_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
 }
 bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
     if(!_Scenes || !_Selection || !_Viewport.Renderer())return false;
@@ -174,6 +183,7 @@ bool SceneViewportEditing::DeleteSelection() {
     return true;
 }
 void SceneViewportEditing::SetTool(SceneEditingTool tool) {
+    _Viewport.Tools().Deactivate();
     Cancel();_Viewport.ClearEditingError();_Tool=tool;
     if(tool!=SceneEditingTool::View)_Settings.Tool=tool==SceneEditingTool::Move?SceneGizmoTool::Move:tool==SceneEditingTool::Rotate?SceneGizmoTool::Rotate:SceneGizmoTool::Scale;
     if(ToolChanged)ToolChanged(tool);
