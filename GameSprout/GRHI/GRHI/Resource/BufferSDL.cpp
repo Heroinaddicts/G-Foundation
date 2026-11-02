@@ -5,12 +5,13 @@
 
 namespace GRHI {
 BufferSDL::BufferSDL(DeviceSDL* owner,uint64_t id,SDL_GPUBuffer* native,const BufferDesc& desc,std::vector<uint8_t> indices)
-    : IBuffer(id),Owner(owner),Native(native),Desc(desc),IndexBytes(std::move(indices)) {
+    : IBuffer(id),Owner(owner),Native(native),Desc(desc),IndexBytes(std::move(indices)),_IndexRanges(IndexBytes) {
     Owner->RegisterResource(static_cast<IBuffer*>(this),this,id,ResourceKindSDL::Buffer);
 }
 BufferSDL::~BufferSDL() { Release(); }
 void BufferSDL::Release() {
     Owner->RemoveResource(static_cast<IBuffer*>(this));
+    _IndexRanges.Clear();
     if(Native) { SDL_ReleaseGPUBuffer(Owner->Native(),Native);Native=nullptr; }
 }
 IBuffer* DeviceSDL::CreateBuffer(const BufferDesc& desc,const BufferInitialData* initial) {

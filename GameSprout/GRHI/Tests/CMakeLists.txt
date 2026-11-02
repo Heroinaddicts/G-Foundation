@@ -3,3 +3,18 @@ target_link_libraries(GRHI3DChecks PRIVATE GRHI::GRHIApi)
 add_dependencies(GRHI3DChecks GRHI)
 add_test(NAME GRHI.Real3DAndValidation COMMAND GRHI3DChecks "$<TARGET_FILE_DIR:GRHI>")
 set_tests_properties(GRHI.Real3DAndValidation PROPERTIES SKIP_RETURN_CODE 77)
+
+find_package(Threads REQUIRED)
+add_executable(GRHIIndexRangeChecks GRHIIndexRangeChecks.cpp)
+target_link_libraries(GRHIIndexRangeChecks PRIVATE GRHI::GRHIApi Threads::Threads)
+add_test(NAME GRHI.ImmutableIndexRanges COMMAND GRHIIndexRangeChecks)
+
+add_executable(GRHIReplayStateChecks GRHIReplayStateChecks.cpp)
+target_include_directories(GRHIReplayStateChecks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../GRHI")
+target_link_libraries(GRHIReplayStateChecks PRIVATE GRHI::GRHIApi SDL3::SDL3-shared)
+add_test(NAME GRHI.ReplayStateReuse COMMAND GRHIReplayStateChecks)
+
+add_executable(GRHIBackendChecks GRHIBackendChecks.cpp)
+target_link_libraries(GRHIBackendChecks PRIVATE GRHI::GRHIApi SDL3::SDL3-shared)
+add_dependencies(GRHIBackendChecks GRHI)
+add_test(NAME GRHI.PlatformBackendPolicy COMMAND GRHIBackendChecks "$<TARGET_FILE_DIR:GRHI>")

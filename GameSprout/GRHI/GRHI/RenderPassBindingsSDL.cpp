@@ -63,7 +63,8 @@ void RenderPassSDL::Uniform(bool vertex,uint32_t slot,const void* data,size_t si
         Command->Fail("Invalid uniform slot, pointer or std140 byte size (16-byte multiple, at most 16 KiB).");return;
     }
     auto& bytes=vertex?State.VertexUniforms[slot]:State.FragmentUniforms[slot];
-    bytes.resize(size);std::memcpy(bytes.data(),data,size);
+    if(bytes && bytes->size()==size && std::memcmp(bytes->data(),data,size)==0)return;
+    bytes=Uniforms.Store(data,size);
 }
 void RenderPassSDL::SetVertexUniform(uint32_t slot,const void* data,size_t size) {Uniform(true,slot,data,size);}
 void RenderPassSDL::SetFragmentUniform(uint32_t slot,const void* data,size_t size) {Uniform(false,slot,data,size);}

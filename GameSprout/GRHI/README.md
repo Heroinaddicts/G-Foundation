@@ -2,8 +2,9 @@
 
 GRHI 使用 SDL3 GPU 实现设备层。公共头文件不依赖 SDL，`DeviceSDL` 私有持有
 `SDL_GPUDevice`。公共接口只选择物理显卡：`CreateDevice()` 使用默认显卡，
-`CreateDevice(adapterId)` 指定显卡。图形后端由 SDL 按平台、驱动和支持的
-Shader 格式自动选择，调用方不指定后端。
+`CreateDevice(adapterId)` 指定显卡。图形后端由 GRHI 按平台固定：macOS/iOS 使用
+Metal，Windows 使用 Direct3D 12，Android/Linux 使用 Vulkan。实际绘制仍统一
+通过 SDL3 GPU，调用方不指定后端。
 
 ## 构建与验证
 
@@ -48,10 +49,9 @@ API 为主线程使用的单例。重复获取共享同一个实例，由一个�
 
 ## 当前范围
 
-- GRHI 不设置 SDL 的后端名称属性，由 SDL 自动选择，实际可用性取决于 SDL
-  构建、平台、驱动和 GRHI 声明支持的 Shader 格式。公共接口不暴露后端选择枚举。
-- GRHI 在 macOS 上只允许 Metal。非 Metal 的 `SDL_GPU_DRIVER` hint 在调用 SDL
-  创建设备之前直接拒绝，包括显式选卡的情况；不加载 Vulkan 或 MoltenVK 来创建设备。
+- GRHI 向 SDL 明确指定该平台允许的后端；公共接口不暴露后端选择枚举。
+  不允许的 `SDL_GPU_DRIVER` hint 在创建设备前直接拒绝，包括显式选卡的情况。
+  所需后端不可用时创建失败，不跨后端回退。macOS/iOS 不加载 Vulkan 或 MoltenVK。
 - `Initialize()` 通过本地 SDL 的 `SDL_GetGPUAdapters()` 枚举物理显卡并填充列表，
   不接收或遍历图形后端，不创建逻辑设备。公共 ID 为 `std::string`，直接保存 SDL 的不透明标识；空字符串
   表示默认选择，非空字符串按完整内容精确查找，创建后再次核对实际使用的显卡。
@@ -108,17 +108,23 @@ Windows 的 DX12/Vulkan 均在 SDL 内按物理标识选卡，GRHI 统一使用 
 
 - `CreateBuffer` 返回 immutable 顶点/索引数据；`Vertex | Index` 允许一次上传预处理
   Mesh 的整块 bytes，再以不同字节 offset 绑定顶点和索引。未提供的数据初始化为零。
-- Pipeline 声明 binding/stride 和 Float2/3/4 attribute location。当前是 per-vertex 输入，
+- Pipeline 声明 binding/stride、`VertexInputRate::Vertex/Instance` 和 Float2/3/4 attribute location。
+  Instance 输入每实例前进一条记录，`firstInstance` 选择起始记录，与 Mesh 顶点索引独立校验。
   binding/location 小于 16，stride 为 4 的倍数且不超过 2048；索引支持 UInt16/UInt32。
 - `ShaderCode::UniformBufferCount` 每阶段最多 4。SetVertexUniform/SetFragmentUniform
   在调用期间复制 std140 数据：长度为 16 字节倍数、每槽最多 16 KiB。切 Pipeline 后
   重新绑定所需输入、uniform、纹理和采样器；Shader 元数据必须与编译产物一致。
 - 深度纹理使用 `D32_Float + DepthStencilTarget`，通过独立 DepthTargetView 交给 Pass；
   默认清为 1。Pipeline 的 DepthFormat 必须与 Pass 匹配，DepthTest/Write/Compare 独立设置。
-  当前不包含 stencil、MSAA、storage、可变 Buffer 写入、instance-rate 顶点布局或计算管线。
+  当前不包含 stencil、MSAA、storage、可变 Buffer 写入或计算管线。
 - 命令先记录 CPU 描述，Submit 统一检查资源身份、目标、绑定和索引/顶点范围后编码 SDL。
   Release/delete 后失效的资源不会进入绘制；失败的离屏命令取消。SDL 不允许取消已取得
   的窗口帧，因此此情况仅提交空的获取命令以释放帧，不编码无效绘制。
+- 每个 RenderPass 拥有不可变 Uniform 字节池，相同字节共享快照；调用期间仍立即复制，
+  调用方修改临时变量不会影响已经录制的 Draw。快照不跨 Pass/Command 保留。
+- SDL 回放在 Pass 内跳过完全相同的 Pipeline、Viewport、顶点/索引 Buffer、纹理/采样器和
+  Uniform 绑定；Pipeline 改变时保守地失效 Shader/几何绑定。它减少 CPU 设置成本，
+  不改变 Draw 数量、不替 Runtime 做实例分组，也不绕过每次 Draw 的有效性校验。
 - Device 必须晚于所有子资源/Surface 销毁。资源至少存活到引用命令提交或取消；接口不接管
   调用方对象。GPU 可能继续执行，原生资源的延后释放由 SDL 处理。
 - `ReadTexture` 是显式同步验证入口：提交/取消本设备全部命令后读取普通颜色纹理，返回
@@ -129,6 +135,9 @@ Windows 的 DX12/Vulkan 均在 SDL 内按物理标识选卡，GRHI 统一使用 
 非索引绘制、矩阵/片元 uniform、深度遮挡、旧图片纹理采样流程及颜色读回；也验证错设备、
 失效资源、越界范围、缺少绑定和非法命令状态被拒绝且不会修改目标。测试 Shader 当前提供
 Metal 源码，非 Apple 平台将明确跳过 GPU fixture，不能视为已经完成 Vulkan/DX 的真机验收。
+另覆盖真实 indexed/nonindexed 双实例、非零 firstInstance、实例 byte offset、实例越界拒绝，
+以及 Uniform 快照在 Pipeline 切换时的正确绘制；`GRHI.ReplayStateReuse` 检查 1000 次相同
+Draw 的绑定去重及 Pipeline/Pass 边界失效。
 
 Editor 的真实 Qt/NSView 集成另已验证：Scene 子窗由 880×536 变为 1060×656、DPR=2 时，
 SurfaceFrame 由 1760×1072 更新为 2120×1312；同时通过真实三角形绘制与宿主提前销毁验证。

@@ -190,7 +190,14 @@ namespace GRHI {
 
     // UInt32x4 保留整数输入语义，可用于任意四分量索引数据。
     enum class VertexFormat : uint8_t { Float2, Float3, Float4, UInt32x4 };
-    struct VertexBindingDesc { uint32_t Binding = 0; uint32_t Stride = 0; };
+    // Instance advances once per instance, independently of mesh vertex indices.
+    // firstInstance selects the first record in an Instance-rate binding.
+    enum class VertexInputRate : uint8_t { Vertex, Instance };
+    struct VertexBindingDesc {
+        uint32_t Binding = 0;
+        uint32_t Stride = 0;
+        VertexInputRate Rate = VertexInputRate::Vertex;
+    };
     struct VertexAttributeDesc { uint32_t Location = 0; uint32_t Binding = 0; VertexFormat Format = VertexFormat::Float3; uint32_t Offset = 0; };
     enum class IndexFormat : uint8_t { UInt16, UInt32 };
     enum class CompareOp : uint8_t { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always };

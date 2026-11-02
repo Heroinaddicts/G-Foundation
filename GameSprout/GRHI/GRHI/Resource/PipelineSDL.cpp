@@ -54,11 +54,13 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
     std::set<uint32_t> locations;
     for(size_t index=0;index<desc.VertexBindingCount;++index) {
         const auto& binding=desc.VertexBindings[index];
-        if(binding.Binding>=16 || !binding.Stride || binding.Stride%4 || binding.Stride>2048 || strides[binding.Binding]) {
+        if(binding.Binding>=16 || !binding.Stride || binding.Stride%4 || binding.Stride>2048 || strides[binding.Binding] ||
+           static_cast<unsigned>(binding.Rate)>static_cast<unsigned>(VertexInputRate::Instance)) {
             Fail("Invalid, duplicate or oversized vertex binding.");return nullptr;
         }
         strides[binding.Binding]=binding.Stride;
-        buffers.push_back({binding.Binding,binding.Stride,SDL_GPU_VERTEXINPUTRATE_VERTEX,0});
+        buffers.push_back({binding.Binding,binding.Stride,binding.Rate==VertexInputRate::Instance?
+            SDL_GPU_VERTEXINPUTRATE_INSTANCE:SDL_GPU_VERTEXINPUTRATE_VERTEX,0});
     }
     const SDL_GPUVertexElementFormat formats[]={SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
         SDL_GPU_VERTEXELEMENTFORMAT_UINT4};

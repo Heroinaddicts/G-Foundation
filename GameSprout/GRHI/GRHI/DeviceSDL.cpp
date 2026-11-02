@@ -9,22 +9,23 @@ namespace GRHI {
         error.clear();
         SDL_GPUDevice * device = nullptr;
         SDL_GPUShaderFormat formats = SDL_GPU_SHADERFORMAT_INVALID;
-#ifdef SDL_PLATFORM_MACOS
+#if defined(SDL_PLATFORM_MACOS) || defined(SDL_PLATFORM_IOS)
+        constexpr const char* requiredDriver = "metal";
         formats = SDL_GPU_SHADERFORMAT_MSL | SDL_GPU_SHADERFORMAT_METALLIB;
 #elif defined(SDL_PLATFORM_WINDOWS)
-        formats = SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_SPIRV;
+        constexpr const char* requiredDriver = "direct3d12";
+        formats = SDL_GPU_SHADERFORMAT_DXBC | SDL_GPU_SHADERFORMAT_DXIL;
 #else
+        constexpr const char* requiredDriver = "vulkan";
         formats = SDL_GPU_SHADERFORMAT_SPIRV;
 #endif
 
-#ifdef SDL_PLATFORM_MACOS
         // Reject an SDL override before it can create a disallowed backend.
         const char * overrideDriver = SDL_GetHint(SDL_HINT_GPU_DRIVER);
-        if (overrideDriver && SDL_strcasecmp(overrideDriver, "metal") != 0) {
-            error = "GRHI supports only Metal on macOS; SDL_GPU_DRIVER requests an unsupported backend.";
+        if (overrideDriver && *overrideDriver && SDL_strcasecmp(overrideDriver, requiredDriver) != 0) {
+            error = std::string("GRHI requires the ") + requiredDriver + " backend on this platform; SDL_GPU_DRIVER requests another backend.";
             return nullptr;
         }
-#endif
 
 #ifdef GRHI_GPU_DEBUG
         constexpr bool debugMode = true;
@@ -38,8 +39,9 @@ namespace GRHI {
         }
 
         try {
-            // Omit the driver name: SDL selects a compatible backend.
+            // SDL implements rendering; the host platform fixes the allowed backend.
             const bool configured =
+                SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, requiredDriver) &&
                 SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugMode) &&
                 SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, (formats & SDL_GPU_SHADERFORMAT_MSL) != 0) &&
                 SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_METALLIB_BOOLEAN, (formats & SDL_GPU_SHADERFORMAT_METALLIB) != 0) &&
@@ -59,14 +61,12 @@ namespace GRHI {
                 return nullptr;
             }
 
-#ifdef SDL_PLATFORM_MACOS
             const char * actualDriver = SDL_GetGPUDeviceDriver(device);
-            if (!actualDriver || SDL_strcasecmp(actualDriver, "metal") != 0) {
-                error = "GRHI supports only Metal on macOS.";
+            if (!actualDriver || SDL_strcasecmp(actualDriver, requiredDriver) != 0) {
+                error = std::string("SDL did not create the required ") + requiredDriver + " backend.";
                 SDL_DestroyGPUDevice(device);
                 return nullptr;
             }
-#endif
             if (!adapterIdentifier.empty()) {
                 const char * actualAdapter = SDL_GetStringProperty(
                     SDL_GetGPUDeviceProperties(device), SDL_PROP_GPU_DEVICE_ADAPTER_STRING, "");

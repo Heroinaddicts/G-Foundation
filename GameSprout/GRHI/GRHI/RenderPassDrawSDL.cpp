@@ -3,8 +3,6 @@
 #include "Resource/BufferSDL.h"
 #include "Resource/TextureSDL.h"
 #include "Resource/SamplerSDL.h"
-#include <cstring>
-#include <algorithm>
 
 namespace GRHI {
 bool RenderPassSDL::ValidateDraw(const DrawRecordSDL& draw) {
@@ -18,9 +16,9 @@ bool RenderPassSDL::ValidateDraw(const DrawRecordSDL& draw) {
            !owner->IsResourceLive(draw.Samplers[slot].Pointer,draw.Samplers[slot].ID))return Command->Fail("Draw texture or sampler is missing or was released.");
     }
     for(uint32_t slot=0;slot<pipeline->VertexUniformCount;++slot)
-        if(draw.VertexUniforms[slot].empty())return Command->Fail("Draw is missing a vertex uniform binding.");
+        if(!draw.VertexUniforms[slot] || draw.VertexUniforms[slot]->empty())return Command->Fail("Draw is missing a vertex uniform binding.");
     for(uint32_t slot=0;slot<pipeline->FragmentUniformCount;++slot)
-        if(draw.FragmentUniforms[slot].empty())return Command->Fail("Draw is missing a fragment uniform binding.");
+        if(!draw.FragmentUniforms[slot] || draw.FragmentUniforms[slot]->empty())return Command->Fail("Draw is missing a fragment uniform binding.");
     uint64_t maximum=uint64_t(draw.First)+draw.Count-1;
     if(draw.Indexed) {
         auto* indices=owner->Resource<BufferSDL>(draw.Index.Resource.Pointer,ResourceKindSDL::Buffer);
@@ -28,23 +26,26 @@ bool RenderPassSDL::ValidateDraw(const DrawRecordSDL& draw) {
         if(!indices || indices->_Guid!=draw.Index.Resource.ID || !indices->Native ||
            draw.Index.Offset>indices->Desc.Size || (uint64_t(draw.First)+draw.Count)*unit>indices->Desc.Size-draw.Index.Offset)
             return Command->Fail("DrawIndexed index span is missing, released or out of bounds.");
-        maximum=0;
-        for(uint32_t index=0;index<draw.Count;++index) {
-            const size_t offset=draw.Index.Offset+(uint64_t(draw.First)+index)*unit;
-            uint32_t vertex=0;
-            if(unit==2){uint16_t value;std::memcpy(&value,indices->IndexBytes.data()+offset,2);vertex=value;}
-            else std::memcpy(&vertex,indices->IndexBytes.data()+offset,4);
-            const int64_t adjusted=int64_t(vertex)+draw.VertexOffset;
-            if(adjusted<0 || adjusted>UINT32_MAX)return Command->Fail("DrawIndexed vertex offset produces an invalid index.");
-            maximum=std::max(maximum,static_cast<uint64_t>(adjusted));
-        }
+        IndexRangeCacheSDL::Range range;
+        const auto byteOffset=draw.Index.Offset+uint64_t(draw.First)*unit;
+        if(!indices->GetIndexRange(byteOffset,draw.Count,draw.Indices,range))
+            return Command->Fail("DrawIndexed index format, alignment or immutable byte range is invalid.");
+        // The cached extrema do not include this draw's base vertex. Validate
+        // both ends on every record and submission, even after a cache hit.
+        const int64_t minimum=int64_t(range.Minimum)+draw.VertexOffset;
+        const int64_t adjustedMaximum=int64_t(range.Maximum)+draw.VertexOffset;
+        if(minimum<0 || adjustedMaximum>UINT32_MAX)
+            return Command->Fail("DrawIndexed vertex offset produces an invalid index.");
+        maximum=static_cast<uint64_t>(adjustedMaximum);
     }
     for(const auto& binding:pipeline->Bindings) {
         const auto& source=draw.Vertices[binding.Binding];
+        const uint64_t lastElement=binding.Rate==VertexInputRate::Instance?
+            uint64_t(draw.FirstInstance)+draw.Instances-1:maximum;
         auto* buffer=owner->Resource<BufferSDL>(source.Resource.Pointer,ResourceKindSDL::Buffer);
         if(!buffer || buffer->_Guid!=source.Resource.ID || !buffer->Native || source.Offset>buffer->Desc.Size ||
-           maximum*binding.Stride+pipeline->AttributeEnds[binding.Binding]>buffer->Desc.Size-source.Offset)
-            return Command->Fail("Draw vertex span is missing, released or out of bounds.");
+           lastElement*binding.Stride+pipeline->AttributeEnds[binding.Binding]>buffer->Desc.Size-source.Offset)
+            return Command->Fail("Draw vertex/instance span is missing, released or out of bounds.");
     }
     return true;
 }

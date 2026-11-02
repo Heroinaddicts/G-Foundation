@@ -1,5 +1,6 @@
 #pragma once
 #include "DeviceSDL.h"
+#include "UniformArenaSDL.h"
 #include <array>
 #include <vector>
 
@@ -13,7 +14,8 @@ struct DrawRecordSDL {
     BufferBindingSDL Index;
     IndexFormat Indices = IndexFormat::UInt32;
     std::array<ResourceBindingSDL,16> Textures{},Samplers{};
-    std::array<std::vector<uint8_t>,4> VertexUniforms,FragmentUniforms;
+    // Borrowed immutable bytes owned by this pass, not by a caller or a draw.
+    std::array<const std::vector<uint8_t>*,4> VertexUniforms{},FragmentUniforms{};
     Viewport View;
     bool Indexed = false;
     uint32_t Count=0,Instances=1,First=0,FirstInstance=0;
@@ -62,5 +64,6 @@ public:
     bool Ended=false;
     DrawRecordSDL State;
     std::vector<DrawRecordSDL> Draws;
+    UniformArenaSDL Uniforms;
 };
 }

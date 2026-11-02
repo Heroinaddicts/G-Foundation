@@ -33,11 +33,16 @@ static const char Shader[] = R"(
 #include <metal_stdlib>
 using namespace metal;
 struct Input { float3 position [[attribute(0)]]; float3 color [[attribute(1)]]; };
+struct InstanceInput {float3 position [[attribute(0)]];float3 color [[attribute(1)]];float2 offset [[attribute(2)]];};
 struct Output { float4 position [[position]]; float3 color; };
 struct Camera { float4x4 matrix; };
 struct Tint { float4 color; };
 vertex Output vertexMain(Input input [[stage_in]],constant Camera& camera [[buffer(0)]]) {
     Output output;output.position=camera.matrix*float4(input.position,1);output.color=input.color;return output;
+}
+vertex Output instanceMain(InstanceInput input [[stage_in]],constant Camera& camera [[buffer(0)]]) {
+    Output output;output.position=camera.matrix*float4(input.position.xy*.3+input.offset,input.position.z,1);
+    output.color=input.color;return output;
 }
 fragment float4 fragmentMain(Output input [[stage_in]],constant Tint& tint [[buffer(0)]]) {
     return float4(input.color,1)*tint.color;
@@ -62,20 +67,71 @@ static GRHI::IBuffer* Buffer(Fixture& f,const Geometry& geometry,GRHI::IDevice* 
     GRHI::BufferInitialData data{&geometry,sizeof(geometry)};
     return f.Keep((device?device:f.Device)->CreateBuffer(desc,&data),"combined buffer");
 }
-static GRHI::IGraphicsPipeline* Pipeline(Fixture& f,bool useDepth) {
-    GRHI::ShaderCode code;code.Format=GRHI::ShaderCodeFormat::MSL;code.Data=Shader;code.DataSize=sizeof(Shader);code.EntryPoint="vertexMain";code.UniformBufferCount=1;
+static GRHI::IGraphicsPipeline* Pipeline(Fixture& f,bool useDepth,bool instanced=false) {
+    GRHI::ShaderCode code;code.Format=GRHI::ShaderCodeFormat::MSL;code.Data=Shader;code.DataSize=sizeof(Shader);code.EntryPoint=instanced?"instanceMain":"vertexMain";code.UniformBufferCount=1;
     GRHI::ShaderDesc shader;shader.Codes=&code;shader.CodeCount=1;
     auto* vertex=f.Keep(f.Device->CreateShader(shader),"vertex shader");
     shader.Stage=GRHI::ShaderStage::Fragment;code.EntryPoint="fragmentMain";
     auto* fragment=f.Keep(f.Device->CreateShader(shader),"fragment shader");
-    const GRHI::VertexBindingDesc binding{0,sizeof(Vertex)};
-    const GRHI::VertexAttributeDesc attributes[]={{0,0,GRHI::VertexFormat::Float3,0},{1,0,GRHI::VertexFormat::Float3,12}};
+    const GRHI::VertexBindingDesc bindings[]={{0,sizeof(Vertex)},{1,sizeof(float)*2,GRHI::VertexInputRate::Instance}};
+    const GRHI::VertexAttributeDesc attributes[]={{0,0,GRHI::VertexFormat::Float3,0},{1,0,GRHI::VertexFormat::Float3,12},
+        {2,1,GRHI::VertexFormat::Float2,0}};
     GRHI::GraphicsPipelineDesc desc;desc.VertexShader=vertex;desc.FragmentShader=fragment;desc.ColorFormat=GRHI::TextureFormat::RGBA8_UNorm;
-    desc.VertexBindings=&binding;desc.VertexBindingCount=1;desc.VertexAttributes=attributes;desc.VertexAttributeCount=2;
+    desc.VertexBindings=bindings;desc.VertexBindingCount=instanced?2:1;desc.VertexAttributes=attributes;desc.VertexAttributeCount=instanced?3:2;
     desc.DepthFormat=GRHI::TextureFormat::D32_Float;desc.DepthTest=useDepth;desc.DepthWrite=useDepth;desc.DepthCompare=GRHI::CompareOp::Less;
     auto* pipeline=f.Keep(f.Device->CreateGraphicsPipeline(desc),"3D pipeline");
     // The pipeline owns native shader state independently from these wrappers.
     f.Destroy(fragment);f.Destroy(vertex);return pipeline;
+}
+
+static GRHI::RenderPassDesc PassDesc(GRHI::ITexture*,GRHI::ITexture*);
+static void Bind(GRHI::IRenderPass*,GRHI::IGraphicsPipeline*,GRHI::IBuffer*);
+static std::array<uint8_t,4> Pixel(const std::vector<uint8_t>&,int,int);
+static void InstanceChecks(Fixture& f) {
+    auto* color=Color(f);auto* depth=Depth(f);auto* mesh=Buffer(f,MeshData());auto* pipeline=Pipeline(f,true,true);
+    const float offsets[][2]={{0,0},{-.5f,0},{.5f,0}};
+    GRHI::BufferDesc description{sizeof(offsets),GRHI::BufferUsage::Vertex};
+    const GRHI::BufferInitialData initial{offsets,sizeof(offsets)};
+    auto* instances=f.Keep(f.Device->CreateBuffer(description,&initial),"instance offsets");
+    const auto bind=[&](Recording& recording,std::size_t offset=0) {
+        recording.Pass=recording.Command->BeginRenderPass(PassDesc(color,depth));
+        Check(recording.Pass,"Cannot begin instanced pass");Bind(recording.Pass,pipeline,mesh);
+        recording.Pass->SetVertexBuffer(1,instances,offset);
+        const std::array<float,16> identity{1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+        recording.Pass->SetVertexUniform(0,identity.data(),sizeof(identity));
+    };
+    std::vector<uint8_t> pixels;
+    const auto expect=[&](bool left,bool right) {
+        Check(f.Device->ReadTexture(color,pixels),f.Device->GetLastError());
+        const auto a=Pixel(pixels,16,32),b=Pixel(pixels,48,32),middle=Pixel(pixels,32,32);
+        Check((left?a[1]>115:a[2]>210) && (right?b[1]>115:b[2]>210) && middle[2]>210,
+            "Instance input rate, firstInstance, vertex offset or depth changed rendered positions");
+    };
+    {
+        Recording recording(f.Device);bind(recording);recording.Pass->DrawIndexed(6,2,0,0,1);
+        Check(recording.Submit(),f.Device->GetLastError());expect(true,true);
+    }
+    {
+        Recording recording(f.Device);bind(recording);recording.Pass->Draw(6,2,0,1);
+        Check(recording.Submit(),f.Device->GetLastError());expect(true,true);
+    }
+    {
+        Recording recording(f.Device);bind(recording);recording.Pass->DrawIndexed(6,1,0,0,2);
+        Check(recording.Submit(),f.Device->GetLastError());expect(false,true);
+    }
+    {
+        Recording recording(f.Device);bind(recording,sizeof(offsets[0]));recording.Pass->DrawIndexed(6,2);
+        Check(recording.Submit(),f.Device->GetLastError());expect(true,true);
+    }
+    for(unsigned invalid=0;invalid<4;++invalid) {
+        Recording recording(f.Device);bind(recording);
+        if(invalid==0)recording.Pass->DrawIndexed(6,3,0,0,1);
+        if(invalid==1)recording.Pass->Draw(6,2,0,UINT32_MAX);
+        if(invalid==2){recording.Pass->SetVertexBuffer(1,instances,sizeof(offsets[0])*2);recording.Pass->DrawIndexed(6,2);}
+        if(invalid==3){recording.Pass->SetPipeline(pipeline);recording.Pass->DrawIndexed(6,2);}
+        Check(!recording.Submit() && !f.Device->GetLastError().empty(),"Invalid instance span or missing binding reached native draw");
+    }
+    std::cout<<"PASS instance-rate vertex bindings: indexed/nonindexed draws, nonzero firstInstance and byte offsets, depth and out-of-range rejection\n";
 }
 static GRHI::RenderPassDesc PassDesc(GRHI::ITexture* color,GRHI::ITexture* depth) {
     GRHI::RenderPassDesc desc;desc.ColorTarget=color->GetColorTargetView();desc.DepthTarget=depth->GetDepthTargetView();desc.ClearColor={.05f,.1f,.9f,1};return desc;
@@ -89,6 +145,26 @@ static void Bind(GRHI::IRenderPass* pass,GRHI::IGraphicsPipeline* pipeline,GRHI:
 }
 static std::array<uint8_t,4> Pixel(const std::vector<uint8_t>& bytes,int x,int y) {
     const size_t offset=static_cast<size_t>(y*64+x)*4;return {bytes[offset],bytes[offset+1],bytes[offset+2],bytes[offset+3]};
+}
+static void ReplayChecks(Fixture& f) {
+    auto* color=Color(f);auto* depth=Depth(f);auto* mesh=Buffer(f,MeshData());
+    auto* pipeline=Pipeline(f,true);auto* otherPipeline=Pipeline(f,false);
+    Recording recording(f.Device);recording.Pass=recording.Command->BeginRenderPass(PassDesc(color,depth));
+    for(unsigned draw=0;draw<3;++draw) {
+        Bind(recording.Pass,draw==2?otherPipeline:pipeline,mesh);
+        std::array<float,16> matrix{.3f,0,0,0,0,.3f,0,0,0,0,1,0,float(draw)*.5f-.5f,0,0,1};
+        std::array<float,4> tint{1,draw==0?1.f:draw==1?.5f:.25f,1,1};
+        recording.Pass->SetVertexUniform(0,matrix.data(),sizeof(matrix));
+        recording.Pass->SetFragmentUniform(0,tint.data(),sizeof(tint));
+        recording.Pass->DrawIndexed(3);
+        matrix.fill(0);tint.fill(0);
+    }
+    Check(recording.Submit(),f.Device->GetLastError());std::vector<uint8_t> pixels;
+    Check(f.Device->ReadTexture(color,pixels),f.Device->GetLastError());
+    const auto left=Pixel(pixels,16,32),middle=Pixel(pixels,32,32),right=Pixel(pixels,48,32);
+    Check(left[1]>245 && middle[1]>120 && middle[1]<135 && right[1]>55 && right[1]<75,
+        "Uniform snapshots or replay cache lost per-draw changes across pipeline switches");
+    std::cout<<"PASS native replay: distinct per-draw transforms/material uniforms survive caller mutation and pipeline switches\n";
 }
 static void GPUChecks(Fixture& f) {
     auto* color=Color(f);auto* depth=Depth(f);auto geometry=MeshData();auto* buffer=Buffer(f,geometry);
@@ -105,6 +181,17 @@ static void GPUChecks(Fixture& f) {
     const auto green=Pixel(bytes,41,32),background=Pixel(bytes,19,44);
     Check(green[0]<10 && green[1]>115 && green[1]<140 && green[2]<10 && green[3]>245,"Indexed triangle, fragment uniform or depth occlusion failed");
     Check(background[2]>210 && background[1]<40,"Vertex matrix translation or vertex input failed");
+    // Repeated ranges hit the same immutable-buffer extrema during recording,
+    // final submission validation and later frames. Base vertex stays per draw.
+    for(unsigned frame=0;frame<3;++frame) {
+        Recording r(f.Device);r.Pass=r.Command->BeginRenderPass(PassDesc(color,depth));Bind(r.Pass,pipeline,buffer);
+        for(unsigned repeat=0;repeat<64;++repeat) {
+            r.Pass->DrawIndexed(3);
+            r.Pass->DrawIndexed(3,1,3,-3);
+        }
+        Check(r.Submit(),f.Device->GetLastError());
+    }
+    Check(f.Device->ReadTexture(color,bytes)&&Pixel(bytes,41,32)==green,"Repeated cached indexed ranges changed rendering");
     {
         Recording r(f.Device);r.Pass=r.Command->BeginRenderPass(PassDesc(color,depth));Bind(r.Pass,pipeline,buffer);r.Pass->Draw(3);
         Check(r.Submit(),f.Device->GetLastError());
@@ -123,6 +210,18 @@ static void GPUChecks(Fixture& f) {
         Check(Pixel(bytes,41,32)==green,"UInt16, firstIndex or valid negative vertexOffset failed");
     }
     {
+        auto mixed=MeshData();for(auto& index:mixed.Indices)index=65536;
+        auto* mixedFormat=Buffer(f,mixed);
+        {
+            Recording r(f.Device);r.Pass=r.Command->BeginRenderPass(PassDesc(color,depth));Bind(r.Pass,pipeline,mixedFormat);
+            r.Pass->SetIndexBuffer(mixedFormat,GRHI::IndexFormat::UInt16,offsetof(Geometry,Indices));r.Pass->DrawIndexed(3);
+            Check(r.Submit(),"Valid UInt16 interpretation could not warm the immutable index range");
+        }
+        Recording r(f.Device);r.Pass=r.Command->BeginRenderPass(PassDesc(color,depth));Bind(r.Pass,pipeline,mixedFormat);
+        r.Pass->DrawIndexed(3);
+        Check(!r.Submit(),"UInt32 reused a UInt16 range and bypassed vertex bounds validation");
+    }
+    {
         Recording r(f.Device);r.Pass=r.Command->BeginRenderPass(PassDesc(color,depth));Bind(r.Pass,noDepth,buffer);r.Pass->DrawIndexed(6);
         Check(r.Submit(),f.Device->GetLastError());
     }
@@ -133,7 +232,13 @@ static void GPUChecks(Fixture& f) {
         Bind(r.Pass,pipeline,buffer);operation(r);Check(!r.Submit(),"Invalid recording reached GPU submission");Check(!f.Device->GetLastError().empty(),"Missing validation diagnostic");
     };
     rejected([](Recording& r){r.Pass->DrawIndexed(1000);});
+    // These ranges are already cached above. Check both extrema after applying
+    // a new vertex offset; max alone would miss the first negative index.
     rejected([](Recording& r){r.Pass->DrawIndexed(3,1,0,-1);});
+    rejected([](Recording& r){r.Pass->DrawIndexed(3,1,3,-4);});
+    rejected([](Recording& r){r.Pass->DrawIndexed(3,1,3,INT32_MAX);});
+    rejected([&](Recording& r){r.Pass->SetIndexBuffer(buffer,GRHI::IndexFormat::UInt32,offsetof(Geometry,Indices)+4);r.Pass->DrawIndexed(6);});
+    rejected([&](Recording& r){r.Pass->SetIndexBuffer(buffer,static_cast<GRHI::IndexFormat>(99),offsetof(Geometry,Indices));r.Pass->DrawIndexed(3);});
     rejected([](Recording& r){std::array<float,4> value{};r.Pass->SetVertexUniform(1,value.data(),sizeof(value));});
     rejected([](Recording& r){std::array<float,3> value{};r.Pass->SetFragmentUniform(0,value.data(),sizeof(value));});
     rejected([](Recording& r){r.Pass->SetVertexUniform(0,nullptr,64);});
@@ -144,6 +249,8 @@ static void GPUChecks(Fixture& f) {
     rejected([&](Recording& r){r.Pass->SetIndexBuffer(deleted);});
     auto* late=Buffer(f,MeshData());
     rejected([&](Recording& r){r.Pass->SetVertexBuffer(0,late);r.Pass->DrawIndexed(3);late->Release();});
+    auto* lateIndex=Buffer(f,MeshData());
+    rejected([&](Recording& r){r.Pass->SetIndexBuffer(lateIndex,GRHI::IndexFormat::UInt32,offsetof(Geometry,Indices));r.Pass->DrawIndexed(3);lateIndex->Release();});
     auto wrong=MeshData();wrong.Indices[0]=999999;auto* outOfRange=Buffer(f,wrong);
     rejected([&](Recording& r){r.Pass->SetIndexBuffer(outOfRange,GRHI::IndexFormat::UInt32,offsetof(Geometry,Indices));r.Pass->DrawIndexed(3);});
     rejected([](Recording& r){auto* ended=r.Pass;r.Command->EndRenderPass(r.Pass);r.Pass=nullptr;ended->Draw(3);});
@@ -210,7 +317,7 @@ int main(int argc,char** argv) {
 #if !defined(__APPLE__)
     (void)argc;(void)argv;std::cout<<"SKIP real GPU fixture currently supplies Metal source; API remains platform independent\n";return 77;
 #else
-    try {Check(argc==2,"Expected runtime binary directory");Fixture fixture;fixture.Api=ExportGRHIApi(argv[1]);Check(fixture.Api,"Cannot load GRHI");fixture.Device=fixture.Api->CreateDevice();Check(fixture.Device,"Cannot create Metal device");GPUChecks(fixture);ImageCompatibility(fixture);return 0;}
+    try {Check(argc==2,"Expected runtime binary directory");Fixture fixture;fixture.Api=ExportGRHIApi(argv[1]);Check(fixture.Api,"Cannot load GRHI");fixture.Device=fixture.Api->CreateDevice();Check(fixture.Device,"Cannot create Metal device");GPUChecks(fixture);InstanceChecks(fixture);ReplayChecks(fixture);ImageCompatibility(fixture);return 0;}
     catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<"\n";return 1;}
 #endif
 }
