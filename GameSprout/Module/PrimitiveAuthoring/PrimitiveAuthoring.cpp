@@ -25,8 +25,15 @@ Json::Value PrimitiveDocument(GameSproutRuntime::PrimitiveType type,const std::s
     node["Components"].append(std::move(transform));node["Components"].append(std::move(mesh));node["Components"].append(std::move(renderer));
     const char* collider=type==GameSproutRuntime::PrimitiveType::Cube?"GameSproutRuntime.BoxCollider":
         type==GameSproutRuntime::PrimitiveType::Sphere?"GameSproutRuntime.SphereCollider":
-        type==GameSproutRuntime::PrimitiveType::Capsule?"GameSproutRuntime.CapsuleCollider":nullptr;
-    if(collider) {Json::Value component(Json::objectValue);component["Type"]=collider;node["Components"].append(std::move(component));}
+        (type==GameSproutRuntime::PrimitiveType::Capsule||type==GameSproutRuntime::PrimitiveType::Cylinder)?"GameSproutRuntime.CapsuleCollider":
+        "GameSproutRuntime.MeshCollider";
+    Json::Value component(Json::objectValue);component["Type"]=collider;
+    if(type==GameSproutRuntime::PrimitiveType::Plane||type==GameSproutRuntime::PrimitiveType::Quad) {
+        component["Shape"]["Mesh"]["Guid"]=reference.Guid;
+        component["Shape"]["Mesh"]["LocalID"]=Json::UInt64(reference.LocalID);
+        component["Shape"]["Convex"]=false;
+    }
+    node["Components"].append(std::move(component));
     document["Objects"].append(std::move(node));return document;
 }
 }

@@ -85,6 +85,55 @@ void CheckQueriesAndStaticPairs(GameSproutRuntime::IGameSproutRuntime &runtime) 
           "Zero direction was accepted");
     Check(runtime.DestroyScene(scene), "Cannot destroy static fixture");
 }
+void CheckQueryObjectExclusions(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    std::string error;
+    auto* scene=runtime.CreateScene("Raycast object exclusions");
+    auto* ground=Ground(scene);
+    auto* player=scene->CreateGameObject("Player");player->GetTransform()->SetLocalPosition({0,3,0});
+    auto* capsule=player->AddComponent<GameSproutRuntime::ICapsuleColliderComponent>();
+    auto* body=player->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
+    auto* child=scene->CreateGameObject("Compound child",player);child->GetTransform()->SetLocalPosition({0,1.5f,0});
+    auto* childCollider=child->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
+    auto* triggerObject=scene->CreateGameObject("Floating trigger");triggerObject->GetTransform()->SetLocalPosition({0,5.5f,0});
+    auto* trigger=triggerObject->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
+    Check(capsule&&body&&childCollider&&trigger&&trigger->SetShape({{.4f,.4f,.4f}}),"Cannot create raycast exclusions fixture");
+    auto triggerSettings=trigger->GetColliderSettings();triggerSettings.IsTrigger=true;
+    Check(trigger->SetColliderSettings(triggerSettings),"Cannot enable exclusion fixture trigger");
+    const GameSproutRuntime::Ray ray{{0,6,0},{0,-1,0}};
+    GameSproutRuntime::PhysicsRaycastHit hit;GameSproutRuntime::PhysicsQuerySettings query;
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==child->GetInstanceID(),
+          "Default raycast did not find nearest non-trigger compound child");
+    query.IgnoredObjectIDs={child->GetInstanceID()};
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==player->GetInstanceID(),
+          "Ignoring one child wrongly suppressed sibling Collider on same compound body");
+    query.IgnoredObjectIDs={player->GetInstanceID()};
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==ground->GetGameObject()->GetInstanceID()&&std::fabs(hit.Distance-6)<.01f,
+          "Self exclusion did not cover all compound colliders or suppressed another object on same Layer");
+    auto* otherScene=runtime.CreateScene("Other query scene");auto* foreign=otherScene->CreateGameObject("Foreign");
+    query.IgnoredObjectIDs={0,player->GetInstanceID(),player->GetInstanceID(),foreign->GetInstanceID(),std::numeric_limits<uint64_t>::max()};
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==ground->GetGameObject()->GetInstanceID(),
+          "Duplicate/stale/foreign object exclusions changed the query");
+    query.IncludeTriggers=true;
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==triggerObject->GetInstanceID(),
+          "Object exclusions changed IncludeTriggers filtering");
+    query.IgnoredObjectIDs.push_back(triggerObject->GetInstanceID());
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==ground->GetGameObject()->GetInstanceID(),
+          "Ignored trigger remained a raycast obstruction");
+    query.IncludeTriggers=false;
+    auto* independent=scene->CreateGameObject("Independent child body",player);independent->GetTransform()->SetLocalPosition({0,2,0});
+    Check(independent->AddComponent<GameSproutRuntime::IBoxColliderComponent>()&&independent->AddComponent<GameSproutRuntime::IRigidbodyComponent>(),"Cannot create independent descendant body");
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==independent->GetInstanceID(),
+          "Ignoring Rigidbody owner recursively excluded an independent descendant body");
+    query.IgnoredObjectIDs.push_back(independent->GetInstanceID());
+    Check(runtime.BeginExecution(error),error);
+    Check(runtime.Raycast(scene,ray,10,hit,query,error)&&hit.Collider.ObjectID==ground->GetGameObject()->GetInstanceID(),
+          "Self exclusions stopped working in gameplay mode");
+    Check(player->GetTransform()->GetLocalPosition().Y==3,"Raycast exclusion advanced dynamic simulation");
+    query.CollisionMask=0;error="old error";
+    Check(!runtime.Raycast(scene,ray,10,hit,query,error)&&error.empty()&&!hit.Collider.ObjectID,
+          "Filtered miss did not clear hit/error or ignored the layer mask");
+    Check(runtime.EndExecution(error)&&runtime.DestroyScene(scene)&&runtime.DestroyScene(otherScene),error);
+}
 void CheckFallingAndCallbackSafety(GameSproutRuntime::IGameSproutRuntime &runtime) {
     std::string error;
     auto *scene = runtime.CreateScene("Falling boxes");
@@ -421,6 +470,8 @@ int main(int argc, char **argv) {
         Check(runtime, "Cannot load Runtime physics SDK");
         std::cout << "physics queries/static pairs\n";
         CheckQueriesAndStaticPairs(*runtime);
+        std::cout << "physics raycast self exclusions\n";
+        CheckQueryObjectExclusions(*runtime);
         std::cout << "physics falling/callback safety\n";
         CheckFallingAndCallbackSafety(*runtime);
         std::cout << "physics triggers/removal\n";

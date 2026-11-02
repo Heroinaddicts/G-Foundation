@@ -1,4 +1,5 @@
 #include "SceneDocument.h"
+#include "PrefabDocument.h"
 #include "GameSproutRuntimeExport.h"
 #include <iostream>
 #include <stdexcept>
@@ -28,8 +29,12 @@ int main() {
         auto* second=object->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
         auto* sphere=object->AddComponent<GameSproutRuntime::ISphereColliderComponent>();
         auto* capsule=object->AddComponent<GameSproutRuntime::ICapsuleColliderComponent>();
+        auto* mesh=object->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
         auto* body=object->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
-        Check(first&&second&&first!=second&&sphere&&capsule&&body,"Physics factory or repeated collider failed");
+        Check(first&&second&&first!=second&&sphere&&capsule&&mesh&&body,"Physics factory or repeated collider failed");
+        const GameSproutRuntime::ResourceReference meshReference{"abcdefabcdefabcdefabcdefabcdefab",42};
+        Check(mesh->SetShape({meshReference,true}),"Cannot set mesh collision source");
+        auto meshSettings=mesh->GetColliderSettings();meshSettings.IsTrigger=true;Check(mesh->SetColliderSettings(meshSettings),"Cannot set convex mesh trigger");
         Check(second->SetShape({{2,3,4}}),"Cannot set second collider shape");
         auto settings=second->GetColliderSettings();settings.IsTrigger=true;settings.Center={1,2,3};settings.Rotation={0.1f,0.2f,0.3f,0.9f};second->GetGameObject()->SetLayer(2);
         Check(second->SetColliderSettings(settings),"Cannot set second collider surface");
@@ -46,7 +51,20 @@ int main() {
         Check(colliders[1]->GetShape().Size.Y==3&&colliders[1]->GetColliderSettings().IsTrigger&&colliders[1]->GetColliderSettings().Center.Z==3,"Roundtrip lost physical component settings");
         Check(restoredObject->GetComponent<GameSproutRuntime::IRigidbodyComponent>()->GetConstraints()==63,
               "Roundtrip lost FreezeAll constraints");
+        auto* restoredMesh=restoredObject->GetComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(restoredMesh&&restoredMesh->GetShape().Mesh==meshReference&&restoredMesh->GetShape().Convex
+            &&restoredMesh->GetColliderSettings().IsTrigger,"Scene roundtrip lost mesh collision reference/convex/trigger");
+        Check(restoredIDs.FindComponentFileID(restoredMesh)==ids.FindComponentFileID(mesh),"Scene roundtrip changed MeshCollider stable component identity");
         Json::Value again;Check(SceneDocument::Serialize(*restored,restoredIDs,again,error)&&again==document,"Physical document roundtrip changed current data");
+        auto prefabSource=document;prefabSource["RootComponents"]=Json::Value(Json::arrayValue);prefabSource["RootMainCamera"]=false;
+        std::vector<std::uint8_t> prefabBytes;Json::Value prefabDocument;
+        Check(PrefabDocument::Encode(prefabSource,prefabBytes,error)&&PrefabDocument::Decode(prefabBytes,prefabDocument,error),error);
+        Check(prefabDocument==prefabSource,"Prefab encoding changed missing mesh resource identity");
+        GameSproutRuntime::IGameObject* instance=nullptr;std::vector<GameSproutRuntime::PrefabObjectMapping> mappings;
+        Check(SceneDocument::InstantiatePrefab(prefabDocument,*runtime,*scene,*scene,instance,mappings,error),error);
+        auto* prefabMesh=instance->GetComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(prefabMesh&&prefabMesh->GetShape().Mesh==meshReference&&prefabMesh->GetShape().Convex
+            &&prefabMesh->GetColliderSettings().IsTrigger,"Prefab instantiation lost MeshCollider settings");
         for(int i=0;i<24;++i)Check(restoredObject->AddComponent<GameSproutRuntime::IBoxColliderComponent>()!=nullptr,"Cannot create repeated Collider beyond old 16-component limit");
         Check(SceneDocument::Serialize(*restored,restoredIDs,again,error),"Repeated Colliders cannot be saved beyond old 16-component limit: "+error);
         // Direct Runtime mutation can happen before SceneManager gets its event.
@@ -63,6 +81,12 @@ int main() {
         invalid=document;for(auto& component:invalid["Objects"][0]["Components"])
             if(component["Type"]=="GameSproutRuntime.BoxCollider")component["Settings"]["CollisionMask"]=16;
         Check(!SceneDocument::Validate(invalid,error),"Removed per-Collider collision mask accepted");
+        invalid=document;for(auto& component:invalid["Objects"][0]["Components"])
+            if(component["Type"]=="GameSproutRuntime.MeshCollider")component["Shape"]["Mesh"]["LocalID"]=Json::UInt64(0);
+        Check(!SceneDocument::Validate(invalid,error),"Invalid MeshCollider resource identity accepted");
+        invalid=document;for(auto& component:invalid["Objects"][0]["Components"])
+            if(component["Type"]=="GameSproutRuntime.MeshCollider")component["Shape"]["Convex"]=false;
+        Check(!SceneDocument::Validate(invalid,error),"Nonconvex MeshCollider trigger accepted");
         delete runtime;runtime=nullptr;std::cout<<"PASS repeated collider document identities and physics roundtrip\n";return 0;
     }catch(const std::exception& exception){delete runtime;std::cerr<<"FAIL "<<exception.what()<<"\n";return 1;}
 }

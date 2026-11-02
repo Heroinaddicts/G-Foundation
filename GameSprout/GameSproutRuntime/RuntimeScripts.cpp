@@ -26,7 +26,8 @@ const std::vector<BuiltinEntry>& Builtins() {
         {"GameSproutRuntime.Rigidbody","Rigidbody","Physics",&typeid(IRigidbodyComponent),false},
         {"GameSproutRuntime.BoxCollider","Box Collider","Physics",&typeid(IBoxColliderComponent),false},
         {"GameSproutRuntime.SphereCollider","Sphere Collider","Physics",&typeid(ISphereColliderComponent),false},
-        {"GameSproutRuntime.CapsuleCollider","Capsule Collider","Physics",&typeid(ICapsuleColliderComponent),false}
+        {"GameSproutRuntime.CapsuleCollider","Capsule Collider","Physics",&typeid(ICapsuleColliderComponent),false},
+        {"GameSproutRuntime.MeshCollider","Mesh Collider","Physics",&typeid(IMeshColliderComponent),false}
     };
     return entries;
 }

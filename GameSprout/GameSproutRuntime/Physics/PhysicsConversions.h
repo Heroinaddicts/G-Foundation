@@ -44,13 +44,26 @@ inline bool PhysicsPose(const Mat4 &world, GPhysics::Pose &pose, Vector3 &scale,
     pose = {PhysicsVector(position), PhysicsRotation(rotation)};
     return true;
 }
+// Body carriers remove position/rotation only; signed scale belongs to mesh
+// geometry. Static sheared meshes can bake their complete linear transform.
+inline bool PhysicsBodyPose(const Mat4 &world,GPhysics::Pose &pose,Vector3 &scale,bool isStatic,std::string &error) {
+    Vector3 position;Quaternion rotation;
+    if(RuntimeMath::TryDecomposeTRS(world,position,rotation,scale) && scale.X!=0 && scale.Y!=0 && scale.Z!=0) {
+        pose={PhysicsVector(position),PhysicsRotation(rotation)};return true;
+    }
+    Mat4 inverse;
+    if(isStatic && RuntimeMath::TryInverseAffine(world,inverse)) {
+        pose={PhysicsVector({world(0,3),world(1,3),world(2,3)}),{}};scale={1,1,1};return true;
+    }
+    error="Rigidbody transforms require an invertible orthogonal TRS (no shear or zero scale)";return false;
+}
 inline bool PhysicsShapeEqual(const GPhysics::Shape &a, const GPhysics::Shape &b) {
     return a.Collider == b.Collider && a.Type == b.Type &&
            PhysicsNear(a.LocalPose.Position, b.LocalPose.Position) &&
            PhysicsNear(a.LocalPose.Rotation, b.LocalPose.Rotation) &&
            PhysicsNear(a.HalfExtents, b.HalfExtents) && PhysicsNear(a.Radius, b.Radius) &&
            PhysicsNear(a.HalfHeight, b.HalfHeight) && a.Trigger == b.Trigger && a.Layer == b.Layer &&
-           a.Mask == b.Mask && a.Surface == b.Surface;
+           a.Mask == b.Mask && a.Surface == b.Surface && a.GeometryRevision == b.GeometryRevision;
 }
 inline bool PhysicsBodyEqual(const GPhysics::BodySettings &a, const GPhysics::BodySettings &b) {
     if (a.Motion != b.Motion || a.Mass != b.Mass || a.GravityFactor != b.GravityFactor ||

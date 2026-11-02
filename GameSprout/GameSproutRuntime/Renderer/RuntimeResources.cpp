@@ -97,7 +97,7 @@ Renderer::~Renderer() {
 void Renderer::ClearResources() {
     for(auto& entry:_Meshes) delete entry.second.Buffer;
     for(auto& entry:_Textures) {delete entry.second.Texture;delete entry.second.Sampler;}
-    _Meshes.clear();_Textures.clear();_Materials.clear();
+    _Meshes.clear();_ColliderMeshes.clear();_Textures.clear();_Materials.clear();
 }
 void Renderer::SyncRevision() {
     const auto revision=_Resources.GetRevision();

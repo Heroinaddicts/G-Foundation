@@ -37,6 +37,14 @@ struct DebugDrawList {
     std::vector<DebugTriangle> Triangles;
 };
 
+// 宿主视图选项，不进入场景/Prefab，不启动或推进物理模拟。
+struct ColliderDebugOptions {
+    std::uint64_t SelectedObjectID = 0;
+    bool DrawAll = false;
+    bool IncludeChildren = true;
+    bool DepthTest = false;
+};
+
 struct RenderView {
     IScene* Scene = nullptr;
     RenderCamera Camera;
@@ -96,6 +104,13 @@ public:
     // 追加所选对象的精确 Mesh 边线；边按索引去重。失败不修改已有列表。
     virtual bool AppendSelectionOutline(IScene* scene, std::uint64_t objectID, DebugDrawList& draw,
         const Color& tint = Color{1.0f, 0.65f, 0.05f, 1.0f}, bool depthTest = false) = 0;
+    // 追加真实碰撞形状边线，Mesh 使用静态绑定几何/烹制后的凸包，不随蒙皮变形。
+    // 默认只画所选对象及子树；无选中且 DrawAll=false 时不画。
+    // DrawAll 画活动、启用的碰撞器；所选子树的禁用/非活动形状用灰色提示。
+    // 仅查询公共资源和当前变换，不依赖已启动的物理世界。单个无效/缺失形状
+    // 会跳过并记录 GetLastError；非法查询或超出几何容量失败且不改变已有列表。
+    virtual bool AppendColliderWireframes(IScene* scene, const ColliderDebugOptions& options,
+        DebugDrawList& draw) = 0;
 };
 
 // Created by Runtime, deleted by the caller before its Runtime/resource provider.

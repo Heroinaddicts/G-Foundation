@@ -35,6 +35,16 @@ class RuntimePhysicsSystem {
         Vector3 WorldScale{1, 1, 1};
         Mat4 World;
     };
+    struct MeshShapeCache {
+        ResourceReference Reference;
+        Mat4 Relative;
+        GPhysics::MeshGeometry Geometry;
+        uint64_t Revision=0;
+    };
+    std::map<std::pair<std::string,uint64_t>,GPhysics::MeshGeometry> _MeshSources;
+    std::map<uint64_t,MeshShapeCache> _MeshShapes;
+    uint64_t _NextMeshRevision=0;
+    bool AppendMeshCollider(BodyRequest &,MeshColliderComponent &,GPhysics::Shape &,const Mat4 &,std::string &);
     Runtime &_Runtime;
     std::map<uint64_t, SceneWorld *> _Worlds;
     std::map<std::tuple<uint64_t, uint64_t, uint64_t>, uint64_t> _ColliderKeys;

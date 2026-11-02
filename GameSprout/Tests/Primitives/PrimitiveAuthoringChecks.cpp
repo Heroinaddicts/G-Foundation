@@ -88,6 +88,15 @@ int main(int argc,char** argv){
         Check(cube->FindChild("Sphere")&&cube->FindChild("Sphere")->GetComponent<GameSproutRuntime::ISphereColliderComponent>(),"Child primitive shape or parent incorrect");
         Check(scenes.Undo(error)&&!cube->FindChild("Sphere"),error);Check(scenes.Redo(error)&&cube->FindChild("Sphere"),error);
         for(unsigned type=1;type<6;++type)Check(authoring.CreatePrimitive(hierarchy.Context.SceneID,0,static_cast<GameSproutRuntime::PrimitiveType>(type),created,error),error);
+        const auto checkMeshCollider=[&](GameSproutRuntime::PrimitiveType type) {
+            auto* object=scenes.GetActiveScene()->FindChild(GameSproutRuntime::PrimitiveName(type));
+            auto* collider=object?object->GetComponent<GameSproutRuntime::IMeshColliderComponent>():nullptr;
+            Check(collider&&!collider->GetShape().Convex&&collider->GetShape().Mesh==GameSproutRuntime::GetBuiltinMeshReference(type),
+                "Plane/Quad must retain their built-in collision mesh without an Assets source");
+        };
+        checkMeshCollider(GameSproutRuntime::PrimitiveType::Plane);checkMeshCollider(GameSproutRuntime::PrimitiveType::Quad);
+        Check(scenes.GetActiveScene()->FindChild("Cylinder")->GetComponent<GameSproutRuntime::ICapsuleColliderComponent>(),
+            "Cylinder default CapsuleCollider missing");
         Check(authoring.CreatePrimitive(hierarchy.Context.SceneID,0,GameSproutRuntime::PrimitiveType::Cube,created,error)&&scenes.GetActiveScene()->FindChild("Cube (1)"),"Sibling primitive name collision");
         Check(!authoring.CreatePrimitive(hierarchy.Context.SceneID+123,0,GameSproutRuntime::PrimitiveType::Cube,created,error)&&created==0,"Stale scene command accepted");
         host.Frame=true;Check(!authoring.CanCreate(hierarchy.Context.SceneID,0,error),"Creation accepted within Host frame");host.Frame=false;
@@ -97,6 +106,7 @@ int main(int argc,char** argv){
         Check(field.findChild<QLineEdit*>("resourceNameEdit")->text()=="Cube"&&!field.findChild<QAction*>("locateResourceAction")->isEnabled(),"Built-in resource displays as Missing or permits invalid source navigation");
         Check(scenes.SaveSceneAs("Primitives.scene",error),error);Check(scenes.OpenScene("Primitives.scene",error),error);
         cube=scenes.QueryObjectByFileID(cubeFile);Check(cube&&cube->GetComponent<GameSproutRuntime::IMeshComponent>()->GetMesh()==GameSproutRuntime::GetBuiltinMeshReference(GameSproutRuntime::PrimitiveType::Cube),"Scene round trip lost stable built-in mesh");
+        checkMeshCollider(GameSproutRuntime::PrimitiveType::Plane);checkMeshCollider(GameSproutRuntime::PrimitiveType::Quad);
         SceneSubtreeDocument captured;Check(scenes.CaptureObjectDocument(cube->GetInstanceID(),captured,error),error);
         Json::Value data;Json::Reader reader;Check(reader.parse(captured.DocumentJson,data),"Cannot read captured subtree");
         GameSproutRuntime::PrefabData prepared;Check(PrefabDocument::Encode(data,prepared.Bytes,error),error);

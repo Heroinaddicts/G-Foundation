@@ -167,6 +167,10 @@ bool ColliderComponentBase<Interface>::SetColliderSettings(const ColliderSetting
     return true;
 }
 template <typename Interface>
+bool ColliderComponentBase<Interface>::CalculateFit(ColliderFitResult &result,std::string &error) const {
+    return CalculateColliderFit(*this,result,error);
+}
+template <typename Interface>
 IRigidbodyComponent *ColliderComponentBase<Interface>::GetAttachedRigidbody() const {
     for (IGameObject *object = this->_GameObject; object; object = object->Parent())
         if (auto *body = object->GetComponent<IRigidbodyComponent>())
@@ -176,6 +180,7 @@ IRigidbodyComponent *ColliderComponentBase<Interface>::GetAttachedRigidbody() co
 template class ColliderComponentBase<IBoxColliderComponent>;
 template class ColliderComponentBase<ISphereColliderComponent>;
 template class ColliderComponentBase<ICapsuleColliderComponent>;
+template class ColliderComponentBase<IMeshColliderComponent>;
 bool BoxColliderComponent::SetShape(const BoxColliderShape &shape) {
     if (!RuntimeMath::IsFinite(shape.Size) || shape.Size.X <= 0 || shape.Size.Y <= 0 || shape.Size.Z <= 0)
         return false;
@@ -199,6 +204,14 @@ bool CapsuleColliderComponent::SetShape(const CapsuleColliderShape &shape) {
         shape.Height < 2 * shape.Radius || shape.Axis > PhysicsAxis::Z)
         return false;
     if (Shape.Radius != shape.Radius || Shape.Height != shape.Height || Shape.Axis != shape.Axis) {
+        Shape = shape;
+        ConfigurationChanged();
+    }
+    return true;
+}
+bool MeshColliderComponent::SetShape(const MeshColliderShape &shape) {
+    if (!ValidReference(shape.Mesh)) return false;
+    if (Shape.Mesh != shape.Mesh || Shape.Convex != shape.Convex) {
         Shape = shape;
         ConfigurationChanged();
     }
@@ -284,12 +297,18 @@ IComponent *CreatePhysicsComponent(const std::type_info &type, IGameObject *owne
         return nullptr;
     if (type == typeid(IRigidbodyComponent))
         return new RigidbodyComponent(owner);
-    if (type == typeid(IBoxColliderComponent))
-        return new BoxColliderComponent(owner);
-    if (type == typeid(ISphereColliderComponent))
-        return new SphereColliderComponent(owner);
-    if (type == typeid(ICapsuleColliderComponent))
-        return new CapsuleColliderComponent(owner);
+    PhysicsColliderState* primitive=nullptr;
+    if (type == typeid(IBoxColliderComponent))primitive=new BoxColliderComponent(owner);
+    else if (type == typeid(ISphereColliderComponent))primitive=new SphereColliderComponent(owner);
+    else if (type == typeid(ICapsuleColliderComponent))primitive=new CapsuleColliderComponent(owner);
+    if(primitive){InitializeColliderFit(*primitive);return primitive->ColliderInterface();}
+    if (type == typeid(IMeshColliderComponent)) {
+        auto *collider = new MeshColliderComponent(owner);
+        if (auto *mesh = owner->GetComponent<IMeshComponent>()) collider->Shape.Mesh = mesh->GetMesh();
+        if (auto *body = collider->GetAttachedRigidbody())
+            collider->Shape.Convex = body->GetMotionType() == PhysicsMotionType::Dynamic;
+        return collider;
+    }
     return nullptr;
 }
 } // namespace GameSproutRuntime

@@ -3,6 +3,7 @@
 #include "GameObject.h"
 #include "PhysicsConversions.h"
 #include "RuntimePhysicsSystem.h"
+#include "Api/RuntimeColliderMath.h"
 #include <algorithm>
 #include <set>
 
@@ -69,36 +70,42 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
         error = "Cannot invert physics body transform";
         return false;
     }
-    Vector3 scale;
-    if (!PhysicsPose(inverse * colliderWorld, shape.LocalPose, scale, error))
-        return false;
+    if (auto *mesh=dynamic_cast<MeshColliderComponent*>(&state)) {
+        if(!AppendMeshCollider(request,*mesh,shape,inverse*colliderWorld,error))return false;
+        if(shape.Mesh)request.Description.Shapes.push_back(shape);
+        return true;
+    }
+    RuntimePhysicsMath::ColliderFrame frame;
+    const auto primitiveWorld=dynamic_cast<SphereColliderComponent*>(&state)?
+        collider->GetGameObject()->GetTransform()->GetWorldMatrix()*RuntimeMath::ComposeTRS(state.Settings.Center,Quaternion{},{1,1,1}):colliderWorld;
+    if(!RuntimePhysicsMath::TryGetColliderFrame(inverse*primitiveWorld,frame)) {
+        error="Primitive collider transform requires a non-zero orthogonal TRS (no shear)";return false;
+    }
+    const Vector3 scale=RuntimePhysicsMath::AbsoluteScale(frame.Scale);
+    shape.LocalPose={PhysicsVector(frame.Position),PhysicsRotation(frame.Rotation)};
     if (auto *box = dynamic_cast<BoxColliderComponent *>(&state)) {
         shape.Type = GPhysics::ShapeType::Box;
         shape.HalfExtents = {box->Shape.Size.X * scale.X * 0.5f, box->Shape.Size.Y * scale.Y * 0.5f,
                              box->Shape.Size.Z * scale.Z * 0.5f};
     } else if (auto *sphere = dynamic_cast<SphereColliderComponent *>(&state)) {
-        if (!PhysicsNear(scale.X, scale.Y) || !PhysicsNear(scale.X, scale.Z)) {
-            error = "Sphere colliders currently require uniform world scale";
-            return false;
-        }
         shape.Type = GPhysics::ShapeType::Sphere;
-        shape.Radius = sphere->Shape.Radius * scale.X;
+        shape.Radius = sphere->Shape.Radius * RuntimePhysicsMath::SphereScale(scale);
     } else if (auto *capsule = dynamic_cast<CapsuleColliderComponent *>(&state)) {
-        if (!PhysicsNear(scale.X, scale.Y) || !PhysicsNear(scale.X, scale.Z)) {
-            error = "Capsule colliders currently require uniform world scale";
-            return false;
-        }
         shape.Type = GPhysics::ShapeType::Capsule;
-        shape.Radius = capsule->Shape.Radius * scale.X;
-        shape.HalfHeight = (capsule->Shape.Height * 0.5f - capsule->Shape.Radius) * scale.X;
+        shape.Radius = capsule->Shape.Radius * RuntimePhysicsMath::CapsuleRadiusScale(scale,capsule->Shape.Axis);
+        const float height=std::max(capsule->Shape.Height*RuntimePhysicsMath::CapsuleHeightScale(scale,capsule->Shape.Axis),shape.Radius*2);
+        shape.HalfHeight = height*.5f-shape.Radius;
         const float half = std::sqrt(0.5f);
         Quaternion axis = capsule->Shape.Axis == PhysicsAxis::X   ? Quaternion{0, 0, -half, half}
                           : capsule->Shape.Axis == PhysicsAxis::Z ? Quaternion{half, 0, 0, half}
                                                                   : Quaternion{};
         Mat4 axisMatrix = RuntimeMath::ComposeTRS({}, axis, {1, 1, 1});
-        Vector3 ignored;
-        if (!PhysicsPose(inverse * colliderWorld * axisMatrix, shape.LocalPose, ignored, error))
-            return false;
+        const Mat4 rotationMatrix=RuntimeMath::ComposeTRS({},frame.Rotation,{1,1,1})*axisMatrix;
+        RuntimePhysicsMath::ColliderFrame axisFrame;
+        if(!RuntimePhysicsMath::TryGetColliderFrame(rotationMatrix,axisFrame)) {
+            error="Capsule collider axis transform is invalid";return false;
+        }
+        shape.LocalPose.Rotation=PhysicsRotation(axisFrame.Rotation);
     } else {
         error = "Unknown collider implementation";
         return false;
@@ -114,6 +121,8 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
         _Provider = provider;
         _ProviderRevision = revision;
         _Materials.clear();
+        _MeshSources.clear();
+        _MeshShapes.clear();
     }
     std::vector<IGameObject *> objects;
     for (std::size_t i = 0; i < scene->GetChildCount(); ++i)
@@ -136,7 +145,7 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
         request.Rigidbody = rigid;
         request.World = object->GetTransform()->GetWorldMatrix();
         request.Description.Key = key;
-        if (!PhysicsPose(request.World, request.Description.Transform, request.WorldScale, error))
+        if (!PhysicsBodyPose(request.World, request.Description.Transform, request.WorldScale, !rigid, error))
             return nullptr;
         if (rigid) {
             const auto &settings = rigid->Settings;
@@ -230,6 +239,7 @@ bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float d
                 return false;
             BodyRecord record;
             record.Description = request.Description;
+            for(auto &shape:record.Description.Shapes)shape.Mesh=nullptr;
             record.ComponentID = componentID;
             record.WorldScale = request.WorldScale;
             record.LastWorld = request.World;

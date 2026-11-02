@@ -34,6 +34,21 @@ GameSproutRuntime::Vector3 Vector(const Json::Value& value,const std::string& pa
 Json::Value Vector(GameSproutRuntime::Vector3 value) {
     Json::Value result(Json::arrayValue);result.append(value.X);result.append(value.Y);result.append(value.Z);return result;
 }
+GameSproutRuntime::ResourceReference Resource(const Json::Value& value,const std::string& path) {
+    if(value.isNull())return {};
+    Keys(value,path,{"Guid","LocalID"});
+    if(!value["Guid"].isString()||value["Guid"].asString().size()!=32||!value["LocalID"].isUInt64()||!value["LocalID"].asUInt64())Fail(path,"invalid resource reference");
+    std::string guid=value["Guid"].asString();
+    for(char& c:guid) {
+        if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')))Fail(path,"invalid resource GUID");
+        if(c>='A'&&c<='F')c=static_cast<char>(c-'A'+'a');
+    }
+    return {guid,value["LocalID"].asUInt64()};
+}
+Json::Value Resource(const GameSproutRuntime::ResourceReference& value) {
+    if(value.Guid.empty())return {};
+    Json::Value result;result["Guid"]=value.Guid;result["LocalID"]=Json::UInt64(value.LocalID);return result;
+}
 GameSproutRuntime::ColliderSettings Collider(const Json::Value& value,const std::string& path) {
     Keys(value,path,{"Enabled","IsTrigger","Center","Rotation","Material"});
     GameSproutRuntime::ColliderSettings settings;
@@ -46,16 +61,7 @@ GameSproutRuntime::ColliderSettings Collider(const Json::Value& value,const std:
         GameSproutRuntime::Quaternion normalized;
         if(!settings.Rotation.TryNormalize(normalized))Fail(path+".Rotation","expected nonzero quaternion");
     }
-    if(value.isMember("Material")&&!value["Material"].isNull()) {
-        const auto& material=value["Material"];Keys(material,path+".Material",{"Guid","LocalID"});
-        if(!material["Guid"].isString()||material["Guid"].asString().size()!=32||!material["LocalID"].isUInt64()||!material["LocalID"].asUInt64())Fail(path+".Material","invalid resource reference");
-        std::string guid=material["Guid"].asString();
-        for(char& c:guid) {
-            if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')))Fail(path+".Material","invalid resource GUID");
-            if(c>='A'&&c<='F')c=static_cast<char>(c-'A'+'a');
-        }
-        settings.Material={guid,material["LocalID"].asUInt64()};
-    }
+    if(value.isMember("Material"))settings.Material=Resource(value["Material"],path+".Material");
     return settings;
 }
 GameSproutRuntime::RigidbodySettings Rigidbody(const Json::Value& value,const std::string& path) {
@@ -79,6 +85,7 @@ struct Settings {
     GameSproutRuntime::BoxColliderShape Box;
     GameSproutRuntime::SphereColliderShape Sphere;
     GameSproutRuntime::CapsuleColliderShape Capsule;
+    GameSproutRuntime::MeshColliderShape Mesh;
 };
 Settings Read(const Json::Value& value,const std::string& path) {
     Keys(value,path,{"Type","Settings","Shape","ID"});
@@ -97,6 +104,13 @@ Settings Read(const Json::Value& value,const std::string& path) {
     } else if(type=="GameSproutRuntime.SphereCollider") {
         if(!shape.isNull()){Keys(shape,path+".Shape",{"Radius"});result.Sphere.Radius=Number(shape,"Radius",result.Sphere.Radius,path+".Shape");}
         if(result.Sphere.Radius<=0)Fail(path+".Shape.Radius","sphere radius must be positive");
+    } else if(type=="GameSproutRuntime.MeshCollider") {
+        if(!shape.isNull()) {
+            Keys(shape,path+".Shape",{"Mesh","Convex"});
+            if(shape.isMember("Mesh"))result.Mesh.Mesh=Resource(shape["Mesh"],path+".Shape.Mesh");
+            result.Mesh.Convex=Boolean(shape,"Convex",false,path+".Shape");
+        }
+        if(!result.Mesh.Convex&&result.Collider.IsTrigger)Fail(path+".Settings.IsTrigger","MeshCollider triggers require a convex shape");
     } else {
         if(!shape.isNull()) {
             Keys(shape,path+".Shape",{"Radius","Height","Axis"});
@@ -113,7 +127,7 @@ Settings Read(const Json::Value& value,const std::string& path) {
 }
 }
 namespace ScenePhysicsDocument {
-bool IsCollider(const std::string& type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider";}
+bool IsCollider(const std::string& type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider"||type=="GameSproutRuntime.MeshCollider";}
 bool Handles(const std::string& type) {return type=="GameSproutRuntime.Rigidbody"||IsCollider(type);}
 void Validate(const Json::Value& value,const std::string& path){Read(value,path);}
 void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
@@ -131,6 +145,12 @@ void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
     } else if(type=="GameSproutRuntime.SphereCollider") {
         auto* sphere=dynamic_cast<GameSproutRuntime::ISphereColliderComponent*>(collider);
         if(!sphere||!sphere->SetShape(settings.Sphere))Fail("PhysicsComponent","Runtime rejected sphere shape");
+    } else if(type=="GameSproutRuntime.MeshCollider") {
+        auto* mesh=dynamic_cast<GameSproutRuntime::IMeshColliderComponent*>(collider);
+        // Disabling Convex and Trigger is one authored edit; do not validate the
+        // new shape against the previous trigger flag during restoration.
+        auto intermediate=collider->GetColliderSettings();intermediate.IsTrigger=false;
+        if(!mesh||!collider->SetColliderSettings(intermediate)||!mesh->SetShape(settings.Mesh))Fail("PhysicsComponent","Runtime rejected mesh shape");
     } else {
         auto* capsule=dynamic_cast<GameSproutRuntime::ICapsuleColliderComponent*>(collider);
         if(!capsule||!capsule->SetShape(settings.Capsule))Fail("PhysicsComponent","Runtime rejected capsule shape");
@@ -143,6 +163,7 @@ GameSproutRuntime::IComponent* Create(const Json::Value& value,GameSproutRuntime
     if(type=="GameSproutRuntime.Rigidbody")component=object.AddComponent<GameSproutRuntime::IRigidbodyComponent>();
     else if(type=="GameSproutRuntime.BoxCollider")component=object.AddComponent<GameSproutRuntime::IBoxColliderComponent>();
     else if(type=="GameSproutRuntime.SphereCollider")component=object.AddComponent<GameSproutRuntime::ISphereColliderComponent>();
+    else if(type=="GameSproutRuntime.MeshCollider")component=object.AddComponent<GameSproutRuntime::IMeshColliderComponent>();
     else component=object.AddComponent<GameSproutRuntime::ICapsuleColliderComponent>();
     if(!component)Fail("PhysicsComponent","Runtime rejected physics component creation");
     Apply(value,*component);return component;
@@ -160,13 +181,14 @@ Json::Value Serialize(GameSproutRuntime::IComponent& component) {
         const auto& data=collider->GetColliderSettings();auto& settings=value["Settings"];
         settings["Enabled"]=data.Enabled;settings["IsTrigger"]=data.IsTrigger;settings["Center"]=Vector(data.Center);
         Json::Value rotation(Json::arrayValue);rotation.append(data.Rotation.X);rotation.append(data.Rotation.Y);rotation.append(data.Rotation.Z);rotation.append(data.Rotation.W);settings["Rotation"]=rotation;
-        if(!data.Material.Guid.empty()){settings["Material"]["Guid"]=data.Material.Guid;settings["Material"]["LocalID"]=Json::UInt64(data.Material.LocalID);}
-        else settings["Material"]=Json::Value();
+        settings["Material"]=Resource(data.Material);
         if(auto* box=dynamic_cast<GameSproutRuntime::IBoxColliderComponent*>(collider))value["Shape"]["Size"]=Vector(box->GetShape().Size);
         else if(auto* sphere=dynamic_cast<GameSproutRuntime::ISphereColliderComponent*>(collider))value["Shape"]["Radius"]=sphere->GetShape().Radius;
         else if(auto* capsule=dynamic_cast<GameSproutRuntime::ICapsuleColliderComponent*>(collider)) {
             const auto shape=capsule->GetShape();value["Shape"]["Radius"]=shape.Radius;value["Shape"]["Height"]=shape.Height;
             value["Shape"]["Axis"]=shape.Axis==GameSproutRuntime::PhysicsAxis::X?"X":shape.Axis==GameSproutRuntime::PhysicsAxis::Y?"Y":"Z";
+        } else if(auto* mesh=dynamic_cast<GameSproutRuntime::IMeshColliderComponent*>(collider)) {
+            const auto shape=mesh->GetShape();value["Shape"]["Mesh"]=Resource(shape.Mesh);value["Shape"]["Convex"]=shape.Convex;
         } else Fail("PhysicsComponent","unsupported Collider shape");
     }
     Validate(value,"PhysicsComponent");return value;

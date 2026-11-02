@@ -95,6 +95,8 @@ void RuntimePhysicsSystem::Reset() {
     _ColliderKeys.clear();
     _Identities.clear();
     _Materials.clear();
+    _MeshSources.clear();
+    _MeshShapes.clear();
     _Provider = nullptr;
     _ProviderRevision = 0;
 }

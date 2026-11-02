@@ -1,0 +1,74 @@
+#include "GameSproutRuntimeExport.h"
+#include "RuntimeBuiltinResources.h"
+#include "RuntimeResourceApi.h"
+#include <cmath>
+#include <cstring>
+#include <iostream>
+#include <stdexcept>
+namespace {
+void Check(bool value,const std::string &error){if(!value)throw std::runtime_error(error);}
+class Meshes final : public GameSproutRuntime::IRuntimeResourceProvider {
+public:
+    uint64_t Revision=1;unsigned Reads=0;
+    GameSproutRuntime::MeshRenderData Mesh;
+    Meshes() {
+        const float points[]={-1,0,-1,1,0,-1,0,0,1,0,2,0};
+        const uint32_t indices[]={0,2,1,0,1,3,1,2,3,2,0,3};
+        Mesh.VertexCount=4;Mesh.VertexStride=12;Mesh.IndexCount=12;Mesh.IndexOffset=sizeof(points);
+        Mesh.Bytes.resize(sizeof(points)+sizeof(indices));std::memcpy(Mesh.Bytes.data(),points,sizeof(points));std::memcpy(Mesh.Bytes.data()+sizeof(points),indices,sizeof(indices));
+    }
+    uint64_t GetRevision()const override{return Revision;}
+    bool LoadMesh(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MeshRenderData &output,std::string &error)override{++Reads;output=Mesh;error.clear();return true;}
+    bool LoadTexture(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::TextureRenderData &,std::string&)override{return false;}
+    bool LoadMaterial(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MaterialRenderData &,std::string&)override{return false;}
+};
+}
+int main(int argc,char **argv) {
+    GameSproutRuntime::IGameSproutRuntime *runtime=nullptr;
+    try {
+        Check(argc==2,"Pass Runtime directory");runtime=Export(argv[1]);Check(runtime,"Runtime load");std::string error;
+        auto *scene=runtime->CreateScene("Mesh physics");
+        auto *floor=scene->CreateGameObject("Builtin plane");
+        auto *mesh=floor->AddComponent<GameSproutRuntime::IMeshComponent>();mesh->SetMesh(GameSproutRuntime::GetBuiltinMeshReference(GameSproutRuntime::PrimitiveType::Plane));
+        auto *collider=floor->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(collider&&collider->GetShape().Mesh==mesh->GetMesh()&&!collider->GetShape().Convex,"MeshCollider did not adopt owner mesh");
+        auto *second=floor->AddComponent<GameSproutRuntime::IMeshColliderComponent>();Check(second&&second!=collider,"MeshCollider did not allow multiple components");
+        Check(floor->RemoveComponentInstance(second->GetComponentInstanceID()),"Remove extra collider");
+        GameSproutRuntime::PhysicsRaycastHit hit;GameSproutRuntime::PhysicsQuerySettings query;
+        Check(runtime->Raycast(scene,{{0,4,0},{0,-1,0}},10,hit,query,error)&&hit.Collider.ComponentID==collider->GetComponentInstanceID(),"Builtin plane failed without a provider: "+error);
+        floor->GetTransform()->SetLocalScale({-2,1,3});
+        Check(runtime->Raycast(scene,{{0,4,0},{0,-1,0}},10,hit,query,error)&&hit.Normal.Y>.99f,"Mirrored triangle plane inverted front face: "+error);
+        // A rotated child of a non-uniform parent has shear, baked into static triangles.
+        auto *parent=scene->CreateGameObject("Scaled parent");parent->GetTransform()->SetLocalScale({2,1,3});
+        auto *sheared=scene->CreateGameObject("Sheared triangles",parent);sheared->GetTransform()->SetLocalPosition({10,0,0});
+        sheared->GetTransform()->SetLocalRotation(GameSproutRuntime::Quaternion{0,std::sin(.35f),0,std::cos(.35f)});
+        auto *shearedCollider=sheared->AddComponent<GameSproutRuntime::IMeshColliderComponent>();Check(shearedCollider->SetShape(collider->GetShape()),"Set sheared mesh");
+        Check(runtime->Raycast(scene,{{20,4,0},{0,-1,0}},10,hit,query,error),"Static mesh affine baking failed: "+error);
+        Check(scene->DestroyGameObject(parent),"Destroy shear fixture");
+        Meshes resources;runtime->SetResourceProvider(&resources);
+        auto *actor=scene->CreateGameObject("Convex mesh");actor->GetTransform()->SetLocalPosition({0,4,0});
+        auto *body=actor->AddComponent<GameSproutRuntime::IRigidbodyComponent>();body->SetConstraints(GameSproutRuntime::PhysicsConstraint::FreezeRotation);
+        auto *actorCollider=actor->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(actorCollider->GetShape().Convex,"Dynamic MeshCollider default must be convex");
+        const GameSproutRuntime::ResourceReference reference{"11111111111111111111111111111111",1};
+        Check(actorCollider->SetShape({reference,true}),"Assign prepared mesh");
+        unsigned collisions=0;actorCollider->RegisterCollisionEnter([&](const auto &event){if(event.Other.ComponentID==collider->GetComponentInstanceID())++collisions;});
+        Check(runtime->BeginExecution(error),error);
+        for(unsigned i=0;i<150;++i)runtime->FixedUpdate(1.f/60);
+        Check(actor->GetTransform()->GetLocalPosition().Y>-.1f&&actor->GetTransform()->GetLocalPosition().Y<.1f&&collisions==1,"Convex mesh did not collide with triangle floor");
+        Check(resources.Reads==1,"Mesh provider was re-read on each fixed step");
+        body->Teleport({1,3,1},{},true);runtime->FixedUpdate(1.f/60);Check(resources.Reads==1,"Rigid body move re-read mesh bytes");
+        Check(runtime->EndExecution(error),error);
+        auto shape=actorCollider->GetShape();shape.Convex=false;Check(actorCollider->SetShape(shape),"Set nonconvex mesh");
+        Check(!runtime->BeginExecution(error)&&error.find("Non-convex")!=std::string::npos,"Dynamic triangle mesh should be rejected");
+        Check(body->SetMotionType(GameSproutRuntime::PhysicsMotionType::Kinematic),"Set kinematic");
+        Check(runtime->BeginExecution(error),"Kinematic triangle mesh failed: "+error);Check(runtime->EndExecution(error),error);
+        auto settings=actorCollider->GetColliderSettings();settings.IsTrigger=true;Check(actorCollider->SetColliderSettings(settings),"Configure trigger");
+        Check(!runtime->BeginExecution(error)&&!error.empty(),"Nonconvex trigger should be rejected");
+        settings.IsTrigger=false;actorCollider->SetColliderSettings(settings);shape.Convex=true;actorCollider->SetShape(shape);
+        resources.Mesh.Bytes[0]=0; // Explicit invalid source revision must invalidate the decode cache.
+        const uint32_t invalid=1000;std::memcpy(resources.Mesh.Bytes.data()+resources.Mesh.IndexOffset,&invalid,4);++resources.Revision;
+        Check(!runtime->BeginExecution(error)&&error.find("index")!=std::string::npos,"Invalid provider revision reused stale collision geometry");
+        delete runtime;runtime=nullptr;std::cout<<"PASS MeshCollider builtin/provider, affine/mirror, convex dynamics, restrictions, revision cache and callbacks\n";return 0;
+    }catch(const std::exception &error){delete runtime;std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
+}

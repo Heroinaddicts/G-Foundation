@@ -36,6 +36,7 @@ class ColliderComponentBase : public BuiltinComponent<Interface>, public Physics
         return Settings;
     }
     bool SetColliderSettings(const ColliderSettings &) override;
+    bool CalculateFit(ColliderFitResult &, std::string &error) const override;
     IRigidbodyComponent *GetAttachedRigidbody() const override;
     uint64_t RegisterCollisionEnter(const IColliderComponent::fCollisionCallback &f) override {
         return RegisterCollision(0, f);
@@ -114,6 +115,14 @@ class CapsuleColliderComponent final : public ColliderComponentBase<ICapsuleColl
     bool SetShape(const CapsuleColliderShape &) override;
     CapsuleColliderShape Shape;
 };
+class MeshColliderComponent final : public ColliderComponentBase<IMeshColliderComponent> {
+  public:
+    explicit MeshColliderComponent(IGameObject *owner)
+        : ColliderComponentBase(owner, "GameSproutRuntime.MeshCollider") {}
+    MeshColliderShape GetShape() const override { return Shape; }
+    bool SetShape(const MeshColliderShape &) override;
+    MeshColliderShape Shape;
+};
 class RigidbodyComponent final : public BuiltinComponent<IRigidbodyComponent> {
   public:
     explicit RigidbodyComponent(IGameObject *owner)
@@ -149,4 +158,6 @@ class RigidbodyComponent final : public BuiltinComponent<IRigidbodyComponent> {
     Quaternion TargetRotation;
 };
 IComponent *CreatePhysicsComponent(const std::type_info &, IGameObject *);
+bool CalculateColliderFit(const IColliderComponent &,ColliderFitResult &,std::string &error);
+void InitializeColliderFit(PhysicsColliderState &);
 } // namespace GameSproutRuntime

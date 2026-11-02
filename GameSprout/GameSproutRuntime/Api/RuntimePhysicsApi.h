@@ -86,6 +86,9 @@ public:
     using fTriggerCallback=std::function<void(const TriggerEvent&)>;
     virtual const ColliderSettings& GetColliderSettings() const = 0;
     virtual bool SetColliderSettings(const ColliderSettings&) = 0;
+    // Owner-thread CPU query; does not change properties, advance animation or
+    // initialize a renderer. Uses only this object's prepared mesh, not children.
+    virtual bool CalculateFit(ColliderFitResult&, std::string& error) const = 0;
     // Borrowed nearest ancestor/self rigidbody; nullptr denotes static geometry.
     virtual IRigidbodyComponent* GetAttachedRigidbody() const = 0;
     // Register on the Runtime owner thread; 0 means failure. Tokens are local
@@ -128,4 +131,14 @@ public:
 protected:
     using IColliderComponent::IColliderComponent;
 };
+class GAMESPROUT_RUNTIME_PUBLIC_TYPE IMeshColliderComponent : public IColliderComponent {
+public:
+    virtual MeshColliderShape GetShape() const = 0;
+    // Reference syntax is validated here. Resource cooking and attached-body
+    // restrictions are checked when Runtime prepares/updates physics.
+    virtual bool SetShape(const MeshColliderShape&) = 0;
+protected:
+    using IColliderComponent::IColliderComponent;
+};
+
 }

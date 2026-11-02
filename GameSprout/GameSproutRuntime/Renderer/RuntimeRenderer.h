@@ -25,6 +25,7 @@ public:
     bool GetWorldBounds(IScene* scene,std::uint64_t objectID,Bounds& bounds) override;
     bool AppendSelectionOutline(IScene* scene,std::uint64_t objectID,DebugDrawList& draw,
         const Color& tint,bool depthTest) override;
+    bool AppendColliderWireframes(IScene* scene,const ColliderDebugOptions& options,DebugDrawList& draw) override;
 private:
     struct ResourceKey {
         std::string Guid;std::uint64_t LocalID=0;
@@ -41,6 +42,13 @@ private:
         std::string Error;
     };
     struct TextureGPU {GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;std::string Error;};
+    struct ColliderMeshWire {
+        ResourceReference Reference;
+        bool Convex=false;
+        Mat4 Relative;
+        std::vector<std::pair<Vector3,Vector3>> Edges;
+        std::string Error;
+    };
     struct Material {MaterialRenderData Data;bool Loaded=false;std::string Error;};
     struct PipelineKey {
         GRHI::TextureFormat Format=GRHI::TextureFormat::Unknown;
@@ -72,6 +80,7 @@ private:
     bool Initialize();
     bool Extract(const RenderView& view,std::vector<DrawObject>& objects);
     MeshGPU* Mesh(const ResourceReference& reference);
+    ColliderMeshWire* ColliderMesh(IColliderComponent& collider,const ResourceReference& reference,bool convex,const Mat4& relative);
     TextureGPU* Texture(const ResourceReference& reference);
     Material* MaterialData(const ResourceReference& reference);
     GRHI::IGraphicsPipeline* Pipeline(const PipelineKey& key);
@@ -95,6 +104,7 @@ private:
     GRHI::ITexture* _ColorTarget=nullptr;
     IRuntimeResourceProvider& _Resources;
     std::map<ResourceKey,MeshGPU> _Meshes;
+    std::map<std::pair<std::uint64_t,std::uint64_t>,ColliderMeshWire> _ColliderMeshes;
     std::map<ResourceKey,TextureGPU> _Textures;
     std::map<ResourceKey,Material> _Materials;
     std::map<PipelineKey,GRHI::IGraphicsPipeline*> _Pipelines;

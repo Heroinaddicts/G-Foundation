@@ -49,6 +49,21 @@ struct CapsuleColliderShape {
     float Height=2.0f; // Full height including both hemispheres; >= 2 * Radius.
     PhysicsAxis Axis=PhysicsAxis::Y;
 };
+// References the prepared Mesh subresource, not a source FBX or renderer instance.
+// Non-convex meshes are static/kinematic triangle surfaces; Dynamic bodies and
+// triggers require Convex. Empty Mesh means no collision geometry.
+struct MeshColliderShape { ResourceReference Mesh; bool Convex=false; };
+// Read-only estimate from the owning object's prepared, unskinned local mesh.
+// HasBounds=false means there is no usable local mesh; default values remain
+// available for creation, while an explicit editor Fit can leave authoring alone.
+struct ColliderFitResult {
+    bool HasBounds=false;
+    Vector3 Center;
+    BoxColliderShape Box;
+    SphereColliderShape Sphere;
+    CapsuleColliderShape Capsule;
+    MeshColliderShape Mesh;
+};
 struct ColliderIdentity {
     std::uint64_t SceneID=0, ObjectID=0, ComponentID=0;
     bool operator==(const ColliderIdentity&) const = default;
@@ -67,6 +82,12 @@ struct TriggerEvent { ColliderIdentity Self, Other; };
 struct PhysicsQuerySettings {
     std::uint32_t CollisionMask=DefaultRaycastLayers; // Explicit queries do not consult the collision matrix.
     bool IncludeTriggers=false;
+    // Runtime GetInstanceID values in the queried scene, never pointers or
+    // document FileIDs. Excludes every Collider on that object. A Rigidbody
+    // owner also excludes all child Colliders attached to its compound body.
+    // Independent descendant Rigidbody bodies are not excluded recursively.
+    // Duplicate, missing and other-scene IDs have no effect.
+    std::vector<std::uint64_t> IgnoredObjectIDs;
 };
 struct PhysicsRaycastHit {
     ColliderIdentity Collider;

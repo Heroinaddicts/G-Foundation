@@ -28,7 +28,7 @@ IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owne
 }
 bool AllowsMultipleBuiltinComponents(const std::type_info& type) {
     return type==typeid(IBoxColliderComponent) || type==typeid(ISphereColliderComponent) ||
-        type==typeid(ICapsuleColliderComponent);
+        type==typeid(ICapsuleColliderComponent) || type==typeid(IMeshColliderComponent);
 }
 
 bool SetLocalTransform(ITransformComponent* transform, const Mat4& matrix) {
