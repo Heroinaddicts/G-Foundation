@@ -2,6 +2,7 @@
 #define __GameViewUI_h__
 
 #include "Header.h"
+#include "IPlayMode.h"
 #include "IRuntimeHost.h"
 #include "ISceneManager.h"
 #include "IAnimationPreview.h"
@@ -19,10 +20,11 @@ class IRuntimeAssets;
 class IAnimationPreview;
 class GameViewport;
 
-class GameViewUI : public IGameViewUI, public IRuntimeFrameListener, public ISceneListener, public IAnimationPreviewListener {
+class GameViewUI : public IGameViewUI, public IRuntimeFrameListener, public ISceneListener, public IAnimationPreviewListener, public IPlayModeListener {
 public:
     ~GameViewUI() override;
 
+    void OnPlayModeStateChanged(const PlayModeState&) override;
     void Show() override;
     void Hide() override;
     void OnRuntimeFrame(const RuntimeFrameEvent&) override;
@@ -30,6 +32,9 @@ public:
     void OnAnimationPreviewStateChanged(bool scenePlaying) override;
 
 private:
+    IPlayMode* _PlayMode=nullptr;
+    bool _PlaySubscribed=false;
+    bool _CanEdit=true;
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;

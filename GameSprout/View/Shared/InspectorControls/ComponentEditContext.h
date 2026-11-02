@@ -7,6 +7,7 @@ class ILibraryManager;
 class ISelectionManager;
 class IInspectorUI;
 class IRuntimeHost;
+class IScriptEditor;
 
 struct ComponentEditContext {
     ISceneManager* Scenes = nullptr;
@@ -17,6 +18,7 @@ struct ComponentEditContext {
     ISelectionManager* Selection = nullptr;
     IInspectorUI* Inspector = nullptr;
     IRuntimeHost* Host = nullptr;
+    IScriptEditor* Scripts = nullptr;
     std::uint64_t SceneID = 0;
     std::uint64_t ObjectID = 0;
     std::function<void(const std::string&)> Report;

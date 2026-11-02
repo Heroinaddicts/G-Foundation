@@ -257,6 +257,18 @@ namespace GameSproutEditor {
         for (const auto& [name, view] : _ViewMap) {
             if(name!="IDEWindow")view->Release(this);
         }
+        // End gameplay while scene snapshots, script module code and the host
+        // still exist. OnRelease callbacks must finish before unloading GameLogic.
+        const auto play=_ModuleMap.find("PlayMode");
+        if(play!=_ModuleMap.end())play->second->Release(_Api);
+        // External-project generation owns worker processes and a loading scope.
+        // Cancel them while the IDE, asset registry and compiler are still alive.
+        const auto codeEditor=_ModuleMap.find("CodeEditor");
+        if(codeEditor!=_ModuleMap.end())codeEditor->second->Release(_Api);
+        // Cancel compilation and release native gameplay callbacks while both
+        // Runtime and the loading UI still exist. Source listeners go first.
+        const auto scripts=_ModuleMap.find("ScriptEditor");
+        if(scripts!=_ModuleMap.end())scripts->second->Release(_Api);
         // The IDE container owns attached widgets. Disconnect and shut down their
         // views before deleting the container and its native viewport windows.
         const auto ide=_ViewMap.find("IDEWindow");
@@ -268,7 +280,7 @@ namespace GameSproutEditor {
             if(found!=_ModuleMap.end())found->second->Release(_Api);
         }
         for (const auto& [name, module] : _ModuleMap) {
-            if(name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
+            if(name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
         }
         _ViewMap.clear();
         _ModuleMap.clear();

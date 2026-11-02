@@ -2,6 +2,7 @@
 #define __SceneViewUI_h__
 
 #include "Header.h"
+#include "IPlayMode.h"
 #include <QElapsedTimer>
 #include "IRuntimeHost.h"
 #include "ISceneManager.h"
@@ -17,10 +18,11 @@ class ISelectionManager;
 class IRuntimeAssets;
 class SceneViewport;
 
-class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener {
+class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener, public IPlayModeListener {
 public:
     ~SceneViewUI() override;
 
+    void OnPlayModeStateChanged(const PlayModeState&) override;
     void Show() override;
     void Hide() override;
     void OnRuntimeFrame(const RuntimeFrameEvent&) override;
@@ -33,6 +35,9 @@ public:
     std::string GetRenderError() const override;
 
 private:
+    IPlayMode* _PlayMode=nullptr;
+    bool _PlaySubscribed=false;
+    bool _CanEdit=true;
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi * const editor) override;
     bool Launch(GameSproutEditor::GameSproutViewApi * const editor) override;

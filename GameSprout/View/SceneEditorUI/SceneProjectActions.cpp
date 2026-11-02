@@ -15,12 +15,12 @@ bool SceneEditorUI::RegisterProjectActions() {
     ui.setupUi(&definition);
     const bool scene=_ProjectAssets->RegisterContextAction(this,
         {ui.createMenu->title().toStdString(),ui.actionCreateScene->text().toStdString()},&CreateSceneMenu,
-        [this](const ProjectAssetActionContext&) {return _Scenes!=nullptr;});
+        [this](const ProjectAssetActionContext&) {return _CanEdit && _Scenes!=nullptr;});
     const bool model=_ProjectAssets->RegisterContextAction(this,
         {ui.actionInstantiateModel->text().toStdString()},&InstantiateModelMenu,
         [this](const ProjectAssetActionContext& context) {
             GameSproutRuntime::ResourceReference reference;std::string error;
-            return _Scenes && ResolveModelReference(context,reference,error);
+            return _CanEdit && _Scenes && ResolveModelReference(context,reference,error);
         });
     if (!scene || !model) {_ProjectAssets->UnregisterExtensions(this);return false;}
     return true;
@@ -53,7 +53,7 @@ void SceneEditorUI::CreateSceneMenu() {if (_Self) _Self->ShowCreateSceneDialog()
 void SceneEditorUI::InstantiateModelMenu() {if (_Self) _Self->InstantiateSelectedModel();}
 
 void SceneEditorUI::InstantiateSelectedModel() {
-    if (!_Scenes || !_ProjectAssets) return;
+    if (!_CanEdit || !_Scenes || !_ProjectAssets) return;
     GameSproutRuntime::ResourceReference reference;std::string error;
     if (!ResolveModelReference(_ProjectAssets->GetActionContext(),reference,error)) {ShowError(error);return;}
     auto* object=_Scenes->InstantiateModel(reference,0,error);
@@ -62,7 +62,7 @@ void SceneEditorUI::InstantiateSelectedModel() {
 }
 
 void SceneEditorUI::ShowCreateSceneDialog() {
-    if (!_Scenes || !_ProjectAssets) return;
+    if (!_CanEdit || !_Scenes || !_ProjectAssets) return;
     if (_CreateSceneDialog) {_CreateSceneDialog->raise();_CreateSceneDialog->activateWindow();return;}
     const auto directory=_ProjectAssets->GetActionContext().Directory;
     QDialog* dialog=new QDialog();

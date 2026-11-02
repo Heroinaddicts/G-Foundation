@@ -14,7 +14,7 @@
     <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>1</height></size></property></spacer></item>
     <item><widget class="QLabel" name="cameraLabel"><property name="text"><string>Main Camera</string></property></widget></item>
    </layout></item>
-   <item><widget class="GameViewport" name="gameViewport"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>1</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
+   <item><widget class="GameViewport" name="gameViewport"><property name="toolTip"><string>运行时点击 Game 画面接收键盘与鼠标输入；Esc 释放输入。暂停后需再次点击画面继续接收输入。</string></property><property name="focusPolicy"><enum>Qt::StrongFocus</enum></property><property name="mouseTracking"><bool>true</bool></property><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>1</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
    <item><widget class="QLabel" name="statusLabel"><property name="text"><string>Game 与 Scene 共用 Runtime，按场景 Main Camera 绘制。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
   </layout>
  </widget>

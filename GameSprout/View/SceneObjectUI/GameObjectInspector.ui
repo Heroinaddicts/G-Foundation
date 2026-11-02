@@ -133,6 +133,7 @@
        <property name="bottomMargin">
         <number>0</number>
        </property>
+       <item><widget class="QPushButton" name="addComponentButton"><property name="text"><string>添加组件</string></property><property name="minimumSize"><size><width>0</width><height>28</height></size></property><property name="toolTip"><string>搜索并添加内置组件或已编译的用户脚本；也可以将 Project 中的脚本拖到此处。</string></property></widget></item>
        <item>
         <spacer name="bottomSpacer">
          <property name="orientation">

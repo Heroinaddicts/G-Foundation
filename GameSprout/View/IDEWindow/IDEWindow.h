@@ -24,6 +24,8 @@ public:
     IDEWindow& operator=(const IDEWindow&) = delete;
 
     IIDEMenuBar* GetMenuBar() const override;
+    bool AttachToolbarWidget(QWidget* widget) override;
+    bool RemoveToolbarWidget(QWidget* widget) override;
     IIDEDocker* CreateDocker(const QString& name) override;
     IIDEDocker* QueryDocker(const QString& name) override;
     bool ResizeDockers(const QList<IIDEDocker*>& dockers,

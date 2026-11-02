@@ -1,18 +1,26 @@
 #include "GameObjectInspector.h"
 #include "ComponentInfoSection.h"
+#include "AddComponentPopup.h"
+#include "IScriptEditor.h"
+#include "IAssetsManager.h"
+#include "../Shared/AssetDragPayload.h"
 #include "ui_GameObjectInspector.h"
 #include <QApplication>
 #include <QSignalBlocker>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 
 GameObjectInspector::GameObjectInspector(QWidget* parent) : QWidget(parent), _Ui(new Ui::GameObjectInspectorForm()) {
     _Ui->setupUi(this);
+    setAcceptDrops(true);
+    QObject::connect(_Ui->addComponentButton,&QPushButton::clicked,this,[this]{OpenAddComponent();});
     QObject::connect(_Ui->objectNameEdit,&QLineEdit::editingFinished,this,[this]{CommitName();});
     QObject::connect(_Ui->objectActiveCheck,&QCheckBox::clicked,this,[this](bool active){CommitActive(active);});
     QObject::connect(_Ui->objectLockButton,&QToolButton::toggled,this,[this](bool locked) {
         if (LockChanged) LockChanged(locked);
     });
 }
-GameObjectInspector::~GameObjectInspector() { LockChanged={};delete _Ui; }
+GameObjectInspector::~GameObjectInspector() { if(_AddPopup)delete _AddPopup;LockChanged={};delete _Ui; }
 void GameObjectInspector::SetLocked(bool locked) {
     const QSignalBlocker blocker(_Ui->objectLockButton);
     _Ui->objectLockButton->setChecked(locked);
@@ -21,12 +29,14 @@ void GameObjectInspector::SetDebugMode(bool debug) {
     _DebugMode=debug;
     _Ui->componentScroll->setVisible(!_SceneRoot || debug);
     _Ui->emptySceneSpace->setVisible(_SceneRoot && !debug);
+    _Ui->addComponentButton->setVisible(!_SceneRoot);
     for (auto* section:_Sections) {
         section->SetDebugMode(debug);
         section->setVisible(!_SceneRoot || debug);
     }
 }
 void GameObjectInspector::Clear() {
+    if(_AddPopup)delete _AddPopup;
     _Loading=true;_Context={};_LoadedID=0;_SceneRoot=false;setEnabled(false);
     _Ui->objectNameEdit->clear();_Ui->objectActiveCheck->setChecked(false);
     for(auto* section:_Sections) delete section;
@@ -35,6 +45,7 @@ void GameObjectInspector::Clear() {
     _Loading=false;
 }
 void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
+    if (_LoadedID!=object.GetInstanceID() && _AddPopup) delete _AddPopup;
     _Loading=true;setEnabled(true);
     struct Guard { bool& Value;~Guard(){Value=false;} } guard{_Loading};
     if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified()) {
@@ -53,18 +64,48 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
         if(!component) continue;
         if(index==_Sections.size()) {
             auto* section=new ComponentInfoSection(_Ui->componentHost);
-            _Ui->componentLayout->insertWidget(_Ui->componentLayout->count()-1,section);
+            _Ui->componentLayout->insertWidget(_Ui->componentLayout->count()-2,section);
             _Sections.push_back(section);
         }
         _Sections[index]->Bind(_Context);
         _Sections[index]->Load(*component);
+        _Sections[index]->SetReadOnly(_ReadOnly);
         _Sections[index]->SetDebugMode(_DebugMode);
         _Sections[index]->setVisible(!_SceneRoot || _DebugMode);
     }
 }
 
+void GameObjectInspector::OpenAddComponent() {
+    if (_ReadOnly || _SceneRoot || !_Context.Resolve()) return;
+    if (_AddPopup) delete _AddPopup;
+    _AddPopup=new AddComponentPopup(_Context,this);
+    _AddPopup->OpenAt(_Ui->addComponentButton);
+}
+bool GameObjectInspector::AttachDroppedScripts(const QMimeData* mime,bool commit) {
+    if (_ReadOnly || _SceneRoot || !_Context.Scripts || !_Context.Scenes || !_Context.Resolve()) return false;
+    std::vector<ProjectAssetSelection> selection;
+    if (!AssetDragPayload::Decode(mime,selection) || selection.size()!=1 || selection.front().IsSubAsset) return false;
+    const auto types=_Context.Scripts->GetScriptTypes();
+    std::vector<EditorScriptType> matching;
+    for (const auto& type:types) if(type.Source.Guid==selection.front().GuidString) matching.push_back(type);
+    if (matching.empty()) {
+        if (commit && _Context.Report) _Context.Report("此脚本尚未成功编译，请先编译项目脚本。");
+        return false;
+    }
+    if (!commit) return true;
+    if (matching.size()!=1) { OpenAddComponent();if(_Context.Report)_Context.Report("此源文件包含多个脚本类型，请在添加组件中选择。");return true; }
+    std::string error;
+    if(!_Context.Scenes->AttachScriptComponent(_Context.ObjectID,matching.front().Type.TypeID,matching.front().Source,error)) {
+        if(_Context.Report)_Context.Report(error);return false;
+    }
+    return true;
+}
+void GameObjectInspector::dragEnterEvent(QDragEnterEvent* event) { if(AttachDroppedScripts(event->mimeData(),false))event->acceptProposedAction(); }
+void GameObjectInspector::dragMoveEvent(QDragMoveEvent* event) { if(AttachDroppedScripts(event->mimeData(),false))event->acceptProposedAction(); }
+void GameObjectInspector::dropEvent(QDropEvent* event) { if(AttachDroppedScripts(event->mimeData(),true))event->acceptProposedAction(); }
+
 void GameObjectInspector::CommitName() {
-    if (_Loading) return;
+    if (_Loading || _ReadOnly) return;
     auto* object=_Context.Resolve();
     if (!object) return;
     const std::string previous=object->GetName();
@@ -86,7 +127,7 @@ void GameObjectInspector::CommitName() {
     if(object)_Ui->objectNameEdit->setText(QString::fromStdString(object->GetName()));
 }
 void GameObjectInspector::CommitActive(bool active) {
-    if (_Loading) return;
+    if (_Loading || _ReadOnly) return;
     auto* object=_Context.Resolve();
     if (!object) return;
     const bool previous=object->IsActiveSelf();
@@ -105,4 +146,14 @@ void GameObjectInspector::CommitActive(bool active) {
 
 void GameObjectInspector::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
     for(auto* section:_Sections)section->OnAnimationEvent(event);
+}
+
+void GameObjectInspector::SetReadOnly(bool value) {
+    _ReadOnly=value;
+    if(value&&_AddPopup)delete _AddPopup;
+    _Ui->objectNameEdit->setReadOnly(value);
+    _Ui->objectActiveCheck->setEnabled(!value);
+    _Ui->addComponentButton->setEnabled(!value);
+    setAcceptDrops(!value);
+    for(auto* section:_Sections)section->SetReadOnly(value);
 }

@@ -17,6 +17,7 @@ public:
     bool IsExpanded() const;
     void SetExpanded(bool expanded);
     void SetDebugMode(bool debug);
+    void SetReadOnly(bool value);
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
 private:
     void Add(const QString& key, const QString& label, const QString& value, QTreeWidgetItem* parent = nullptr);
@@ -28,5 +29,6 @@ private:
     ComponentEditContext _Context;
     ComponentEditor* _Editor = nullptr;
     std::string _EditorType;
+    std::string _BuiltinType;
     bool _DebugMode = false;
 };

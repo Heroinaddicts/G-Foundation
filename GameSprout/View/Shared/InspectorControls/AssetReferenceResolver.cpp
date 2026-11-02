@@ -9,7 +9,7 @@ void AppendCandidates(ILibraryManager* library,IAssetMeta* meta,const AssetImpor
     eAssetType expected,std::vector<AssetReferenceCandidate>& result) {
     // 一份 Manifest 只读取一次，避免大型 FBX 的每个子资源重复读取/解析整份记录。
     const QDir root(QString::fromStdString(library->GetLibraryRoot()));
-    for(const auto& artifact:manifest.Assets)if(artifact.Type==expected && artifact.LocalID) {
+    for(const auto& artifact:manifest.Assets)if((expected==eAssetType::Unknown || artifact.Type==expected) && artifact.LocalID) {
         const QString path=root.filePath(QString::fromStdString(manifest.Directory+"/"+artifact.Path));
         if(QFileInfo(path).isFile())result.push_back({{meta->_Guid.GetGuidString(),artifact.LocalID},artifact.Name,meta->GetPath(),artifact.SourceKey=="main"});
     }
@@ -17,6 +17,8 @@ void AppendCandidates(ILibraryManager* library,IAssetMeta* meta,const AssetImpor
 }
 std::string TypeName(eAssetType type) {
     switch(type) {
+    case eAssetType::Unknown:return "Resource";
+    case eAssetType::Audio:return "Audio";
     case eAssetType::Texture:return "Texture";
     case eAssetType::Mesh:return "Mesh";
     case eAssetType::Material:return "Material";
@@ -34,7 +36,7 @@ bool Resolve(IAssetsManager* assets,ILibraryManager* library,const GameSproutRun
     eAssetType expected,AssetReferenceCandidate& result,std::string& error,bool requireReady) {
     error.clear();result={};
     if(!assets || !library) {error="资源服务尚未就绪。";return false;}
-    if(expected!=eAssetType::Mesh && expected!=eAssetType::Texture && expected!=eAssetType::Material && expected!=eAssetType::Shader && expected!=eAssetType::Model && expected!=eAssetType::Skeleton && expected!=eAssetType::AnimationClip && expected!=eAssetType::AnimatorController && expected!=eAssetType::Avatar && expected!=eAssetType::AvatarMask) {error="此字段尚未支持该资源类型。";return false;}
+    if(expected!=eAssetType::Unknown && expected!=eAssetType::Audio && expected!=eAssetType::Mesh && expected!=eAssetType::Texture && expected!=eAssetType::Material && expected!=eAssetType::Shader && expected!=eAssetType::Model && expected!=eAssetType::Skeleton && expected!=eAssetType::AnimationClip && expected!=eAssetType::AnimatorController && expected!=eAssetType::Avatar && expected!=eAssetType::AvatarMask) {error="此字段尚未支持该资源类型。";return false;}
     const Guid guid(reference.Guid);
     if(!guid.IsValid() || !reference.LocalID) {error="资源身份无效，需要有效 GUID 和非零 LocalID。";return false;}
     IAssetMeta* meta=assets->QueryAsset(guid);
@@ -45,10 +47,10 @@ bool Resolve(IAssetsManager* assets,ILibraryManager* library,const GameSproutRun
     AssetImportManifest manifest;
     if(!library->GetManifest(guid,manifest)) {error="Missing：找不到已导入的资源记录。";return false;}
     for(const auto& artifact:manifest.Assets)if(artifact.LocalID==reference.LocalID) {
-        if(artifact.Type!=expected) {error="资源类型不匹配，此字段只接受 "+TypeName(expected)+"。";return false;}
+        if(expected!=eAssetType::Unknown && artifact.Type!=expected) {error="资源类型不匹配，此字段只接受 "+TypeName(expected)+"。";return false;}
         // 只借用本次查询的描述；重导入后对象地址会失效。
         IAsset* asset=library->QueryAsset(guid,reference.LocalID);
-        if(!asset || asset->GetAssetType()!=expected || !QFileInfo(QString::fromStdString(asset->GetArtifactPath())).isFile()) {
+        if(!asset || asset->GetAssetType()!=artifact.Type || !QFileInfo(QString::fromStdString(asset->GetArtifactPath())).isFile()) {
             error="Missing：预处理产物不存在，请重新导入源资源。";return false;
         }
         result={{guid.GetGuidString(),reference.LocalID},artifact.Name,meta->GetPath(),artifact.SourceKey=="main"};

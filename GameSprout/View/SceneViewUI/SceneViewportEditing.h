@@ -23,6 +23,7 @@ public:
     bool Move(GameSproutRuntime::Vector2 logicalPixel,bool snap);
     bool Release(GameSproutRuntime::Vector2 logicalPixel,bool snap);
     void Cancel();
+    void SetReadOnly(bool value) { if (_ReadOnly!=value) { Cancel(); _ReadOnly=value; _Ready=false; } }
     bool DeleteSelection();
     bool IsDragging() const {return _Gizmo.IsDragging();}
     SceneEditingTool Tool() const {return _Tool;}
@@ -49,5 +50,5 @@ private:
     SceneGizmoView _DragView;
     GameSproutRuntime::Vector2 _HoverPixel;
     bool _HasHover=false;
-    bool _Ready=false,_Snap=false;
+    bool _Ready=false,_Snap=false,_ReadOnly=false;
 };

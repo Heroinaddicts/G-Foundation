@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SceneObjectPickerForm</class>
+ <widget class="QDialog" name="SceneObjectPickerForm">
+  <property name="windowTitle"><string>选择 GameObject</string></property>
+  <property name="minimumSize"><size><width>320</width><height>300</height></size></property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>440</width><height>460</height></rect></property>
+  <layout class="QVBoxLayout" name="pickerLayout">
+   <item><widget class="QLineEdit" name="searchEdit"><property name="placeholderText"><string>搜索节点名称或路径…</string></property><property name="clearButtonEnabled"><bool>true</bool></property></widget></item>
+   <item><widget class="QTreeWidget" name="objectTree"><property name="headerHidden"><bool>true</bool></property><property name="rootIsDecorated"><bool>false</bool></property><property name="alternatingRowColors"><bool>true</bool></property><property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><column><property name="text"><string>场景对象</string></property></column></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="styleSheet"><string>color:#ffb4ae;</string></property></widget></item>
+   <item><layout class="QHBoxLayout" name="buttonsLayout"><item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="cancelButton"><property name="text"><string>取消</string></property></widget></item><item><widget class="QPushButton" name="selectButton"><property name="text"><string>选择</string></property><property name="default"><bool>true</bool></property></widget></item></layout></item>
+  </layout>
+ </widget><resources/><connections/>
+</ui>

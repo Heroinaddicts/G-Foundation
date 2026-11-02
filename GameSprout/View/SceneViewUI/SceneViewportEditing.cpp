@@ -73,7 +73,7 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
         return;
     }
     _Ready=false;
-    if(!object||_Tool==SceneEditingTool::View||!_Viewport.Renderer())return;
+    if(_ReadOnly||!object||_Tool==SceneEditingTool::View||!_Viewport.Renderer())return;
     SceneGizmoView view;if(!View(view))return;
     // 绘制共享本帧RenderCamera，输入仍用最近成功呈现帧的相机。
     if(drawCamera)view.Camera=*drawCamera;
@@ -91,7 +91,7 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
 void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSproutRuntime::DebugDrawList& draw) {
     auto* object=Selected();auto* renderer=_Viewport.Renderer();
     if(object&&renderer)renderer->AppendSelectionOutline(scene,object->GetInstanceID(),draw);
-    if(_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
+    if(!_ReadOnly&&_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
 }
 bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
     if(!_Scenes || !_Selection || !_Viewport.Renderer())return false;
@@ -103,7 +103,7 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
     _Viewport.ClearEditingError();
     SceneGizmoView view;if(!View(view))return false;
     const auto pixel=Pixel(logical,view);
-    if(_Ready&&_Gizmo.Hover(pixel)!=SceneGizmoHandle::None) {
+    if(!_ReadOnly&&_Ready&&_Gizmo.Hover(pixel)!=SceneGizmoHandle::None) {
         std::string error;
         if(!_Gizmo.BeginDrag(pixel,error)){Report(error);return true;}
         const char* label=_Tool==SceneEditingTool::Move?"Scene 移动物体":_Tool==SceneEditingTool::Rotate?"Scene 旋转物体":"Scene 缩放物体";
@@ -159,6 +159,7 @@ void SceneViewportEditing::Cancel() {
     if(dragging)_Viewport.ReleaseEditingCapture();
 }
 bool SceneViewportEditing::DeleteSelection() {
+    if(_ReadOnly)return false;
     if(!_Scenes||!_Selection)return false;
     if(_Scenes->GetActiveScene()!=_ActiveScene)OnActiveSceneChanged();
     OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());

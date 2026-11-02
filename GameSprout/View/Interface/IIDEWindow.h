@@ -96,6 +96,10 @@ public:
 
     // Initialize 成功后有效，Release 后返回 nullptr。
     virtual IIDEMenuBar * GetMenuBar() const = 0;
+    // Main-thread toolbar extension. On success IDEWindow owns the widget.
+    // RemoveToolbarWidget removes and destroys it; unregister callbacks first.
+    virtual bool AttachToolbarWidget(QWidget* widget) { (void)widget; return false; }
+    virtual bool RemoveToolbarWidget(QWidget* widget) { (void)widget; return false; }
     // 初始停靠左侧；同名返回已有面板；空名称或尚未初始化返回 nullptr。
     // 返回接口由 IDEWindow 管理，所有借用指针在 Release 时失效。
     virtual IIDEDocker * CreateDocker(const QString & name) = 0;

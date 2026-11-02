@@ -10,6 +10,8 @@
 #include <QLayout>
 #include <QMainWindow>
 #include <QTabWidget>
+#include <QToolBar>
+#include <QWidgetAction>
 
 IDEWindow::~IDEWindow() {
     Release(nullptr);
@@ -235,4 +237,27 @@ bool IDEWindow::ResizeDockers(const QList<IIDEDocker*>& dockers,
     }
     _Window->resizeDocks(nativeDocks, pixelSizes, orientation);
     return true;
+}
+
+// The toolbar shell and its presentation are defined in IDEWindow.ui.
+// Feature Views provide their own .ui widgets through this generic extension.
+bool IDEWindow::AttachToolbarWidget(QWidget* widget) {
+    if (!_Window || !_Ui || !widget || widget == _Window || widget->isAncestorOf(_Window)) return false;
+    for (QAction* action : _Ui->editorToolBar->actions())
+        if (_Ui->editorToolBar->widgetForAction(action) == widget) return false;
+    if (widget->parentWidget()) return false;
+    _Ui->editorToolBar->addWidget(widget);
+    _Ui->editorToolBar->show();
+    return true;
+}
+bool IDEWindow::RemoveToolbarWidget(QWidget* widget) {
+    if (!_Window || !_Ui || !widget) return false;
+    for (QAction* action : _Ui->editorToolBar->actions()) {
+        if (_Ui->editorToolBar->widgetForAction(action) != widget) continue;
+        _Ui->editorToolBar->removeAction(action);
+        delete action; // QWidgetAction also owns the feature widget.
+        if (_Ui->editorToolBar->actions().isEmpty()) _Ui->editorToolBar->hide();
+        return true;
+    }
+    return false;
 }

@@ -30,6 +30,7 @@ void GameViewport::DestroyGPU() {
     delete renderer;
 }
 void GameViewport::Shutdown(){
+    ReleaseGameInput();_GameplayInputEnabled=false;
     _Initialized=false;DestroyGPU();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
     if(_HostWindow){_HostWindow->removeEventFilter(this);QObject::disconnect(_HostWindow,nullptr,this,nullptr);_HostWindow=nullptr;}
@@ -61,6 +62,7 @@ bool GameViewport::event(QEvent* event) {
     return QWidget::event(event);
 }
 bool GameViewport::eventFilter(QObject* watched,QEvent* event) {
+    if((watched==_NativeWindow||watched==_HostWindow)&&event->type()==QEvent::WindowDeactivate){ReleaseGameInput();clearFocus();}
     if((watched==_NativeWindow||watched==_HostWindow)&&event->type()==QEvent::PlatformSurface){
         const auto type=static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType();
         // Native QWindow receives this before its platform handle is destroyed, including host teardown/reparenting.

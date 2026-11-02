@@ -11,6 +11,7 @@ GameViewUI::~GameViewUI(){Release(nullptr);}
 void GameViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
     g_Self=this;g_GameSproutEditor=editor;
     if(!editor)return;
+    _PlayMode=editor->GetGameSproutModule<IPlayMode>("PlayMode");
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
     GetGameSproutModule(editor,_Host,RuntimeHost);
@@ -28,12 +29,12 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
         _Resources?_Resources->GetResourceProvider():nullptr);
     _Viewport->StatusChanged=[this](const std::string& text){if(_Window)_Ui->statusLabel->setText(QString::fromStdString(text));};
     QObject::connect(_Ui->playButton,&QToolButton::toggled,_Dispatch,[this](bool playing){
-        if(_Preview)_Preview->SetAnimationPreviewPlaying(playing);
+        if(_CanEdit&&_Preview)_Preview->SetAnimationPreviewPlaying(playing);
         // 命令可能被当前事务拒绝，立即回读一次确认按钮状态，不等待轮询。
         OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
     });
     QObject::connect(_Ui->stopButton,&QToolButton::clicked,_Dispatch,[this]{
-        if(_Preview)_Preview->ResetAnimationPreview();
+        if(_CanEdit&&_Preview)_Preview->ResetAnimationPreview();
         OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
     });
     QObject::connect(_Ui->retryButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
@@ -48,6 +49,7 @@ bool GameViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
     if(_Preview)_PreviewSubscribed=_Preview->RegisterPreviewListener(this);
+    if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
     return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed && (!_Preview || _PreviewSubscribed);
 }
@@ -66,6 +68,8 @@ void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
     const QSignalBlocker blocker(_Ui->playButton);_Ui->playButton->setChecked(scenePlaying);
 }
 void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
+    _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);
     if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
     if(_PreviewSubscribed && _Preview)_Preview->UnregisterPreviewListener(this);
@@ -76,4 +80,11 @@ void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     _Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;
     delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Runtime=nullptr;_Preview=nullptr;_Resources=nullptr;
     if(g_Self==this)g_Self=nullptr;
+}
+
+void GameViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    _CanEdit=state.State==EditorPlayState::Edit;
+    if(!_Window||!_Ui)return;
+    _Ui->playButton->setEnabled(_CanEdit);_Ui->stopButton->setEnabled(_CanEdit);
+    if(_Viewport)_Viewport->SetGameplayInputEnabled(state.State==EditorPlayState::Playing);
 }

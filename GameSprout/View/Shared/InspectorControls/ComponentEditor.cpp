@@ -39,7 +39,19 @@ bool ComponentEditor::ReadNumber(QLineEdit* edit, float& output) const {
     output = static_cast<float>(value);
     return true;
 }
-void ComponentEditor::ShowNumber(QLineEdit* edit, float value) { edit->setText(QString::number(value, 'g', 9)); }
+void ComponentEditor::ShowNumber(QLineEdit* edit, float value) {
+    const QString text=QString::number(value,'g',9);
+    const bool focused=edit->hasFocus();
+    const int cursor=edit->cursorPosition(),selection=edit->selectionStart(),length=edit->selectedText().size();
+    edit->setText(text);
+    edit->setToolTip(text);
+    // setText normally scrolls a narrow field to its trailing digits. Idle and
+    // read-only inspectors should show the sign/integer prefix, retaining the
+    // full round-trip float text and exposing it in the tooltip.
+    if(!focused) edit->setCursorPosition(0);
+    else if(selection>=0) edit->setSelection(cursor==selection?selection+length:selection,cursor==selection?-length:length);
+    else edit->setCursorPosition(cursor);
+}
 bool ComponentEditor::ReadNumbers(std::initializer_list<QLineEdit*> edits, std::vector<float>& output) const {
     output.clear();
     for (QLineEdit* edit : edits) { float value; if (!ReadNumber(edit,value)) return false; output.push_back(value); }

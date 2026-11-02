@@ -12,6 +12,7 @@
 SceneEditorUI::~SceneEditorUI() { Release(nullptr); }
 void SceneEditorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* api) {
     _Self = this;
+    _PlayMode=api?api->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
     _IDE = api ? api->GetGameSproutView<IIDEWindow>("IDEWindow") : nullptr;
     _Scenes = api ? api->GetGameSproutModule<ISceneManager>("SceneManager") : nullptr;
     _ProjectAssets = api ? api->GetGameSproutView<IProjectAssetsUI>("ProjectAssetsUI") : nullptr;
@@ -45,10 +46,13 @@ bool SceneEditorUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     }
     if (!RegisterProjectActions()) return false;
     _Subscribed = _Scenes->RegisterSceneListener(this);
+    if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     RefreshActions();
     return _Subscribed;
 }
 void SceneEditorUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
+    _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if (_ProjectAssets) _ProjectAssets->UnregisterExtensions(this);
     if (_Subscribed && _Scenes) _Scenes->UnregisterSceneListener(this);
     _Subscribed = false;
@@ -68,7 +72,7 @@ std::uint64_t SceneEditorUI::SceneID() const {
     return scene ? scene->GetInstanceID() : 0;
 }
 void SceneEditorUI::RefreshActions() {
-    const bool editing = _Scenes && _Scenes->HasTransformEdit();
+    const bool editing = !_CanEdit || (_Scenes && _Scenes->HasTransformEdit());
     if (_Save) _Save->SetEnabled(SceneID() != 0 && !editing);
     if (_SaveAs) _SaveAs->SetEnabled(SceneID() != 0 && !editing);
     if (_Undo) _Undo->SetEnabled(_Scenes && !editing && _Scenes->CanUndo());
@@ -85,28 +89,28 @@ void SceneEditorUI::OnSceneStateChanged() { RefreshActions(); }
 void SceneEditorUI::SaveMenu() { if (_Self) _Self->SaveScene(); }
 void SceneEditorUI::SaveAsMenu() { if (_Self) _Self->SaveSceneAs(); }
 void SceneEditorUI::UndoMenu() {
-    if (!_Self || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
+    if (!_Self || !_Self->_CanEdit || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     std::string error;
     if (!_Self->_Scenes->Undo(error)) _Self->ShowError(error);
     _Self->RefreshActions();
 }
 void SceneEditorUI::RedoMenu() {
-    if (!_Self || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
+    if (!_Self || !_Self->_CanEdit || !_Self->_Scenes || _Self->_Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     std::string error;
     if (!_Self->_Scenes->Redo(error)) _Self->ShowError(error);
     _Self->RefreshActions();
 }
 void SceneEditorUI::SaveScene() {
-    if (!_Scenes || !SceneID() || _Scenes->HasTransformEdit()) return;
+    if (!_CanEdit || !_Scenes || !SceneID() || _Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     if (_Scenes->GetActiveScenePath().empty()) { ShowSaveDialog(); return; }
     std::string error;
     if (!_Scenes->SaveScene(error)) ShowError(error);
 }
 void SceneEditorUI::SaveSceneAs() {
-    if (!_Scenes || _Scenes->HasTransformEdit()) return;
+    if (!_CanEdit || !_Scenes || _Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     if (SceneID()) ShowSaveDialog();
 }
@@ -116,4 +120,10 @@ void SceneEditorUI::OpenNow(const std::string& path) {
     const bool success = _Scenes && _Scenes->OpenScene(path, error);
     _Opening = false;
     if (!success) ShowError(error);
+}
+
+void SceneEditorUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    _CanEdit=state.State==EditorPlayState::Edit;
+    if(!_CanEdit){if(_SaveDialog)_SaveDialog->reject();if(_UnsavedDialog)_UnsavedDialog->reject();if(_CreateSceneDialog)_CreateSceneDialog->reject();}
+    RefreshActions();
 }

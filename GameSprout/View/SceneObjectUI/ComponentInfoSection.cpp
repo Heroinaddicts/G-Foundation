@@ -25,6 +25,11 @@ ComponentInfoSection::ComponentInfoSection(QWidget* parent) : QWidget(parent), _
     QObject::connect(_Ui->detailsButton,&QToolButton::toggled,this,[this] { UpdateDebugVisibility(); });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemExpanded,this,[this] { UpdateHeight(); });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemCollapsed,this,[this] { UpdateHeight(); });
+    QObject::connect(_Ui->removeComponentButton,&QToolButton::clicked,this,[this] {
+        if (!_Context.Scenes || _BuiltinType.empty()) return;
+        std::string error;
+        if (!_Context.Scenes->RemoveComponent(_Context.ObjectID,_BuiltinType,error) && _Context.Report) _Context.Report(error);
+    });
     UpdateDebugVisibility();
 }
 ComponentInfoSection::~ComponentInfoSection() { delete _Ui; }
@@ -63,10 +68,17 @@ void ComponentInfoSection::Resource(const QString& key,const QString& label,cons
 }
 void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
     const QString type=TypeName(component);
-    if (_EditorType != type.toStdString()) {
+    const auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(&component);
+    _BuiltinType.clear();
+    if (!script && _Context.Runtime) for(const auto& info:_Context.Runtime->GetBuiltinComponentTypes())
+        if(!info.Intrinsic && info.TypeID==type.toStdString()) {_BuiltinType=info.TypeID;break;}
+    auto* owner=component.GetGameObject();
+    _Ui->removeComponentButton->setVisible(!_BuiltinType.empty() && owner && owner!=owner->GetScene());
+    const std::string editorKey=type.toStdString()+(script?"#"+std::to_string(script->GetScriptInstanceID()):std::string());
+    if (_EditorType != editorKey) {
         delete _Editor;
         _Editor = _Context.Inspector ? _Context.Inspector->CreateComponentEditor(component.GetComponentType(),_Ui->editorHost) : nullptr;
-        _EditorType = type.toStdString();
+        _EditorType = editorKey;
         if (_Editor) _Ui->editorLayout->addWidget(_Editor);
         _Ui->editorHost->setVisible(_Editor != nullptr);
         _Ui->detailsButton->setChecked(_Editor == nullptr);
@@ -142,6 +154,11 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
     } else if(auto* value=dynamic_cast<GameSproutRuntime::ISkinnedMeshRendererComponent*>(&component)) {
         caption="Skinned Mesh Renderer";
         Add("AnimatorObjectID",QStringLiteral("Animator 节点 ID"),QString::number(value->GetAnimatorObjectID()));
+    } else if(script) {
+        caption="Script";
+        if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetScriptTypes())if(info.TypeID==script->GetScriptTypeID()){caption=QString::fromStdString(info.Name);break;}
+        Add("ScriptTypeID",QStringLiteral("脚本类型"),QString::fromStdString(script->GetScriptTypeID()));
+        Add("ScriptInstanceID",QStringLiteral("脚本实例 ID"),QString::number(script->GetScriptInstanceID()));
     } else Add("Unknown",QStringLiteral("组件信息"),QStringLiteral("当前版本尚无此组件的专用属性面板。"));
     _Ui->componentHeaderButton->setText(caption);
     _Ui->componentHeaderButton->setToolTip(type);
@@ -165,4 +182,9 @@ void ComponentInfoSection::UpdateHeight() {
 
 void ComponentInfoSection::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
     if(_Editor)_Editor->OnAnimationEvent(event);
+}
+
+void ComponentInfoSection::SetReadOnly(bool value) {
+    _Ui->editorHost->setEnabled(!value);
+    _Ui->removeComponentButton->setEnabled(!value);
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "ISceneEditorUI.h"
+#include "IPlayMode.h"
 #include "ISceneManager.h"
 #include "IIDEWindow.h"
 #include "IProjectAssetsUI.h"
@@ -10,15 +11,19 @@ class IAssetsManager;
 class ILibraryManager;
 class ISelectionManager;
 
-class SceneEditorUI final : public ISceneEditorUI, public ISceneListener {
+class SceneEditorUI final : public ISceneEditorUI, public ISceneListener, public IPlayModeListener {
 public:
     ~SceneEditorUI() override;
+    void OnPlayModeStateChanged(const PlayModeState&) override;
     void SaveScene() override;
     void SaveSceneAs() override;
     void OpenSceneAsset(const std::string& path) override;
     void OnActiveSceneChanged() override;
     void OnSceneStateChanged() override;
 private:
+    IPlayMode* _PlayMode=nullptr;
+    bool _PlaySubscribed=false;
+    bool _CanEdit=true;
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi* api) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi*) override;
     bool Launch(GameSproutEditor::GameSproutViewApi*) override;

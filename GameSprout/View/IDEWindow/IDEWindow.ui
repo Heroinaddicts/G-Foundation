@@ -24,6 +24,14 @@ QMainWindow::separator:hover { background:#527799; }</string></property>
   <property name="dockOptions"><set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks</set></property>
   <property name="documentMode"><bool>true</bool></property>
   <property name="dockTabsAtTop" stdset="0"><bool>true</bool></property>
+  <widget class="QToolBar" name="editorToolBar">
+   <property name="windowTitle"><string>编辑器工具栏</string></property>
+   <property name="movable"><bool>false</bool></property>
+   <property name="floatable"><bool>false</bool></property>
+   <property name="visible"><bool>false</bool></property>
+   <attribute name="toolBarArea"><enum>TopToolBarArea</enum></attribute>
+   <attribute name="toolBarBreak"><bool>false</bool></attribute>
+  </widget>
   <widget class="QMenuBar" name="mainMenuBar">
    <widget class="QMenu" name="DockerWindowMenu">
     <property name="title"><string>窗口</string></property>

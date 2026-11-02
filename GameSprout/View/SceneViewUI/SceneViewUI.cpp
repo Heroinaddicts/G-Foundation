@@ -14,6 +14,7 @@ SceneViewUI::~SceneViewUI(){Release(nullptr);}
 void SceneViewUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
     g_Self=this;g_GameSproutEditor=editor;
     if(!editor)return;
+    _PlayMode=editor->GetGameSproutModule<IPlayMode>("PlayMode");
     GetGameSproutView(editor,g_IIDEWindow,IDEWindow);
     GetGameSproutModule(editor,_Scenes,SceneManager);
     GetGameSproutModule(editor,_Host,RuntimeHost);
@@ -61,6 +62,7 @@ bool SceneViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     _Attached=true;_Docker->SetTitle(QStringLiteral("Scene"));
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();_Timer.start();
     return (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
 }
@@ -77,6 +79,8 @@ void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
     if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
+    _PlaySubscribed=false;_PlayMode=nullptr;_CanEdit=true;
     if(_FrameSubscribed && _Host)_Host->UnregisterFrameListener(this);
     if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
     _FrameSubscribed=false;_SceneSubscribed=false;_ActiveScene=nullptr;_Host=nullptr;
@@ -150,4 +154,12 @@ bool SceneViewUI::FocusSelection() {
     if(!found)return false;
     const float aspect = _Viewport->height() > 0 ? static_cast<float>(_Viewport->width()) / _Viewport->height() : 1.0f;
     return _Viewport->Camera().Focus(minimum*0.5f+maximum*0.5f,(maximum*0.5f-minimum*0.5f).Length(),aspect);
+}
+
+void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    _CanEdit=state.State==EditorPlayState::Edit;
+    if(!_Window||!_Ui)return;
+    if(_Viewport)_Viewport->Editing().SetReadOnly(!_CanEdit);
+    QWidget* controls[]={_Ui->moveToolButton,_Ui->rotateToolButton,_Ui->scaleToolButton,_Ui->spaceCombo,_Ui->pivotCombo,_Ui->snapCheck,_Ui->moveSnapSpin,_Ui->rotateSnapSpin,_Ui->scaleSnapSpin};
+    for(QWidget* control:controls)control->setEnabled(_CanEdit);
 }
