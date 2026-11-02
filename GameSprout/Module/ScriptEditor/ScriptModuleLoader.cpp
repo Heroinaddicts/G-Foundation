@@ -29,7 +29,13 @@ bool SameFields(const std::vector<GameSproutRuntime::ScriptFieldInfo>& first,
     if(first.size()!=second.size())return false;
     for(std::size_t index=0;index<first.size();++index) {
         const auto& a=first[index];const auto& b=second[index];
-        if(a.ID!=b.ID||a.Name!=b.Name||a.DeclaringType!=b.DeclaringType||a.ResourceKind!=b.ResourceKind||!(a.Default==b.Default))return false;
+        if(a.ID!=b.ID||a.Name!=b.Name||a.DeclaringType!=b.DeclaringType||a.ResourceKind!=b.ResourceKind||!(a.Default==b.Default)||
+           a.TypeName!=b.TypeName||a.ComponentType!=b.ComponentType||a.FixedLength!=b.FixedLength||
+           !SameFields(a.Children,b.Children)||a.EnumValues.size()!=b.EnumValues.size())return false;
+        for(std::size_t index=0;index<a.EnumValues.size();++index) {
+            const auto& x=a.EnumValues[index];const auto& y=b.EnumValues[index];
+            if(x.Name!=y.Name||x.Value!=y.Value||x.IsUnsigned!=y.IsUnsigned||x.UnsignedValue!=y.UnsignedValue)return false;
+        }
     }
     return true;
 }

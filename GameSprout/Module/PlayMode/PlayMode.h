@@ -26,8 +26,11 @@ private:
     bool Launch(GameSproutEditor::GameSproutModuleApi*) override;
     void Release(GameSproutEditor::GameSproutModuleApi*) override;
     bool Ready(std::string&) const;
+    bool Start(bool paused,std::string&);
     void SetState(EditorPlayState,const std::string& error = {});
     void QueueEnter();
+    void QueueRestart();
+    void CancelRestart();
     void ContinueEnter();
     void FailEnter(const std::string&);
     ISceneManager* _Scenes = nullptr;
@@ -40,6 +43,9 @@ private:
     bool _Launched = false, _Subscribed = false, _Queued = false;
     bool _WantPlay = false, _Changing = false, _Notifying = false;
     bool _Session = false, _ReloadLocked = false;
+    bool _RestartQueued = false, _StartPaused = false;
+    uint64_t _RestartGeneration = 0;
+    uint64_t _RunningSourceRevision = 0;
     uint64_t _NextListener = 0;
     std::map<uint64_t,IPlayModeListener*> _Listeners;
 };

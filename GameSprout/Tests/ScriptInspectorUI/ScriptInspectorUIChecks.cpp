@@ -334,7 +334,7 @@ int main(int argc,char** argv){
         registration.Destroy=[](GameSproutRuntime::IScript* script){delete script;};
         GameSproutRuntime::ScriptValue defaultValue;defaultValue.Number=1;
         GameSproutRuntime::ScriptFieldRegistration field;field.Info={"speed","Speed",defaultValue};
-        field.Read=[](const auto&,auto&,auto&){return true;};field.Write=[](auto&,const auto&,auto&){return true;};registration.Fields.push_back(field);
+        field.Read=[](const auto&,auto&,const auto&,auto&){return true;};field.Write=[](auto&,const auto&,const auto&,auto&){return true;};field.Validate=[](const auto&,const auto&,auto&){return true;};registration.Fields.push_back(field);
         const auto addField=[&](const char* id,const char* name,GameSproutRuntime::ScriptValue value){auto item=field;item.Info={id,name,value};registration.Fields.push_back(item);};
         GameSproutRuntime::ScriptValue value;value.Kind=GameSproutRuntime::ScriptValueKind::Boolean;addField("active","Active",value);
         value={};value.Kind=GameSproutRuntime::ScriptValueKind::Integer;value.Integer=42;addField("count","Count",value);

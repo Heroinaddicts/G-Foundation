@@ -39,12 +39,14 @@ AnimatorComponentEditor::AnimatorComponentEditor(QWidget* parent):ComponentEdito
     _Ui->animationNotificationsTable->hide();_Ui->clearAnimationNotificationsButton->hide();
     QObject::connect(_Ui->animationNotificationsGroup,&QGroupBox::toggled,this,[this](bool open){_Ui->animationNotificationsTable->setVisible(open);_Ui->clearAnimationNotificationsButton->setVisible(open);});
     QObject::connect(_Ui->clearAnimationNotificationsButton,&QPushButton::clicked,this,[this]{_Notifications.clear();_NotificationsChanged=true;RefreshNotifications();});
-    QObject::connect(_Ui->rootMotionModeCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitSettings();});
-    const auto changed=[this](const GameSproutRuntime::ResourceReference&){CommitSettings();};
-    _Ui->skeletonResource->Changed=changed;_Ui->controllerResource->Changed=changed;_Ui->clipResource->Changed=changed;_Ui->avatarResource->Changed=changed;
-    QObject::connect(_Ui->speedSpin,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this]{CommitSettings();});
-    QObject::connect(_Ui->playOnStartCheck,&QCheckBox::clicked,this,[this]{CommitSettings();});
-    QObject::connect(_Ui->loopCheck,&QCheckBox::clicked,this,[this]{CommitSettings();});
+    QObject::connect(_Ui->rootMotionModeCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitSettings(_Ui->rootMotionModeCombo);});
+    _Ui->skeletonResource->Changed=[this](const auto&){CommitSettings(_Ui->skeletonResource);};
+    _Ui->controllerResource->Changed=[this](const auto&){CommitSettings(_Ui->controllerResource);};
+    _Ui->clipResource->Changed=[this](const auto&){CommitSettings(_Ui->clipResource);};
+    _Ui->avatarResource->Changed=[this](const auto&){CommitSettings(_Ui->avatarResource);};
+    QObject::connect(_Ui->speedSpin,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this]{CommitSettings(_Ui->speedSpin);});
+    QObject::connect(_Ui->playOnStartCheck,&QCheckBox::clicked,this,[this]{CommitSettings(_Ui->playOnStartCheck);});
+    QObject::connect(_Ui->loopCheck,&QCheckBox::clicked,this,[this]{CommitSettings(_Ui->loopCheck);});
     QObject::connect(_Ui->previewLayerCombo,qOverload<int>(&QComboBox::currentIndexChanged),this,[this]{RefreshLayerStates();RefreshPlayback();});
     QObject::connect(_Ui->runtimeWeightSpin,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double weight){
         if(_Loading)return;auto* animator=Animator();const int layer=_Ui->previewLayerCombo->currentIndex();
@@ -112,11 +114,19 @@ void AnimatorComponentEditor::ReadValues(GameSproutRuntime::IComponent& componen
     _Ui->clipPreviewEditor->Bind(_Context);
     RefreshPlayback();
 }
-void AnimatorComponentEditor::CommitSettings() {
-    if(_Loading)return;
+void AnimatorComponentEditor::CommitSettings(QWidget* changed) {
+    if(_Loading||!_PropertiesEditable)return;
     auto* animator=Animator();if(!animator)return;
     const auto previous=Read(*animator);
-    const Settings next{_Ui->skeletonResource->GetValue(),_Ui->controllerResource->GetValue(),_Ui->clipResource->GetValue(),_Ui->avatarResource->GetValue(),float(_Ui->speedSpin->value()),_Ui->playOnStartCheck->isChecked(),_Ui->loopCheck->isChecked(),static_cast<GameSproutRuntime::RootMotionMode>(_Ui->rootMotionModeCombo->currentIndex())};
+    auto next=previous;
+    if(changed==_Ui->skeletonResource)next.Skeleton=_Ui->skeletonResource->GetValue();
+    if(changed==_Ui->controllerResource)next.Controller=_Ui->controllerResource->GetValue();
+    if(changed==_Ui->clipResource)next.Clip=_Ui->clipResource->GetValue();
+    if(changed==_Ui->avatarResource)next.Avatar=_Ui->avatarResource->GetValue();
+    if(changed==_Ui->speedSpin)next.Speed=float(_Ui->speedSpin->value());
+    if(changed==_Ui->playOnStartCheck)next.Auto=_Ui->playOnStartCheck->isChecked();
+    if(changed==_Ui->loopCheck)next.Loop=_Ui->loopCheck->isChecked();
+    if(changed==_Ui->rootMotionModeCombo)next.Motion=static_cast<GameSproutRuntime::RootMotionMode>(_Ui->rootMotionModeCombo->currentIndex());
     const auto operation=[](Settings value){return [value](GameSproutRuntime::IGameObject& object,std::string& error){
         auto* component=object.GetComponent<GameSproutRuntime::IAnimatorComponent>();
         if(!component){error="Animator 已被移除。";return false;}
@@ -204,4 +214,9 @@ void AnimatorComponentEditor::OnRuntimeFrame(const RuntimeFrameEvent& event) {
 void AnimatorComponentEditor::OnSimulationPlayingChanged(bool playing) {
     _SimulationPlaying=playing;
     if(isVisible())RefreshPlayback(false);
+}
+
+void AnimatorComponentEditor::EditabilityChanged() {
+    // Editing previews have their own time source and must not drive the Play world.
+    _Ui->previewGroup->setEnabled(_PropertiesEditable&&_StructureEditable&&(!_Context.Scenes||!_Context.Scenes->IsPlaySessionActive()));
 }

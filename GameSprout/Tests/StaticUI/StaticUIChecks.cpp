@@ -16,13 +16,14 @@ int main(int argc,char** argv) {
     try {
         Check(argc>=2,"Pass Runtime directory");runtime=Export(argv[1]);Check(runtime,"Runtime cannot load");
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create UI fixture project");QDir(temporary.path()).mkpath("Assets");
-        IDE ide;Project project;project.Root=temporary.path().toStdString();Assets assets;Library library;Selection selection;PlayMode play;
+        IDE ide;Project project;project.Root=temporary.path().toStdString();Assets assets;Library library;Selection selection;PlayMode play;Host host;ObjectEditing editing;
         Editor editor(runtime);SceneManager scenes;InspectorUI inspector;SceneObjectUI sceneUI;StaticUI staticUI;AuthoringProbe authoring;
         IStaticAuthoring* production=CreateProductionAuthoring();authoring.Production=production;authoring.Scenes=&scenes;
-        editor.Modules={{"Project",&project},{"AssetsManager",&assets},{"LibraryManager",&library},{"SelectionManager",&selection},{"PlayMode",&play},{"SceneManager",&scenes},{"StaticAuthoring",&authoring}};
+        editor.Modules={{"Project",&project},{"AssetsManager",&assets},{"LibraryManager",&library},{"SelectionManager",&selection},{"PlayMode",&play},{"SceneManager",&scenes},{"StaticAuthoring",&authoring},{"RuntimeHost",&host},{"ObjectEditing",&editing}};
         editor.Views={{"IDEWindow",&ide},{"InspectorUI",&inspector},{"SceneObjectUI",&sceneUI},{"StaticUI",&staticUI}};
         GameSproutEditor::GameSproutModuleApi moduleApi(nullptr,&editor);
         Check(GameSproutEditor::GameSproutEditorFinal::Start(scenes,moduleApi),"SceneManager failed");
+        Check(GameSproutEditor::GameSproutEditorFinal::Start(editing,moduleApi),"ObjectEditing failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Start(*production,moduleApi),"StaticAuthoring failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Start(inspector,editor),"InspectorUI failed");
         Check(GameSproutEditor::GameSproutEditorFinal::Start(sceneUI,editor),"SceneObjectUI failed");
@@ -131,6 +132,7 @@ int main(int argc,char** argv) {
         GameSproutEditor::GameSproutEditorFinal::Stop(staticUI,editor);GameSproutEditor::GameSproutEditorFinal::Stop(sceneUI,editor);GameSproutEditor::GameSproutEditorFinal::Stop(inspector,editor);
         Check(play.Listeners.empty()&&assets.Listeners.empty()&&selection.Listeners.empty(),"View release retained callbacks");
         GameSproutEditor::GameSproutEditorFinal::Stop(*production,moduleApi);delete production;
+        GameSproutEditor::GameSproutEditorFinal::Stop(editing,moduleApi);
         GameSproutEditor::GameSproutEditorFinal::Stop(scenes,moduleApi);delete runtime;runtime=nullptr;
         std::cout<<"PASS actual Inspector header routing, hidden unavailable capabilities and subset masks, partial/clear, lock, Play guard, child choices, single Undo, event-only refresh and extension teardown\n";return 0;
     }catch(const std::exception& error){delete runtime;std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}

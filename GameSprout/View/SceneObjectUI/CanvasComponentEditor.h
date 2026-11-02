@@ -7,6 +7,6 @@ public:
     ~CanvasComponentEditor() override;
 private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     Ui::CanvasComponentEditorForm* _Ui = nullptr;
 };

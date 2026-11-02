@@ -31,7 +31,7 @@ int main(int argc,char** argv){
             ScriptComponentEditor editor(nullptr);ComponentEditContext context;context.Scripts=&scripts;context.ObjectID=1;editor.Bind(context);
             auto* label=editor.findChild<QLabel*>("buildLabel");auto* compile=editor.findChild<QToolButton*>("compileButton");Check(label&&compile,"Missing existing build widgets");
             scripts.State.ReloadBlocked=true;scripts.State.PendingChanges=true;scripts.Publish();
-            Check(label->text()==QString::fromUtf8("代码已修改，停止运行后编译")&&!label->isHidden(),"Deferred compile state not displayed");
+            Check(label->text()==QString::fromUtf8("代码已修改，将重新运行并重置本次运行状态")&&!label->isHidden(),"Automatic restart state not displayed");
             Check(!compile->isEnabled(),"Play allowed immediate compile action");
             scripts.State.ReloadBlocked=false;scripts.State.Compiling=true;scripts.Publish();
             Check(label->text()==QString::fromUtf8("正在编译…")&&!compile->isEnabled(),"Active compilation lost display priority");

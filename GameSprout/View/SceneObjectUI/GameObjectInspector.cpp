@@ -2,6 +2,7 @@
 #include "ComponentInfoSection.h"
 #include "AddComponentPopup.h"
 #include "IScriptEditor.h"
+#include "IObjectEditing.h"
 #include "IAssetsManager.h"
 #include "../Shared/AssetDragPayload.h"
 #include "ui_GameObjectInspector.h"
@@ -92,20 +93,20 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
             const auto previous=expanded.find(componentContext.ComponentID);
             _Sections[index]->SetExpanded(previous==expanded.end()?true:previous->second);
         }
-        _Sections[index]->SetReadOnly(_ReadOnly);
+        _Sections[index]->SetEditability(!_ReadOnly,!_StructureReadOnly);
         _Sections[index]->SetDebugMode(_DebugMode);
         _Sections[index]->setVisible(!_SceneRoot || _DebugMode);
     }
 }
 
 void GameObjectInspector::OpenAddComponent() {
-    if (_ReadOnly || _SceneRoot || !_Context.Resolve()) return;
+    if (_StructureReadOnly || _SceneRoot || !_Context.Resolve()) return;
     if (_AddPopup) delete _AddPopup;
     _AddPopup=new AddComponentPopup(_Context,this);
     _AddPopup->OpenAt(_Ui->addComponentButton);
 }
 bool GameObjectInspector::AttachDroppedScripts(const QMimeData* mime,bool commit) {
-    if (_ReadOnly || _SceneRoot || !_Context.Scripts || !_Context.Scenes || !_Context.Resolve()) return false;
+    if (_StructureReadOnly || _SceneRoot || !_Context.Scripts || !_Context.Scenes || !_Context.Resolve()) return false;
     std::vector<ProjectAssetSelection> selection;
     if (!AssetDragPayload::Decode(mime,selection) || selection.size()!=1 || selection.front().IsSubAsset) return false;
     const auto types=_Context.Scripts->GetScriptTypes();
@@ -171,16 +172,17 @@ void GameObjectInspector::OnAnimationEvent(const GameSproutRuntime::AnimationNot
     for(auto* section:_Sections)section->OnAnimationEvent(event);
 }
 
-void GameObjectInspector::SetReadOnly(bool value) {
-    _ReadOnly=value;
-    if(value&&_AddPopup)delete _AddPopup;
-    _Ui->objectNameEdit->setReadOnly(value);
-    _Ui->objectActiveCheck->setEnabled(!value);
-    _Ui->tagCombo->setEnabled(!value);_Ui->layerCombo->setEnabled(!value);
-    _Ui->classificationSettingsButton->setEnabled(!value);
-    _Ui->addComponentButton->setEnabled(!value);
-    setAcceptDrops(!value);
-    for(auto* section:_Sections)section->SetReadOnly(value);
+void GameObjectInspector::SetReadOnly(bool value){SetEditability(!value,!value);}
+void GameObjectInspector::SetEditability(bool properties,bool structure) {
+    _ReadOnly=!properties;_StructureReadOnly=!structure;
+    if(!structure&&_AddPopup)delete _AddPopup;
+    _Ui->objectNameEdit->setReadOnly(!properties);
+    _Ui->objectActiveCheck->setEnabled(properties);
+    _Ui->tagCombo->setEnabled(properties);_Ui->layerCombo->setEnabled(properties);
+    _Ui->classificationSettingsButton->setEnabled(structure);
+    _Ui->addComponentButton->setEnabled(structure);
+    setAcceptDrops(structure);
+    for(auto* section:_Sections)section->SetEditability(properties,structure);
 }
 
 void GameObjectInspector::SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& settings) {
@@ -238,7 +240,9 @@ void GameObjectInspector::CommitLayer(int index) {
     }
     std::string error;
     if(!context.Resolve()||!context.Scenes)error="对象或场景已改变。";
-    else context.Scenes->SetObjectLayer(context.ObjectID,next,children,error);
+    else if(context.Editing)context.Editing->SetLayer({context.SceneID,context.ObjectID},next,children,error);
+    else if(!context.Scenes->IsPlaySessionActive())context.Scenes->SetObjectLayer(context.ObjectID,next,children,error);
+    else error="运行属性编辑服务尚未就绪。";
     if(context.Report)context.Report(error);
     RefreshClassification();
 }

@@ -2,6 +2,7 @@
 #include "ui_InspectorUI.h"
 #include <QLayout>
 void InspectorUI::Clear(const QString& message) {
+    ObserveObject(0);
     DeactivateSceneSections();
     if (_ActivePanel) { _ActivePanel->Deactivate(); _ActivePanel->hide(); }
     _ActivePanel = nullptr; _ActiveExtension = nullptr;
@@ -53,6 +54,7 @@ void InspectorUI::Refresh() {
         panel->ResolvePendingChanges = [this] { return ResolvePendingChanges(); };
         found = _Panels.emplace(selected, panel).first;
     }
+    ObserveObject(desired.Scene.ObjectID);
     _Target = desired; _ActivePanel = found->second; _ActiveExtension = selected;
     std::string error;
     if (!_ActivePanel->Load(desired, changed, error)) { Clear(QString::fromStdString(error)); return; }

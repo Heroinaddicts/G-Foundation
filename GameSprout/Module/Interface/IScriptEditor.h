@@ -12,6 +12,8 @@ struct ScriptBuildState {
     bool PendingChanges = false;
     bool ReloadBlocked = false;
     std::string Error;
+    // Advances only for source-asset events, not explicit compile requests.
+    uint64_t SourceRevision = 0;
 };
 // Value-only editor commands. Session changes on a scene/world switch; a stale
 // target is rejected rather than accidentally addressing a replacement object.
@@ -34,6 +36,7 @@ struct ScriptFieldSnapshot {
     std::string ObjectName;
     std::string ObjectPath;
     bool MissingObject = false;
+    std::vector<ScriptFieldSnapshot> Children; // Structure/sequence children; dictionary uses key,value pairs.
 };
 struct ScriptPropertySnapshot {
     ScriptFieldTarget Target;
@@ -43,6 +46,29 @@ struct ScriptObjectChoice {
     uint64_t ObjectFileID = 0; // 0 is the scene root, not an empty reference.
     std::string Name;
     std::string Path;
+    // Runtime identity is transient and valid only in the current field session.
+    uint64_t RuntimeObjectID = 0;
+    uint64_t RuntimeSceneID = 0;
+};
+// Paths address a value below one declared root field, never a native memory address.
+enum class ScriptPathKind : uint8_t { Member, Element, EntryKey, EntryValue };
+struct ScriptPathStep {
+    ScriptPathKind Kind=ScriptPathKind::Member;
+    std::string Member;
+    std::size_t Index=0;
+    bool operator==(const ScriptPathStep&) const = default;
+};
+using ScriptFieldPath=std::vector<ScriptPathStep>;
+enum class ScriptContainerAction : uint8_t { Resize, Insert, Remove, Move };
+struct ScriptContainerEdit {
+    ScriptContainerAction Action=ScriptContainerAction::Insert;
+    std::size_t Index=0, Destination=0;
+};
+struct ScriptComponentChoice {
+    ScriptObjectTarget Object;
+    uint64_t ComponentInstanceID=0;
+    std::string Name, Path, Type;
+    uint64_t ComponentFileID=0; // Existing identity only; browsing never allocates.
 };
 class IScriptEditorListener {
 public:
@@ -91,6 +117,27 @@ public:
     virtual bool LocateObjectReference(const ScriptFieldTarget& target,
                                        const GameSproutRuntime::ScriptValue& value, std::string& error) {
         error="场景对象定位服务不可用。";return false;
+    }
+    virtual bool SetFieldPath(const ScriptFieldTarget& target,const std::string& fieldID,
+        const ScriptFieldPath& path,const GameSproutRuntime::ScriptValue& value,std::string& error) {
+        if(path.empty())return SetField(target,fieldID,value,error);
+        error="递归字段编辑服务不可用。";return false;
+    }
+    virtual bool EditContainer(const ScriptFieldTarget&,const std::string&,const ScriptFieldPath&,
+        const ScriptContainerEdit&,std::string& error) {error="容器编辑服务不可用。";return false;}
+    virtual bool GetSceneComponentChoices(const ScriptFieldTarget&,const std::string& requiredType,
+        std::vector<ScriptComponentChoice>&,std::string& error) const {error="组件选择服务不可用。";return false;}
+    virtual bool ReferenceFromComponent(const ScriptFieldTarget&,const ScriptObjectTarget&,uint64_t componentInstanceID,
+        const std::string& requiredType,GameSproutRuntime::ScriptValue&,std::string& error) const {
+        error="组件引用服务不可用。";return false;
+    }
+    // Object drops resolve exactly one compatible component; zero/multiple matches are rejected.
+    virtual bool ComponentReferenceFromObject(const ScriptFieldTarget&,const ScriptObjectTarget&,
+        const std::string& requiredType,GameSproutRuntime::ScriptValue&,std::string& error) const {
+        error="组件引用服务不可用。";return false;
+    }
+    virtual bool LocateComponentReference(const ScriptFieldTarget&,const GameSproutRuntime::ScriptValue&,std::string& error) {
+        error="组件定位服务不可用。";return false;
     }
     // Freeze this successful native module for an execution session. Changes
     // received while blocked compile after the session ends, without replacing

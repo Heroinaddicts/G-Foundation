@@ -1,72 +1,7 @@
-#include "ScriptEditor.h"
-#include "GameSproutRuntimeExport.h"
-#include "Internal/RuntimeScriptBindings.h"
-#include <QCoreApplication>
-#include <iostream>
-#include <stdexcept>
+#include "ScriptFieldModuleTestServices.h"
 
-static void Check(bool value,const std::string& error) {if(!value)throw std::runtime_error(error);}
-class FieldsBehaviour final:public GameSproutRuntime::ScriptBehaviour {
-public:
-    float Speed=1;
-    GameSproutRuntime::IGameObject* Target=nullptr;
-};
-class SceneService final:public ISceneManager {
-public:
-    GameSproutRuntime::IScene* Scene=nullptr;
-    bool Playing=false;
-    fSceneEditOperation Apply,Revert;
-    uint64_t EditedID=0;
-    std::function<void()> Changed;
-    std::string Path;
-    GameSproutRuntime::IScene* GetActiveScene()const override{return Scene;}
-    const std::string& GetActiveScenePath()const override{return Path;}
-    bool OpenScene(const std::string&,std::string&)override{return false;}
-    bool IsPlaySessionActive()const override{return Playing;}
-    bool EditObject(uint64_t id,const std::string&,const fSceneEditOperation& apply,const fSceneEditOperation& revert,std::string& error)override {
-        GameSproutRuntime::IGameObject* found=nullptr;
-        Scene->ForeachChild([&](auto* child){if(child->GetInstanceID()==id)found=child;});
-        if(!found)return false;
-        if(!apply(*found,error))return false;
-        Apply=apply;Revert=revert;EditedID=id;if(Changed)Changed();return true;
-    }
-    bool Undo(std::string& error)override {return Revert&&Revert(*Owner(),error);}
-    bool Redo(std::string& error)override {return Apply&&Apply(*Owner(),error);}
-    bool CanUndo()const override{return bool(Revert);}
-    bool CanRedo()const override{return bool(Apply);}
-    bool SaveScene(std::string&)override{return false;}
-    bool SaveSceneAs(const std::string&,std::string&)override{return false;}
-    bool HasUnsavedChanges()const override{return false;}
-    bool CreateSceneAsset(const std::string&,const std::string&,std::string&,std::string&)override{return false;}
-    bool RegisterSceneListener(ISceneListener*)override{return true;}
-    void UnregisterSceneListener(ISceneListener*)override{}
-    bool Initialize(GameSproutEditor::GameSproutModuleApi*)override{return true;}
-    bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
-    void Release(GameSproutEditor::GameSproutModuleApi*)override{}
-private:
-    GameSproutRuntime::IGameObject* Owner()const {
-        for(std::size_t i=0;i<Scene->GetChildCount();++i)if(Scene->GetChild(i)->GetInstanceID()==EditedID)return Scene->GetChild(i);
-        return nullptr;
-    }
-};
-class SelectionService final:public ISelectionManager {
-public:
-    SceneObjectSelection SceneSelection;
-    std::vector<ProjectAssetSelection> GetAssetSelection()const override{return {};}
-    void SetAssetSelection(const std::vector<ProjectAssetSelection>&)override{}
-    SceneObjectSelection GetSceneObjectSelection()const override{return SceneSelection;}
-    void SetSceneObjectSelection(const SceneObjectSelection& value)override{SceneSelection=value;}
-    bool RegisterSelectionListener(ISelectionListener*)override{return true;}
-    void UnregisterSelectionListener(ISelectionListener*)override{}
-    bool Initialize(GameSproutEditor::GameSproutModuleApi*)override{return true;}
-    bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
-    void Release(GameSproutEditor::GameSproutModuleApi*)override{}
-};
-class Listener final:public IScriptEditorListener {
-public:
-    int Changes=0;
-    void OnScriptFieldsChanged(const ScriptFieldTarget&)override{++Changes;}
-};
+#include "ScriptRecursiveFieldsChecks.h"
+
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
@@ -77,13 +12,14 @@ int main(int argc,char** argv) {
              GameSproutRuntime::Internal::MakeField<FieldsBehaviour>("FieldsBehaviour::Target","Target",&FieldsBehaviour::Target,static_cast<GameSproutRuntime::IGameObject*>(nullptr))});
         const auto registration=GameSproutRuntime::Internal::ScriptModuleTypes().back();
         std::string error;Check(runtime->RegisterScriptType(registration,error),error);
-        SceneService scenes;SelectionService selection;ScriptEditor editor;
-        scenes.Scene=runtime->CreateScene("Fields");
+        SceneService scenes;SelectionService selection;ScriptEditor editor;ModeService mode;HostService host;ObjectEditing editing;
+        editing._Scenes=&scenes;editing._Play=&mode;editing._Host=&host;editing._Runtime=runtime;editing._OwnerThread=QThread::currentThread();editing._Ready=true;
+        scenes.Runtime=runtime;scenes.Scene=runtime->CreateScene("Fields");
         auto* owner=scenes.Scene->CreateGameObject("Owner");auto* target=scenes.Scene->CreateGameObject("Target");
         Check(runtime->BindSceneObjectIdentity(scenes.Scene,0,error)&&runtime->BindSceneObjectIdentity(owner,10,error)&&
               runtime->BindSceneObjectIdentity(target,20,error),error);
         auto* script=runtime->AddScriptComponent(owner,registration.Info.TypeID,{registration.Info.TypeID,1},1,error);Check(script,error);
-        editor._Runtime=runtime;editor._Scenes=&scenes;editor._Selection=&selection;editor._Launched=true;
+        editor._Runtime=runtime;editor._Scenes=&scenes;editor._Selection=&selection;editor._Editing=&editing;editor._Launched=true;
         scenes.Changed=[&editor]{editor.OnSceneStateChanged();};
         editor._Types.push_back({registration.Info,{registration.Info.TypeID,1},"Fixture.hpp"});
         Listener listener;Check(editor.RegisterScriptListener(&listener),"Listener registration");
@@ -121,12 +57,40 @@ int main(int argc,char** argv) {
               "A stale drag source with reused world/object IDs was accepted by the new field scope");
         Check(editor.ReadObjectTarget(replacement->GetInstanceID(),sourceTarget,error)&&
               editor.ReferenceFromObject(snapshot.Target,sourceTarget,value,error),error);
-        scenes.Playing=true;auto number=snapshot.Fields[0].Value;number.Number=3;
+        CheckRecursiveFieldEditing(editor,scenes,selection,mode,runtime,owner);
+        scenes.Playing=true;mode.State.State=EditorPlayState::Playing;
+        Check(runtime->BeginExecution(error),error);
+        auto number=snapshot.Fields[0].Value;number.Number=3;
         scenes.Apply={};scenes.Revert={};
         Check(editor.SetField(snapshot.Target,"FieldsBehaviour::Speed",number,error)&&!scenes.CanUndo(),"Play field edit changed authoring history");
+        auto* native=owner->GetComponent<FieldsBehaviour>();Check(native&&native->Speed==3,"Play setter did not reach native instance");
+        native->Speed=11;
+        Check(editor.ReadFields(owner->GetInstanceID(),1,snapshot,error)&&snapshot.Fields[0].Value.Number==11,
+            "Field snapshot used stale authored values instead of live native fields");
+        Check(editor.ObserveFields(snapshot.Target,&listener),"Observe new field session");
+        const auto observed=listener.Changes;native->Speed=12;runtime->Update(.016f);
+        Check(listener.Changes>observed,"Observed native field change did not emit a scoped notification");
+        auto* transient=scenes.Scene->CreateGameObject("Runtime only");const auto transientID=transient->GetInstanceID();
+        Check(editor.GetSceneObjectChoices(snapshot.Target,choices,error),error);
+        bool foundTransient=false;for(const auto& choice:choices)if(choice.RuntimeObjectID==transientID)
+            foundTransient=choice.ObjectFileID==0&&choice.RuntimeSceneID==scenes.Scene->GetInstanceID();
+        Check(foundTransient,"Runtime-only node missing from object choices");
+        Check(editor.ReadObjectTarget(transientID,sourceTarget,error)&&editor.ReferenceFromObject(snapshot.Target,sourceTarget,value,error),error);
+        Check(value.SceneObject.Assigned&&!value.SceneObject.ObjectFileID&&value.SceneObject.RuntimeObjectID==transientID,
+            "Transient reference invented a document FileID");
+        Check(editor.SetField(snapshot.Target,"FieldsBehaviour::Target",value,error)&&native->Target==transient&&
+            editor.LocateObjectReference(snapshot.Target,value,error)&&selection.SceneSelection.ObjectID==transientID,error);
+        mode.State.State=EditorPlayState::ExitingPlay;
+        Check(!editor.SetField(snapshot.Target,"FieldsBehaviour::Speed",number,error),"ExitingPlay accepted field edits");
+        mode.State.State=EditorPlayState::Paused;host.Frame=true;
+        Check(!editor.SetField(snapshot.Target,"FieldsBehaviour::Speed",number,error),"Host frame accepted script-field reentry");host.Frame=false;
+        Check(editor.SetField(snapshot.Target,"FieldsBehaviour::Speed",number,error),error);
+        Check(scenes.Scene->DestroyGameObject(transient),"Delete temporary reference target");
+        Check(!editor.SetField(snapshot.Target,"FieldsBehaviour::Target",value,error),"Deleted temporary target accepted");
+        Check(runtime->EndExecution(error),error);
         const int previous=listener.Changes;editor.UnregisterScriptListener(&listener);editor.OnSceneStateChanged();
         Check(listener.Changes==previous,"Released listener received a field event");
-        editor._Launched=false;editor._Runtime=nullptr;editor._Scenes=nullptr;editor._Selection=nullptr;
+        editor._Launched=false;editor._Runtime=nullptr;editor._Scenes=nullptr;editor._Selection=nullptr;editor._Editing=nullptr;
         delete runtime;runtime=nullptr;
         std::cout<<"PASS ScriptEditor field values, scene references, transaction, events and stale scopes\n";
         return 0;

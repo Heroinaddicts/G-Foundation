@@ -19,8 +19,12 @@ public:
     void SetExpanded(bool expanded);
     void SetDebugMode(bool debug);
     void SetReadOnly(bool value);
+    void SetEditability(bool properties,bool structure);
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
 private:
+    bool eventFilter(QObject*,QEvent*) override;
+    QPoint _DragStart;
+    bool _DragPressed=false;
     void Add(const QString& key, const QString& label, const QString& value, QTreeWidgetItem* parent = nullptr);
     void Matrix(const QString& key, const QString& label, const GameSproutRuntime::Mat4& matrix);
     void Resource(const QString& key, const QString& label, const GameSproutRuntime::ResourceReference& resource);

@@ -32,7 +32,7 @@ bool Run(const QStringList& args,const QString& directory,ScriptCompileResult& r
 }
 bool ValidatePath(const QString& path,std::set<QString>& files,std::map<QString,QString>& spellings,std::string& error) {
     const QStringList parts=path.split('/');
-    static const std::set<QString> reserved={"cmakelists.txt","gamelogic.generated.cpp","gamelogic.reflection.cpp","gamelogic.buildstamp.cpp"};
+    static const std::set<QString> reserved={"cmakelists.txt","gamelogic.generated.cpp","gamelogic.reflection.cpp","gamelogic.fieldtypes.cpp","gamelogic.buildstamp.cpp"};
     if(parts.isEmpty() || reserved.contains(parts.first().toCaseFolded())) {error="Script path uses a reserved generated Sources name: "+path.toStdString();return false;}
     const QString key=path.normalized(QString::NormalizationForm_C).toCaseFolded();
     if(!files.insert(key).second) {error="Duplicate normalized/case-insensitive script path: "+path.toStdString();return false;}
@@ -87,13 +87,17 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     toolchain.addData(QByteArray("ScriptDeclarationSafety/1/-Werror=shadow-field/-Werror=overloaded-virtual"));
     toolchain.addData(directory.toUtf8()); // Relocated CMake trees cannot retain absolute object paths.
     const QString toolchainHash=QString::fromLatin1(toolchain.result().toHex());
-    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/3/"));hash.addData(toolchainHash.toUtf8());
+    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/4/RecursiveFieldSchema/2/"));hash.addData(toolchainHash.toUtf8());
+    QJsonObject sdkInputs;
     QDirIterator sdk(QString::fromUtf8(GAMESPROUT_SCRIPT_SDK),QStringList{"*.h","*.hpp","*.inl"},QDir::Files,QDirIterator::Subdirectories);
     QStringList sdkFiles;while(sdk.hasNext()) sdkFiles.push_back(sdk.next());sdkFiles.sort();
     for(const QString& path:sdkFiles) {
         if(cancelled && cancelled()) {result.Diagnostics="Script compilation cancelled";return false;}
         QFile file(path);if(!file.open(QIODevice::ReadOnly)) {result.Diagnostics="Cannot read Runtime SDK: "+path.toStdString();return false;}
-        hash.addData(path.toUtf8());hash.addData(file.readAll());
+        const QByteArray bytes=file.readAll();
+        if(file.error()!=QFileDevice::NoError) {result.Diagnostics="Cannot read Runtime SDK: "+path.toStdString();return false;}
+        hash.addData(path.toUtf8());hash.addData(bytes);
+        sdkInputs.insert(QDir::cleanPath(QFileInfo(path).absoluteFilePath()),QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex()));
     }
     std::vector<ScriptBuildStorage::SourceSnapshot> sources;
     ScriptCompileRequest normalized=request;normalized.Sources.clear();
@@ -123,7 +127,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     const bool sameToolchain=configured.value("Version").toInt()==1 && configured.value("Fingerprint").toString()==toolchainHash;
     std::string hashError;QString currentLibraryHash;
     if(QFileInfo(library).isFile()) currentLibraryHash=ScriptBuildStorage::FileHash(library,hashError);
-    const bool sameLibrary=state.value("Version").toInt()==1 && !currentLibraryHash.isEmpty() && state.value("LibraryHash").toString()==currentLibraryHash;
+    const bool sameLibrary=state.value("Version").toInt()==2 && !currentLibraryHash.isEmpty() && state.value("LibraryHash").toString()==currentLibraryHash;
     QFile schemaFile(schemaPath);const QByteArray schemaBytes=schemaFile.open(QIODevice::ReadOnly)?schemaFile.readAll():QByteArray();
     const QString schemaHash=QString::fromLatin1(QCryptographicHash::hash(schemaBytes,QCryptographicHash::Sha256).toHex());
     std::string schemaError;
@@ -197,17 +201,23 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     if (QString::fromUtf8(GAMESPROUT_SCRIPT_GENERATOR_TOOLSET).size()) configure<<"-T"<<QString::fromUtf8(GAMESPROUT_SCRIPT_GENERATOR_TOOLSET);
     if(!Run(configure,directory,result,cancelled)) {translateDiagnostics();return false;}
     if(!ScriptBuildStorage::WriteRecord(toolchainPath,{{"Version",1},{"Fingerprint",toolchainHash}},result.Diagnostics)) return false;
+    const QJsonObject snapshot=ScriptBuildStorage::SnapshotHashes(sourceRoot,result.Diagnostics);
+    if(snapshot.isEmpty()) return false;
+    QJsonObject inputs=sdkInputs;
+    for(auto i=snapshot.begin();i!=snapshot.end();++i) inputs.insert(QDir::cleanPath(QDir(sourceRoot).absoluteFilePath(i.key())),i.value());
+    // Some Make versions compare only whole seconds. Actual dependency contents
+    // decide invalidation so rapid header edits cannot produce a new build stamp
+    // paired with old script machine code; unrelated translation units stay intact.
+    if(!ScriptBuildStorage::PrepareIncrementalBuild(build,inputs,result.Diagnostics)) return false;
     if(!Run({"--build",build,"--config",QString::fromUtf8(GAMESPROUT_SCRIPT_CONFIGURATION),"--parallel",QString::number(std::max(1,QThread::idealThreadCount()))},directory,result,cancelled)) {translateDiagnostics();return false;}
     if(cancelled && cancelled()) {result.Diagnostics="Script compilation cancelled";return false;}
     if(!QFileInfo(library).isFile() || QFileInfo(library).size()==0) {result.Diagnostics+="\nCompiler did not produce GameLogic library";return false;}
     const QString libraryHash=ScriptBuildStorage::FileHash(library,result.Diagnostics);
     if(libraryHash.isEmpty()) return false;
-    const QJsonObject snapshot=ScriptBuildStorage::SnapshotHashes(sourceRoot,result.Diagnostics);
-    if(snapshot.isEmpty()) return false;
     const QByteArray newSchema=ScriptSchemaDocument::Serialize(result.Fingerprint,result.Types);
     if(!Write(schemaPath,newSchema,result.Diagnostics))return false;
     result.SchemaPath=schemaPath.toStdString();result.SchemaHash=QCryptographicHash::hash(newSchema,QCryptographicHash::Sha256).toHex().toStdString();
-    const QJsonObject success{{"Version",1},{"Fingerprint",QString::fromStdString(result.Fingerprint)},{"ToolchainFingerprint",toolchainHash},{"LibraryHash",libraryHash},{"SchemaHash",QString::fromStdString(result.SchemaHash)},{"ReflectionWarnings",QString::fromStdString(result.ReflectionWarnings)},{"Snapshot",snapshot}};
+    const QJsonObject success{{"Version",2},{"Fingerprint",QString::fromStdString(result.Fingerprint)},{"ToolchainFingerprint",toolchainHash},{"LibraryHash",libraryHash},{"SchemaHash",QString::fromStdString(result.SchemaHash)},{"ReflectionWarnings",QString::fromStdString(result.ReflectionWarnings)},{"Snapshot",snapshot},{"Inputs",inputs}};
     if(!ScriptBuildStorage::WriteRecord(statePath,success,result.Diagnostics)) return false;
     result.LibraryPath=library.toStdString();result.LibraryHash=libraryHash.toStdString();return true;
 }

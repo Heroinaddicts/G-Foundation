@@ -3,6 +3,7 @@
 #include "IInspectorUI.h"
 #include "IRuntimeHost.h"
 #include "IScriptEditor.h"
+#include "IObjectEditing.h"
 #include "IProjectSettingsUI.h"
 #include "ui_SceneObjectPanel.h"
 #include <QStringList>
@@ -25,6 +26,7 @@ bool SceneObjectPanel::Load(const InspectorTarget& target, bool, std::string& er
     error.clear(); _Target = target;
     ComponentEditContext context;
     context.Scenes = _Services.Scenes;
+    context.Editing=_Services.Editor?_Services.Editor->GetGameSproutModule<IObjectEditing>("ObjectEditing"):nullptr;
     context.Runtime = _Services.Editor ? _Services.Editor->_Runtime : nullptr;
     context.Preview = _Services.Editor ? _Services.Editor->GetGameSproutModule<IAnimationPreview>("AnimationPreview") : nullptr;
     context.Inspector = _Services.Editor ? _Services.Editor->GetGameSproutView<IInspectorUI>("InspectorUI") : nullptr;
@@ -35,7 +37,7 @@ bool SceneObjectPanel::Load(const InspectorTarget& target, bool, std::string& er
     context.Report = [this](const std::string& message) { if (ReportError) ReportError(message); };
     auto* object = context.Resolve();
     if (!object) { error = "节点已删除或场景已切换。"; Deactivate(); return false; }
-    _Ui->objectInspector->Bind(context); _Ui->objectInspector->Load(*object);_Ui->objectInspector->SetReadOnly(_ReadOnly);
+    _Ui->objectInspector->Bind(context); _Ui->objectInspector->Load(*object);_Ui->objectInspector->SetEditability(!_ReadOnly,!_StructureReadOnly);
     return true;
 }
 InspectorPresentation SceneObjectPanel::Describe() const {
@@ -56,8 +58,9 @@ void SceneObjectPanel::SetLocked(bool locked) { _Ui->objectInspector->SetLocked(
 void SceneObjectPanel::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) { _Ui->objectInspector->OnAnimationEvent(event); }
 
 void SceneObjectPanel::OnPlayModeStateChanged(const PlayModeState& state) {
-    _ReadOnly=state.State!=EditorPlayState::Edit;
-    if(_Ui)_Ui->objectInspector->SetReadOnly(_ReadOnly);
+    _ReadOnly=state.State!=EditorPlayState::Edit&&state.State!=EditorPlayState::Playing&&state.State!=EditorPlayState::Paused;
+    _StructureReadOnly=state.State!=EditorPlayState::Edit;
+    if(_Ui)_Ui->objectInspector->SetEditability(!_ReadOnly,!_StructureReadOnly);
 }
 
 void SceneObjectPanel::OnProjectSettingsChanged(const GameSproutRuntime::RuntimeProjectSettings& settings,std::uint64_t) {

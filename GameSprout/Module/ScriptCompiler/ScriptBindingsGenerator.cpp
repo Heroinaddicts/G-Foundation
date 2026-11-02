@@ -2,6 +2,8 @@
 #include "ScriptToolchain.h"
 #include "ScriptBuildProcess.h"
 #include "ScriptDeclarationValidator.h"
+#include "ScriptFieldTypeResolver.h"
+#include "ScriptRecursiveFields.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -100,44 +102,6 @@ QString LocationFile(const QJsonObject& marker) {
     if(!expansion.isEmpty()) return expansion;
     return location.value("file").toString();
 }
-bool Scalar(const QJsonObject& node,QString& expression) {
-    const QString kind=Kind(node);
-    const QJsonArray children=node.value("inner").toArray();
-    if(kind=="IntegerLiteral" || kind=="FloatingLiteral") {
-        expression=node.value("value").toString();
-        bool valid=false;expression.toDouble(&valid);
-        if(!valid || expression.isEmpty()) return false;
-        const QString type=CanonicalType(node);
-        if(kind=="IntegerLiteral" && type.startsWith("unsigned ")) expression+="ULL";
-        expression="static_cast<"+type+">("+expression+')';return true;
-    }
-    if(kind=="CharacterLiteral") {expression=QString::number(node.value("value").toInteger());return true;}
-    if(kind=="CXXBoolLiteralExpr") {expression=node.value("value").toBool()?"true":"false";return true;}
-    if(kind=="ImplicitValueInitExpr" || kind=="CXXScalarValueInitExpr") {expression="0";return true;}
-    if(kind=="InitListExpr" && children.size()<=1) {
-        if(children.isEmpty()) {expression="0";return true;}
-        return Scalar(children.first().toObject(),expression);
-    }
-    if((kind=="ImplicitCastExpr" || kind=="ParenExpr" || kind=="ConstantExpr" || kind=="ExprWithCleanups" || kind=="CXXFunctionalCastExpr" || kind=="CStyleCastExpr" || kind=="CXXStaticCastExpr") && children.size()==1) {
-        if(!Scalar(children.first().toObject(),expression)) return false;
-        if(kind=="ImplicitCastExpr" || kind=="CXXFunctionalCastExpr" || kind=="CStyleCastExpr" || kind=="CXXStaticCastExpr")
-            expression="static_cast<"+CanonicalType(node)+">("+expression+')';
-        return true;
-    }
-    if(kind=="UnaryOperator" && children.size()==1) {
-        const QString op=node.value("opcode").toString();
-        if(op!="+" && op!="-" && op!="!" && op!="~") return false;
-        QString value;if(!Scalar(children.first().toObject(),value)) return false;
-        expression='('+op+'('+value+"))";return true;
-    }
-    if(kind=="BinaryOperator" && children.size()==2) {
-        static const std::set<QString> safe={"+","-","*","/","%","<<",">>","&","|","^","&&","||","==","!=","<",">","<=",">="};
-        const QString op=node.value("opcode").toString();QString a,b;
-        if(!safe.contains(op) || !Scalar(children[0].toObject(),a) || !Scalar(children[1].toObject(),b)) return false;
-        expression="(("+a+')'+op+'('+b+"))";return true;
-    }
-    return false;
-}
 bool String(const QJsonObject& node,QString& expression) {
     const QString kind=Kind(node);
     if(kind=="StringLiteral") {expression=node.value("value").toString();return expression.startsWith('"') && expression.endsWith('"');}
@@ -157,50 +121,21 @@ bool String(const QJsonObject& node,QString& expression) {
     }
     return false;
 }
-enum class FieldKind {Unsupported,Scalar,String,Vector,Resource,SceneObject};
+enum class FieldKind {Unsupported,Scalar,String,Vector,Vector2,Vector4,Quaternion,Color,Resource,SceneObject};
 FieldKind Supported(QString type) {
     type.replace("std::__1::","std::");type.replace("std::__cxx11::","std::");
     if(type.simplified()=="GameSproutRuntime::IGameObject *" || type.simplified()=="GameSproutRuntime::IGameObject*") return FieldKind::SceneObject;
     if(type.contains('*') || type.contains('&') || type.startsWith("const ") || type.startsWith("volatile ")) return FieldKind::Unsupported;
-    static const std::set<QString> numeric={"bool","signed char","short","short int","int","long","long int","long long","long long int","float","double"};
+    static const std::set<QString> numeric={"bool","char","signed char","unsigned char","short","short int","unsigned short","unsigned short int","int","unsigned int","unsigned","long","long int","unsigned long","unsigned long int","long long","long long int","unsigned long long","unsigned long long int","float","double"};
     if(numeric.contains(type)) return FieldKind::Scalar;
     if(type=="std::string" || type=="std::basic_string<char>" || type=="std::basic_string<char, std::char_traits<char>, std::allocator<char>>") return FieldKind::String;
     if(type=="GameSproutRuntime::Vector3") return FieldKind::Vector;
+    if(type=="GameSproutRuntime::Vector2") return FieldKind::Vector2;
+    if(type=="GameSproutRuntime::Vector4") return FieldKind::Vector4;
+    if(type=="GameSproutRuntime::Quaternion") return FieldKind::Quaternion;
+    if(type=="GameSproutRuntime::Color") return FieldKind::Color;
     if(type=="GameSproutRuntime::ResourceReference") return FieldKind::Resource;
     return FieldKind::Unsupported;
-}
-bool Default(const QJsonObject& field,FieldKind kind,QString& expression) {
-    QJsonArray initializers;
-    for(const auto& value:field.value("inner").toArray())if(!Kind(value.toObject()).endsWith("Attr"))initializers.append(value);
-    if(!field.value("hasInClassInitializer").toBool()) {expression="{}";return true;}
-    if(initializers.size()!=1) return false;
-    QJsonObject initializer=initializers.first().toObject();
-    if(kind==FieldKind::Scalar) return Scalar(initializer,expression);
-    if(kind==FieldKind::String) return String(initializer,expression);
-    if(kind==FieldKind::SceneObject) {
-        while(Kind(initializer)=="ImplicitCastExpr" && initializer.value("inner").toArray().size()==1)initializer=initializer.value("inner").toArray().first().toObject();
-        if(Kind(initializer)=="CXXNullPtrLiteralExpr" || (Kind(initializer)=="InitListExpr" && initializer.value("inner").toArray().isEmpty())) {expression="{}";return true;}
-        return false;
-    }
-    while((Kind(initializer)=="ExprWithCleanups" || Kind(initializer)=="CXXFunctionalCastExpr" || Kind(initializer)=="MaterializeTemporaryExpr") && initializer.value("inner").toArray().size()==1)
-        initializer=initializer.value("inner").toArray().first().toObject();
-    const QString initializerKind=Kind(initializer);
-    const QJsonArray parts=initializer.value("inner").toArray();
-    if(initializerKind!="InitListExpr" && initializerKind!="CXXConstructExpr") return false;
-    if(parts.isEmpty()) {expression="{}";return true;}
-    QStringList values;
-    if(kind==FieldKind::Vector && parts.size()<=3) {
-        for(const QJsonValue& part:parts) {QString value;if(!Scalar(part.toObject(),value)) return false;values.push_back(value);}
-    } else if(kind==FieldKind::Resource && parts.size()<=2) {
-        QString guid;if(!String(parts.first().toObject(),guid)) return false;values.push_back(guid);
-        if(parts.size()==2) {
-            QString id;
-            if(Kind(parts[1].toObject())=="CXXDefaultInitExpr") id="0";
-            else if(!Scalar(parts[1].toObject(),id)) return false;
-            values.push_back("([]() consteval {return static_cast<std::uint64_t>("+id+");}())");
-        }
-    } else return false;
-    expression='{'+values.join(',')+'}';return true;
 }
 // Keep integer defaults exact: long double is only 64-bit on Apple silicon.
 // The AST's integer literals and operations are evaluated without executing
@@ -320,8 +255,13 @@ bool DefaultValue(const QJsonObject& field,FieldKind kind,GameSproutRuntime::Scr
                 if(number < -std::ldexp(1.0L,63)||number >= std::ldexp(1.0L,63))return false;
                 exact=static_cast<std::int64_t>(number);
             }
-            if(exact<std::numeric_limits<std::int64_t>::min()||exact>std::numeric_limits<std::int64_t>::max())return false;
-            value.Kind=ScriptValueKind::Integer;value.Integer=static_cast<std::int64_t>(exact);
+            if(type.startsWith("unsigned ")||type=="unsigned") {
+                if(exact<0||exact>std::numeric_limits<std::uint64_t>::max())return false;
+                value.Kind=ScriptValueKind::Unsigned;value.Unsigned=static_cast<std::uint64_t>(exact);
+            } else {
+                if(exact<std::numeric_limits<std::int64_t>::min()||exact>std::numeric_limits<std::int64_t>::max())return false;
+                value.Kind=ScriptValueKind::Integer;value.Integer=static_cast<std::int64_t>(exact);
+            }
         }
         return true;
     }
@@ -335,6 +275,20 @@ bool DefaultValue(const QJsonObject& field,FieldKind kind,GameSproutRuntime::Scr
     if(kind==FieldKind::Vector) {
         value.Kind=ScriptValueKind::Vector3;float* values[]={&value.Vector.X,&value.Vector.Y,&value.Vector.Z};
         for(qsizetype i=0;i<parts.size();++i){long double number;if(i>=3||!Evaluate(parts[i].toObject(),number))return false;*values[i]=float(number);if(!std::isfinite(*values[i]))return false;}return true;
+    }
+    if(kind==FieldKind::Vector2||kind==FieldKind::Vector4||kind==FieldKind::Quaternion||kind==FieldKind::Color) {
+        std::vector<float*> values;
+        if(kind==FieldKind::Vector2){value.Kind=ScriptValueKind::Vector2;values={&value.Vector2.X,&value.Vector2.Y};}
+        else if(kind==FieldKind::Vector4){value.Kind=ScriptValueKind::Vector4;values={&value.Vector4.X,&value.Vector4.Y,&value.Vector4.Z,&value.Vector4.W};}
+        else if(kind==FieldKind::Quaternion){value.Kind=ScriptValueKind::Quaternion;values={&value.Rotation.X,&value.Rotation.Y,&value.Rotation.Z,&value.Rotation.W};}
+        else {value.Kind=ScriptValueKind::Color;values={&value.Tint.R,&value.Tint.G,&value.Tint.B,&value.Tint.A};}
+        if(parts.size()>static_cast<qsizetype>(values.size()))return false;
+        for(qsizetype index=0;index<parts.size();++index) {
+            if(Kind(parts[index].toObject())=="CXXDefaultArgExpr"||Kind(parts[index].toObject())=="CXXDefaultInitExpr")continue;
+            long double number;if(!Evaluate(parts[index].toObject(),number))return false;
+            *values[index]=static_cast<float>(number);if(!std::isfinite(*values[index]))return false;
+        }
+        return true;
     }
     if(kind==FieldKind::Resource) {
         value.Kind=ScriptValueKind::Resource;
@@ -357,27 +311,31 @@ bool Marked(const QJsonObject& record,const QJsonObject& field) {
     return false;
 }
 struct DeclaredFields {QJsonObject Record;std::vector<GameSproutRuntime::ScriptFieldInfo> Fields;};
-bool Fields(const QJsonObject& record,const QString& type,std::string& warnings,const QString& source,
-            QByteArray& generated,std::vector<GameSproutRuntime::ScriptFieldInfo>& schema,std::string& error) {
-    QStringList fields;QString access=record.value("tagUsed").toString()=="struct"?"public":"private";
-    for(const auto& child:record.value("inner").toArray()) {
-        const auto field=child.toObject();if(Kind(field)=="AccessSpecDecl"){access=field.value("access").toString();continue;}
-        if(Kind(field)!="FieldDecl")continue;const bool marked=Marked(record,field);
-        if(access!="public"&&!marked)continue;
-        const QString name=field.value("name").toString();const auto kind=Supported(CanonicalType(field));QString value;GameSproutRuntime::ScriptFieldInfo info;
-        if(name.isEmpty()||kind==FieldKind::Unsupported||field.value("isBitfield").toBool()||!Default(field,kind,value)||!DefaultValue(field,kind,info.Default)) {
-            const auto message=source.toStdString()+": "+type.toStdString()+"::"+name.toStdString()+" 不支持自动持久化，字段不会显示或保存（保持运行时初始化）。\n";
-            if(marked){error=message;return false;}warnings+=message;continue;
-        }
-        const QString member="::"+type+"::"+name;
-        QString typed=value=="{}"?"decltype("+member+"){}":"decltype("+member+")"+(value.startsWith('{')?value:'('+value+')');
-        if(kind==FieldKind::Scalar||kind==FieldKind::Vector)typed="([]() consteval {return "+typed+";}())";
-        const QString id=type+"::"+name;
-        fields.push_back("::GameSproutRuntime::Internal::MakeField<::"+type+">("+Literal(id)+','+Literal(name)+",&"+member+','+typed+",::GameSproutRuntime::ScriptResourceKind::Any,"+Literal(type)+')');
-        info.ID=id.toStdString();info.Name=name.toStdString();info.DeclaringType=type.toStdString();schema.push_back(std::move(info));
+bool ResolveFieldTypes(QJsonObject& record,const QString& type,const QString& probe,
+    const QString& sourceRoot,std::string& error,const std::function<bool()>& cancelled) {
+    auto children=record.value("inner").toArray();QStringList names;
+    QString access=record.value("tagUsed").toString()=="struct"?"public":"private";
+    for(const auto& child:children) {
+        const auto field=child.toObject();
+        if(Kind(field)=="AccessSpecDecl"){access=field.value("access").toString();continue;}
+        if(Kind(field)!="FieldDecl"||(access!="public"&&!Marked(record,field))||field.value("isBitfield").toBool())continue;
+        const QString name=field.value("name").toString();
+        if(!name.isEmpty())names.push_back(name);
     }
-    generated+=("namespace GameSproutRuntime::Internal { template<> struct ScriptFieldAccess<::"+type+"> { static std::vector<ScriptFieldRegistration> Fields() { return {"+fields.join(",\n")+"}; } }; }\n").toUtf8();
-    return true;
+    if(names.isEmpty())return true;
+    std::map<QString,QString> resolved;
+    if(!ScriptFieldTypeResolver::Resolve(probe,type,names,
+        [&](const QString& path,std::vector<QJsonObject>& declarations,std::string& failure) {
+            return Ast(path,"GameSproutResolvedField_",sourceRoot,declarations,failure,cancelled);
+        },resolved,error))return false;
+    for(qsizetype index=0;index<children.size();++index) {
+        auto field=children[index].toObject();if(Kind(field)!="FieldDecl")continue;
+        const auto found=resolved.find(field.value("name").toString());
+        if(found==resolved.end())continue;
+        auto fieldType=field.value("type").toObject();fieldType["desugaredQualType"]=found->second;
+        field["type"]=fieldType;children[index]=field;
+    }
+    record["inner"]=children;return true;
 }
 bool Record(const QString& type,const QString& probe,const QString& sourceRoot,QJsonObject& record,std::string& error,const std::function<bool()>& cancelled) {
     std::vector<QJsonObject> declarations;if(!Ast(probe,type,sourceRoot,declarations,error,cancelled))return false;
@@ -388,7 +346,8 @@ bool Record(const QString& type,const QString& probe,const QString& sourceRoot,Q
 }
 bool Collect(const QString& type,const QString& probe,const QString& sourceRoot,const QString& source,
              std::map<QString,DeclaredFields>& declarations,std::set<QString>& visiting,std::set<QString>& visited,QStringList& calls,
-             QByteArray& generated,std::vector<GameSproutRuntime::ScriptFieldInfo>& schema,std::string& warnings,std::string& error,const std::function<bool()>& cancelled) {
+             QByteArray& generated,std::vector<GameSproutRuntime::ScriptFieldInfo>& schema,std::string& warnings,std::string& error,const std::function<bool()>& cancelled,
+             ScriptRecursiveFields& recursive) {
     if(type=="GameSproutRuntime::ScriptBehaviour"||type=="GameSproutRuntime::IScript"||type=="GameSproutRuntime::IComponent")return true;
     if(visited.contains(type))return true;if(!visiting.insert(type).second){error="Cyclic script field inheritance";return false;}
     auto existing=declarations.find(type);if(existing==declarations.end()) {
@@ -398,10 +357,11 @@ bool Collect(const QString& type,const QString& probe,const QString& sourceRoot,
     for(const auto& entry:existing->second.Record.value("bases").toArray()) {
         const auto base=entry.toObject();QString baseType=CanonicalType(base);if(baseType.startsWith("class "))baseType=baseType.mid(6);if(baseType.startsWith("struct "))baseType=baseType.mid(7);
         if(base.value("access").toString()!="public") {error="Serialized script bases must use public inheritance: "+baseType.toStdString();return false;}
-        if(!Collect(baseType,probe,sourceRoot,source,declarations,visiting,visited,calls,generated,schema,warnings,error,cancelled))return false;
+        if(!Collect(baseType,probe,sourceRoot,source,declarations,visiting,visited,calls,generated,schema,warnings,error,cancelled,recursive))return false;
     }
     if(!existing->second.Record.value("GameSproutAccessorGenerated").toBool()) {
-        if(!Fields(existing->second.Record,type,warnings,source,generated,existing->second.Fields,error))return false;
+        if(!ResolveFieldTypes(existing->second.Record,type,probe,sourceRoot,error,cancelled))return false;
+        if(!recursive.Generate(existing->second.Record,type,source,generated,existing->second.Fields,warnings,error))return false;
         existing->second.Record["GameSproutAccessorGenerated"]=true;
     }
     schema.insert(schema.end(),existing->second.Fields.begin(),existing->second.Fields.end());
@@ -437,6 +397,31 @@ bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const
     std::set<QString> seenFiles,seenTypes;
     std::map<QString,DeclaredFields> declarations;
     std::map<QString,QJsonObject> validatedRecords;
+    std::map<QString,QString> scriptTypeIDs;QString markerFile;
+    for(const auto& marker:markers) {
+        if(Kind(marker)!="TypeAliasDecl")continue;
+        QString file=LocationFile(marker);if(file.isEmpty())file=markerFile;else markerFile=file;
+        const QString relative=QDir(QFileInfo(sourceRoot).canonicalFilePath()).relativeFilePath(QFileInfo(file).canonicalFilePath());
+        const auto asset=std::find_if(request.Sources.begin(),request.Sources.end(),[&](const auto& value){return value.Path==relative.toStdString();});
+        if(asset!=request.Sources.end())scriptTypeIDs.emplace(ClassArgument(marker),QString::fromStdString(asset->SourceGuid));
+    }
+    ScriptRecursiveFields recursive(
+        [&](const QString& declaredType,QJsonObject& record,std::string& error) {
+            std::vector<QJsonObject> nodes;
+            if(!Ast(probePath,declaredType,sourceRoot,nodes,error,cancelled))return false;
+            for(const auto& node:nodes) {
+                if(node.value("name").toString()!=declaredType.section("::",-1))continue;
+                if(Kind(node)!="EnumDecl"&&(Kind(node)!="CXXRecordDecl"||!node.value("completeDefinition").toBool()))continue;
+                if(!record.isEmpty()){error="Ambiguous serialized declaration: "+declaredType.toStdString();return false;}record=node;
+            }
+            if(record.isEmpty()){error="Cannot reflect serialized type: "+declaredType.toStdString();return false;}return true;
+        },
+        [&](QJsonObject& record,const QString& declaredType,std::string& error) {
+            return ResolveFieldTypes(record,declaredType,probePath,sourceRoot,error,cancelled);
+        },
+        [&](const QJsonObject& field,GameSproutRuntime::ScriptValue& value) {
+            return DefaultValue(field,Supported(CanonicalType(field)),value);
+        },Marked,std::move(scriptTypeIDs));
     QString previousFile;
     for(const QJsonObject& marker:markers) {
         if(Kind(marker)!="TypeAliasDecl") continue;
@@ -465,7 +450,7 @@ bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const
         if(!ScriptDeclarationValidator::Validate(type,relative,loadDeclaration,diagnostics)) return false;
         GameSproutRuntime::ScriptTypeInfo schema;schema.TypeID=asset->SourceGuid;schema.Name=type.toStdString();schema.SourceFile=file.toStdString();
         std::set<QString> visiting,visited;QStringList calls;
-        if(!Collect(type,probePath,sourceRoot,relative,declarations,visiting,visited,calls,generated,schema.Fields,warnings,diagnostics,cancelled))return false;
+        if(!Collect(type,probePath,sourceRoot,relative,declarations,visiting,visited,calls,generated,schema.Fields,warnings,diagnostics,cancelled,recursive))return false;
         const QString fieldBindings="([] { std::vector<::GameSproutRuntime::ScriptFieldRegistration> fields; "+calls.join(' ')+" return fields; }())";
         types.push_back(std::move(schema));
         generated+="namespace { const bool GameSproutGeneratedScript_"+QByteArray::number(seenTypes.size())+" =\n";

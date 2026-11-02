@@ -69,12 +69,16 @@ void PlayMode::UnregisterPlayModeListener(IPlayModeListener* listener) {
         if(item->second==listener) item=_Listeners.erase(item);else ++item;
 }
 bool PlayMode::Play(std::string& error) {
+    return Start(false,error);
+}
+bool PlayMode::Start(bool paused,std::string& error) {
     if(!Ready(error)) return false;
     if(!_Launched||_State.State!=EditorPlayState::Edit) {error="只有编辑模式可以开始运行。";return false;}
     if(_Scenes->IsDocumentSessionActive()){error="请先返回主场景，再启动运行。";return false;}
     if(!_Scenes->GetActiveScene()) {error="当前没有可运行的场景。";return false;}
     if(_Scenes->HasTransformEdit()) {error="请先完成或取消 Scene 中的变换拖拽。";return false;}
     TransitionScope transition(_Changing);
+    CancelRestart();_StartPaused=paused;
     _WantPlay=true;SetState(EditorPlayState::EnteringPlay);
     // Revalidate the known current project sources through the incremental
     // compiler. Source revisions arriving during preparation supersede its result.
@@ -92,9 +96,35 @@ void PlayMode::QueueEnter() {
         if(_Launched&&_WantPlay&&_State.State==EditorPlayState::EnteringPlay) ContinueEnter();
     });
 }
-void PlayMode::OnScriptBuildStateChanged(const ScriptBuildState&) { QueueEnter(); }
+void PlayMode::OnScriptBuildStateChanged(const ScriptBuildState& build) {
+    QueueEnter();
+    if(build.ReloadBlocked&&build.PendingChanges&&build.SourceRevision!=_RunningSourceRevision&&
+       (_State.State==EditorPlayState::Playing||_State.State==EditorPlayState::Paused)) QueueRestart();
+}
+void PlayMode::CancelRestart() {
+    ++_RestartGeneration;_RestartQueued=false;_StartPaused=false;
+}
+void PlayMode::QueueRestart() {
+    if(!_Launched||!_Dispatch||_RestartQueued) return;
+    _RestartQueued=true;
+    const uint64_t generation=++_RestartGeneration;
+    // Source events can arrive on a script/build listener or Host frame stack.
+    // A native image remains leased until Stop has released every instance.
+    QTimer::singleShot(0,_Dispatch,[this,generation] {
+        if(generation!=_RestartGeneration)return;
+        _RestartQueued=false;
+        if(!_Launched||(_State.State!=EditorPlayState::Playing&&_State.State!=EditorPlayState::Paused))return;
+        if(_Changing||_Notifying||_Runtime->IsExecuting()||_Host->IsFrameActive()) {QueueRestart();return;}
+        const auto build=_Scripts->GetBuildState();
+        if(!build.ReloadBlocked||!build.PendingChanges||build.SourceRevision==_RunningSourceRevision)return;
+        const bool paused=_State.State==EditorPlayState::Paused;
+        std::string error;
+        if(!Stop(error))return; // Stop publishes its own failure and retains the recovery snapshot.
+        if(_Launched&&!Start(paused,error)&&_State.State==EditorPlayState::Edit)SetState(EditorPlayState::Edit,error);
+    });
+}
 void PlayMode::FailEnter(const std::string& reason) {
-    _WantPlay=false;
+    _WantPlay=false;CancelRestart();
     _Session=_Session||_Scenes->IsPlaySessionActive();
     if(_Host->IsGameplayActive()) _Host->EndGameplay();
     std::string error=reason,cleanup;
@@ -116,7 +146,7 @@ void PlayMode::FailEnter(const std::string& reason) {
     SetState(EditorPlayState::Edit,error);
 }
 void PlayMode::ContinueEnter() {
-    if(_Changing||_Runtime->IsExecuting()||_Host->IsFrameActive()) {QueueEnter();return;}
+    if(_Changing||_Notifying||_Runtime->IsExecuting()||_Host->IsFrameActive()) {QueueEnter();return;}
     const auto build=_Scripts->GetBuildState();
     if(build.Compiling) return;
     if(!build.Error.empty()) {FailEnter("无法开始运行："+build.Error);return;}
@@ -131,7 +161,16 @@ void PlayMode::ContinueEnter() {
         if(!_Scenes->BeginPlaySession(error)) {FailEnter(error);return;}
         _Session=true;
         if(!_Host->BeginGameplay(error)) {FailEnter(error);return;}
-        _WantPlay=false;SetState(EditorPlayState::Playing);
+        const bool paused=_StartPaused;
+        if(paused) {
+            _Host->SetGameplayPaused(true);
+            if(!_Host->IsGameplayPaused()) {FailEnter("代码重新加载后无法恢复暂停状态。");return;}
+        }
+        _RunningSourceRevision=build.SourceRevision;
+        _WantPlay=false;_StartPaused=false;SetState(paused?EditorPlayState::Paused:EditorPlayState::Playing);
+        // A source notification received during startup must not be lost merely
+        // because the mode was still EnteringPlay on its listener stack.
+        OnScriptBuildStateChanged(_Scripts->GetBuildState());
     } catch(const std::exception& exception) {FailEnter(exception.what());}
       catch(...) {FailEnter("开始游戏运行时发生未知错误。");}
 }
@@ -158,6 +197,7 @@ bool PlayMode::Step(std::string& error) {
 }
 bool PlayMode::Stop(std::string& error) {
     if(!Ready(error)) return false;
+    CancelRestart();
     if(_State.State==EditorPlayState::Edit&&!_Session&&!_ReloadLocked) return true;
     TransitionScope transition(_Changing);
     _WantPlay=false;
@@ -175,10 +215,10 @@ bool PlayMode::Stop(std::string& error) {
     SetState(EditorPlayState::Edit);return true;
 }
 void PlayMode::Release(GameSproutEditor::GameSproutModuleApi*) {
-    _Launched=false;_WantPlay=false;
-    delete _Dispatch;_Dispatch=nullptr;_Queued=false;
+    _Launched=false;_WantPlay=false;CancelRestart();
     if(_Subscribed&&_Scripts) _Scripts->UnregisterScriptListener(this);
     _Subscribed=false;
+    delete _Dispatch;_Dispatch=nullptr;_Queued=false;
     if(_Host&&_Scenes&&_Scripts&&_Runtime) {
         std::string error;
         if(!Stop(error)) {qWarning().noquote()<<"Cannot stop play session:"<<QString::fromStdString(error);return;}

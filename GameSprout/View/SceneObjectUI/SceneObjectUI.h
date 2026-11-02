@@ -1,7 +1,7 @@
 #pragma once
 #include "ISceneObjectUI.h"
 #include "InspectorPanel.h"
-class IInspectorUI;
+class IInspectorUI;class IObjectEditing;
 
 class SceneObjectUI final : public ISceneObjectUI, public IInspectorExtension {
 public:
@@ -13,9 +13,10 @@ public:
     ComponentEditor* CreateComponentEditor(const std::type_info&, QWidget*) override;
 private:
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi*) override;
-    bool Initialize(GameSproutEditor::GameSproutViewApi*) override { return _Inspector != nullptr; }
+    bool Initialize(GameSproutEditor::GameSproutViewApi*) override { return _Inspector != nullptr&&_Editing!=nullptr; }
     bool Launch(GameSproutEditor::GameSproutViewApi*) override;
     void Release(GameSproutEditor::GameSproutViewApi*) override;
     IInspectorUI* _Inspector = nullptr;
+    IObjectEditing* _Editing=nullptr;
     bool _Registered = false;
 };

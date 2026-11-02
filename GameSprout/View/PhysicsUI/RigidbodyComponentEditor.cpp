@@ -6,10 +6,10 @@
 RigidbodyComponentEditor::RigidbodyComponentEditor(QWidget* parent):ComponentEditor(parent),_Ui(new Ui::RigidbodyComponentEditorForm()) {
     _Ui->setupUi(this);
     for(QLineEdit* field:{_Ui->massEdit,_Ui->gravityEdit,_Ui->linearDampingEdit,_Ui->angularDampingEdit})
-        QObject::connect(field,&QLineEdit::editingFinished,this,[this]{CommitValues();});
+        QObject::connect(field,&QLineEdit::editingFinished,this,[this,field]{CommitValues(field);});
     for(QCheckBox* field:{_Ui->enabledCheck,_Ui->continuousCheck,_Ui->positionXCheck,_Ui->positionYCheck,_Ui->positionZCheck,_Ui->rotationXCheck,_Ui->rotationYCheck,_Ui->rotationZCheck})
-        QObject::connect(field,&QCheckBox::clicked,this,[this]{CommitValues();});
-    QObject::connect(_Ui->motionCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitValues();});
+        QObject::connect(field,&QCheckBox::clicked,this,[this,field]{CommitValues(field);});
+    QObject::connect(_Ui->motionCombo,qOverload<int>(&QComboBox::activated),this,[this]{CommitValues(_Ui->motionCombo);});
     _Ui->gravityEdit->setToolTip(tr("1 使用世界重力；0 关闭重力。"));
     _Ui->continuousCheck->setToolTip(tr("高速物体使用连续碰撞检测，减少穿透。"));
 }
@@ -26,16 +26,20 @@ void RigidbodyComponentEditor::ReadValues(GameSproutRuntime::IComponent& compone
     const bool dynamic=value.MotionType==GameSproutRuntime::PhysicsMotionType::Dynamic;
     for(QLineEdit* field:{_Ui->massEdit,_Ui->gravityEdit,_Ui->linearDampingEdit,_Ui->angularDampingEdit})field->setEnabled(dynamic);
 }
-void RigidbodyComponentEditor::CommitValues() {
-    if(_Loading)return;
+void RigidbodyComponentEditor::CommitValues(QWidget* changed) {
+    if(_Loading||!_PropertiesEditable)return;
     auto* body=dynamic_cast<GameSproutRuntime::IRigidbodyComponent*>(_Context.ResolveComponent());
     if(!body){Fail("刚体已经移除或场景已切换。");return;}
     const auto previous=body->GetSettings();auto next=previous;
-    if(!ReadNumber(_Ui->massEdit,next.Mass)||!ReadNumber(_Ui->gravityEdit,next.GravityFactor)||!ReadNumber(_Ui->linearDampingEdit,next.LinearDamping)||!ReadNumber(_Ui->angularDampingEdit,next.AngularDamping)){Fail("刚体参数须为有限数值。");return;}
-    next.Enabled=_Ui->enabledCheck->isChecked();next.MotionType=static_cast<GameSproutRuntime::PhysicsMotionType>(_Ui->motionCombo->currentIndex());next.Continuous=_Ui->continuousCheck->isChecked();next.Constraints=0;
+    const std::pair<QLineEdit*,float*> numbers[]={{_Ui->massEdit,&next.Mass},{_Ui->gravityEdit,&next.GravityFactor},{_Ui->linearDampingEdit,&next.LinearDamping},{_Ui->angularDampingEdit,&next.AngularDamping}};
+    for(const auto& [field,value]:numbers)if(changed==field&&!ReadNumber(field,*value)){Fail("刚体参数须为有限数值。");return;}
+    if(changed==_Ui->enabledCheck)next.Enabled=_Ui->enabledCheck->isChecked();
+    if(changed==_Ui->motionCombo)next.MotionType=static_cast<GameSproutRuntime::PhysicsMotionType>(_Ui->motionCombo->currentIndex());
+    if(changed==_Ui->continuousCheck)next.Continuous=_Ui->continuousCheck->isChecked();
     const std::array<QCheckBox*,6> constraints{_Ui->positionXCheck,_Ui->positionYCheck,_Ui->positionZCheck,_Ui->rotationXCheck,_Ui->rotationYCheck,_Ui->rotationZCheck};
-    for(std::size_t index=0;index<constraints.size();++index)if(constraints[index]->isChecked())next.Constraints|=1u<<index;
-    if(next.Constraints==63){Fail("至少保留一个运动自由度；完全固定的物体请使用静态碰撞器。");return;}
+    for(std::size_t index=0;index<constraints.size();++index)if(changed==constraints[index]) {
+        if(constraints[index]->isChecked())next.Constraints|=1u<<index;else next.Constraints&=~(1u<<index);
+    }
     if(PhysicsComponentValues::Equal(previous,next)){Reload();return;}
     auto* scenes=_Context.Scenes;const auto instanceID=_Context.ComponentID;
     const auto fileID=scenes?scenes->GetComponentFileID(_Context.ObjectID,instanceID):0;
@@ -44,5 +48,5 @@ void RigidbodyComponentEditor::CommitValues() {
         if(component&&component->SetSettings(value))return true;
         error="刚体设置无效：质量须为正，阻尼不能为负，全部数值须有限。";return false;
     };};
-    _Context.Execute("修改刚体",operation(next),operation(previous));Reload();
+    FinishInput();_Context.Execute("修改刚体",operation(next),operation(previous));Reload();
 }

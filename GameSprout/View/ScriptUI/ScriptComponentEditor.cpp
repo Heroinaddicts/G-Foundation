@@ -50,6 +50,7 @@ void ScriptComponentEditor::OpenSource(){
 void ScriptComponentEditor::ContextChanged(){
     if(_Scripts)_Scripts->UnregisterScriptListener(this);
     _FieldTarget={};
+    for(auto* row:_Rows)delete row;_Rows.clear();
     _Scripts=_Context.Scripts;if(_Scripts)_Scripts->RegisterScriptListener(this);
 }
 GameSproutRuntime::IScriptComponent* ScriptComponentEditor::ResolveScript()const{
@@ -74,21 +75,33 @@ void ScriptComponentEditor::ReadValues(GameSproutRuntime::IComponent& component)
     RefreshBuildState();
 }
 void ScriptComponentEditor::RefreshFields(){
-    for(auto* row:_Rows)delete row;_Rows.clear();
-    _FieldTarget={};
-    _FieldError.clear();
-    if(_Scripts)_Scripts->UnobserveFields(this);
-    ScriptPropertySnapshot snapshot;std::string error;
+    _FieldError.clear();ScriptPropertySnapshot snapshot;std::string error;
     if(!_Scripts||!_Scripts->ReadFields(_Context.ObjectID,_InstanceID,snapshot,error)) {
         _FieldError=error.empty()?"脚本字段服务尚未就绪。":error;return;
     }
-    _FieldTarget=snapshot.Target;
-    if(!_Scripts->ObserveFields(_FieldTarget,this)) {
-        _FieldTarget={};_FieldError="无法订阅当前脚本字段的变更。";return;
+    bool same=_FieldTarget==snapshot.Target&&_Rows.size()==snapshot.Fields.size();
+    if(same)for(std::size_t index=0;index<_Rows.size();++index) {
+        const auto& previous=_Rows[index]->Definition();const auto& next=snapshot.Fields[index].Info;
+        if(!ScriptPropertyRow::SameDefinition(previous,next)){same=false;break;}
     }
+    if(same){for(std::size_t index=0;index<_Rows.size();++index)_Rows[index]->Load(snapshot.Fields[index]);return;}
+    if(_Scripts)_Scripts->UnobserveFields(this);
+    _FieldTarget={};for(auto* row:_Rows)delete row;_Rows.clear();
+    _FieldTarget=snapshot.Target;
+    if(!_Scripts->ObserveFields(_FieldTarget,this)){_FieldTarget={};_FieldError="无法订阅当前脚本字段的变更。";return;}
     for(const auto& field:snapshot.Fields){
         auto* row=new ScriptPropertyRow(field,snapshot.Target,_Context,_Ui->fieldsHost);
-        row->Changed=[this,id=field.Info.ID](const auto& value){CommitField(id,value);};
+        row->Changed=[this,target=snapshot.Target,id=field.Info.ID](const auto& value){CommitField(target,id,value);};
+        row->PathChanged=[this,target=snapshot.Target,id=field.Info.ID](const auto& path,const auto& value){
+            if(_Loading||!_PropertiesEditable||target!=_FieldTarget)return;
+            std::string error;if(!_Scripts||!_Scripts->SetFieldPath(target,id,path,value,error))ShowError(error.empty()?"脚本字段编辑失败。":error);
+            QueueRefresh();
+        };
+        row->ContainerChanged=[this,target=snapshot.Target,id=field.Info.ID](const auto& path,const auto& edit){
+            if(_Loading||!_PropertiesEditable||target!=_FieldTarget)return;
+            std::string error;if(!_Scripts||!_Scripts->EditContainer(target,id,path,edit,error))ShowError(error.empty()?"容器编辑失败。":error);
+            QueueRefresh();
+        };
         row->Invalid=[this](const std::string& message){ShowError(message);};
         _Ui->fieldsLayout->addWidget(row);_Rows.push_back(row);
     }
@@ -101,7 +114,7 @@ void ScriptComponentEditor::RefreshBuildState(){
     const auto state=_Scripts?_Scripts->GetBuildState():ScriptBuildState{};
     _Ui->compileButton->setEnabled(_Scripts&&!state.Compiling&&!state.ReloadBlocked);
     const bool deferred=state.ReloadBlocked&&state.PendingChanges;
-    _Ui->buildLabel->setText(state.Compiling?tr("正在编译…"):deferred?tr("代码已修改，停止运行后编译"):state.Error.empty()?QString():tr("编译失败，保留上次成功编译的类型"));
+    _Ui->buildLabel->setText(state.Compiling?tr("正在编译…"):deferred?tr("代码已修改，将重新运行并重置本次运行状态"):state.Error.empty()?QString():tr("编译失败，保留上次成功编译的类型"));
     auto* script=ResolveScript();std::string error=script?script->GetScriptError():std::string();
     const bool needsBuild=state.Compiling || state.PendingChanges || !state.Error.empty() || !script || !script->IsScriptTypeAvailable();
     _Ui->compileButton->setVisible(needsBuild);
@@ -122,10 +135,11 @@ void ScriptComponentEditor::OnScriptFieldsChanged(const ScriptFieldTarget& targe
 }
 void ScriptComponentEditor::OnScriptBuildStateChanged(const ScriptBuildState&){RefreshBuildState();}
 void ScriptComponentEditor::ShowError(const std::string& error){_Ui->errorEdit->setVisible(!error.empty());_Ui->errorEdit->setPlainText(QString::fromStdString(error));if(_Context.Report)_Context.Report(error);}
-void ScriptComponentEditor::CommitField(const std::string& field,const GameSproutRuntime::ScriptValue& value){
-    if(_Loading)return;
+void ScriptComponentEditor::CommitField(const ScriptFieldTarget& target,const std::string& field,const GameSproutRuntime::ScriptValue& value){
+    if(_Loading||!_PropertiesEditable)return;
     std::string error;
-    if(!_Scripts||!_Scripts->SetField(_FieldTarget,field,value,error)) {
+    if(target!=_FieldTarget){ShowError("脚本字段所属对象已经改变。");return;}
+    if(!_Scripts||!_Scripts->SetField(target,field,value,error)) {
         ShowError(error.empty()?"脚本字段编辑服务尚未就绪。":error);return;
     }
     // Event callbacks and editor transactions may run synchronously. Rebuild
@@ -133,11 +147,13 @@ void ScriptComponentEditor::CommitField(const std::string& field,const GameSprou
     QueueRefresh();
 }
 void ScriptComponentEditor::CommitEnabled(bool enabled){
-    if(_Loading)return;auto* script=ResolveScript();if(!script)return;const bool previous=script->IsEnabled();if(previous==enabled)return;
+    if(_Loading||!_PropertiesEditable)return;auto* script=ResolveScript();if(!script)return;const bool previous=script->IsEnabled();if(previous==enabled)return;
     const auto operation=[instance=_InstanceID](bool enabled){return [instance,enabled](GameSproutRuntime::IGameObject& object,std::string& error){auto* script=FindScript(object,instance);if(!script){error="脚本组件已移除。";return false;}script->SetEnabled(enabled);return true;};};
     _Context.Execute("修改脚本启用状态",operation(enabled),operation(previous));
 }
 void ScriptComponentEditor::Remove(){
-    if(!_Context.Scenes)return;std::string error;
+    if(!_StructureEditable||!_Context.Scenes)return;std::string error;
     if(!_Context.Scenes->RemoveScriptComponent(_Context.ObjectID,_InstanceID,error))ShowError(error);
 }
+
+void ScriptComponentEditor::EditabilityChanged(){_Ui->removeButton->setEnabled(_StructureEditable);}

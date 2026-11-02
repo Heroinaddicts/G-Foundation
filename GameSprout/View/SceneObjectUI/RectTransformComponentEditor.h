@@ -7,6 +7,6 @@ public:
     ~RectTransformComponentEditor() override;
 private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     Ui::RectTransformComponentEditorForm* _Ui = nullptr;
 };

@@ -8,6 +8,8 @@ IStaticAuthoring* CreateProductionAuthoring();
 #include "IProject.h"
 #include "IIDEWindow.h"
 #include "IPlayMode.h"
+#include "IRuntimeHost.h"
+#include "ObjectEditing.h"
 #include <QApplication>
 #include <QPointer>
 #include <map>
@@ -82,6 +84,13 @@ public:
     bool RegisterPlayModeListener(IPlayModeListener* listener) override{Listeners.push_back(listener);return true;}
     void UnregisterPlayModeListener(IPlayModeListener* listener) override{std::erase(Listeners,listener);}
     void Emit(EditorPlayState value){State.State=value;const auto snapshot=Listeners;for(auto* listener:snapshot)if(std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())listener->OnPlayModeStateChanged(State);}
+};
+class Host final:public Module<IRuntimeHost> {
+public:
+    bool Frame=false;
+    bool IsFrameActive() const override{return Frame;}
+    void SetSimulationPlaying(bool) override{}bool IsSimulationPlaying() const override{return false;}void ResetClock() override{}
+    bool RegisterFrameListener(IRuntimeFrameListener*) override{return true;}void UnregisterFrameListener(IRuntimeFrameListener*) override{}
 };
 class Docker final:public IIDEDocker {
 public:

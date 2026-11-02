@@ -8,9 +8,11 @@ class ISelectionManager;
 class IInspectorUI;
 class IRuntimeHost;
 class IScriptEditor;
+class IObjectEditing;
 
 struct ComponentEditContext {
     ISceneManager* Scenes = nullptr;
+    IObjectEditing* Editing = nullptr;
     GameSproutRuntime::IGameSproutRuntime* Runtime = nullptr;
     IAnimationPreview* Preview = nullptr;
     IAssetsManager* Assets = nullptr;

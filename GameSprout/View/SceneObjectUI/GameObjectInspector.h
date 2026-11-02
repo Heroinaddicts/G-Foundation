@@ -26,6 +26,7 @@ public:
     void SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings&);
     std::function<void()> OpenProjectSettings;
     void SetReadOnly(bool value);
+    void SetEditability(bool properties,bool structure);
     void SetDebugMode(bool debug);
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
     std::function<void(bool)> LockChanged;
@@ -47,6 +48,7 @@ private:
     GameSproutRuntime::RuntimeProjectSettings _ProjectSettings;
     bool _Loading = false;
     bool _ReadOnly = false;
+    bool _StructureReadOnly=false;
     bool _DebugMode = false;
     bool _SceneRoot = false;
     std::uint64_t _LoadedID = 0;

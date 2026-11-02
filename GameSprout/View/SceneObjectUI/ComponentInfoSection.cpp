@@ -1,6 +1,11 @@
 #include "ComponentInfoSection.h"
 #include "ComponentEditor.h"
 #include "IInspectorUI.h"
+#include "IScriptEditor.h"
+#include "../Shared/SceneComponentDragPayload.h"
+#include <QApplication>
+#include <QDrag>
+#include <QMouseEvent>
 #include "ui_ComponentInfoSection.h"
 #include <QHeaderView>
 #include <QTreeWidget>
@@ -19,6 +24,7 @@ QString TypeName(const GameSproutRuntime::IComponent& component) {
 
 ComponentInfoSection::ComponentInfoSection(QWidget* parent) : QWidget(parent), _Ui(new Ui::ComponentInfoSectionForm()) {
     _Ui->setupUi(this);
+    _Ui->componentHeaderButton->installEventFilter(this);
     _Ui->componentProperties->header()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
     _Ui->componentProperties->header()->setSectionResizeMode(1,QHeaderView::Stretch);
     QObject::connect(_Ui->componentHeaderButton,&QToolButton::toggled,this,[this](bool expanded) { SetExpanded(expanded); });
@@ -190,7 +196,28 @@ void ComponentInfoSection::OnAnimationEvent(const GameSproutRuntime::AnimationNo
     if(_Editor)_Editor->OnAnimationEvent(event);
 }
 
-void ComponentInfoSection::SetReadOnly(bool value) {
-    _Ui->editorHost->setEnabled(!value);
-    _Ui->removeComponentButton->setEnabled(!value);
+void ComponentInfoSection::SetReadOnly(bool value){SetEditability(!value,!value);}
+void ComponentInfoSection::SetEditability(bool properties,bool structure) {
+    _Ui->editorHost->setEnabled(properties);
+    _Ui->removeComponentButton->setEnabled(structure);
+    if(_Editor)_Editor->SetEditability(properties,structure);
+}
+
+bool ComponentInfoSection::eventFilter(QObject* watched,QEvent* event) {
+    if(watched!=_Ui->componentHeaderButton)return QWidget::eventFilter(watched,event);
+    if(event->type()==QEvent::MouseButtonPress){auto* mouse=static_cast<QMouseEvent*>(event);_DragPressed=mouse->button()==Qt::LeftButton;_DragStart=mouse->pos();}
+    else if(event->type()==QEvent::MouseButtonRelease)_DragPressed=false;
+    else if(event->type()==QEvent::MouseMove&&_DragPressed){
+        auto* mouse=static_cast<QMouseEvent*>(event);
+        if((mouse->pos()-_DragStart).manhattanLength()>=QApplication::startDragDistance()){
+            _DragPressed=false;
+            ScriptObjectTarget target;std::string error;
+            if(!_Context.Scripts||!_Context.ComponentID||!_Context.Scripts->ReadObjectTarget(_Context.ObjectID,target,error))return false;
+            auto* mime=SceneComponentDragPayload::Encode({{target.SessionID,target.WorldID,target.ObjectID},_Context.ComponentID});
+            if(!mime)return false;
+            _Ui->componentHeaderButton->setDown(false);
+            QDrag drag(this);drag.setMimeData(mime);drag.exec(Qt::CopyAction);return true;
+        }
+    }
+    return QWidget::eventFilter(watched,event);
 }

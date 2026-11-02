@@ -1,22 +1,29 @@
 #pragma once
 #include "RuntimeScriptModule.h"
+#include <stdexcept>
+#include <vector>
+
+using namespace GameSproutRuntime;
 
 class #CLASSNAME# final : public GameSproutRuntime::ScriptBehaviour {
 public:
-    void OnCreate(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    virtual ~#CLASSNAME#() {}
+
+protected:
+    void OnCreate(IGameSproutRuntime* const runtime) {
     }
 
     // Called after this construction batch's components, fields and hierarchy are ready.
-    void OnInitialized(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    void OnInitialized(IGameSproutRuntime* const runtime) {
     }
 
-    void Update(GameSproutRuntime::IGameSproutRuntime* const runtime, float deltaSeconds) override {
+    void Update(IGameSproutRuntime* const runtime, float deltaSeconds) {
     }
 
-    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime* const runtime, float fixedDeltaSeconds) override {
+    void FixedUpdate(IGameSproutRuntime* const runtime, float fixedDeltaSeconds) {
     }
 
-    void OnRelease(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
+    void OnRelease(IGameSproutRuntime* const runtime) {
     }
 };
 GAMESPROUT_SCRIPT(#CLASSNAME#)

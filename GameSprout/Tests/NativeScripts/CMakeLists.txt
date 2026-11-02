@@ -5,8 +5,9 @@ include("${gamesprout_root}/Foundation/ParallelBuild.cmake")
 find_package(Qt6 REQUIRED COMPONENTS Core)
 add_subdirectory("${gamesprout_root}/Module/ScriptCompiler" ScriptCompiler)
 add_subdirectory("${gamesprout_root}/Module/ScriptEditor" ScriptEditor)
+add_subdirectory("${gamesprout_root}/Module/ObjectEditing" ObjectEditing)
 # Test binaries are isolated from the Editor app and repository Bin.
-foreach(target IN ITEMS ScriptCompiler ScriptEditor)
+foreach(target IN ITEMS ScriptCompiler ScriptEditor ObjectEditing)
     set_target_properties(${target} PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>"
@@ -51,10 +52,11 @@ add_executable(ScriptFieldModuleChecks ScriptFieldModuleChecks.cpp)
 target_compile_features(ScriptFieldModuleChecks PRIVATE cxx_std_20)
 target_include_directories(ScriptFieldModuleChecks PRIVATE
     "${gamesprout_root}/Module/ScriptEditor"
+    "${gamesprout_root}/Module/ObjectEditing"
     "${gamesprout_root}/Module/Interface"
     "${gamesprout_root}/View/Interface"
     "${gamesprout_root}/GameSproutEditor/Api")
-target_link_libraries(ScriptFieldModuleChecks PRIVATE ScriptEditor Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core)
+target_link_libraries(ScriptFieldModuleChecks PRIVATE ScriptEditor ObjectEditing Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core)
 target_compile_options(ScriptFieldModuleChecks PRIVATE -fno-access-control)
 set_target_properties(ScriptFieldModuleChecks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>")
 add_test(NAME NativeScripts.FieldService COMMAND ScriptFieldModuleChecks "${SCRIPT_TEST_RUNTIME_DIRECTORY}")
@@ -69,3 +71,16 @@ target_link_libraries(ScriptDeclarationChecks PRIVATE ScriptCompiler
 set_target_properties(ScriptDeclarationChecks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>")
 add_test(NAME NativeScripts.DeclarationDiagnostics COMMAND ScriptDeclarationChecks)
 set_tests_properties(NativeScripts.DeclarationDiagnostics PROPERTIES TIMEOUT 120)
+add_executable(ScriptBuildDependenciesChecks ScriptBuildDependenciesChecks.cpp)
+target_compile_features(ScriptBuildDependenciesChecks PRIVATE cxx_std_20)
+target_include_directories(ScriptBuildDependenciesChecks PRIVATE "${gamesprout_root}/Module/ScriptCompiler")
+target_link_libraries(ScriptBuildDependenciesChecks PRIVATE ScriptCompiler Qt6::Core)
+set_target_properties(ScriptBuildDependenciesChecks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>")
+add_test(NAME NativeScripts.ContentDependencies COMMAND ScriptBuildDependenciesChecks)
+add_executable(ScriptRecursiveFieldsChecks ScriptRecursiveFieldsChecks.cpp)
+target_compile_features(ScriptRecursiveFieldsChecks PRIVATE cxx_std_20)
+target_include_directories(ScriptRecursiveFieldsChecks PRIVATE "${gamesprout_root}/Module/ScriptCompiler" "${gamesprout_root}/Module/Interface" "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(ScriptRecursiveFieldsChecks PRIVATE ScriptCompiler Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core)
+set_target_properties(ScriptRecursiveFieldsChecks PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Products/$<0:>")
+add_test(NAME NativeScripts.RecursiveFields COMMAND ScriptRecursiveFieldsChecks "${SCRIPT_TEST_RUNTIME_DIRECTORY}")
+set_tests_properties(NativeScripts.RecursiveFields PROPERTIES TIMEOUT 180)

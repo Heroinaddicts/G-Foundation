@@ -12,26 +12,29 @@ public:
     void Bind(const ComponentEditContext& context);
     void Load(GameSproutRuntime::IComponent& component);
     void Reload();
+    void SetEditability(bool properties,bool structure);
     virtual void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) {}
 protected:
     virtual void ReadValues(GameSproutRuntime::IComponent& component) = 0;
     virtual void ContextChanged() {}
+    virtual void EditabilityChanged() {}
     bool ReadNumber(QLineEdit* edit, float& output) const;
     static void ShowNumber(QLineEdit* edit, float value);
     bool ReadNumbers(std::initializer_list<QLineEdit*> edits, std::vector<float>& output) const;
     static void ShowNumbers(std::initializer_list<QLineEdit*> edits, std::initializer_list<float> values);
     void Fail(const std::string& error);
+    void FinishInput();
     template<typename Interface, typename Value>
     void Commit(Value value, const std::string& label) {
-        if (_Loading) return;
+        if (_Loading||!_PropertiesEditable) return;
         auto* object = _Context.Resolve();
         auto* component = _Context.ComponentID ? dynamic_cast<Interface*>(_Context.ResolveComponent()) : object ? object->GetComponent<Interface>() : nullptr;
         if (!component) { Fail("组件已经移除或节点已失效。"); return; }
         const Value previous = InspectorValues::Read(*component);
-        if (InspectorValues::Equal(previous, value)) { if (_Context.Report) _Context.Report(""); Reload(); return; }
+        if (InspectorValues::Equal(previous, value)) { if (_Context.Report) _Context.Report(""); FinishInput();Reload(); return; }
         std::string error;
         if (!InspectorValues::Validate(value, error)) { Fail(error); return; }
-        if (InspectorValues::Equal(previous, value)) { if (_Context.Report) _Context.Report(""); Reload(); return; }
+        if (InspectorValues::Equal(previous, value)) { if (_Context.Report) _Context.Report(""); FinishInput();Reload(); return; }
         // 历史命令只捕获值。每次执行重新从传入对象查找组件，不借用面板或运行对象。
         auto* scenes=_Context.Scenes;
         const auto instanceID=_Context.ComponentID;
@@ -53,11 +56,13 @@ protected:
                 return false;
             };
         };
+        FinishInput();
         _Context.Execute(label, operation(value), operation(previous));
         Reload();
     }
     ComponentEditContext _Context;
     bool _Loading = false;
+    bool _PropertiesEditable=true,_StructureEditable=true;
 private:
     const std::type_info* _Type = nullptr;
     bool _Force = false;

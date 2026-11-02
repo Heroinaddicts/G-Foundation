@@ -7,7 +7,7 @@ public:
     ~CameraComponentEditor() override;
 private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     void SetMainCamera();
     Ui::CameraComponentEditorForm* _Ui = nullptr;
 };

@@ -60,3 +60,9 @@ GAMESPROUT_SCRIPT(Test)
 - A 成功后，B 修改字段及代码并在原生后端编译失败，再恢复 A。即使旧成功记录与旧 Output 仍有效，Sources 和生成绑定也必须精确恢复 A，不能以 cache hit 掩盖 B 的残留快照。
 
 普通脚本没有被实例化来推测字段；反射成功也不代替真实编译、链接和动态加载。
+
+## 递归字段与组件引用服务
+
+`NativeScripts.FieldService` 还通过 `ScriptRecursiveFieldsChecks.h` 验证 ScriptEditor 的递归值事务：结构成员路径修改和 Undo/Redo、动态序列增删/改长/重排、固定数组长度约束、字典键判重及值中继续嵌套容器、无符号 64 位枚举精度。引用测试覆盖组件类型过滤、多个匹配时拒绝对象拖拽、明确组件选择后分配作者 FileID、丢失引用保留与清空、Play 引用不分配作者 ID。
+
+测试场景与事务宿主提取在 `ScriptFieldModuleTestServices.h`，供真实 `.ui` 的递归字段集成测试复用。生产 Module 和 View 不依赖测试宿主。

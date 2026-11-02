@@ -16,14 +16,12 @@ void ComponentEditor::Load(GameSproutRuntime::IComponent& component) {
     if(_Context.ComponentID!=component.GetComponentInstanceID()) {
         _Context.ComponentID=component.GetComponentInstanceID();_Force=true;ContextChanged();
     }
-    QWidget* focused = QApplication::focusWidget();
-    auto* text = qobject_cast<QLineEdit*>(focused);
-    if (!_Force && text && isAncestorOf(text) && text->isModified()) return;
+    if(_Force)for(auto* edit:findChildren<QLineEdit*>())edit->setModified(false);
     _Loading = true;
-    setEnabled(true);
+    setEnabled(_PropertiesEditable);
     struct Guard { bool& Value; ~Guard() { Value = false; } } guard{_Loading};
     ReadValues(component);
-    _Force = false;
+    _Force = false;EditabilityChanged();
 }
 void ComponentEditor::Reload() {
     auto* object = _Context.Resolve();
@@ -45,6 +43,7 @@ bool ComponentEditor::ReadNumber(QLineEdit* edit, float& output) const {
     return true;
 }
 void ComponentEditor::ShowNumber(QLineEdit* edit, float value) {
+    if(edit->hasFocus()&&edit->isModified())return;
     const QString text=InspectorNumbers::Format(value);
     const bool focused=edit->hasFocus();
     const int cursor=edit->cursorPosition(),selection=edit->selectionStart(),length=edit->selectedText().size();
@@ -66,4 +65,13 @@ void ComponentEditor::ShowNumbers(std::initializer_list<QLineEdit*> edits, std::
     auto value = values.begin();
     for (QLineEdit* edit : edits) { if (value == values.end()) break; ShowNumber(edit,*value++); }
 }
-void ComponentEditor::Fail(const std::string& error) { if (_Context.Report) _Context.Report(error); Reload(); }
+void ComponentEditor::Fail(const std::string& error) { if (_Context.Report) _Context.Report(error); FinishInput();Reload(); }
+
+void ComponentEditor::SetEditability(bool properties,bool structure) {
+    _PropertiesEditable=properties;_StructureEditable=structure;
+    setEnabled(properties);EditabilityChanged();
+}
+
+void ComponentEditor::FinishInput(){
+    if(auto* edit=qobject_cast<QLineEdit*>(QApplication::focusWidget());edit&&isAncestorOf(edit))edit->setModified(false);
+}

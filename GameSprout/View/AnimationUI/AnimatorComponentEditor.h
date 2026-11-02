@@ -13,8 +13,9 @@ public:
 protected:
     void ContextChanged() override;
     void ReadValues(GameSproutRuntime::IComponent&) override;
+    void EditabilityChanged() override;
 private:
-    void CommitSettings();
+    void CommitSettings(QWidget* changed);
     void RefreshPlayback(bool refreshResources = true);
     void BindFrameEvents();
     void RefreshLayerStates();

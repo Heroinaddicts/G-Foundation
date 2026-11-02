@@ -14,12 +14,13 @@ private:
     bool eventFilter(QObject*,QEvent*)override;
     void OpenSource();
     void ContextChanged()override;
+    void EditabilityChanged()override;
     void ReadValues(GameSproutRuntime::IComponent&)override;
     GameSproutRuntime::IScriptComponent* ResolveScript()const;
     void Refresh();void RefreshBuildState();
     void RefreshFields();
     void QueueRefresh();
-    void CommitField(const std::string&,const GameSproutRuntime::ScriptValue&);
+    void CommitField(const ScriptFieldTarget&,const std::string&,const GameSproutRuntime::ScriptValue&);
     void CommitEnabled(bool);
     void Remove();void ShowError(const std::string&);
     Ui::ScriptComponentEditorForm* _Ui;

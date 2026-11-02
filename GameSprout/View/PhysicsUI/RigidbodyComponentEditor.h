@@ -8,6 +8,6 @@ public:
 protected:
     void ReadValues(GameSproutRuntime::IComponent&) override;
 private:
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     Ui::RigidbodyComponentEditorForm* _Ui=nullptr;
 };

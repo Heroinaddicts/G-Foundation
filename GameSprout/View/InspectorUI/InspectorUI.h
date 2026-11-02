@@ -5,12 +5,13 @@
 #include "ISelectionManager.h"
 #include "ILibraryManager.h"
 #include "ISceneManager.h"
+#include "IObjectEditing.h"
 #include <map>
 #include <QPointer>
 namespace Ui { class InspectorUIWindow; }
 class AssetInfoInspector;
 class InspectorUI final : public IInspectorUI, public ISelectionListener, public IAssetListener,
-                          public ISceneListener, public GameSproutRuntime::IRuntimeListener {
+                          public ISceneListener, public GameSproutRuntime::IRuntimeListener,public GameSproutRuntime::IRuntimePropertyObserver,public IObjectEditingListener {
 public:
     ~InspectorUI() override;
     void Show() override;
@@ -28,6 +29,8 @@ public:
     void OnActiveSceneChanged() override { RequestRefresh(); }
     void OnSceneStateChanged() override { RequestRefresh(); }
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override;
+    void OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) override;
+    void OnObjectPropertiesChanged(const ObjectEditEvent&) override;
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) override;
     void OnAssetCreate(const AssetEvent&) override { RequestRefresh(); }
     void OnAssetModify(const AssetEvent&) override { RequestRefresh(); }
@@ -40,6 +43,7 @@ private:
     void Update(GameSproutEditor::GameSproutViewApi*) override {}
     void Release(GameSproutEditor::GameSproutViewApi*) override;
     void RequestRefresh();
+    void ObserveObject(std::uint64_t objectID);
     void Refresh();
     void UpdateButtons();
     void SetDebugMode(bool);
@@ -68,6 +72,9 @@ private:
     InspectorPanel* _ActivePanel = nullptr;
     IInspectorExtension* _ActiveExtension = nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime = nullptr;
+    IObjectEditing* _Editing=nullptr;
+    std::uint64_t _ObservedObjectID=0;
+    bool _EditingSubscribed=false;
     bool _Attached = false;
     bool _Launched = false;
     bool _Subscribed = false;

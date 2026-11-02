@@ -8,7 +8,7 @@ public:
     ~ImageComponentEditor() override;
 private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     void ContextChanged() override;
     ResourceField* _Texture = nullptr;
     Ui::ImageComponentEditorForm* _Ui = nullptr;

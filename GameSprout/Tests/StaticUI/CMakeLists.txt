@@ -8,8 +8,9 @@ add_subdirectory("${gamesprout_root}/View/SceneObjectUI" SceneObjectUI)
 add_subdirectory("${gamesprout_root}/View/InspectorUI" InspectorUI)
 add_subdirectory("${gamesprout_root}/Module/SceneManager" SceneManager)
 add_subdirectory("${gamesprout_root}/Module/StaticAuthoring" StaticAuthoring)
+add_subdirectory("${gamesprout_root}/Module/ObjectEditing" ObjectEditing)
 # Integration checks must never replace the Editor's loaded plugins.
-set_target_properties(StaticUI SceneObjectUI InspectorUI SceneManager StaticAuthoring PROPERTIES
+set_target_properties(StaticUI SceneObjectUI InspectorUI SceneManager StaticAuthoring ObjectEditing PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/out"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/out"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/out")
@@ -18,8 +19,8 @@ target_compile_features(StaticUIChecks PRIVATE cxx_std_20)
 target_include_directories(StaticUIChecks PRIVATE
     "${gamesprout_root}/View/StaticUI" "${gamesprout_root}/View/SceneObjectUI"
     "${gamesprout_root}/View/InspectorUI" "${gamesprout_root}/Module/SceneManager"
-    "${gamesprout_root}/Module/StaticAuthoring" "${gamesprout_root}/ObjectDocument")
-target_link_libraries(StaticUIChecks PRIVATE StaticUI SceneObjectUI InspectorUI SceneManager StaticAuthoring
+    "${gamesprout_root}/Module/StaticAuthoring" "${gamesprout_root}/Module/ObjectEditing" "${gamesprout_root}/ObjectDocument")
+target_link_libraries(StaticUIChecks PRIVATE StaticUI SceneObjectUI InspectorUI SceneManager StaticAuthoring ObjectEditing
     GameSproutInspectorControls Qt6::Widgets Qt6::Test ${CMAKE_DL_LIBS})
 set(STATIC_UI_RUNTIME_DIRECTORY "${gamesprout_root}/../Bin" CACHE PATH "Runtime directory for Static UI checks")
 enable_testing()

@@ -10,7 +10,7 @@ protected:
     void ContextChanged() override;
     void ReadValues(GameSproutRuntime::IComponent&) override;
 private:
-    void CommitValues();
+    void CommitValues(QWidget* changed);
     Ui::ColliderComponentEditorForm* _Ui=nullptr;
     PhysicsComponentValues::ShapeKind _Kind=PhysicsComponentValues::ShapeKind::Box;
 };

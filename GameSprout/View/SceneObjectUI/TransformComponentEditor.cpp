@@ -1,7 +1,9 @@
 #include "TransformComponentEditor.h"
 #include "ui_TransformComponentEditor.h"
+#include "Math/TransformMath.h"
 #include <QLineEdit>
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace {
@@ -43,11 +45,10 @@ bool SameRotation(GameSproutRuntime::Quaternion a,GameSproutRuntime::Quaternion 
 
 TransformComponentEditor::TransformComponentEditor(QWidget* parent) : ComponentEditor(parent), _Ui(new Ui::TransformComponentEditorForm()) {
     _Ui->setupUi(this);
-    for (QLineEdit* edit : {_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
-        _Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit})
-        QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues(false);});
-    for (QLineEdit* edit : {_Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit})
-        QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues(true);});
+    const std::array<QLineEdit*,9> fields{_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
+        _Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,
+        _Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit};
+    for(std::size_t index=0;index<fields.size();++index)QObject::connect(fields[index],&QLineEdit::editingFinished,this,[this,index]{CommitValues(index);});
 }
 TransformComponentEditor::~TransformComponentEditor() {
     if (_Preview) _Preview->UnregisterPreviewListener(this);
@@ -74,7 +75,11 @@ void TransformComponentEditor::OnAnimationEvent(const GameSproutRuntime::Animati
 }
 void TransformComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) {
     auto& c = static_cast<GameSproutRuntime::ITransformComponent&>(component);
-    const auto v = InspectorValues::Read(c);
+    auto v = InspectorValues::Read(c);
+    if(_Context.Scenes&&_Context.Scenes->IsPlaySessionActive()) {
+        GameSproutRuntime::Vector3 position,scale;GameSproutRuntime::Quaternion rotation;
+        if(GameSproutRuntime::RuntimeMath::TryDecomposeTRS(c.GetLocalMatrix(),position,rotation,scale))v={position,rotation,scale};
+    }
     if(!_HasDisplayedRotation||!SameRotation(v.Rotation,_DisplayedRotation))_DisplayedEuler=ToEulerDegrees(v.Rotation);
     _DisplayedRotation=v.Rotation;_HasDisplayedRotation=true;
     ShowNumbers({_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
@@ -83,25 +88,23 @@ void TransformComponentEditor::ReadValues(GameSproutRuntime::IComponent& compone
         {v.Position.X,v.Position.Y,v.Position.Z,_DisplayedEuler.X,_DisplayedEuler.Y,_DisplayedEuler.Z,v.Scale.X,v.Scale.Y,v.Scale.Z});
     RefreshAnimationState();
 }
-void TransformComponentEditor::CommitValues(bool rotationEdited) {
-    if (_Loading) return;
-    auto* object=_Context.Resolve();
-    if(object&&object->GetTransform()->IsAnimationDriven()) {
-        Fail("此变换由动画预览驱动，请先还原动画再编辑初始值。");return;
-    }
-    std::vector<float> a;
-    if (!ReadNumbers({_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
+void TransformComponentEditor::CommitValues(std::size_t field) {
+    if(_Loading||!_PropertiesEditable||field>=9)return;
+    auto* object=_Context.Resolve();if(!object)return;
+    if(object->GetTransform()->IsAnimationDriven()){Fail("此变换由动画驱动，不能修改该变换字段。");return;}
+    const std::array<QLineEdit*,9> fields{_Ui->transformPositionXEdit,_Ui->transformPositionYEdit,_Ui->transformPositionZEdit,
         _Ui->transformRotationXEdit,_Ui->transformRotationYEdit,_Ui->transformRotationZEdit,
-        _Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit},a)) { Fail("请输入有限数字，可使用科学计数法。"); return; }
-    if(!object)return;
-    const auto previous=InspectorValues::Read(*object->GetTransform());
-    auto v=previous;v.Position={a[0],a[1],a[2]};v.Scale={a[6],a[7],a[8]};
-    if(rotationEdited&&(!_HasDisplayedRotation||a[3]!=_DisplayedEuler.X||a[4]!=_DisplayedEuler.Y||a[5]!=_DisplayedEuler.Z)) {
-        _DisplayedEuler={a[3],a[4],a[5]};const auto rotation=FromEulerDegrees(_DisplayedEuler);
-        // Merely opening the Inspector, editing position/scale, or entering an
-        // equivalent angle must not round-trip and subtly change serialized rotation.
-        if(!SameRotation(rotation,v.Rotation))v.Rotation=rotation;
-        _DisplayedRotation=v.Rotation;_HasDisplayedRotation=true;
+        _Ui->transformScaleXEdit,_Ui->transformScaleYEdit,_Ui->transformScaleZEdit};
+    float number;if(!ReadNumber(fields[field],number)){Fail("请输入有限数字，可使用科学计数法。");return;}
+    const auto previous=InspectorValues::Read(*object->GetTransform());auto v=previous;
+    const bool rotationEdited=field>=3&&field<6;
+    if(field<3){float* axes[]={&v.Position.X,&v.Position.Y,&v.Position.Z};*axes[field]=number;}
+    else if(field>=6){float* axes[]={&v.Scale.X,&v.Scale.Y,&v.Scale.Z};*axes[field-6]=number;}
+    else {
+        auto degrees=_HasDisplayedRotation&&SameRotation(previous.Rotation,_DisplayedRotation)?_DisplayedEuler:ToEulerDegrees(previous.Rotation);
+        float* axes[]={&degrees.X,&degrees.Y,&degrees.Z};*axes[field-3]=number;
+        _DisplayedEuler=degrees;_DisplayedRotation=v.Rotation;_HasDisplayedRotation=true;
+        const auto rotation=FromEulerDegrees(degrees);if(!SameRotation(rotation,v.Rotation))v.Rotation=rotation;
     }
     std::string error;
     if(!InspectorValues::Validate(v,error)){Fail(error);return;}
@@ -126,7 +129,7 @@ void TransformComponentEditor::CommitValues(bool rotationEdited) {
             return true;
         };
     };
-    _Context.Execute("修改 Transform",operation(v),operation(previous));Reload();
+    FinishInput();_Context.Execute("修改 Transform",operation(v),operation(previous));Reload();
 }
 
 void TransformComponentEditor::RefreshAnimationState() {

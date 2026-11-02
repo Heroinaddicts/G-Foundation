@@ -13,6 +13,7 @@ void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) 
     GetGameSproutModule(editor, _Services.Library, LibraryManager);
     GetGameSproutModule(editor, _Services.Scenes, SceneManager);
     _Runtime = editor ? editor->_Runtime : nullptr;
+    _Editing=editor?editor->GetGameSproutModule<IObjectEditing>("ObjectEditing"):nullptr;
 }
 bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi*) {
     if (_Window) return true;
@@ -58,6 +59,7 @@ bool InspectorUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     }
     _SceneSubscribed = _Services.Scenes && _Services.Scenes->RegisterSceneListener(this);
     _RuntimeSubscribed = _Runtime && _Runtime->RegisterListener(this);
+    _EditingSubscribed=_Editing&&_Editing->RegisterEditingListener(this);
     return (!_Services.Scenes || _SceneSubscribed) && (!_Runtime || _RuntimeSubscribed);
 }
 void InspectorUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*) { _Launched = true; Refresh(); }
@@ -71,7 +73,7 @@ void InspectorUI::RequestRefresh() {
     }, Qt::QueuedConnection);
 }
 void InspectorUI::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
-    if (_Target.Scene.SceneID && event.SceneID == _Target.Scene.SceneID) RequestRefresh();
+    if(_Target.Scene.SceneID&&event.SceneID==_Target.Scene.SceneID&&(event.ObjectID==_Target.Scene.ObjectID||event.ObjectID==_Target.Scene.SceneID))RequestRefresh();
 }
 void InspectorUI::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
     if (_ActivePanel) _ActivePanel->OnAnimationEvent(event);
@@ -110,6 +112,9 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     _Launched = false;
     if (_NormalModeMenu) _NormalModeMenu->SetClickCallback(nullptr);
     if (_DebugModeMenu) _DebugModeMenu->SetClickCallback(nullptr);
+    ObserveObject(0);
+    if(_EditingSubscribed&&_Editing)_Editing->UnregisterEditingListener(this);
+    _EditingSubscribed=false;_Editing=nullptr;
     if (_RuntimeSubscribed && _Runtime) _Runtime->UnregisterListener(this);
     if (_SceneSubscribed && _Services.Scenes) _Services.Scenes->UnregisterSceneListener(this);
     if (_Subscribed) { _Services.Assets->UnregisterAssetListener(this); _Services.Selection->UnregisterSelectionListener(this); }
@@ -133,4 +138,17 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     _Services = {}; _Runtime = nullptr; _Target = {}; _RefreshQueued = false; _RefreshDeferred = false;
     _LockedSceneMissing = false; _OperationError.clear();
     if (g_Self == this) g_Self = nullptr;
+}
+
+void InspectorUI::ObserveObject(std::uint64_t objectID) {
+    if(_ObservedObjectID==objectID)return;
+    if(_Runtime&&_ObservedObjectID)_Runtime->UnregisterObjectPropertyObserver(_ObservedObjectID,this);
+    _ObservedObjectID=0;
+    if(_Runtime&&objectID&&_Runtime->RegisterObjectPropertyObserver(objectID,this))_ObservedObjectID=objectID;
+}
+void InspectorUI::OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) {
+    if(_Target.Scene.SceneID==sceneID&&_Target.Scene.ObjectID==objectID)RequestRefresh();
+}
+void InspectorUI::OnObjectPropertiesChanged(const ObjectEditEvent& event) {
+    if(_Target.Scene.SceneID==event.Target.SceneID&&_Target.Scene.ObjectID==event.Target.ObjectID)RequestRefresh();
 }

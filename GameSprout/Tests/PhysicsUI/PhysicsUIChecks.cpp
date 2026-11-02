@@ -222,7 +222,9 @@ int main(int argc,char** argv){
             RigidbodyComponentEditor editor(nullptr);context.ComponentID=body->GetComponentInstanceID();editor.Bind(context);editor.Load(*body);
             Finish(editor.findChild<QLineEdit*>("massEdit"),"4");Check(body->GetSettings().Mass==4,"Rigidbody mass edit failed");
             for(const char* name:{"positionXCheck","positionYCheck","positionZCheck","rotationXCheck","rotationYCheck","rotationZCheck"})editor.findChild<QCheckBox*>(name)->click();
-            Check(body->GetSettings().Constraints!=63&&reported.find("自由度")!=std::string::npos,"Freeze-all reached an invalid Jolt body");
+            Check(body->GetConstraints()==63&&reported.empty(),"Inspector rejected the supported FreezeAll combination");
+            std::string error;Check(scenes.Reverts.back()(*object,error)&&body->GetConstraints()==31&&body->GetMass()==4,
+                                    "FreezeAll undo did not restore the preceding constraints");
         }
         {
             GameObjectInspector view(nullptr);context.ComponentID=0;view.Bind(context);view.Load(*object);

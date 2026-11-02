@@ -1,4 +1,5 @@
 #include "ComponentEditContext.h"
+#include "IObjectEditing.h"
 GameSproutRuntime::IGameObject* ComponentEditContext::Resolve() const {
     if (!Runtime || !SceneID || !ObjectID) return nullptr;
     auto* object = Runtime->QueryGameObject(ObjectID);
@@ -20,8 +21,9 @@ bool ComponentEditContext::Execute(const std::string& label, const ISceneManager
     // An explicit edit command validates the active document once. Display and
     // playback events resolve cached identities through Runtime only.
     auto* activeScene = Scenes ? Scenes->GetActiveScene() : nullptr;
-    const bool success = activeScene && activeScene->GetInstanceID() == SceneID && Resolve()
-        && Scenes->EditObject(ObjectID, label, apply, revert, error);
+    const bool targetValid=activeScene&&activeScene->GetInstanceID()==SceneID&&Resolve();
+    const bool success=targetValid&&(Editing?Editing->EditObject({SceneID,ObjectID,ComponentID},label,apply,revert,error):
+        !Scenes->IsPlaySessionActive()&&Scenes->EditObject(ObjectID,label,apply,revert,error));
     if (!success && error.empty()) error = "节点已经删除或场景已经切换。";
     if (Report) Report(error);
     return success;

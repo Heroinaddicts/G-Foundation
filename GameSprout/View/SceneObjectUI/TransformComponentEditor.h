@@ -12,7 +12,7 @@ public:
 private:
     void ContextChanged() override;
     void ReadValues(GameSproutRuntime::IComponent& component) override;
-    void CommitValues(bool rotationEdited);
+    void CommitValues(std::size_t field);
     void RefreshAnimationState();
     Ui::TransformComponentEditorForm* _Ui = nullptr;
     GameSproutRuntime::Quaternion _DisplayedRotation;

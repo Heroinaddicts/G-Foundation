@@ -8,14 +8,14 @@ ImageComponentEditor::ImageComponentEditor(QWidget* parent) : ComponentEditor(pa
     _Texture = new ResourceField(_Ui->textureResourceHost);
     _Ui->textureResourceHostLayout->addWidget(_Texture);
     _Texture->Changed = [this](const GameSproutRuntime::ResourceReference& resource) {
-        if (_Loading) return;
+        if (_Loading||!_PropertiesEditable) return;
         auto* object = _Context.Resolve();
         auto* component = object ? object->GetComponent<GameSproutRuntime::IImageComponent>() : nullptr;
         if (!component) { Fail("Image 组件已失效。"); return; }
         auto next = InspectorValues::Read(*component); next.Texture = resource;
         Commit<GameSproutRuntime::IImageComponent>(next,"绑定 Image 纹理");
     };
-    for (QLineEdit* edit : {_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this]{CommitValues();});
+    for (QLineEdit* edit : {_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this,edit]{CommitValues(edit);});
 }
 ImageComponentEditor::~ImageComponentEditor() { _Texture->Changed = {}; delete _Ui; }
 void ImageComponentEditor::ContextChanged() {
@@ -27,14 +27,13 @@ void ImageComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) 
     _Texture->SetValue(v.Texture);
     ShowNumbers({_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit},{v.Color.R,v.Color.G,v.Color.B,v.Color.A,v.UV.Position.X,v.UV.Position.Y,v.UV.Size.X,v.UV.Size.Y});
 }
-void ImageComponentEditor::CommitValues() {
-    if (_Loading) return;
-    std::vector<float> a;
-    if (!ReadNumbers({_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit},a)) { Fail("请输入有限的颜色与 UV 数值。"); return; }
-    auto* object = _Context.Resolve();
-    auto* component = object ? object->GetComponent<GameSproutRuntime::IImageComponent>() : nullptr;
-    if (!component) { Fail("Image 组件已失效。"); return; }
-    auto next = InspectorValues::Read(*component);
-    next.Color = {a[0],a[1],a[2],a[3]}; next.UV = {{a[4],a[5]},{a[6],a[7]}};
+void ImageComponentEditor::CommitValues(QWidget* changed) {
+    if (_Loading||!_PropertiesEditable) return;
+    auto* component=dynamic_cast<GameSproutRuntime::IImageComponent*>(_Context.ResolveComponent());
+    if(!component){Fail("Image 组件已失效。");return;}
+    auto next=InspectorValues::Read(*component);
+    const std::pair<QLineEdit*,float*> fields[]={{_Ui->imageColorREdit,&next.Color.R},{_Ui->imageColorGEdit,&next.Color.G},{_Ui->imageColorBEdit,&next.Color.B},{_Ui->imageColorAEdit,&next.Color.A},
+        {_Ui->imageUVPositionXEdit,&next.UV.Position.X},{_Ui->imageUVPositionYEdit,&next.UV.Position.Y},{_Ui->imageUVSizeXEdit,&next.UV.Size.X},{_Ui->imageUVSizeYEdit,&next.UV.Size.Y}};
+    for(const auto& [field,value]:fields)if(changed==field&&!ReadNumber(field,*value)){Fail("请输入有限的颜色与 UV 数值。");return;}
     Commit<GameSproutRuntime::IImageComponent>(next,"修改 Image");
 }

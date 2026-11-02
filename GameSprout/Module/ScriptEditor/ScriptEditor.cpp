@@ -27,6 +27,7 @@ void ScriptEditor::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api) 
     _Runtime=api->_EditorApi->_Runtime;
     _Scenes=api->_EditorApi->GetGameSproutModule<ISceneManager>("SceneManager");
     _Selection=api->_EditorApi->GetGameSproutModule<ISelectionManager>("SelectionManager");
+    _Editing=api->_EditorApi->GetGameSproutModule<IObjectEditing>("ObjectEditing");
 }
 bool ScriptEditor::Initialize(GameSproutEditor::GameSproutModuleApi*) {
     return _Compiler && _Assets && _Project && _Guids && _Tasks && _Runtime && _IDE;
@@ -51,9 +52,11 @@ void ScriptEditor::LaunchFinished(GameSproutEditor::GameSproutModuleApi*) {
 }
 void ScriptEditor::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Launched=false;
+    for(const auto id:_ObservedObjects)if(_Runtime)_Runtime->UnregisterObjectPropertyObserver(id,this);
+    _ObservedObjects.clear();
     if(_FieldSceneSubscribed)_Scenes->UnregisterSceneListener(this);
     if(_FieldRuntimeSubscribed)_Runtime->UnregisterListener(this);
-    _FieldSceneSubscribed=false;_FieldRuntimeSubscribed=false;_FieldObservers.clear();
+    _FieldSceneSubscribed=false;_FieldRuntimeSubscribed=false;_FieldObservers.clear();_Editing=nullptr;
     _ReloadBlocked=false; _CompileDeferred=false;
     if (_Subscribed) _Assets->UnregisterAssetListener(this);
     _Subscribed=false;
@@ -98,6 +101,7 @@ ScriptBuildState ScriptEditor::GetBuildState() const {
     ScriptBuildState state=_State;
     state.PendingChanges=_Queued||_CompileDeferred||_State.Compiling||_Revision!=_PublishedRevision;
     state.ReloadBlocked=_ReloadBlocked;
+    state.SourceRevision=_SourceRevision;
     return state;
 }
 bool ScriptEditor::SetReloadBlocked(bool blocked,std::string& error) {
@@ -142,7 +146,7 @@ void ScriptEditor::SourceEvent(const AssetEvent& event,bool remove) {
         _Sources.insert_or_assign(event.Path,ScriptCompileSource{event.Path,event.GuidValue.GetGuidString()});
         changed=true; // Fingerprint catches metadata-only events without recompilation.
     }
-    if(changed) { ++_Revision; if(_Launched) QueueCompile(); }
+    if(changed) { ++_Revision; ++_SourceRevision; if(_Launched) QueueCompile(); }
 }
 void ScriptEditor::QueueCompile() {
     if(_ReloadBlocked) {_CompileDeferred=true;Notify(false);return;}

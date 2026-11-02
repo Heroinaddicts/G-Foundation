@@ -23,5 +23,5 @@ private:
     IProjectSettings* _ProjectSettings=nullptr;
     bool _SettingsSubscribed=false;
     bool _PlaySubscribed=false;
-    bool _ReadOnly=false;
+    bool _ReadOnly=false,_StructureReadOnly=false;
 };

@@ -237,7 +237,7 @@ GameSproutRuntime::Internal::MakeField<Invalid>("Value","B",&Invalid::Value,1.0f
         Write(code+"/BadDescriptor.cpp",R"(#include "Internal/RuntimeScriptBindings.h"
 #include <exception>
 class NativeCopyError final:public std::exception {public:~NativeCopyError() override {} const char* what()const noexcept override{return "candidate bridge copy failed";}};
-struct CopyThrower {inline static bool Active=false;CopyThrower()=default;CopyThrower(const CopyThrower&){if(Active)throw NativeCopyError();}bool operator()(GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,std::string&)const{return true;}};
+struct CopyThrower {inline static bool Active=false;CopyThrower()=default;CopyThrower(const CopyThrower&){if(Active)throw NativeCopyError();}bool operator()(GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string&)const{return true;}};
 class Invalid final:public GameSproutRuntime::ScriptBehaviour {public:float Value=1;};
 static const bool BadRegistered=[] {
  auto field=GameSproutRuntime::Internal::MakeField<Invalid>("Value","Value",&Invalid::Value,1.0f);field.Write=CopyThrower{};
@@ -268,7 +268,8 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
             Require(editor._Runtime->SetScriptExecutionEnabled(true,error),error);
             editor._Runtime->Update(.25f);
             const float expected=.75f*version;
-            Require(script->GetScriptError().empty()&&object->GetTransform()->GetLocalPosition().X==expected,"Reused library slot executed stale gameplay code instead of version "+std::to_string(version)+": "+script->GetScriptError());
+            const float actual=object->GetTransform()->GetLocalPosition().X;
+            Require(script->GetScriptError().empty()&&actual==expected,"Reused library slot executed stale gameplay code instead of version "+std::to_string(version)+": expected "+std::to_string(expected)+", actual "+std::to_string(actual)+", "+script->GetScriptError());
             Require(editor._Runtime->SetScriptExecutionEnabled(false,error),error);
             Require(script->GetFields().at("RenamedMover::Speed").Number==3&&script->GetFields().at("RenamedMover::Added").Number==4,"Code version load changed authored fields");
         };

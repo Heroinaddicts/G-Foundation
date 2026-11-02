@@ -2,17 +2,17 @@
 
 `ScriptEditor` 负责源码创建、资产事件订阅、TaskApi 调度、类型目录和动态库替换；`ScriptCompiler` 负责源码快照、Clang AST、生成内部绑定、CMake 编译与缓存。界面只通过公开接口与事件协作，不查询功能模块的私有实现。
 
-用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`Update`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板直接给出这五个生命周期，不要求构造函数、构造继承、UUID 或字段注册表。
+用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`Update`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，五个生命周期统一放在 protected，由 Runtime 调用；不要求构造函数、构造继承、UUID 或字段注册表。
 
 - `GAMESPROUT_SCRIPT(Type)` 只生成编译期类型标记，不执行注册和用户构造。默认构造时的 GameObject 归属由 SDK 内部注入。
 - 游戏代码通过 `_GameObject->AddComponent<T>()`、`GetComponent<T>()`、`RemoveComponent<T>()` 使用脚本。每个对象同类脚本最多一个，重复添加返回 `nullptr`；`OnCreate` 中查询自身返回当前真实实例，也可以查询或创建内置组件。内置组件重复添加仍返回已有组件。
 - 实例在 `OnCreate` 前已经登记并恢复作者字段。Runtime 完成本批节点、组件、字段与引用的装配，并提交 `OnCreate` 产生的结构修改后，调用一次 `OnInitialized`，之后才允许 `Update` 和 `FixedUpdate`。此时可以访问同批其他组件及其数据，但不保证其他组件已经执行完自己的 `OnInitialized`；后续新增组件不会重新初始化已有组件。可变帧调用 `Runtime.Update(deltaSeconds)`；固定步调用 `Runtime.FixedUpdate(fixedDeltaSeconds)`，两者独立，由宿主决定调度。停止执行或移除组件时调用 `OnRelease`，回调中的移除延迟到安全边界处理。
 - 每个 `.hpp` 资源最多标记一个组件，可以包含其他辅助类。隐藏 TypeID 直接使用该源资源 `.meta` GUID；类、文件、目录改名不会改变身份。复制资源时由 AssetsManager 创建新 `.meta` GUID。源引用是同一 GUID 加固定 LocalID `1`。
 - `ScriptBindingsGenerator` 调用本机 Clang JSON AST，识别标记的真实 C++ 类、访问权限和字段类型，再生成 `GameLogic.generated.cpp`。不使用正则猜测 C++ 声明，也不创建用户类实例来读取默认值。
-- 支持的 public 实例字段自动序列化；private / protected 使用 `GAMESPROUT_SERIALIZE_FIELD` 标记。字段类型包括 bool、有符号整数、float/double、std::string、Vector3、ResourceReference 和 `IGameObject*` 场景对象引用。访问器通过每个声明类授权的友元生成，继承字段由其声明类处理；字段 ID 为 `声明类型::成员名`。字段更名视为新字段。
+- 支持的 public 实例字段自动序列化；private / protected 使用 `GAMESPROUT_SERIALIZE_FIELD` 标记。字段类型包括 bool、有符号/无符号整数、float/double、枚举、std::string、Vector2/3/4、Quaternion、Color、ResourceReference、`IGameObject*` 和类型明确的组件指针。结构体/普通数据类递归展开；C 数组、std::array、std::vector、std::list 与 std::map/std::unordered_map 保存逻辑元素，不保存容器地址、分配器或内部节点。访问器通过每个声明类授权的友元生成，继承字段由其声明类处理；字段 ID 为 `声明类型::成员名`。字段更名视为新字段。
 - 编译器拒绝派生类隐藏基类成员，覆盖 SDK 和用户定义基类，包括未标记的 private/protected 字段、静态字段、类型别名、枚举值以及非虚接口的同名函数。真正覆盖基类虚函数的实现可以使用；生命周期参数、返回值、const/static 等签名不匹配会编译失败，`using Base::Update` 也不能把错误生命周期重载变成有效实现。诊断包含声明位置、冲突名称和基类来源，不依赖等到 Play 执行才发现问题。
 - `_GameObject` 是 SDK 已有的所属对象成员；用户预设引用使用 `_Target` 等独立名称。通过 `GetGameObject()` 可以明确取得当前脚本所属节点。声明检查不把所有普通局部变量或辅助函数重载当成错误，也不能静态证明任意运行时指针永远有效；对象引用为空或失效时仍需按运行逻辑处理。
-- static、const、位域、任意原生指针和引用、其他未支持类型，以及需要调用函数或读取对象状态的初始化表达式不会自动持久化；Console 会解释跳过原因。`IGameObject*` 仅支持空默认值，指向的节点通过 Inspector 配置。未标记的非公开字段保留普通 C++ 运行时语义。
+- static、const、位域、任意拥有内存的原生指针和引用、其他未支持类型，以及需要调用函数或读取对象状态的初始化表达式不会自动持久化；显式标记的不支持字段导致编译失败。GameObject/组件指针仅支持空默认值，目标通过 Inspector 配置。未标记的非公开字段保留普通 C++ 运行时语义。
 - 编辑态不执行用户构造与生命周期。Component 保存字段值及资源引用；用户实例仅在 Runtime 显式开启脚本执行后创建。Editor 由 PlayMode 协调运行会话、RuntimeHost 推进游戏循环，动画预览不等于游戏执行。
 - `AddComponent()` 返回后可以继续配置属性和添加其他组件，不会在返回前调用 `OnInitialized`。脚本回调中新建的对象在本轮回调／遍历结束、结构提交后分批初始化；`OnInitialized` 中新增的对象进入下一批，初始化完成前不更新。非激活或禁用的脚本等待激活／启用后初始化。
 - 宿主跨多次调用装配对象时，使用可嵌套的 `BeginConstruction(error)`／`EndConstruction(error)`。最外层提交前禁止模拟与渲染；场景加载、模型实例化和组件恢复已接入此边界。没有显式范围的外部新增组件在下一次正时间步前初始化；`Update(0)` 和仅派发事件不会启动待执行的用户脚本。`BeginExecution` 则主动完成启动初始化，不等待第一帧。
@@ -42,7 +42,6 @@ private:
 protected:
     GAMESPROUT_SERIALIZE_FIELD
     float _Speed = 1.0f;
-public:
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
         if (_Target) _Target->GetTransform()->SetLocalPosition({0, _Speed, 0});
     }
@@ -56,3 +55,28 @@ GAMESPROUT_SCRIPT(Test)
 - `.scene` 的 `SceneObject` 值是 `null` 或 `{ "ObjectFileID": n }`；FileID 0 代表场景根，不能与空引用混同。源文档不保存地址、对象名称或 Runtime InstanceID。首次只允许同场景引用；运行时临时对象没有可保存的 FileID，不能被拖进作者引用。
 - SceneDocument 先创建完整树并把稳定 ID 交给 Runtime，再结束 construction。ScriptComponent 保存引用描述；Runtime 恢复本进程内的原生字段指针。目标删除时保留作者 FileID、界面显示 Missing，撤销重建原 FileID 后重新解析；显式清空才删除引用。登记字段之外的普通裸指针副本不获得自动失效保证。
 - 当前不启动 Player 子进程。字段 Schema、作者引用以及命令/事件都采用值数据，为后续传输预留边界；进程内接口的 C++ 指针与 std::function 不作为 IPC 数据。
+
+递归字段与组件引用
+
+```cpp
+struct MovementOptions {
+    float Speed = 1.0f;
+    GameSproutRuntime::IRigidbodyComponent* Body = nullptr;
+};
+class Mover final : public GameSproutRuntime::ScriptBehaviour {
+protected:
+    GAMESPROUT_SERIALIZE_FIELD
+    MovementOptions _Options;
+    GAMESPROUT_SERIALIZE_FIELD
+    std::vector<MovementOptions> _Targets;
+    GAMESPROUT_SERIALIZE_FIELD
+    std::map<std::string, MovementOptions> _Presets;
+};
+GAMESPROUT_SCRIPT(Mover)
+```
+
+- `IRigidbodyComponent*` 是 Runtime 持有组件的借用引用；不能写成 `IRigidbodyComponent` 值成员，后者是不可实例化的抽象类。普通数据结构体保存内容，GameObject/Component 保存身份，两者没有混用所有权。
+- Dictionary 键支持 bool、整数、string 和枚举；修改键必须保持唯一。固定数组不可改变长度，vector/list 可调整长度、插入、删除与移动；递归编辑只提交当前路径的变化，并以根字段为一次 Undo 事务。
+- 组件作者引用保存 `ComponentFileID`。对象和组件共用文档内唯一 ID 空间，实际组件 ID 不依赖类型名称或列表位置。运行中临时组件使用 Scene/Object/Component 的会话内身份，这些值不能写进源文件。
+- Scene/Prefab 先创建所有节点与组件，再发布完整组件身份映射。每个 Prefab 实例重新映射整棵值树中的对象/组件引用，包含结构体、数组和字典内部引用。未来 Player 在自己的进程恢复映射，不接收 Editor 内存地址。
+- 普通数据类按值保存，不隐式支持拥有任意裸指针、共享所有权或循环对象图；这类声明必须采用单独的显式所有权/对象图协议，不能误当成引擎组件引用。

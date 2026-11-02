@@ -1,7 +1,285 @@
-<?xml version="1.0" encoding="UTF-8"?><ui version="4.0"><class>ScriptPropertyRowForm</class><widget class="QWidget" name="ScriptPropertyRowForm"><layout class="QHBoxLayout" name="layout" stretch="0,1"><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><property name="spacing"><number>5</number></property><item><widget class="QLabel" name="nameLabel"><property name="minimumSize"><size><width>84</width><height>0</height></size></property><property name="maximumSize"><size><width>110</width><height>16777215</height></size></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="text"><string>属性</string></property></widget></item><item><widget class="QStackedWidget" name="valueStack">
-<widget class="QWidget" name="scalarPage"><layout class="QHBoxLayout" name="scalarLayout"><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLineEdit" name="scalarEdit"/></item></layout></widget>
-<widget class="QWidget" name="booleanPage"><layout class="QHBoxLayout" name="boolLayout"><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QCheckBox" name="booleanCheck"><property name="text"><string/></property></widget></item></layout></widget>
-<widget class="QWidget" name="vectorPage"><layout class="QHBoxLayout" name="vectorLayout"><property name="spacing"><number>2</number></property><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="xLabel"><property name="text"><string>X</string></property></widget></item><item><widget class="QLineEdit" name="xEdit"><property name="minimumSize"><size><width>20</width><height>0</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item><item><widget class="QLabel" name="yLabel"><property name="text"><string>Y</string></property></widget></item><item><widget class="QLineEdit" name="yEdit"><property name="minimumSize"><size><width>20</width><height>0</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item><item><widget class="QLabel" name="zLabel"><property name="text"><string>Z</string></property></widget></item><item><widget class="QLineEdit" name="zEdit"><property name="minimumSize"><size><width>20</width><height>0</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item></layout></widget>
-<widget class="QWidget" name="resourcePage"><layout class="QHBoxLayout" name="resourceLayout"><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="ResourceField" name="resourceField"/></item></layout></widget>
-<widget class="QWidget" name="objectPage"><layout class="QHBoxLayout" name="objectLayout"><property name="leftMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property></layout></widget>
-</widget></item></layout></widget><customwidgets><customwidget><class>ResourceField</class><extends>QWidget</extends><header>ResourceField.h</header><container>1</container></customwidget></customwidgets><resources/><connections/></ui>
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>ScriptPropertyRowForm</class>
+  <widget class="QWidget" name="ScriptPropertyRowForm">
+    <layout class="QHBoxLayout" name="layout" stretch="0,1">
+      <property name="leftMargin">
+        <number>0</number>
+      </property>
+      <property name="rightMargin">
+        <number>0</number>
+      </property>
+      <property name="topMargin">
+        <number>0</number>
+      </property>
+      <property name="bottomMargin">
+        <number>0</number>
+      </property>
+      <property name="spacing">
+        <number>5</number>
+      </property>
+      <item>
+        <widget class="QLabel" name="nameLabel">
+          <property name="minimumSize">
+            <size>
+              <width>84</width>
+              <height>0</height>
+            </size>
+          </property>
+          <property name="maximumSize">
+            <size>
+              <width>110</width>
+              <height>16777215</height>
+            </size>
+          </property>
+          <property name="wordWrap">
+            <bool>true</bool>
+          </property>
+          <property name="textFormat">
+            <enum>Qt::PlainText</enum>
+          </property>
+          <property name="text">
+            <string>属性</string>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <widget class="QStackedWidget" name="valueStack">
+          <widget class="QWidget" name="scalarPage">
+            <layout class="QHBoxLayout" name="scalarLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="QLineEdit" name="scalarEdit" />
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="booleanPage">
+            <layout class="QHBoxLayout" name="boolLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="QCheckBox" name="booleanCheck">
+                  <property name="text">
+                    <string />
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="vectorPage">
+            <layout class="QHBoxLayout" name="vectorLayout">
+              <property name="spacing">
+                <number>2</number>
+              </property>
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="QLabel" name="xLabel">
+                  <property name="text">
+                    <string>X</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLineEdit" name="xEdit">
+                  <property name="minimumSize">
+                    <size>
+                      <width>20</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+                      <horstretch>1</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLabel" name="yLabel">
+                  <property name="text">
+                    <string>Y</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLineEdit" name="yEdit">
+                  <property name="minimumSize">
+                    <size>
+                      <width>20</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+                      <horstretch>1</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLabel" name="zLabel">
+                  <property name="text">
+                    <string>Z</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLineEdit" name="zEdit">
+                  <property name="minimumSize">
+                    <size>
+                      <width>20</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+                      <horstretch>1</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLabel" name="wLabel">
+                  <property name="text">
+                    <string>W</string>
+                  </property>
+                </widget>
+              </item>
+              <item>
+                <widget class="QLineEdit" name="wEdit">
+                  <property name="minimumSize">
+                    <size>
+                      <width>20</width>
+                      <height>0</height>
+                    </size>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+                      <horstretch>1</horstretch>
+                      <verstretch>0</verstretch>
+                    </sizepolicy>
+                  </property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="resourcePage">
+            <layout class="QHBoxLayout" name="resourceLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="ResourceField" name="resourceField" />
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="objectPage">
+            <layout class="QHBoxLayout" name="objectLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="enumPage">
+            <layout class="QVBoxLayout" name="enumPageLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+              <item>
+                <widget class="QComboBox" name="enumCombo" />
+              </item>
+            </layout>
+          </widget>
+          <widget class="QWidget" name="compositePage">
+            <layout class="QVBoxLayout" name="compositePageLayout">
+              <property name="leftMargin">
+                <number>0</number>
+              </property>
+              <property name="rightMargin">
+                <number>0</number>
+              </property>
+              <property name="topMargin">
+                <number>0</number>
+              </property>
+              <property name="bottomMargin">
+                <number>0</number>
+              </property>
+            </layout>
+          </widget>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <customwidgets>
+    <customwidget>
+      <class>ResourceField</class>
+      <extends>QWidget</extends>
+      <header>ResourceField.h</header>
+      <container>1</container>
+    </customwidget>
+  </customwidgets>
+  <resources />
+  <connections />
+</ui>
