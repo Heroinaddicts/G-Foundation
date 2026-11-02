@@ -76,6 +76,8 @@ static Json::Value AllComponents(const Json::Value& initial) {
 #include "SceneSerializationChecks.h"
 #include "SceneAnimationChecks.h"
 #include "SceneRootMotionChecks.h"
+#include "SceneTagLayerChecks.h"
+#include "SceneStaticFlagsChecks.h"
 
 int main() {
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
@@ -186,6 +188,8 @@ int main() {
         CheckSerialization(*runtime,source);
         CheckAnimationSerialization(*runtime);
         CheckRootMotionPersistence(*runtime);
+        CheckTagLayerDocuments(*runtime);
+        CheckStaticFlagDocuments(*runtime);
         delete runtime;
         runtime=nullptr;
         std::cout << "PASS real Runtime: default scene/main camera, seven components, file IDs/order, validation, rollback and limits\n";

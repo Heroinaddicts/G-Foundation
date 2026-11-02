@@ -96,13 +96,14 @@ bool SceneManager::EditObject(uint64_t objectID,const std::string& label,const f
     if(!Capture(document,text,error))return false;
     Edit edit;
     try {
-        edit.FileID=object==scene?0:_ObjectIDs.RuntimeToFile.at(objectID);edit.Label=label;edit.Apply=apply;edit.Revert=revert;
+        edit.FileID=object==scene?0:_ObjectIDs.RuntimeToFile.at(objectID);edit.Label=label;edit.Apply=apply;edit.Revert=revert;edit.ReferencedTags[0]=object->GetTagID();
         _History.reserve(_HistoryPosition+1);
     }
     catch (...) {error="无法分配撤销记录。";return false;}
     EditingScope editing(_ExecutingEdit);
     const bool success=RunEdit(edit,true,error);
     if (success) {
+        if(auto* target=Runtime()->QueryGameObject(objectID))edit.ReferencedTags[1]=target->GetTagID();
         _History.resize(_HistoryPosition);_History.push_back(std::move(edit));++_HistoryPosition;
     }
     RefreshState(true);

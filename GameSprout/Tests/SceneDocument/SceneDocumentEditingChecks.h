@@ -39,6 +39,7 @@ static void CheckDocumentEditing(SceneManager& manager,const QDir& root,GameSpro
     SceneSubtreeDocument current;Check(manager.CaptureObjectDocument(instanceID,current,error),error);
     Json::Value replacement;Check(AssetArtifactIO::Parse(current.DocumentJson,replacement),"Cannot parse replacement");
     replacement["Objects"][0]["Name"]="Updated instance";
+    replacement["Objects"][0]["Layer"]=Json::UInt(2);
     replacement["Objects"][0]["Components"][0]["Position"][0]=5.0f;
     const auto next=replacement["NextObjectID"].asUInt64();
     Json::Value added=replacement["Objects"][1];added["ID"]=Json::UInt64(next);added["Name"]="New sibling";
@@ -47,14 +48,14 @@ static void CheckDocumentEditing(SceneManager& manager,const QDir& root,GameSpro
     SceneDocumentEditRequest replace;replace.RootObjectID=instanceID;replace.DocumentJson=AssetArtifactIO::JsonText(replacement);replace.AnnotationsJson="{\"Generation\":2}";
     SceneSubtreeDocument replaced;Check(manager.EditObjectDocument(replace,replaced,error),error);
     Check(replaced.RootObjectID==instanceID&&manager.QueryObjectByFileID(childFile)->GetInstanceID()==childID&&instance->GetTransform()==transform&&
-          instance->GetName()=="Updated instance"&&instance->GetChild(0)==instanceChild&&instance->GetChild(1)->GetName()=="New sibling"&&
+          instance->GetName()=="Updated instance"&&instance->GetLayer()==2&&instance->GetChild(0)==instanceChild&&instance->GetChild(1)->GetName()=="New sibling"&&
           script->GetFields().at("Test::_Target")==reference&&runtime->QuerySceneObjectByFileID(scene,childFile)==instanceChild,
           "Replacement rebuilt unchanged identities, changed order, or broke external script references");
     outside->SetName("Unrelated later edit");
     Check(manager.Undo(error),"Replacement Undo failed: "+error);
-    Check(instance->GetName()=="Source subtree"&&instance->GetChildCount()==1&&outside->GetName()=="Unrelated later edit"&&
+    Check(instance->GetName()=="Source subtree"&&instance->GetLayer()==0&&instance->GetChildCount()==1&&outside->GetName()=="Unrelated later edit"&&
           manager.GetSceneAnnotationsJson()==annotations,"Replacement Undo lost unrelated edits or annotations");
-    Check(manager.Redo(error)&&instance->GetName()=="Updated instance"&&instance->GetChildCount()==2,error);
+    Check(manager.Redo(error)&&instance->GetName()=="Updated instance"&&instance->GetLayer()==2&&instance->GetChildCount()==2,error);
     SceneSubtreeDocument beforeFailure;Check(manager.CaptureObjectDocument(instanceID,beforeFailure,error),error);
     const auto beforeAnnotations=manager.GetSceneAnnotationsJson();const auto children=scene->GetChildCount();
     SceneDocumentEditRequest invalid=insert;invalid.BuildAnnotations=[](const SceneSubtreeDocument&,const std::string&,std::string&,std::string& reason){reason="Rejected annotations";return false;};
@@ -71,6 +72,17 @@ static void CheckDocumentEditing(SceneManager& manager,const QDir& root,GameSpro
           "Failed document patch did not roll back properties/annotations");
     SceneSubtreeDocument afterFailure;Check(manager.CaptureObjectDocument(instanceID,afterFailure,error)&&afterFailure.DocumentJson==beforeFailure.DocumentJson,
           "Failed document patch changed the authored subtree");
+    Check(manager.SetObjectLayer(instanceID,3,true,error)&&instance->GetLayer()==3&&instanceChild->GetLayer()==3,error);
+    Check(manager.Undo(error)&&instance->GetLayer()==2&&instanceChild->GetLayer()==0,"Subtree Layer change was not one Undo transaction");
+    Check(manager.Redo(error)&&instance->GetLayer()==3&&instanceChild->GetLayer()==3,error);
+    Check(manager.Undo(error),error);
+    auto settings=runtime->GetProjectSettings();const auto oldTag=settings.NextTagID++;
+    settings.Tags.push_back({oldTag,"HistoryOnlyTag"});Check(runtime->SetProjectSettings(settings,error)&&instance->SetTagID(oldTag),error);
+    Check(manager.EditObject(instanceID,"Clear Tag",[](GameSproutRuntime::IGameObject& node,std::string&){return node.SetTagID(0);},
+        [oldTag](GameSproutRuntime::IGameObject& node,std::string&){return node.SetTagID(oldTag);},error),error);
+    const auto references=manager.GetReferencedTagIDs();
+    Check(std::find(references.begin(),references.end(),oldTag)!=references.end(),"Project definition checks lost Undo-only Tag reference");
+    Check(manager.Undo(error)&&instance->GetTagID()==oldTag&&manager.Redo(error)&&instance->GetTagID()==0,error);
     Check(manager.SaveScene(error),error);
     const auto saved=Document(root.filePath("Assets/"+QString::fromStdString(path)));
     Check(saved["Annotations"]["Generation"].asInt()==2,"Save omitted annotations");

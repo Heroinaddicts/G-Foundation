@@ -31,7 +31,7 @@ int main() {
         auto* body=object->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
         Check(first&&second&&first!=second&&sphere&&capsule&&body,"Physics factory or repeated collider failed");
         Check(second->SetShape({{2,3,4}}),"Cannot set second collider shape");
-        auto settings=second->GetColliderSettings();settings.IsTrigger=true;settings.Center={1,2,3};settings.Rotation={0.1f,0.2f,0.3f,0.9f};settings.CollisionLayer=2;settings.CollisionMask=16;
+        auto settings=second->GetColliderSettings();settings.IsTrigger=true;settings.Center={1,2,3};settings.Rotation={0.1f,0.2f,0.3f,0.9f};second->GetGameObject()->SetLayer(2);
         Check(second->SetColliderSettings(settings),"Cannot set second collider surface");
         auto rigid=body->GetSettings();rigid.MotionType=GameSproutRuntime::PhysicsMotionType::Kinematic;rigid.Mass=7;
         Check(body->SetSettings(rigid),"Cannot set body");
@@ -58,6 +58,9 @@ int main() {
         Check(!SceneDocument::Validate(invalid,error),"Invalid capsule geometry accepted");
         invalid=document;for(auto& component:invalid["Objects"][0]["Components"])if(component["Type"]=="GameSproutRuntime.Rigidbody")component["Settings"]["Constraints"]=63;
         Check(!SceneDocument::Validate(invalid,error),"All-frozen unsupported body accepted");
+        invalid=document;for(auto& component:invalid["Objects"][0]["Components"])
+            if(component["Type"]=="GameSproutRuntime.BoxCollider")component["Settings"]["CollisionMask"]=16;
+        Check(!SceneDocument::Validate(invalid,error),"Removed per-Collider collision mask accepted");
         delete runtime;runtime=nullptr;std::cout<<"PASS repeated collider document identities and physics roundtrip\n";return 0;
     }catch(const std::exception& exception){delete runtime;std::cerr<<"FAIL "<<exception.what()<<"\n";return 1;}
 }

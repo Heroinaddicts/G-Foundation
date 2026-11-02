@@ -3,6 +3,7 @@
 #include "IProject.h"
 #include "SceneDocument.h"
 #include <map>
+#include <array>
 class IRuntimeHost;
 
 class SceneManager final : public ISceneManager, public GameSproutRuntime::IRuntimeListener {
@@ -45,6 +46,9 @@ public:
     bool CommitTransformEdit(std::string& error) override;
     bool CancelTransformEdit(std::string& error) override;
     bool HasTransformEdit() const override {return _TransformEdit.Active;}
+    bool SetObjectLayer(uint64_t,std::uint8_t,bool,std::string&) override;
+    bool SetObjectStaticFlags(uint64_t,GameSproutRuntime::StaticFlags,GameSproutRuntime::StaticFlags,bool,std::string&) override;
+    std::vector<std::uint64_t> GetReferencedTagIDs() const override;
     bool Undo(std::string& error) override;
     bool Redo(std::string& error) override;
     bool CanUndo() const override {return !IsPlaySessionActive()&&_HistoryPosition>0;}
@@ -79,6 +83,7 @@ private:
         Kind Type=Kind::Property;
         std::uint64_t FileID=0;
         std::string Label;
+        std::array<std::uint64_t,2> ReferencedTags{};
         fSceneEditOperation Apply;
         fSceneEditOperation Revert;
         Json::Value Subtree;

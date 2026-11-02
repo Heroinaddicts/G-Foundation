@@ -89,6 +89,19 @@ public:
     virtual bool EditObject(uint64_t objectID, const std::string& label,
                             const fSceneEditOperation& apply, const fSceneEditOperation& revert,
                             std::string& error) = 0;
+    // Authoring transaction; includes descendants only when explicitly requested.
+    // A whole subtree change is one Undo/Redo step. View does not edit document JSON.
+    virtual bool SetObjectLayer(uint64_t objectID,std::uint8_t layer,bool includeChildren,std::string& error) {
+        error="当前场景服务不支持 Layer 编辑。";return false;
+    }
+    // Generic authoring metadata transaction. Only changedFlags bits are updated;
+    // descendants preserve their own unrelated flags and share one Undo/Redo step.
+    virtual bool SetObjectStaticFlags(uint64_t objectID,GameSproutRuntime::StaticFlags values,
+        GameSproutRuntime::StaticFlags changedFlags,bool includeChildren,std::string& error) {
+        error="当前场景服务不支持静态标志编辑。";return false;
+    }
+    // Explicit project-definition deletion checks include parked author history.
+    virtual std::vector<std::uint64_t> GetReferencedTagIDs() const {return {};}
     // 删除普通节点及完整子树；Undo仅重建被删子树，Runtime身份会改变。
     virtual bool DeleteObject(uint64_t, std::string& error) {error="当前场景服务不支持删除节点。";return false;}
     // 结构变更由场景事务持有；不销毁对象或其余组件，支持保存和撤销/重做。

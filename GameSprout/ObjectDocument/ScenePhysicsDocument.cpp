@@ -35,7 +35,7 @@ Json::Value Vector(GameSproutRuntime::Vector3 value) {
     Json::Value result(Json::arrayValue);result.append(value.X);result.append(value.Y);result.append(value.Z);return result;
 }
 GameSproutRuntime::ColliderSettings Collider(const Json::Value& value,const std::string& path) {
-    Keys(value,path,{"Enabled","IsTrigger","Center","Rotation","Material","CollisionLayer","CollisionMask"});
+    Keys(value,path,{"Enabled","IsTrigger","Center","Rotation","Material"});
     GameSproutRuntime::ColliderSettings settings;
     settings.Enabled=Boolean(value,"Enabled",true,path);settings.IsTrigger=Boolean(value,"IsTrigger",false,path);
     if(value.isMember("Center"))settings.Center=Vector(value["Center"],path+".Center");
@@ -56,10 +56,6 @@ GameSproutRuntime::ColliderSettings Collider(const Json::Value& value,const std:
         }
         settings.Material={guid,material["LocalID"].asUInt64()};
     }
-    if(value.isMember("CollisionLayer")) {
-        const auto layer=Unsigned(value["CollisionLayer"],path+".CollisionLayer");if(layer>31)Fail(path+".CollisionLayer","expected 0..31");settings.CollisionLayer=static_cast<std::uint8_t>(layer);
-    }
-    if(value.isMember("CollisionMask"))settings.CollisionMask=Unsigned(value["CollisionMask"],path+".CollisionMask");
     return settings;
 }
 GameSproutRuntime::RigidbodySettings Rigidbody(const Json::Value& value,const std::string& path) {
@@ -164,7 +160,6 @@ Json::Value Serialize(GameSproutRuntime::IComponent& component) {
         const auto& data=collider->GetColliderSettings();auto& settings=value["Settings"];
         settings["Enabled"]=data.Enabled;settings["IsTrigger"]=data.IsTrigger;settings["Center"]=Vector(data.Center);
         Json::Value rotation(Json::arrayValue);rotation.append(data.Rotation.X);rotation.append(data.Rotation.Y);rotation.append(data.Rotation.Z);rotation.append(data.Rotation.W);settings["Rotation"]=rotation;
-        settings["CollisionLayer"]=Json::UInt(data.CollisionLayer);settings["CollisionMask"]=Json::UInt(data.CollisionMask);
         if(!data.Material.Guid.empty()){settings["Material"]["Guid"]=data.Material.Guid;settings["Material"]["LocalID"]=Json::UInt64(data.Material.LocalID);}
         else settings["Material"]=Json::Value();
         if(auto* box=dynamic_cast<GameSproutRuntime::IBoxColliderComponent*>(collider))value["Shape"]["Size"]=Vector(box->GetShape().Size);

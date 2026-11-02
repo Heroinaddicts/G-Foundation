@@ -142,6 +142,13 @@ static void Publish(TestProject& project,TestAssets& assets,TestLibrary& library
     const QString meta=QString::fromStdString(project.Root+"/Assets/"+relativePath+".meta");
     if(!QFileInfo::exists(meta)){Json::Value value;value["Guid"]=guid.GetGuidString();Write(meta,QByteArray::fromStdString(Text(value)));}
 }
+static void SetClassification(ISceneManager& scenes,GameSproutRuntime::IGameObject& object,std::uint8_t layer,std::uint64_t tag) {
+    const auto previousLayer=object.GetLayer();const auto previousTag=object.GetTagID();std::string error;
+    const auto operation=[](std::uint8_t layer,std::uint64_t tag){return [layer,tag](GameSproutRuntime::IGameObject& node,std::string& reason){
+        if(node.SetLayer(layer)&&node.SetTagID(tag))return true;reason="Cannot set authored Tag/Layer";return false;
+    };};
+    Check(scenes.EditObject(object.GetInstanceID(),"Set classification",operation(layer,tag),operation(previousLayer,previousTag),error),error);
+}
 static GameSproutRuntime::IScriptComponent* Script(GameSproutRuntime::IGameObject& object){for(std::size_t i=0;i<object.GetComponentCount();++i)if(auto* value=dynamic_cast<GameSproutRuntime::IScriptComponent*>(object.GetComponentAt(i)))return value;return nullptr;}
 static Json::Value Data(const TestProject& project,const std::string& path){Json::Value data;std::string error;Check(PrefabDefinition::Validate(Parse(Read(QString::fromStdString(project.Root+"/Assets/"+path))),data,error),error);return data;}
 static void SaveData(const TestProject& project,const std::string& path,const Json::Value& data){Write(QString::fromStdString(project.Root+"/Assets/"+path),QByteArray::fromStdString(Text(PrefabDefinition::Source(data))));}
@@ -404,7 +411,12 @@ int main(int argc,char** argv){
         for(auto* module:{scenesModule,prefabsModule})GameSproutEditor::GameSproutEditorFinal::Finished(*module,api);
         auto* scene=scenes->GetActiveScene();auto* source=scene->CreateGameObject("Source");auto* child=scene->CreateGameObject("Child",source);
         auto* external=scene->CreateGameObject("External target");const auto sourceID=source->GetInstanceID();
-        std::string error;const GameSproutRuntime::ResourceReference scriptSource{"3456789012abcdef3456789012abcdef",1};
+        std::string error;
+        auto classifications=runtime->GetProjectSettings();
+        classifications.LayerNames[3]="Characters";classifications.LayerNames[4]="Enemies";classifications.LayerNames[5]="Buildings";
+        classifications.Tags.push_back({1,"Enemy"});classifications.Tags.push_back({2,"Friendly"});classifications.NextTagID=3;
+        Check(runtime->SetProjectSettings(classifications,error)&&child->SetLayer(3)&&child->SetTagID(1)&&child->SetStaticFlags(GameSproutRuntime::StaticFlags::ContributeGI),error);
+        const GameSproutRuntime::ResourceReference scriptSource{"3456789012abcdef3456789012abcdef",1};
         Check(scenes->AttachScriptComponent(sourceID,scriptSource.Guid,scriptSource,error),error);
         GameSproutRuntime::ScriptValue internal;internal.Kind=GameSproutRuntime::ScriptValueKind::SceneObject;internal.SceneObject={true,scenes->GetObjectFileID(child->GetInstanceID())};
         Check(Script(*source)->SetField("Test::_Target",internal,error),error);
@@ -427,9 +439,11 @@ int main(int argc,char** argv){
         if(info.HasOverrides)for(const auto& patch:info.Overrides)std::cerr<<"Unexpected override "<<patch.SourceObjectID<<"/"<<patch.ComponentID<<patch.PropertyPath<<" before="<<patch.SourceValueJson<<" after="<<patch.InstanceValueJson<<"\n";
         Check(info.RootObjectID==firstID&&!info.HasOverrides,"Fresh instance has unexpected overrides: "+error);
         SetPosition(*scenes,*first->GetChild(0),{9,0,0});
+        SetClassification(*scenes,*first->GetChild(0),4,2);
+        Check(scenes->SetObjectStaticFlags(firstChildID,GameSproutRuntime::StaticFlags::NavigationStatic,GameSproutRuntime::StaticFlags::Everything,false,error),error);
         Check(prefabs->ReadInstance(firstID,info,error)&&info.HasOverrides,"Instance edit was not detected as an override");
         auto editedSource=Data(project,path);const auto sourceRoot=PrefabDefinition::RootID(editedSource);
-        for(auto& node:editedSource["Objects"])if(node["ID"].asUInt64()!=sourceRoot){node["Name"]="Updated child";node["Components"][0]["Position"][1]=4.0f;node["Components"][0]["Scale"][2]=3.0f;}
+        for(auto& node:editedSource["Objects"])if(node["ID"].asUInt64()!=sourceRoot){node["Layer"]=Json::UInt(5);node["TagID"]=Json::UInt64(0);node["StaticFlags"]=Json::UInt(64);node["Name"]="Updated child";node["Components"][0]["Position"][1]=4.0f;node["Components"][0]["Scale"][2]=3.0f;}
         SaveData(project,path,editedSource);Publish(project,assets,library,path);
         Check(prefabs->RefreshSource(reference.Guid,error),"RefreshSource failed: "+error);
         Check(runtime->QueryGameObject(firstID)==first&&runtime->QueryGameObject(secondID)==second&&first->GetChild(0)->GetInstanceID()==firstChildID&&second->GetChild(0)->GetInstanceID()==secondChildID,
@@ -437,6 +451,10 @@ int main(int argc,char** argv){
         Check(first->GetChild(0)->GetTransform()->GetLocalPosition().X==9&&first->GetChild(0)->GetTransform()->GetLocalPosition().Y==4&&
               first->GetChild(0)->GetTransform()->GetLocalScale().Z==3&&second->GetChild(0)->GetTransform()->GetLocalPosition().X==0&&second->GetChild(0)->GetTransform()->GetLocalPosition().Y==4&&
               first->GetChild(0)->GetName()=="Updated child","RefreshSource did not preserve overridden fields while updating other fields");
+        Check(first->GetChild(0)->GetLayer()==4&&first->GetChild(0)->GetTagID()==2&&
+              second->GetChild(0)->GetLayer()==5&&second->GetChild(0)->GetTagID()==0,"Source refresh lost Tag/Layer overrides");
+        Check(first->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::NavigationStatic&&
+              second->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::ReflectionProbeStatic,"Source refresh lost StaticFlags overrides");
         CheckReference(*scenes,*runtime,*first);CheckReference(*scenes,*runtime,*second);
         Check(prefabs->ApplyOverrides(firstID,error),"ApplyOverrides failed: "+error);
         const auto applied=Data(project,path);Check(Read(full+".meta")==metaBytes,"Apply changed the source GUID/meta");
@@ -446,12 +464,20 @@ int main(int argc,char** argv){
               applied["Objects"][1]["Components"][0]["ID"]==initialData["Objects"][1]["Components"][0]["ID"],"Apply changed existing source object/component IDs");
         Check(second->GetChild(0)->GetTransform()->GetLocalPosition().X==9&&prefabs->ReadInstance(firstID,info,error)&&!info.HasOverrides,
               "Apply did not clear first overrides or propagate source changes to the second instance");
+        Check(second->GetChild(0)->GetLayer()==4&&second->GetChild(0)->GetTagID()==2&&
+              applied["Objects"][1]["Layer"]==4&&applied["Objects"][1]["TagID"].asUInt64()==2,"Apply did not persist/propagate Tag/Layer overrides");
         Publish(project,assets,library,path);
         SetPosition(*scenes,*first,{11,12,13});SetPosition(*scenes,*first->GetChild(0),{99,4,0});
+        Check(second->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::NavigationStatic&&
+              applied["Objects"][1]["StaticFlags"].asUInt()==8,"Apply did not persist or propagate static declarations");
+        SetClassification(*scenes,*first->GetChild(0),6,1);
+        Check(scenes->SetObjectStaticFlags(firstChildID,GameSproutRuntime::StaticFlags::OccluderStatic,GameSproutRuntime::StaticFlags::Everything,false,error),error);
         Check(prefabs->RevertOverrides(firstID,error),"RevertOverrides failed: "+error);
         Check(first->GetTransform()->GetLocalPosition().X==11&&first->GetTransform()->GetLocalPosition().Y==12&&first->GetChild(0)->GetTransform()->GetLocalPosition().X==9&&
               prefabs->ReadInstance(firstID,info,error)&&!info.HasOverrides,"Revert did not clear overrides while preserving root placement");
-        Check(scenes->Undo(error)&&first->GetChild(0)->GetTransform()->GetLocalPosition().X==99&&prefabs->ReadInstance(firstID,info,error)&&info.HasOverrides,
+        Check(first->GetChild(0)->GetLayer()==4&&first->GetChild(0)->GetTagID()==2,"Revert lost source Tag/Layer");
+        Check(first->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::NavigationStatic,"Revert lost source static declarations");
+        Check(scenes->Undo(error)&&first->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::OccluderStatic&&first->GetChild(0)->GetLayer()==6&&first->GetChild(0)->GetTagID()==1&&first->GetChild(0)->GetTransform()->GetLocalPosition().X==99&&prefabs->ReadInstance(firstID,info,error)&&info.HasOverrides,
               "Undo Revert did not restore the instance override and metadata");
         Check(scenes->Redo(error)&&first->GetChild(0)->GetTransform()->GetLocalPosition().X==9,error);
         Check(QFile::rename(full,full+".missing"),"Cannot hide source fixture");

@@ -9,6 +9,16 @@ RootMainCamera=true 表示根上的 Camera 是主相机，此时 MainCameraID �
 NextObjectID 保存节点和组件共用的文件 ID 分配高水位，新增身份单调分配，删除后重开也不复用。
 NextObjectID 缺省使用已有最大 ID+1；0 表示 uint64 ID 空间耗尽。
 Objects 每项包含 ID、Name、Components；ParentID 默认 0，Active 默认 true。
+Layer 保存 0..31 固定编号，默认 0；TagID 保存项目稳定 Tag 身份，默认 0（Untagged）。
+StaticFlags 是 uint32 位集合，默认 0，当前合法位为 1、2、4、8、16、32、64；未知位拒绝加载。
+场景根使用 RootStaticFlags。静态标志只保存作者声明，不冻结 Transform，不停用脚本，也不改变刚体类型。
+SetObjectStaticFlags 事务按 changedFlags 逐节点修改，包含子节点时为一个 Undo/Redo 步骤，保留各节点其余位。
+StaticAuthoring 负责报告真实功能支持度：本版所有烘焙系统未接入，禁止新启用，允许清除已有标志。
+场景根用 RootLayer、RootTagID 保存同类属性。名称重命名不改编号或 TagID，父子不自动继承。
+加载宿主须先向 Runtime 注入项目定义；未定义 TagID 在创建任何对象之前拒绝，不静默降为 Untagged。
+项目配置存于 ProjectSettings/ProjectSettings.json：内置 Layer 0 Default、1 Ignore Raycast、2 UI，
+其余可命名；碰撞矩阵与相机/射线掩码共享 Layer 编号，后两者的筛选与碰撞矩阵独立。
+Collider 不再保存独立 CollisionLayer/CollisionMask，读取所属节点 Layer 和项目碰撞矩阵。
 ID 是本场景文件内稳定的节点标识，不能使用每次创建后变化的 Runtime InstanceID。
 ParentID=0 代表直接位于场景根下。文件可以先写子节点，再写父节点。
 组件序列化也保存非零稳定 ID，与节点 ID 在同一文档内唯一；它不是脚本 InstanceID 或 Runtime 指针。
@@ -41,6 +51,10 @@ SelectionManager 用 SceneID/ObjectID 共享节点选择，与 Project 的资源
 Inspector 按对象身份解析组件，事件发生时重新查询 Runtime。
 
 保存与属性编辑
+SetObjectLayer 由 SceneManager 执行单对象或整棵子树的 Layer 修改，包含子节点时为单个 Undo/Redo 事务。
+View 不解析和改写节点 JSON；Tag/Layer 都不会自动继承父节点。
+GetReferencedTagIDs 向项目设置服务提供当前/挂起文档 Undo/Redo 与 Prefab annotations 的 Tag 身份快照，
+删除定义时连同活对象及已保存源文档一起检查，避免清空当前引用后破坏已有撤销记录。
 SceneDocument 的 ObjectIDs 将 Runtime InstanceID 映射为稳定文件 ID，文件中不保存 Runtime 身份。
 属性与变换历史同样以稳定文件 ID 定位目标；0 表示当前场景根，不能删除场景根。
 DeleteObject 记录被删子树完整节点/组件数据、父级文件 ID、兄弟位置与内部主相机。

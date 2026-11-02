@@ -152,6 +152,8 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
         }
         Json::Value document(Json::objectValue);
         document["Version"]=Json::UInt(1);document["Name"]=scene.GetName();document["RootActive"]=scene.IsActiveSelf();
+        document["RootLayer"]=Json::UInt(scene.GetLayer());document["RootTagID"]=Json::UInt64(scene.GetTagID());
+        document["RootStaticFlags"]=Json::UInt(static_cast<std::uint32_t>(scene.GetStaticFlags()));
         document["RootComponents"]=Components(scene,next);document["NextObjectID"]=Json::UInt64(next.Next);
         document["MainCameraID"]=Json::UInt64(0);document["Objects"]=Json::Value(Json::arrayValue);
         for (const auto& entry:ordered) {
@@ -160,7 +162,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
             Json::Value node(Json::objectValue);
             node["ID"]=Json::UInt64(next.RuntimeToFile.at(object->GetInstanceID()));
             node["ParentID"]=Json::UInt64(parent==&scene?0:next.RuntimeToFile.at(parent->GetInstanceID()));
-            node["Name"]=object->GetName();node["Active"]=object->IsActiveSelf();node["Components"]=Components(*object,next);
+            node["Name"]=object->GetName();node["Active"]=object->IsActiveSelf();node["Layer"]=Json::UInt(object->GetLayer());node["TagID"]=Json::UInt64(object->GetTagID());node["StaticFlags"]=Json::UInt(static_cast<std::uint32_t>(object->GetStaticFlags()));node["Components"]=Components(*object,next);
             document["Objects"].append(std::move(node));
         }
         if (auto* camera=scene.GetMainCamera()) {

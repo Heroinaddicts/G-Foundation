@@ -45,12 +45,16 @@ public:
         for(auto* module:Modules)Check(GameSproutEditor::GameSproutEditorFinal::Launch(*module,*Api),"Production module Launch failed");
         for(auto* module:Modules)GameSproutEditor::GameSproutEditorFinal::Finished(*module,*Api);
         auto* main=Scenes->GetActiveScene();MainID=main->GetInstanceID();
-        auto* original=main->CreateGameObject("Thing");main->CreateGameObject("Child",original);
+        auto* original=main->CreateGameObject("Thing");
+        auto* originalChild=main->CreateGameObject("Child",original);
+        Check(originalChild->SetStaticFlags(GameSproutRuntime::StaticFlags::ContributeGI),"Cannot set source static declarations");
         std::string error;Check(Prefabs->SavePrefab(original->GetInstanceID(),Path,error),error);Publish();
         const GameSproutRuntime::ResourceReference reference{SourceGuid.GetGuidString(),1};
         Check(Prefabs->InstantiatePrefab(reference,0,FirstID,error)&&Prefabs->InstantiatePrefab(reference,0,SecondID,error),error);
         auto* first=Runtime->QueryGameObject(FirstID);auto* second=Runtime->QueryGameObject(SecondID);
         SetPosition(*Scenes,first->GetChild(0)->GetInstanceID(),{7,0,0});SetPosition(*Scenes,second->GetChild(0)->GetInstanceID(),{9,0,0});
+        Check(Scenes->SetObjectStaticFlags(first->GetChild(0)->GetInstanceID(),GameSproutRuntime::StaticFlags::NavigationStatic,
+            GameSproutRuntime::StaticFlags::Everything,false,error),error);
         SetScale(*Scenes,FirstID,{4,4,4});
         auto* local=main->CreateGameObject("Instance-only child",first);Check(local,"Cannot add instance-only child");
         auto* marker=main->CreateGameObject("Main marker");MarkerID=marker->GetInstanceID();
@@ -88,6 +92,7 @@ void CheckOpenDiscardAndHistory(Fixture& fixture) {
     Check(fixture.Scenes->HasUnsavedChanges()&&fixture.Scenes->CanUndo(),"Main fixture must contain unsaved history");
     Check(fixture.Stage->OpenPrefab(SourceGuid.GetGuidString(),error),"Open Prefab Stage failed: "+error);Pump();
     const auto state=fixture.Stage->GetState();auto* root=fixture.Content();
+    Check(root->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::ContributeGI,"Stage did not restore source StaticFlags");
     Check(state.Active&&!state.Dirty&&root&&state.SceneID!=fixture.MainID&&fixture.Scenes->GetActiveScene()->GetInstanceID()==state.SceneID,
         "Stage did not create a clean isolated editing scene");
     Check(fixture.Scenes->GetMainScene()==main&&fixture.Runtime->QueryGameObject(fixture.FirstID)==first&&fixture.Runtime->QueryGameObject(fixture.MarkerID)==marker,
@@ -116,10 +121,13 @@ void CheckSavingAndPropagation(Fixture& fixture) {
     Check(fixture.Stage->OpenPrefab(SourceGuid.GetGuidString(),error),error);auto* root=fixture.Content();
     const auto stageSceneID=fixture.Stage->GetState().SceneID;SetScale(*fixture.Scenes,root->GetInstanceID(),{2,3,2});
     SetScale(*fixture.Scenes,root->GetChild(0)->GetInstanceID(),{1,5,1});
+    Check(fixture.Scenes->SetObjectStaticFlags(root->GetChild(0)->GetInstanceID(),GameSproutRuntime::StaticFlags::OccluderStatic,
+        GameSproutRuntime::StaticFlags::Everything,false,error),error);
     Check(fixture.Stage->Save(error),"Stage save failed: "+error);Pump();
     Check(fixture.Stage->GetState().Active&&!fixture.Stage->GetState().Dirty&&fixture.Stage->GetState().SceneID==stageSceneID,
         "Saving closed/rebuilt Stage or left it dirty");
     const auto after=Parse(Read(fixture.Full()));
+    Check(after["Data"]["Objects"][1]["StaticFlags"].asUInt()==2,"Stage save omitted static declarations from source data");
     Check(Read(fixture.Full()+".meta")==metaBefore,"Stage save changed the source GUID/Meta");
     for(Json::ArrayIndex index=0;index<before["Data"]["Objects"].size();++index) {
         Check(before["Data"]["Objects"][index]["ID"]==after["Data"]["Objects"][index]["ID"],"Stage save changed an existing source node identity");
@@ -135,6 +143,9 @@ void CheckSavingAndPropagation(Fixture& fixture) {
     Check(first->GetChild(0)->GetTransform()->GetLocalPosition().X==7&&second->GetChild(0)->GetTransform()->GetLocalPosition().X==9&&
           first->GetChild(0)->GetTransform()->GetLocalScale().Y==5&&second->GetChild(0)->GetTransform()->GetLocalScale().Y==5&&first->FindChild("Instance-only child"),
         "Saving source lost independent property/structural overrides or failed to propagate uncovered values");
+    Check(first->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::NavigationStatic&&
+        second->GetChild(0)->GetStaticFlags()==GameSproutRuntime::StaticFlags::OccluderStatic,
+        "Stage save did not propagate StaticFlags while preserving each instance override");
     Check(!fixture.Scenes->BeginPlaySession(error),"Stage document was allowed to become the gameplay scene");
     Check(fixture.Stage->Close(false,error)&&fixture.Scenes->GetActiveScene()==main&&fixture.Scenes->HasUnsavedChanges(),error);
 }

@@ -92,6 +92,7 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 #include "ScenePhysicsComponentChecks.h"
 #include "SceneScriptReferenceChecks.h"
 #include "SceneDocumentEditingChecks.h"
+#include "SceneStaticEditingChecks.h"
 #include "ScenePlaySessionChecks.h"
 #include "ScenePlaySelectionChecks.h"
 #include "SceneDocumentSessionChecks.h"
@@ -206,6 +207,7 @@ int main(int argc,char** argv) {
         CheckPhysicsComponentTransactions(manager,editor._Runtime);
         CheckScriptReferences(manager,root,editor._Runtime);
         CheckDocumentEditing(manager,root,editor._Runtime);
+        CheckStaticFlagEditing(manager,editor._Runtime);
         CheckPlaySceneSession(manager,api,root,editor._Runtime);
         CheckPlaySceneSelection(manager,api,editor._Runtime);
         CheckDocumentSession(manager,api,root,editor._Runtime);

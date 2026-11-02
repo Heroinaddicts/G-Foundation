@@ -51,6 +51,13 @@ std::uint64_t Unsigned(const Json::Value& value, const std::string& path) {
         Fail(path,"expected unsigned integer");
     return value.asUInt64();
 }
+GameSproutRuntime::StaticFlags StaticFlagsValue(const Json::Value& value,const std::string& path) {
+    const auto raw=Unsigned(value,path);
+    if(raw>std::numeric_limits<std::uint32_t>::max())Fail(path,"static flags exceed 32 bits");
+    const auto flags=static_cast<GameSproutRuntime::StaticFlags>(static_cast<std::uint32_t>(raw));
+    if(!GameSproutRuntime::IsValidStaticFlags(flags))Fail(path,"unknown static flag bits");
+    return flags;
+}
 std::string Name(const Json::Value& value, const std::string& path) {
     if (!value.isString()) Fail(path,"expected string");
     const std::string result=value.asString();
@@ -268,12 +275,18 @@ struct Node {
     std::uint64_t ParentID=0;
     std::string Name;
     bool Active=true;
+    std::uint8_t Layer=0;
+    std::uint64_t TagID=0;
+    GameSproutRuntime::StaticFlags Static=GameSproutRuntime::StaticFlags::None;
     const Json::Value* Components=nullptr;
     bool Camera=false;
 };
 struct Plan {
     std::string Name;
     bool RootActive=true;
+    std::uint8_t RootLayer=0;
+    std::uint64_t RootTagID=0;
+    GameSproutRuntime::StaticFlags RootStatic=GameSproutRuntime::StaticFlags::None;
     bool RootMainCamera=false;
     const Json::Value* RootComponents=nullptr;
     std::uint64_t CameraID=0;
@@ -281,6 +294,15 @@ struct Plan {
     std::vector<Node> Nodes;
     std::map<std::uint64_t,std::size_t> Indices;
 };
+// Project definitions are installed by the host before opening any document.
+// Reject undefined identities before creating nodes or running component hooks.
+void ValidateProjectTags(const Plan& plan,const GameSproutRuntime::IGameSproutRuntime& runtime) {
+    const auto& tags=runtime.GetProjectSettings().Tags;
+    const auto defined=[&](std::uint64_t id){return std::any_of(tags.begin(),tags.end(),[&](const auto& tag){return tag.ID==id;});};
+    if(!defined(plan.RootTagID))Fail("Scene.RootTagID","undefined project Tag identity");
+    for(const auto& node:plan.Nodes)if(!defined(node.TagID))
+        Fail("Object "+std::to_string(node.ID)+".TagID","undefined project Tag identity");
+}
 void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject& object,SceneDocument::ObjectIDs& ids) {
     std::set<const Json::Value*> consumed;
     for(std::size_t index=0;index<object.GetComponentCount();++index) {
@@ -305,12 +327,19 @@ void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject&
     }
 }
 Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
-    Members(document,"Scene",{"Version","Name","RootActive","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations"});
+    Members(document,"Scene",{"Version","Name","RootActive","RootLayer","RootTagID","RootStaticFlags","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations"});
     if(document.isMember("Annotations")&&!document["Annotations"].isObject())Fail("Scene.Annotations","expected object");
     if (Unsigned(document["Version"],"Scene.Version")!=1) Fail("Scene.Version","only version 1 is supported");
     Plan plan;
     plan.Name=Name(document["Name"],"Scene.Name");
     plan.RootActive=BoolMember(document,"RootActive",true,"Scene");
+    if(document.isMember("RootLayer")) {
+        const auto layer=Unsigned(document["RootLayer"],"Scene.RootLayer");
+        if(layer>31)Fail("Scene.RootLayer","expected 0..31");
+        plan.RootLayer=static_cast<std::uint8_t>(layer);
+    }
+    if(document.isMember("RootTagID"))plan.RootTagID=Unsigned(document["RootTagID"],"Scene.RootTagID");
+    if(document.isMember("RootStaticFlags"))plan.RootStatic=StaticFlagsValue(document["RootStaticFlags"],"Scene.RootStaticFlags");
     plan.RootMainCamera=BoolMember(document,"RootMainCamera",false,"Scene");
     bool rootCamera=false;
     if (document.isMember("RootComponents")) {
@@ -347,13 +376,20 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     for (Json::ArrayIndex i=0;i<objects.size();++i) {
         const auto& object=objects[i];
         const std::string path="Objects["+std::to_string(i)+"]";
-        Members(object,path,{"ID","ParentID","Name","Active","Components"});
+        Members(object,path,{"ID","ParentID","Name","Active","Layer","TagID","StaticFlags","Components"});
         Node node;
         node.ID=Unsigned(object["ID"],path+".ID");
         if (!node.ID || !plan.Indices.emplace(node.ID,plan.Nodes.size()).second) Fail(path+".ID","zero or duplicate object ID");
         if (object.isMember("ParentID")) node.ParentID=Unsigned(object["ParentID"],path+".ParentID");
         node.Name=Name(object["Name"],path+".Name");
         node.Active=BoolMember(object,"Active",true,path);
+        if(object.isMember("Layer")) {
+            const auto layer=Unsigned(object["Layer"],path+".Layer");
+            if(layer>31)Fail(path+".Layer","expected 0..31");
+            node.Layer=static_cast<std::uint8_t>(layer);
+        }
+        if(object.isMember("TagID"))node.TagID=Unsigned(object["TagID"],path+".TagID");
+        if(object.isMember("StaticFlags"))node.Static=StaticFlagsValue(object["StaticFlags"],path+".StaticFlags");
         node.Components=&object["Components"];
         if (!node.Components->isArray() || node.Components->size()>MaximumComponents) Fail(path+".Components","expected at most 1024 components");
         std::set<std::string> types;
@@ -594,6 +630,7 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
     }
     try {
         const Plan plan=ValidatePlan(document);
+        ValidateProjectTags(plan,runtime);
         if(!runtime.BeginConstruction(error))return false;
         constructionOpen=true;
         candidate=runtime.CreateScene(plan.Name);
@@ -622,6 +659,9 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
             auto* object=objects.at(node.ID);
             for (Json::ArrayIndex c=0;c<node.Components->size();++c)
                 ComponentData((*node.Components)[c],object,"Object "+std::to_string(node.ID)+".Components["+std::to_string(c)+"]",&runtime);
+            if(!object->SetLayer(node.Layer)||!object->SetTagID(node.TagID))
+                Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
+            if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
         }
         if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
@@ -629,6 +669,9 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         ComponentIdentities(plan.RootComponents,*candidate,candidateIDs);
         for(const auto& node:plan.Nodes)ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs);
         SceneAnimationDocument::Bind(document,*candidate,objects);
+        if(!candidate->SetLayer(plan.RootLayer)||!candidate->SetTagID(plan.RootTagID))
+            Fail("Scene.TagLayer","Runtime rejected root Layer or undefined TagID");
+        if(!candidate->SetStaticFlags(plan.RootStatic))Fail("Scene.RootStaticFlags","Runtime rejected static authoring flags");
         candidate->SetActive(plan.RootActive);
         for (const auto& node:plan.Nodes) {
             const auto world=objects.at(node.ID)->GetTransform()->GetWorldMatrix();
@@ -672,6 +715,7 @@ bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSprou
     try {
         if(!PrefabDocument::Validate(document,error))return false;
         const auto sourcePlan=ValidatePlan(document);
+        ValidateProjectTags(sourcePlan,runtime);
         std::uint64_t maximum=0;
         std::vector<GameSproutRuntime::IGameObject*> pending{&scene};std::size_t count=0;
         while(!pending.empty()) {
@@ -727,6 +771,9 @@ bool InstantiatePrefab(const Json::Value& document,GameSproutRuntime::IGameSprou
         for(const auto& node:plan.Nodes) {
             auto* object=objects.at(node.ID);
             for(const auto& component:*node.Components)ComponentData(component,object,"Prefab.Component",&runtime);
+            if(!object->SetLayer(node.Layer)||!object->SetTagID(node.TagID))
+                Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
+            if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
         }
         SceneAnimationDocument::Bind(translated,scene,objects);
@@ -761,6 +808,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
     const auto previousCamera=scene.GetMainCamera()?scene.GetMainCamera()->GetGameObject()->GetInstanceID():0;
     try {
         const Plan plan=ValidatePlan(document,false);
+        ValidateProjectTags(plan,runtime);
         if(plan.Nodes.empty() || plan.RootMainCamera || (plan.RootComponents&&!plan.RootComponents->empty()))
             Fail("Subtree","expected nodes without scene-root components");
         const Node* root=nullptr;
@@ -803,6 +851,9 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             auto* object=objects.at(node.ID);
             for(Json::ArrayIndex index=0;index<node.Components->size();++index)
                 ComponentData((*node.Components)[index],object,"Subtree.Components",&runtime);
+            if(!object->SetLayer(node.Layer)||!object->SetTagID(node.TagID))
+                Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
+            if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
             ComponentIdentities(node.Components,*object,candidateIDs);
         }

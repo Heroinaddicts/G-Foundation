@@ -253,6 +253,12 @@ bool SceneManager::RunDocumentEdit(const Edit& edit,bool forward,std::string& er
 
 bool SceneManager::ApplyDocument(const Json::Value& before,const Json::Value& after,std::string& error) {
     auto* scene=GetActiveScene();auto* runtime=Runtime();if(!scene||!runtime) {error="当前场景已经失效。";return false;}
+    const auto& tags=runtime->GetProjectSettings().Tags;
+    const auto defined=[&](std::uint64_t id){return std::any_of(tags.begin(),tags.end(),[&](const auto& tag){return tag.ID==id;});};
+    if(!defined(after.get("RootTagID",Json::UInt64(0)).asUInt64())) {error="场景文档引用了未定义的 TagID。";return false;}
+    for(const auto& node:after["Objects"])if(!defined(node.get("TagID",Json::UInt64(0)).asUInt64())) {
+        error="节点文档引用了未定义的 TagID。";return false;
+    }
     const auto sceneID=scene->GetInstanceID();
     const auto previousNext=_ObjectIDs.Next;
     bool constructionOpen=false;
@@ -286,6 +292,13 @@ bool SceneManager::ApplyDocument(const Json::Value& before,const Json::Value& af
         if(!runtime->BindSceneObjectIdentities(scene,identities,reason))return false;
         for(const auto& node:document["Objects"]) {
             auto* object=objects.at(node["ID"].asUInt64());
+            if(!object->SetLayer(static_cast<std::uint8_t>(node.get("Layer",0).asUInt()))||
+               !object->SetTagID(node.get("TagID",Json::UInt64(0)).asUInt64())) {
+                reason="Runtime 拒绝节点 Layer 或未定义的 TagID。";return false;
+            }
+            if(!object->SetStaticFlags(static_cast<GameSproutRuntime::StaticFlags>(node.get("StaticFlags",0).asUInt()))) {
+                reason="Runtime 拒绝节点静态标志。";return false;
+            }
             object->SetName(node["Name"].asString());object->SetActive(node.get("Active",true).asBool());
             std::vector<GameSproutRuntime::IComponent*> removed;
             for(std::size_t i=0;i<object->GetComponentCount();++i) {
@@ -338,6 +351,13 @@ bool SceneManager::ApplyDocument(const Json::Value& before,const Json::Value& af
         for(const auto& node:document["Objects"]) {
             const auto parent=node["ParentID"].asUInt64();
             if(!objects.at(node["ID"].asUInt64())->SetSiblingIndex(siblingIndices[parent]++)) {reason="Runtime 拒绝恢复节点顺序。";return false;}
+        }
+        if(!scene->SetLayer(static_cast<std::uint8_t>(document.get("RootLayer",0).asUInt()))||
+           !scene->SetTagID(document.get("RootTagID",Json::UInt64(0)).asUInt64())) {
+            reason="Runtime 拒绝场景根 Layer 或未定义的 TagID。";return false;
+        }
+        if(!scene->SetStaticFlags(static_cast<GameSproutRuntime::StaticFlags>(document.get("RootStaticFlags",0).asUInt()))) {
+            reason="Runtime 拒绝场景根静态标志。";return false;
         }
         SceneAnimationDocument::Bind(document,*scene,objects);
         auto* camera=document.get("RootMainCamera",false).asBool()?scene->GetComponent<GameSproutRuntime::ICameraComponent>():

@@ -74,6 +74,8 @@ set_tests_properties(SceneDocument.EditingAndPersistence PROPERTIES TIMEOUT 30)
 
 target_sources(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager/SceneComponents.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneClassification.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneStaticFlags.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneComponentIdentity.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneModelEditing.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneSession.cpp")
