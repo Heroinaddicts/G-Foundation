@@ -47,6 +47,17 @@ public:
     std::uint64_t GetInstanceID() const override { return 1; }
     const std::string& GetName() const override { return Name; }
     void SetName(const std::string& name) override { Name=name; }
+    std::uint8_t GetLayer() const override {return Layer;}
+    bool SetLayer(std::uint8_t value) override {if(value>=32)return false;Layer=value;return true;}
+    std::uint64_t GetTagID() const override {return 0;}
+    const std::string& GetTag() const override {return Tag;}
+    bool SetTagID(std::uint64_t id) override {return id==0;}
+    bool SetTag(const std::string& name) override {return name==Tag;}
+    bool CompareTag(const std::string& name) const override {return name==Tag;}
+    GameSproutRuntime::StaticFlags GetStaticFlags() const override {return Static;}
+    bool SetStaticFlags(GameSproutRuntime::StaticFlags value) override {
+        if(!GameSproutRuntime::IsValidStaticFlags(value))return false;Static=value;return true;
+    }
     GameSproutRuntime::IScene* GetScene() const override { return nullptr; }
     IGameObject* Parent() const override { return nullptr; }
     bool SetParent(IGameObject*, bool) override { return false; }
@@ -88,6 +99,9 @@ private:
         found->second->OnRelease(nullptr); delete found->second; Components.erase(found); return true;
     }
     std::string Name;
+    std::uint8_t Layer=0;
+    GameSproutRuntime::StaticFlags Static=GameSproutRuntime::StaticFlags::None;
+    std::string Tag="Untagged";
     bool Active=true;
     std::map<std::type_index,GameSproutRuntime::IComponent*> Components;
 };
@@ -100,6 +114,8 @@ int main() {
         static_assert(sizeof(GameSproutRuntime::Mat3)==36);
         static_assert(sizeof(GameSproutRuntime::Mat4)==64);
         static_assert(sizeof(GameSproutRuntime::Quaternion)==16);
+        static_assert(GameSproutRuntime::IsValidStaticFlags(GameSproutRuntime::StaticFlags::Everything));
+        static_assert((GameSproutRuntime::StaticFlags::ContributeGI|GameSproutRuntime::StaticFlags::BatchingStatic)!=GameSproutRuntime::StaticFlags::None);
         Object implementation;
         GameSproutRuntime::IGameObject* object=&implementation;
         auto* image=object->AddComponent<GameSproutRuntime::IImageComponent>();

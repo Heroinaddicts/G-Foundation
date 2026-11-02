@@ -201,3 +201,21 @@ endif()
 add_test(NAME Runtime.PrefabAssembly COMMAND RuntimePrefabChecks
     "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
 set_tests_properties(Runtime.PrefabAssembly PROPERTIES TIMEOUT 30)
+
+add_executable(RuntimeTagsAndLayersChecks RuntimeTagsAndLayersChecks.cpp)
+target_link_libraries(RuntimeTagsAndLayersChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeTagsAndLayersChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.TagsLayersAndCollisionMatrix COMMAND RuntimeTagsAndLayersChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.TagsLayersAndCollisionMatrix PROPERTIES TIMEOUT 60)
+
+add_executable(RuntimeStaticFlagsChecks RuntimeStaticFlagsChecks.cpp)
+target_link_libraries(RuntimeStaticFlagsChecks PRIVATE GameSproutRuntime::GameSproutRuntimeApi)
+if(TARGET GameSproutRuntime)
+    add_dependencies(RuntimeStaticFlagsChecks GameSproutRuntime)
+endif()
+add_test(NAME Runtime.StaticDeclarations COMMAND RuntimeStaticFlagsChecks
+    "$<TARGET_FILE_DIR:GameSproutRuntime::GameSproutRuntime>")
+set_tests_properties(Runtime.StaticDeclarations PROPERTIES TIMEOUT 60)

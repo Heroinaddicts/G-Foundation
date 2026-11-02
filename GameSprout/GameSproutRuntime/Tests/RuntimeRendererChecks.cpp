@@ -92,6 +92,18 @@ int main(int argc,char** argv) {
         Check(pixel[1]>120 && pixel[0]<5 && pixel[2]<5,"Actual HLSL matrix/texture pixel is not lit green");
         Check(renderer->GetStatistics().VisibleObjects==1 && renderer->GetStatistics().Triangles==1 && mesh->GetLocalBounds().Extents.X==1,
               "Renderer mesh/statistics/loaded bounds mismatch");
+        Check(object->SetLayer(31),"Cannot set high-bit render layer");
+        view.Camera.Projection.CullingMask=1u<<31;
+        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
+        Check(pixel[1]>120 && renderer->GetStatistics().VisibleObjects==1,"Layer31 object was rejected by matching camera mask");
+        view.Camera.Projection.CullingMask=1u;
+        Check(renderer->Render(view),renderer->GetLastError());pixel=Center(*renderer);
+        Check(pixel[0]<5&&pixel[1]<5&&pixel[2]<5&&renderer->GetStatistics().VisibleObjects==0,
+              "Camera mask ignored the object's authored Layer");
+        Check(object->SetLayer(0),"Cannot restore render fixture layer");
+        view.Camera.Projection.CullingMask=GameSproutRuntime::AllLayers;
+        Check(renderer->Render(view),renderer->GetLastError());
+        runtime->Update(0);probe.Calls=0;
         runtime->Update(0);Check(probe.Calls==0 && scene->GetChildCount()==1 && !scene->GetMainCamera(),"Render changed scene/main camera or emitted derived-cache changes");
         GameSproutRuntime::RenderedCamera rendered;
         Check(renderer->GetRenderedCamera(rendered)&&rendered.SceneID==scene->GetInstanceID(),"Scene frame has no camera snapshot");

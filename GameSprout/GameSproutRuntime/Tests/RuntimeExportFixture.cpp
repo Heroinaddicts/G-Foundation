@@ -10,6 +10,12 @@ public:
     std::size_t GetSceneCount() const override { return 0; }
     GameSproutRuntime::IScene* GetScene(std::size_t) const override { return nullptr; }
     GameSproutRuntime::IGameObject* QueryGameObject(std::uint64_t) const override { return nullptr; }
+    const GameSproutRuntime::RuntimeProjectSettings& GetProjectSettings() const override {return Settings;}
+    bool CanApplyProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& value,std::string& error) const override {return GameSproutRuntime::ValidateProjectSettings(value,error);}
+    bool SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& value,std::string& error) override {if(!CanApplyProjectSettings(value,error))return false;Settings=value;return true;}
+    GameSproutRuntime::IGameObject* FindGameObjectWithTag(const std::string&,const GameSproutRuntime::IScene*) const override {return nullptr;}
+    std::vector<GameSproutRuntime::IGameObject*> FindGameObjectsWithTag(const std::string&,const GameSproutRuntime::IScene*) const override {return {};}
+    GameSproutRuntime::RuntimeProjectSettings Settings;
     bool RegisterListener(GameSproutRuntime::IRuntimeListener*) override { return false; }
     void UnregisterListener(GameSproutRuntime::IRuntimeListener*) override {}
     bool IsExecuting() const override { return false; }

@@ -11,7 +11,7 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         auto* renderer=object->GetComponent<IMeshRendererComponent>();
         if(!renderer) continue;
         auto* mesh=object->GetComponent<IMeshComponent>();
-        if(!mesh || !object->IsActiveInHierarchy() || !renderer->IsVisible() || !(view.Camera.Projection.CullingMask&1u)) {
+        if(!mesh || !object->IsActiveInHierarchy() || !renderer->IsVisible() || !(view.Camera.Projection.CullingMask&(1u<<object->GetLayer()))) {
             ++_Statistics.SkippedObjects;continue;
         }
         DrawObject data;data.ObjectID=object->GetInstanceID();data.Name=object->GetName();data.Model=object->GetTransform()->GetWorldMatrix();

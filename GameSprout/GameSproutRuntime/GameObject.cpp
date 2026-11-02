@@ -28,6 +28,21 @@ void GameObjectState::SetName(const std::string& name) {
     Name=name;
     Owner.Notify(*this,SceneNodeEventType::Rename);
 }
+bool GameObjectState::SetLayer(std::uint8_t layer) {
+    if(layer>=32 || !Owner.IsUsable(this))return false;
+    if(Layer==layer)return true;
+    Layer=layer;Owner.Notify(*this,SceneNodeEventType::LayerChanged);return true;
+}
+bool GameObjectState::SetStaticFlags(StaticFlags flags) {
+    if(!IsValidStaticFlags(flags)||!Owner.IsUsable(this))return false;
+    if(Static==flags)return true;
+    Static=flags;Owner.Notify(*this,SceneNodeEventType::StaticFlagsChanged);return true;
+}
+bool GameObjectState::SetTagID(std::uint64_t tagID) { return Owner.SetObjectTag(*this,tagID); }
+bool GameObjectState::SetTag(const std::string& name) {
+    for(const auto& tag:Owner.GetProjectSettings().Tags)if(tag.Name==name)return SetTagID(tag.ID);
+    return false;
+}
 void GameObjectState::SetActive(bool active) {
     if (!Owner.IsUsable(this) || Active==active) return;
     Active=active;

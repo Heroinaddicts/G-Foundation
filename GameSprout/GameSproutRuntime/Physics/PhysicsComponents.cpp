@@ -156,12 +156,11 @@ template <typename Interface>
 bool ColliderComponentBase<Interface>::SetColliderSettings(const ColliderSettings &input) {
     ColliderSettings value = input;
     if (!RuntimeMath::IsFinite(value.Center) || !StableRotation(value.Rotation, value.Rotation) ||
-        value.CollisionLayer > 31 || !ValidReference(value.Material))
+        !ValidReference(value.Material))
         return false;
     if (Settings.Enabled == value.Enabled && Settings.IsTrigger == value.IsTrigger &&
         Same(Settings.Center, value.Center) && Same(Settings.Rotation, value.Rotation) &&
-        Settings.Material == value.Material && Settings.CollisionLayer == value.CollisionLayer &&
-        Settings.CollisionMask == value.CollisionMask)
+        Settings.Material == value.Material)
         return true;
     Settings = value;
     ConfigurationChanged();

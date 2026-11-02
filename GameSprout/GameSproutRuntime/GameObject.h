@@ -18,6 +18,10 @@ public:
     GameObjectState& operator=(const GameObjectState&) = delete;
     bool InitializeTransform();
     void SetName(const std::string& name);
+    bool SetLayer(std::uint8_t layer);
+    bool SetStaticFlags(StaticFlags flags);
+    bool SetTagID(std::uint64_t tagID);
+    bool SetTag(const std::string& name);
     void SetActive(bool active);
     bool IsActiveInHierarchy() const;
     IScene* GetScene() const;
@@ -39,6 +43,9 @@ public:
     Scene* SceneOwner;
     const std::uint64_t ID;
     std::string Name;
+    std::uint8_t Layer = DefaultLayer;
+    std::uint64_t TagID = 0;
+    StaticFlags Static = StaticFlags::None;
     GameObjectState* Parent = nullptr;
     std::vector<GameObjectState*> Children;
     std::vector<ComponentEntry> Components;
@@ -68,6 +75,15 @@ public:
     std::uint64_t GetInstanceID() const override { return _State.ID; }
     const std::string& GetName() const override { return _State.Name; }
     void SetName(const std::string& name) override { _State.SetName(name); }
+    std::uint8_t GetLayer() const override { return _State.Layer; }
+    bool SetLayer(std::uint8_t layer) override { return _State.SetLayer(layer); }
+    std::uint64_t GetTagID() const override { return _State.TagID; }
+    const std::string& GetTag() const override { return _State.Owner.TagName(_State.TagID); }
+    bool SetTagID(std::uint64_t tagID) override { return _State.SetTagID(tagID); }
+    bool SetTag(const std::string& name) override { return _State.SetTag(name); }
+    bool CompareTag(const std::string& name) const override { return GetTag()==name; }
+    StaticFlags GetStaticFlags() const override { return _State.Static; }
+    bool SetStaticFlags(StaticFlags flags) override { return _State.SetStaticFlags(flags); }
     IScene* GetScene() const override { return _State.GetScene(); }
     IGameObject* Parent() const override { return _State.Parent ? _State.Parent->Object : nullptr; }
     bool SetParent(IGameObject* parent,bool keepWorld) override {

@@ -29,6 +29,14 @@ public:
     std::size_t GetSceneCount() const override { return _Scenes.size(); }
     IScene* GetScene(std::size_t index) const override;
     IGameObject* QueryGameObject(std::uint64_t id) const override;
+    const RuntimeProjectSettings& GetProjectSettings() const override { return _ProjectSettings; }
+    bool CanApplyProjectSettings(const RuntimeProjectSettings&,std::string&) const override;
+    bool SetProjectSettings(const RuntimeProjectSettings&,std::string&) override;
+    IGameObject* FindGameObjectWithTag(const std::string&,const IScene* = nullptr) const override;
+    std::vector<IGameObject*> FindGameObjectsWithTag(const std::string&,const IScene* = nullptr) const override;
+    const std::string& TagName(std::uint64_t) const;
+    bool SetObjectTag(GameObjectState&,std::uint64_t);
+    void ForgetObjectTag(const GameObjectState&);
     std::vector<BuiltinComponentInfo> GetBuiltinComponentTypes() const override;
     IComponent* AddBuiltinComponent(IGameObject*,const std::string&,std::string&) override;
     bool RemoveBuiltinComponent(IGameObject*,const std::string&,std::string&) override;
@@ -142,6 +150,10 @@ private:
     void NotifyInitializationError(GameObjectState&,IComponent&,const std::string&);
     std::vector<Scene*> _Scenes;
     std::map<std::uint64_t,GameObjectState*> _Nodes;
+    RuntimeProjectSettings _ProjectSettings;
+    std::map<std::uint64_t,std::string> _TagNames{{0,"Untagged"}};
+    std::map<std::string,std::uint64_t> _TagIDs{{"Untagged",0}};
+    std::map<std::uint64_t,std::set<std::uint64_t>> _TaggedObjects;
     std::map<IGameObject*,GameObjectState*> _ByPointer;
     std::set<std::uint64_t> _DetachedObjects;
     std::deque<Command> _Commands;

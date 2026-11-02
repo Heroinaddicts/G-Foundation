@@ -43,6 +43,21 @@ public:
     uint64_t GetInstanceID() const override{return 10;}
     const std::string& GetName() const override{return Name;}
     void SetName(const std::string&) override{}
+    std::uint8_t GetLayer() const override{return Layer;}
+    bool SetLayer(std::uint8_t value) override{if(value>=32)return false;Layer=value;return true;}
+    std::uint64_t GetTagID() const override{return 0;}
+    const std::string& GetTag() const override{return Tag;}
+    bool SetTagID(std::uint64_t value) override{return value==0;}
+    bool SetTag(const std::string& value) override{return value==Tag;}
+    bool CompareTag(const std::string& value) const override{return value==Tag;}
+    GameSproutRuntime::StaticFlags GetStaticFlags() const override{return Static;}
+    bool SetStaticFlags(GameSproutRuntime::StaticFlags value) override{
+        if(!GameSproutRuntime::IsValidStaticFlags(value))return false;Static=value;return true;
+    }
+    std::uint8_t Layer=0;
+    std::string Tag="Untagged";
+    GameSproutRuntime::StaticFlags Static=GameSproutRuntime::StaticFlags::None;
+
     IScene* GetScene() const override{return const_cast<Scene*>(this);}
     IGameObject* Parent() const override{return nullptr;}
     bool SetParent(IGameObject*,bool) override{return false;}

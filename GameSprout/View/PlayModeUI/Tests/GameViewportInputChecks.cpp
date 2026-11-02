@@ -28,6 +28,24 @@ public:
     std::size_t GetSceneCount()const override{return 0;}
     GameSproutRuntime::IScene* GetScene(std::size_t)const override{return nullptr;}
     GameSproutRuntime::IGameObject* QueryGameObject(uint64_t)const override{return nullptr;}
+    GameSproutRuntime::RuntimeProjectSettings FallbackSettings;
+    const GameSproutRuntime::RuntimeProjectSettings& GetProjectSettings() const override {
+        return Real?Real->GetProjectSettings():FallbackSettings;
+    }
+    bool CanApplyProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& value,std::string& error) const override {
+        return Real?Real->CanApplyProjectSettings(value,error):GameSproutRuntime::ValidateProjectSettings(value,error);
+    }
+    bool SetProjectSettings(const GameSproutRuntime::RuntimeProjectSettings& value,std::string& error) override {
+        if(Real)return Real->SetProjectSettings(value,error);
+        if(!CanApplyProjectSettings(value,error))return false;
+        FallbackSettings=value;return true;
+    }
+    GameSproutRuntime::IGameObject* FindGameObjectWithTag(const std::string& name,const GameSproutRuntime::IScene* scene=nullptr) const override {
+        return Real?Real->FindGameObjectWithTag(name,scene):nullptr;
+    }
+    std::vector<GameSproutRuntime::IGameObject*> FindGameObjectsWithTag(const std::string& name,const GameSproutRuntime::IScene* scene=nullptr) const override {
+        return Real?Real->FindGameObjectsWithTag(name,scene):std::vector<GameSproutRuntime::IGameObject*>{};
+    }
     bool RegisterListener(GameSproutRuntime::IRuntimeListener*)override{return true;}
     void UnregisterListener(GameSproutRuntime::IRuntimeListener*)override{}
     bool IsExecuting()const override{return false;}

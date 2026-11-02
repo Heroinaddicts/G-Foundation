@@ -120,6 +120,7 @@ void Runtime::DestroyNow(GameObjectState& state) {
         current->ReleaseComponents();
         if(parent) std::erase(parent->Children,current);
         if(current->IsSceneRoot()) std::erase(_Scenes,current->SceneOwner);
+        ForgetObjectTag(*current);
         _DetachedObjects.erase(current->ID);
         _Nodes.erase(current->ID);
         _ByPointer.erase(object);

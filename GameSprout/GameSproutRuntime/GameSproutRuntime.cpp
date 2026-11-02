@@ -22,8 +22,8 @@ std::uint64_t Runtime::NextID() {
 }
 bool Runtime::RegisterNode(GameObjectState& state) {
     _Nodes.emplace(state.ID,&state);
-    try { _ByPointer.emplace(state.Object,&state); }
-    catch (...) { _Nodes.erase(state.ID); throw; }
+    try { _ByPointer.emplace(state.Object,&state);_TaggedObjects[state.TagID].insert(state.ID); }
+    catch (...) { ForgetObjectTag(state);_ByPointer.erase(state.Object);_Nodes.erase(state.ID); throw; }
     return true;
 }
 GameObjectState* Runtime::Find(std::uint64_t id) const {
@@ -66,7 +66,7 @@ IScene* Runtime::CreateScene(const std::string& name) {
         Notify(scene->State(),SceneNodeEventType::Create);
         return scene;
     } catch (...) {
-        if (registered) { _Nodes.erase(id);_ByPointer.erase(scene); }
+        if (registered) { ForgetObjectTag(scene->State());_Nodes.erase(id);_ByPointer.erase(scene); }
         delete scene;
         return nullptr;
     }
@@ -98,7 +98,7 @@ IGameObject* Runtime::CreateObject(Scene* scene,const std::string& name,IGameObj
             throw std::runtime_error("Cannot attach created object");
         return object;
     } catch (...) {
-        if(registered) { _DetachedObjects.erase(id);_Nodes.erase(id);_ByPointer.erase(object); }
+        if(registered) { ForgetObjectTag(object->State());_DetachedObjects.erase(id);_Nodes.erase(id);_ByPointer.erase(object); }
         delete object;
         return nullptr;
     }

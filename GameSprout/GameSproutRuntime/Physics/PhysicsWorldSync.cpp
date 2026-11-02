@@ -31,8 +31,8 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
     GPhysics::Shape shape;
     shape.Collider = found->second;
     shape.Trigger = state.Settings.IsTrigger;
-    shape.Layer = state.Settings.CollisionLayer;
-    shape.Mask = state.Settings.CollisionMask;
+    shape.Layer = collider->GetGameObject()->GetLayer();
+    shape.Mask = _Runtime.GetProjectSettings().CollisionMatrix[shape.Layer];
     if (!state.Settings.Material.Guid.empty()) {
         if (!_Provider) {
             error = "Collider physics material requires a prepared resource provider";

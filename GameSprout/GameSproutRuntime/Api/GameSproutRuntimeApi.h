@@ -20,6 +20,8 @@
 #include "ResourceReference.h"
 #include "RuntimeInputApi.h"
 #include "RuntimePrefabApi.h"
+#include "RuntimeProjectSettings.h"
+#include "RuntimeStaticFlags.h"
 
 
 namespace GameSproutRuntime {
@@ -95,6 +97,20 @@ namespace GameSproutRuntime {
         virtual std::uint64_t GetInstanceID() const = 0; // 所属 Runtime 内唯一、不复用；不是资产 GUID。
         virtual const std::string& GetName() const = 0;
         virtual void SetName(const std::string& name) = 0;
+        // One Layer and one semantic Tag per object. Parent changes do not inherit either value.
+        virtual std::uint8_t GetLayer() const = 0;
+        virtual bool SetLayer(std::uint8_t layer) = 0; // 0..31, unnamed slots are still valid.
+        virtual std::uint64_t GetTagID() const = 0;
+        virtual const std::string& GetTag() const = 0; // Borrowed until project settings change.
+        virtual bool SetTagID(std::uint64_t tagID) = 0;
+        virtual bool SetTag(const std::string& name) = 0; // Undefined names fail without mutation.
+        virtual bool CompareTag(const std::string& name) const = 0;
+        // Authored metadata only. Known flags can be restored even when no
+        // precomputation consumer is available; Editor capability checks are separate.
+        virtual StaticFlags GetStaticFlags() const = 0;
+        virtual bool SetStaticFlags(StaticFlags flags) = 0; // Unknown bits fail without mutation.
+        bool IsStatic() const {return GetStaticFlags()!=StaticFlags::None;}
+
         // 未挂入存活场景的临时对象返回 nullptr；裸指针不会延长其帧尾寿命。
         virtual IScene* GetScene() const = 0;
         virtual IGameObject * Parent() const = 0;
@@ -308,6 +324,7 @@ namespace GameSproutRuntime {
     enum class SceneNodeEventType {
         Create, Destroy, Reparent, Rename, ActiveChanged,
         ComponentAdded, ComponentRemoved, ComponentChanged, OperationFailed, MainCameraChanged,
+        TagChanged, LayerChanged, StaticFlagsChanged,
         SiblingOrderChanged // ParentID/OldParentID 相同，仅兄弟顺序改变。
     };
     struct SceneNodeEvent {
@@ -345,6 +362,15 @@ namespace GameSproutRuntime {
         virtual std::size_t GetSceneCount() const = 0;
         virtual IScene* GetScene(std::size_t index) const = 0;
         virtual IGameObject* QueryGameObject(std::uint64_t instanceID) const = 0;
+        virtual const RuntimeProjectSettings& GetProjectSettings() const = 0;
+        // Host-thread safe point. Validate and replace all definitions atomically; reject deletion
+        // of a Tag still referenced by any live node, including inactive/detached nodes.
+        virtual bool CanApplyProjectSettings(const RuntimeProjectSettings&,std::string& error) const = 0;
+        virtual bool SetProjectSettings(const RuntimeProjectSettings&,std::string& error) = 0;
+        // Active attached ordinary objects only. Optional scene must belong to this Runtime.
+        // Undefined Tag names return no results; the one-object result has the smallest live ID.
+        virtual IGameObject* FindGameObjectWithTag(const std::string&,const IScene* scene=nullptr) const = 0;
+        virtual std::vector<IGameObject*> FindGameObjectsWithTag(const std::string&,const IScene* scene=nullptr) const = 0;
         virtual std::vector<BuiltinComponentInfo> GetBuiltinComponentTypes() const;
         virtual IComponent* AddBuiltinComponent(IGameObject*, const std::string&, std::string& error);
         virtual bool RemoveBuiltinComponent(IGameObject*, const std::string&, std::string& error);

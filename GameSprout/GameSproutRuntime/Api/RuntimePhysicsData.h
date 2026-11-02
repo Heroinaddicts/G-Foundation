@@ -2,6 +2,7 @@
 #include "Math/Vector3.h"
 #include "Math/Quaternion.h"
 #include "ResourceReference.h"
+#include "RuntimeProjectSettings.h"
 #include <cstdint>
 #include <vector>
 
@@ -35,8 +36,6 @@ struct ColliderSettings {
     Vector3 Center;
     Quaternion Rotation;
     ResourceReference Material; // Empty uses the Runtime default material.
-    std::uint8_t CollisionLayer = 0; // 0..31; independent from rendering layers.
-    std::uint32_t CollisionMask = 0xFFFFFFFFu;
 };
 struct BoxColliderShape { Vector3 Size{1,1,1}; }; // Full side lengths, meters.
 struct SphereColliderShape { float Radius=0.5f; };
@@ -61,7 +60,7 @@ struct CollisionEvent {
 };
 struct TriggerEvent { ColliderIdentity Self, Other; };
 struct PhysicsQuerySettings {
-    std::uint32_t CollisionMask=0xFFFFFFFFu;
+    std::uint32_t CollisionMask=DefaultRaycastLayers; // Explicit queries do not consult the collision matrix.
     bool IncludeTriggers=false;
 };
 struct PhysicsRaycastHit {
