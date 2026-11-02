@@ -159,6 +159,6 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
         if(!diagnostic.empty())message+=" · "+diagnostic;
         if(!_EditingError.empty())message+=" · "+_EditingError;
         if(!_ColliderDebugError.empty())message+=" · "+_ColliderDebugError;
-        SetStatus(message,!diagnostic.empty());
+        SetStatus(message,!diagnostic.empty()||!_EditingError.empty()||!_ColliderDebugError.empty());
     }
 }

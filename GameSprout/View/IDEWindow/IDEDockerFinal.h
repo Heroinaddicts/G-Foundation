@@ -3,6 +3,8 @@
 
 #include "IIDEWindow.h"
 #include <QMetaObject>
+#include <QPointer>
+#include <QWidget>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -39,6 +41,10 @@ public:
     bool IsContentVisible() const override { return _ContentVisible; }
     bool RegisterContentVisibilityCallback(const void*, const fContentVisibilityCallback&) override;
     void UnregisterContentVisibilityCallback(const void*) override;
+    bool AttachTitleBarWidget(QWidget*) override;
+    bool RemoveTitleBarWidget(QWidget*) override;
+    QWidget* TitleBarWidget() const { return _TitleWidget; }
+    void RestoreTitleBarWidget();
 
     QDockWidget* GetDockWidget() const { return _Dock; }
     QMenu* GetContextMenu() const { return _Menu; }
@@ -60,6 +66,7 @@ private:
     QMainWindow* _Window = nullptr; // 借用，IDEWindow 先销毁面板再销毁主窗口。
     IDEDockerManager* _Manager = nullptr; // 借用，晚于所有 Docker 销毁。
     IDEDockerTitleBar* _TitleBar = nullptr; // Qt 子控件，随 _Dock 销毁。
+    QPointer<QWidget> _TitleWidget;
     QMenu* _Menu = nullptr;
     QAction* _CustomSeparator = nullptr;
     Ui::IDEDockerWidget* _DockUi = nullptr;

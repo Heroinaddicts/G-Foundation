@@ -17,6 +17,7 @@ public:
     IDEDockerTitleBar(const IDEDockerTitleBar&) = delete;
     IDEDockerTitleBar& operator=(const IDEDockerTitleBar&) = delete;
     void SetTabbed(bool tabbed);
+    void AttachTitleWidget(QWidget* widget);
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 

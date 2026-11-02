@@ -17,6 +17,7 @@ class ISceneManager;
 class ISelectionManager;
 class IRuntimeAssets;
 class SceneViewport;
+class SceneViewChrome;
 
 class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener, public IPlayModeListener {
 public:
@@ -55,6 +56,7 @@ private:
     QObject* _Dispatch=nullptr;
     Ui::SceneViewUIWindow* _Ui=nullptr;
     SceneViewport* _Viewport=nullptr;
+    SceneViewChrome* _Chrome=nullptr;
     IIDEDocker* _Docker=nullptr;
     bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;
     ISceneManager* _Scenes=nullptr;

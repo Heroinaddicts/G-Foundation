@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>SceneTitleActions</class>
+ <widget class="QWidget" name="SceneTitleActions">
+  <property name="styleSheet">
+   <string>QWidget#SceneTitleActions { background:#292c32; border-left:1px solid #424952; } QToolButton { color:#c5ced9; background:transparent; border:1px solid transparent; border-radius:3px; padding:0 4px; font-size:12px; } QToolButton#sceneHelpButton { font-size:14px; font-weight:bold; } QToolButton:hover { background:#414750; border-color:#626b77; } QToolButton[diagnostic="true"] { color:#ffd77a; border-color:#b28b3f; }</string>
+  </property>
+  <layout class="QHBoxLayout" name="titleActionsLayout">
+   <property name="spacing">
+    <number>3</number>
+   </property>
+   <property name="leftMargin">
+    <number>2</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>3</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QToolButton" name="statisticsButton">
+     <property name="text">
+      <string>统计</string>
+     </property>
+     <property name="toolTip">
+      <string>查看当前视口渲染统计与诊断</string>
+     </property>
+     <property name="autoRaise">
+      <bool>true</bool>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>38</width>
+       <height>24</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>38</width>
+       <height>24</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QToolButton" name="sceneHelpButton">
+     <property name="text">
+      <string>?</string>
+     </property>
+     <property name="toolTip">
+      <string>&lt;b&gt;Scene 操作&lt;/b&gt;&lt;br/&gt;左键选取 · Q 视图 / W 移动 / E 旋转 / R 缩放&lt;br/&gt;Ctrl / Cmd 吸附 · Esc 取消拖动 · Delete / Backspace 删除&lt;br/&gt;右键观察 + WASD / QE · Shift 加速&lt;br/&gt;Alt + 左键环绕 · 中键平移 · 滚轮推拉 · F 聚焦</string>
+     </property>
+     <property name="autoRaise">
+      <bool>true</bool>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>24</width>
+       <height>24</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>24</width>
+       <height>24</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

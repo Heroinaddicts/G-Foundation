@@ -86,6 +86,7 @@ IDEDockerFinal::~IDEDockerFinal() {
     QObject::disconnect(_FloatingConnection);
     _VisibilitySubscriptions.clear();
     _Manager->UnregisterDocker(this);
+    delete _TitleWidget;
     delete _ContextMenuManager;
     for (auto it = _Menus.rbegin(); it != _Menus.rend(); ++it) {
         delete *it;
@@ -94,6 +95,28 @@ IDEDockerFinal::~IDEDockerFinal() {
     delete _DockUi;
     // Qt 同时销毁通过 setWidget 挂载的内容控件。
     delete _Dock;
+}
+
+bool IDEDockerFinal::AttachTitleBarWidget(QWidget* widget) {
+    if(!widget||widget==_Dock||widget->isAncestorOf(_Dock)||(_TitleWidget&&_TitleWidget!=widget))return false;
+    if(widget==_TitleWidget)return true;
+    _TitleWidget=widget;
+    _TitleBar->AttachTitleWidget(widget);
+    _Manager->RequestRefresh();
+    return true;
+}
+
+bool IDEDockerFinal::RemoveTitleBarWidget(QWidget* widget) {
+    if(!widget||widget!=_TitleWidget)return false;
+    delete _TitleWidget;
+    _TitleWidget=nullptr;
+    _Manager->RequestRefresh();
+    return true;
+}
+
+void IDEDockerFinal::RestoreTitleBarWidget() {
+    if(!_TitleWidget)return;
+    if(_TitleWidget->parentWidget()!=_TitleBar)_TitleBar->AttachTitleWidget(_TitleWidget);
 }
 
 bool IDEDockerFinal::AttachWidget(QWidget* const widget) {

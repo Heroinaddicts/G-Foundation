@@ -98,6 +98,11 @@ public:
     virtual bool RegisterContentVisibilityCallback(const void* owner,
         const fContentVisibilityCallback& callback) = 0;
     virtual void UnregisterContentVisibilityCallback(const void* owner) = 0;
+    // Optional View-owned title controls. On success Docker owns the widget and
+    // hosts it at the active tab group's right edge (or the floating title bar).
+    // Remove destroys it; disconnect View callbacks before removing/releasing.
+    virtual bool AttachTitleBarWidget(QWidget* widget) { (void)widget; return false; }
+    virtual bool RemoveTitleBarWidget(QWidget* widget) { (void)widget; return false; }
 };
 
 class IIDEWindow : public GameSproutEditor::IGameSproutView {

@@ -17,6 +17,13 @@
 #include <QMenu>
 #include <QAction>
 #include <QCheckBox>
+#include <QScrollArea>
+#include <QToolButton>
+#include <QToolTip>
+#include <QDoubleSpinBox>
+#include <QLabel>
+#include <QTabBar>
+#include <QScrollBar>
 #include <cstring>
 
 class SceneFixture final : public ISceneManager {
@@ -190,6 +197,57 @@ int main(int argc,char** argv) {
         if(runtime){viewport->Initialize(runtime,&resources);viewport->BindEditingServices(&editor->Scenes,&editor->Selection);}
         QObject::connect(viewport,&QObject::destroyed,&app,[&]{viewportDestroyed=true;});
         auto* host=viewport->window();host->resize(880,650);host->raise();host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
+        auto* sceneDock=host->findChild<QDockWidget*>("Scene");Check(sceneDock,"Scene dock missing for compact UI checks");
+        auto* content=sceneDock->widget();
+        Check(!content->findChild<QLabel*>("inputHelpLabel")&&!content->findChild<QLabel*>("statusLabel"),"Permanent help/statistics still consume Scene viewport height");
+        auto* strip=content->findChild<QScrollArea*>("toolScrollArea");
+        Check(strip&&strip->height()<=46&&viewport->height()>=content->height()-48,"Compact Scene toolbar reserves multiple permanent rows");
+        auto* help=host->findChild<QToolButton*>("sceneHelpButton");
+        auto* statistics=host->findChild<QToolButton*>("statisticsButton");
+        Check(help&&statistics&&help->isVisible(),"Scene title actions are not available");
+        help->click();QCoreApplication::processEvents();
+        Check(QToolTip::text().contains("WASD")&&QToolTip::text().contains("Delete"),"Scene question button did not open complete mouse-position help");
+        QToolTip::hideText();
+        auto* snapButton=content->findChild<QToolButton*>("snapSettingsButton");
+        Check(snapButton,"Snap popup entry missing");snapButton->click();QCoreApplication::processEvents();
+        auto* snapPopup=content->findChild<QWidget*>("SceneSnapPopup");
+        auto* moveSnap=snapPopup?snapPopup->findChild<QDoubleSpinBox*>("moveSnapSpin"):nullptr;
+        Check(snapPopup&&snapPopup->isVisible()&&moveSnap,"Snap controls are not available from the compact toolbar");
+        moveSnap->setValue(.25);
+        if(headless)snapPopup->grab().save(QStringLiteral("/tmp/gamesprout-scene-snap-popup.png"));
+        QKeyEvent popupEscape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QCoreApplication::sendEvent(moveSnap,&popupEscape);
+        Check(!snapPopup->isVisible(),"Escape inside a snap spinbox did not dismiss its popup");
+        statistics->click();QCoreApplication::processEvents();
+        auto* statisticsPopup=content->findChild<QWidget*>("SceneStatisticsPopup");
+        Check(statisticsPopup&&statisticsPopup->isVisible(),"Render statistics did not open on demand");
+        if(headless)statisticsPopup->grab().save(QStringLiteral("/tmp/gamesprout-scene-statistics-popup.png"));
+        statisticsPopup->hide();
+        auto* peer=ide->CreateDocker("Compact title peer");Check(peer&&ide->QueryDocker("Scene")->Tabify(peer),"Cannot tabify Scene title controls");
+        peer->Activate();QCoreApplication::processEvents();QCoreApplication::processEvents();
+        Check(!help->isVisible(),"Scene help leaked into a different active Docker tab");
+        view->Show();QCoreApplication::processEvents();QCoreApplication::processEvents();
+        Check(help->isVisible(),"Scene help did not follow its active tab");
+        auto* peerDock=host->findChild<QDockWidget*>("Compact title peer");Check(peerDock,"Peer dock missing");peerDock->hide();
+        QCoreApplication::processEvents();QCoreApplication::processEvents();
+        if(headless){
+            host->grab().save(QStringLiteral("/tmp/gamesprout-scene-compact-ui.png"));
+            sceneDock->setFloating(true);
+            for(int width:{320,480}) {
+                sceneDock->resize(width,440);QCoreApplication::processEvents();QCoreApplication::processEvents();
+                Check(help->isVisible()&&strip->height()<=46&&viewport->height()>=content->height()-48,
+                    "Narrow/floating Scene title or viewport allocation regressed");
+                auto* scroll=strip->horizontalScrollBar();scroll->setValue(scroll->maximum());QCoreApplication::processEvents();
+                auto* retry=content->findChild<QToolButton*>("retryRenderButton");
+                Check(retry&&strip->viewport()->rect().contains(retry->mapTo(strip->viewport(),retry->rect().center())),
+                    "Narrow toolbar clips controls without an accessible overflow scroll: strip="+std::to_string(strip->width())+
+                    " content="+std::to_string(strip->widget()->width())+" range="+std::to_string(scroll->maximum())+
+                    " point="+std::to_string(retry?retry->mapTo(strip->viewport(),retry->rect().center()).x():-1));
+                scroll->setValue(0);
+                sceneDock->grab().save(QStringLiteral("/tmp/gamesprout-scene-compact-%1.png").arg(width));
+            }
+            sceneDock->setFloating(false);QCoreApplication::processEvents();QCoreApplication::processEvents();
+        }
+        host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
         auto* colliders=host->findChild<QCheckBox*>("allCollidersCheck");
         Check(colliders&&!colliders->isChecked()&&!viewport->Editing().ShowAllColliders(),"Scene must default to selected-only collider wires");
         colliders->setChecked(true);Check(viewport->Editing().ShowAllColliders(),"Scene .ui checkbox did not enable all collider wires");

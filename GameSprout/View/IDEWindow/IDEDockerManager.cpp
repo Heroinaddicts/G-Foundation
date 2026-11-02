@@ -179,6 +179,12 @@ void IDEDockerManager::Refresh() {
             }
         }
         docker->SetTabbedTitle(tabbed);
+        if(auto* controls=docker->TitleBarWidget()) {
+            if(!tabbed) {
+                docker->RestoreTitleBarWidget();
+                controls->setVisible(!docker->GetDockWidget()->isHidden());
+            }else if(!docker->IsContentVisible())controls->hide();
+        }
     }
 
     // 只处理主窗口直属的停靠标签栏，不影响 View 内容中的 QTabBar。
@@ -229,10 +235,17 @@ void IDEDockerManager::Refresh() {
         // 标签从按钮右侧开始排列，过多时仍由原生 QTabBar 滚动显示。
         const QRect dockRect = active->GetDockWidget()->geometry();
         const int width = qMax(entry.options->minimumWidth(), entry.options->sizeHint().width());
+        QWidget* controls=active->TitleBarWidget();
+        const int controlsWidth=controls?qMax(controls->minimumWidth(),controls->sizeHint().width()):0;
         const QRect header(dockRect.left(), entry.bar->y(), dockRect.width(), entry.bar->height());
         _PositioningTabs = true;
         entry.options->setGeometry(header.left(), header.top(), width, header.height());
-        entry.bar->setGeometry(header.adjusted(width, 0, 0, 0));
+        entry.bar->setGeometry(header.adjusted(width, 0, -controlsWidth, 0));
+        if(controls) {
+            if(controls->parentWidget()!=_Window)controls->setParent(_Window);
+            controls->setGeometry(header.right()-controlsWidth+1,header.top(),controlsWidth,header.height());
+            controls->show();controls->raise();
+        }
         _PositioningTabs = false;
         entry.options->show();
         entry.options->raise();

@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>SceneStatisticsPopup</class>
+ <widget class="QWidget" name="SceneStatisticsPopup">
+  <property name="windowTitle">
+   <string>Scene 渲染统计</string>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>280</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="styleSheet">
+   <string>QWidget#SceneStatisticsPopup { background:#292e36; border:1px solid #5c6878; } QLabel { color:#dce2e9; padding:3px; } QLabel#statisticsHeading { color:#f0f3f7; font-weight:bold; } QLabel#diagnosticsLabel { color:#ffd77a; }</string>
+  </property>
+  <layout class="QVBoxLayout" name="statisticsLayout">
+   <property name="spacing">
+    <number>5</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="statisticsHeading">
+     <property name="text">
+      <string>Scene 渲染统计</string>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+     <property name="textInteractionFlags">
+      <set>Qt::TextSelectableByMouse</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statisticsLabel">
+     <property name="text">
+      <string>等待渲染…</string>
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+     <property name="textInteractionFlags">
+      <set>Qt::TextSelectableByMouse</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="diagnosticsLabel">
+     <property name="text">
+      <string />
+     </property>
+     <property name="textFormat">
+      <enum>Qt::PlainText</enum>
+     </property>
+     <property name="textInteractionFlags">
+      <set>Qt::TextSelectableByMouse</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

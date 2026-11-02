@@ -1,0 +1,134 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>SceneSnapPopup</class>
+ <widget class="QWidget" name="SceneSnapPopup">
+  <property name="windowTitle">
+   <string>吸附设置</string>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>260</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="styleSheet">
+   <string>QWidget#SceneSnapPopup { background:#292e36; color:#e1e7ef; border:1px solid #5c6878; } QLabel,QCheckBox { color:#dce2e9; } QDoubleSpinBox { color:#edf2f8; background:#20252c; border:1px solid #566477; border-radius:3px; padding:3px; }</string>
+  </property>
+  <layout class="QFormLayout" name="snapFormLayout">
+   <property name="fieldGrowthPolicy">
+    <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+   </property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <item row="0" column="0" colspan="2">
+    <widget class="QCheckBox" name="snapCheck">
+     <property name="text">
+      <string>吸附</string>
+     </property>
+     <property name="toolTip">
+      <string>持续开启吸附；也可在拖动时按住 Ctrl / Cmd 临时吸附。</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="moveSnapLabel">
+     <property name="text">
+      <string>位移</string>
+     </property>
+     <property name="buddy">
+      <cstring>moveSnapSpin</cstring>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QDoubleSpinBox" name="moveSnapSpin">
+     <property name="toolTip">
+      <string>平移吸附步长，单位为米。</string>
+     </property>
+     <property name="decimals">
+      <number>3</number>
+     </property>
+     <property name="minimum">
+      <double>0.001000000000000</double>
+     </property>
+     <property name="maximum">
+      <double>10000.000000000000000</double>
+     </property>
+     <property name="singleStep">
+      <double>0.100000000000000</double>
+     </property>
+     <property name="value">
+      <double>1.000000000000000</double>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="rotateSnapLabel">
+     <property name="text">
+      <string>角度</string>
+     </property>
+     <property name="buddy">
+      <cstring>rotateSnapSpin</cstring>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QDoubleSpinBox" name="rotateSnapSpin">
+     <property name="toolTip">
+      <string>旋转吸附步长，单位为度。</string>
+     </property>
+     <property name="decimals">
+      <number>1</number>
+     </property>
+     <property name="minimum">
+      <double>0.100000000000000</double>
+     </property>
+     <property name="maximum">
+      <double>180.000000000000000</double>
+     </property>
+     <property name="singleStep">
+      <double>1.000000000000000</double>
+     </property>
+     <property name="value">
+      <double>15.000000000000000</double>
+     </property>
+    </widget>
+   </item>
+   <item row="3" column="0">
+    <widget class="QLabel" name="scaleSnapLabel">
+     <property name="text">
+      <string>倍率</string>
+     </property>
+     <property name="buddy">
+      <cstring>scaleSnapSpin</cstring>
+     </property>
+    </widget>
+   </item>
+   <item row="3" column="1">
+    <widget class="QDoubleSpinBox" name="scaleSnapSpin">
+     <property name="toolTip">
+      <string>缩放倍率增量；0.1 表示按 1.0、1.1、1.2 倍变化。</string>
+     </property>
+     <property name="decimals">
+      <number>3</number>
+     </property>
+     <property name="minimum">
+      <double>0.001000000000000</double>
+     </property>
+     <property name="maximum">
+      <double>10.000000000000000</double>
+     </property>
+     <property name="singleStep">
+      <double>0.100000000000000</double>
+     </property>
+     <property name="value">
+      <double>0.100000000000000</double>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources />
+ <connections />
+</ui>

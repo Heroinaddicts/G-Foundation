@@ -31,6 +31,13 @@ IDEDockerTitleBar::~IDEDockerTitleBar() {
     delete _Ui;
 }
 
+void IDEDockerTitleBar::AttachTitleWidget(QWidget* widget) {
+    if(!widget)return;
+    widget->setParent(this);
+    _Ui->titleLayout->addWidget(widget);
+    widget->show();
+}
+
 void IDEDockerTitleBar::SetTabbed(bool tabbed) {
     if (_Tabbed == tabbed) {
         return;

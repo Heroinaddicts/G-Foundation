@@ -29,7 +29,7 @@ public:
     void BindEditingServices(ISceneManager* scenes,ISelectionManager* selection);
     GameSproutRuntime::IRuntimeRenderer* Renderer() const{return _Renderer;}
     bool GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const{return !_ViewportChanged&&_Renderer&&_Renderer->GetRenderedCamera(camera);}
-    void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error);}
+    void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error,true);}
     void ClearEditingError(){_EditingError.clear();}
     void SetColliderDebugError(const std::string& error){_ColliderDebugError=error;}
     void ReleaseEditingCapture();
