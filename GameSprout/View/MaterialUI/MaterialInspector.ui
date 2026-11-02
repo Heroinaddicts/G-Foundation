@@ -43,6 +43,7 @@
                   <string>自定义 Shader</string>
                 </property>
               </item>
+              <item><property name="text"><string>GameSprout / Lit</string></property></item>
               <property name="sizePolicy">
                 <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
                   <horstretch>0</horstretch>
@@ -66,16 +67,6 @@
         <widget class="QLabel" name="shaderNameLabel">
           <property name="textFormat">
             <enum>Qt::PlainText</enum>
-          </property>
-          <property name="wordWrap">
-            <bool>true</bool>
-          </property>
-        </widget>
-      </item>
-      <item>
-        <widget class="QLabel" name="previewNoteLabel">
-          <property name="text">
-            <string>当前场景预览支持基础颜色、基础贴图（含 Tiling / Offset）和双面；金属度、粗糙度和自定义 Shader 参数暂不参与场景预览。</string>
           </property>
           <property name="wordWrap">
             <bool>true</bool>
@@ -107,6 +98,41 @@
             <property name="bottomMargin">
               <number>0</number>
             </property>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QGroupBox" name="advancedOptionsGroup">
+          <property name="title"><string>高级选项</string></property>
+          <layout class="QVBoxLayout" name="advancedOptionsLayout">
+            <property name="spacing"><number>6</number></property>
+            <item>
+              <widget class="QCheckBox" name="specularHighlightsCheck">
+                <property name="text"><string>镜面高光</string></property>
+                <property name="toolTip"><string>控制内置 Lit 材质受灯光照射产生的镜面高光，不影响环境漫反射。</string></property>
+                <property name="checked"><bool>true</bool></property>
+              </widget>
+            </item>
+            <item>
+              <widget class="QCheckBox" name="enableGPUInstancingCheck">
+                <property name="text"><string>允许 GPU 实例化</string></property>
+                <property name="toolTip"><string>Runtime 自动归组合适的内置不透明非蒙皮网格，不要求勾选对象的 Static。网格、材质和渲染状态满足条件时减少绘制；自定义 Shader、蒙皮等不满足条件的对象正常绘制，无需脚本手动合批。</string></property>
+                <property name="checked"><bool>true</bool></property>
+              </widget>
+            </item>
+            <item>
+              <layout class="QHBoxLayout" name="sortingPriorityLayout">
+                <item><widget class="QLabel" name="sortingPriorityLabel">
+                  <property name="text"><string>排序优先级</string></property>
+                  <property name="buddy"><cstring>sortingPrioritySpin</cstring></property>
+                </widget></item>
+                <item><widget class="QSpinBox" name="sortingPrioritySpin">
+                  <property name="minimum"><number>-50</number></property>
+                  <property name="maximum"><number>50</number></property>
+                  <property name="toolTip"><string>仅在不透明或透明类别内排序，数值越大越晚绘制。透明对象仍按距离排序，正确的遮挡和混合优先于合批。</string></property>
+                </widget></item>
+              </layout>
+            </item>
           </layout>
         </widget>
       </item>

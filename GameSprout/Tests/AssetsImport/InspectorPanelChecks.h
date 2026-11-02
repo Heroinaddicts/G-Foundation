@@ -141,24 +141,35 @@ inline void CheckInspectorPanels(QDir & root, IAssetsManager * manager, ILibrary
 
     stage="shader panel";
     TestMeta shader(eAssetImporterType::Shader,Guid(43,44,45,46),"Test.shader");
-    shader.Settings["SourceLanguage"]="HLSL";shader.Settings["Stage"]="Vertex";shader.Settings["EntryPoint"]="vertex_main";persistMeta(shader);
-    Check(AssetArtifactIO::Write(root.filePath("Assets/Test.shader"),"float4 vertex_main(uint id : SV_VertexID) : SV_Position {return float4(0,0,0,1);}\n",error),error);
+    shader.Settings["SourceLanguage"]="HLSL";persistMeta(shader);
+    const QByteArray graphicsSource=R"hlsl(/* GameSproutShader {
+      "Name":"Tests/Panel", "Passes":[{"Name":"Forward","LightMode":"Forward","Vertex":"VSMain","Fragment":"PSMain"}]
+    } */
+    cbuffer GameSproutDraw : register(b0,space1) {column_major float4x4 Model;column_major float4x4 ViewProjection;column_major float4x4 NormalMatrix;};
+    struct VertexInput {[[vk::location(0)]] float3 Position:TEXCOORD0;};
+    float4 VSMain(VertexInput input):SV_Position {return mul(ViewProjection,mul(Model,float4(input.Position,1)));}
+    float4 PSMain():SV_Target0 {return float4(1,1,1,1);}
+    )hlsl";
+    Check(AssetArtifactIO::Write(root.filePath("Assets/Test.shader"),graphicsSource,error),error);
     pump([&]{return find("Test.shader")&&idle();});select("Test.shader");
     auto * shaderForm=content->findChild<QWidget *>("ShaderInspectorForm");
     Check(shaderForm->isVisible()&&!inspector->HasPendingChanges(),"Shader form starts dirty");
-    shaderForm->findChild<QLineEdit *>("entryPointEdit")->setText("bad entry");Check(!apply->isEnabled(),"Invalid shader entry accepted");
+    Check(!shaderForm->findChild<QLineEdit *>("entryPointEdit")->isVisible()&&!shaderForm->findChild<QComboBox *>("stageCombo")->isVisible(),"Graphics Shader exposed obsolete single-stage controls");
+    Check(shaderForm->findChild<QLabel *>("passDefinitionLabel")->isVisible(),"Graphics Shader did not explain source-owned Pass definitions");
+    shaderForm->findChild<QPlainTextEdit *>("definesEdit")->setPlainText("bad name=1");Check(!apply->isEnabled(),"Invalid shader macro accepted");
     inspector->RevertChanges();
     shaderForm->findChild<QPlainTextEdit *>("definesEdit")->setPlainText("USE_FOG=1\nQUALITY=2");
     Check(inspector->ApplyChanges(),"Shader settings apply failed");pump(idle);
     Check(settings(find("Test.shader"))["Defines"].size()==2,"Shader definitions not saved");
 
     stage="compute panel";
-    TestMeta compute(eAssetImporterType::Shader,Guid(47,48,49,50),"Test.compute.shader");
-    compute.Settings["Stage"]="Compute";compute.Settings["SourceLanguage"]="HLSL";compute.Settings["EntryPoint"]="kernel_main";persistMeta(compute);
-    Check(AssetArtifactIO::Write(root.filePath("Assets/Test.compute.shader"),"[numthreads(8,1,1)] void kernel_main(uint3 id : SV_DispatchThreadID) {}\n",error),error);
-    pump([&]{return find("Test.compute.shader")&&idle();});select("Test.compute.shader");
-    auto * computeForm=content->findChild<QWidget *>("ShaderInspectorForm");
+    TestMeta compute(eAssetImporterType::ComputeShader,Guid(47,48,49,50),"Test.compute");
+    compute.Settings["SourceLanguage"]="HLSL";compute.Settings["EntryPoint"]="kernel_main";persistMeta(compute);
+    Check(AssetArtifactIO::Write(root.filePath("Assets/Test.compute"),"[numthreads(8,1,1)] void kernel_main(uint3 id : SV_DispatchThreadID) {}\n",error),error);
+    pump([&]{return find("Test.compute")&&idle();});select("Test.compute");
+    auto * computeForm=content->findChild<QWidget *>("ComputeShaderInspectorForm");
     Check(computeForm->isVisible()&&!inspector->HasPendingChanges(),"Compute form starts dirty");
-    Check(computeForm->findChild<QComboBox *>("stageCombo")->currentData()=="Compute","Compute stage was not restored");
+    Check(!computeForm->findChild<QComboBox *>("stageCombo")->isVisible()&&computeForm->findChild<QLineEdit *>("entryPointEdit")->isVisible(),"Compute controls expose an invalid stage choice or hide its entry");
+    computeForm->findChild<QLineEdit *>("entryPointEdit")->setText("bad entry");Check(!apply->isEnabled(),"Invalid compute entry accepted");inspector->RevertChanges();
     std::cout<<"PASS model/audio/text/font/video/shader/compute settings panels and real importer outputs\n";
 }

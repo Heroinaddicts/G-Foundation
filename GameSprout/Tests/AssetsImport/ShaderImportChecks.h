@@ -10,18 +10,20 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     const auto write=[&](const QString & path,const QByteArray & bytes) {Check(AssetArtifactIO::Write(root.filePath("Assets/"+path),bytes,error),error);};
     const auto persist=[&](const TestMeta & meta) {std::string json;Check(meta.SerializeMeta(json),"Cannot serialize shader Meta");write(QString::fromStdString(meta.Path)+".meta",QByteArray::fromStdString(json));};
     write("Shaders/Includes/Shared values.hlsli","float4 ShaderColor() { return float4(TINT,0,0,1); }\n");
-    const QByteArray vertex="#define COLOR_FILE \"Includes/Shared values.hlsli\"\n#if ENABLE_COLOR\n#include COLOR_FILE // actual compiler include discovery\n#endif\n#if 0\n#include \"does-not-exist.hlsli\"\n#endif\nfloat4 main(uint id : SV_VertexID) : SV_Position {return ShaderColor()+float4(id,0,0,0);}\n";
+    const QByteArray vertex="/* GameSproutShader {\"Name\":\"Tests/Imported\",\"Passes\":[{\"Name\":\"Forward\",\"Vertex\":\"main\",\"Fragment\":\"PSMain\"}]} */\n#define COLOR_FILE \"Includes/Shared values.hlsli\"\n#if ENABLE_COLOR\n#include COLOR_FILE // actual compiler include discovery\n#endif\n#if 0\n#include \"does-not-exist.hlsli\"\n#endif\nfloat4 main(uint id : SV_VertexID) : SV_Position {return ShaderColor()+float4(id,0,0,0);}\nfloat4 PSMain():SV_Target0{return ShaderColor();}\n";
     write("Shaders/Test.shader",vertex);
     TestMeta shader(eAssetImporterType::Shader,Guid(13,23,33,43),"Shaders/Test.shader");
-    shader.Settings["Stage"]="Vertex";shader.Settings["SourceLanguage"]="HLSL";shader.Settings["Defines"].append("TINT=0.25");
+    shader.Settings["SourceLanguage"]="HLSL";shader.Settings["Defines"].append("TINT=0.25");
     shader.Settings["Defines"].append("ENABLE_COLOR");
     auto compiled=import(shader,false);Check(compiled.Success,"HLSL vertex compilation failed: "+compiled.Error);persist(shader);
     Check(!compiled.Manifest.ToolchainHash.empty(),"Compiler cache fingerprint missing");
     Check(compiled.Manifest.SettingsHash==AssetArtifactIO::Hash(QByteArray::fromStdString(std::to_string(static_cast<uint16_t>(shader._ImporterType))+":"+AssetArtifactIO::JsonText(shader.Settings))),"Toolchain fingerprint polluted import-settings hash");
     Check(compiled.Manifest.Dependencies.size()==1&&compiled.Manifest.Dependencies[0].Path=="Shaders/Includes/Shared values.hlsli","Conditional/macro include tracking failed");
     QByteArray payload;auto info=ReadArtifact(library->QueryAsset(shader._Guid,compiled.Manifest.Assets[0].LocalID),&payload);
-    Check(info["Variants"].size()==2&&info["Variants"][0]["Format"]=="SPIRV"&&info["Variants"][1]["Format"]=="MSL","Shader formats missing");
-    const auto msl=info["Variants"][1];
+    Check(info["Format"]=="GameSproutShader"&&info["Passes"].size()==1,"Graphics Shader bundle missing");
+    const auto& vertexInfo=info["Passes"][0]["Vertex"];
+    Check(vertexInfo["Variants"].size()==2&&vertexInfo["Variants"][0]["Format"]=="SPIRV"&&vertexInfo["Variants"][1]["Format"]=="MSL","Shader formats missing");
+    const auto msl=vertexInfo["Variants"][1];
     const QByteArray mslBytes=payload.mid(qsizetype(msl["Offset"].asUInt64()),qsizetype(msl["Size"].asUInt64()));
     Check(payload.startsWith(QByteArray::fromHex("03022307"))&&mslBytes.endsWith(char(0)),"Shader binary/NUL termination invalid");
     auto cached=import(shader,false);Check(cached.Success&&cached.Cached,"HLSL cache miss on unchanged input");
@@ -34,7 +36,10 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     Check(!failed.Success&&failed.Error.find("Shaders/Test.shader")!=std::string::npos&&library->GetManifest(shader._Guid,retained)&&retained.Generation==debug.Manifest.Generation,"Shader diagnostics or failure preservation invalid");
     write("Shaders/Test.shader",vertex);
 
-    write("Shaders/Sample.frag.shader",R"schema(/* GameSproutMaterial {"Name":"Custom Lit","Properties":[
+    write("Shaders/Sample.frag.shader",R"schema(/* GameSproutShader {"Name":"Tests/Texture","Passes":[{"Name":"Forward","Vertex":"VSMain","Fragment":"main"}]} */
+    struct VertexOutput {float4 position:SV_Position;float2 uv:TEXCOORD0;};
+    VertexOutput VSMain(uint id:SV_VertexID){VertexOutput o;o.position=float4(id,0,0,1);o.uv=float2(0,0);return o;}
+    /* GameSproutMaterial {"Name":"Custom Lit","Properties":[
         {"Name":"tint","DisplayName":"颜色","Type":"Color","Default":[1,1,1,1]},
         {"Name":"tex","DisplayName":"基础贴图","Type":"Texture","Default":null}
     ]} */
@@ -43,11 +48,12 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     cbuffer Params : register(b0,space3) { float4 tint; };
     float4 main(float2 uv : TEXCOORD0) : SV_Target0 { return tex.Sample(samp,uv)*tint; }
     )schema");
-    TestMeta fragment(eAssetImporterType::Shader,Guid(61,62,63,64),"Shaders/Sample.frag.shader");fragment.Settings["Stage"]="Fragment";
+    TestMeta fragment(eAssetImporterType::Shader,Guid(61,62,63,64),"Shaders/Sample.frag.shader");
     auto fs=import(fragment,false);Check(fs.Success,"HLSL fragment compilation failed: "+fs.Error);persist(fragment);
     const auto fsInfo=ReadArtifact(library->QueryAsset(fragment._Guid,fs.Manifest.Assets[0].LocalID));
-    Check(fsInfo["Resources"]["SamplerCount"].asUInt()==1&&fsInfo["Resources"]["UniformBufferCount"].asUInt()==1,"SDL shader counts invalid");
-    Check(fsInfo["Reflection"]["ubos"][0]["block_size"].asUInt()==16,"Uniform byte layout missing");
+    const auto& fragmentInfo=fsInfo["Passes"][0]["Fragment"];
+    Check(fragmentInfo["Textures"].size()==1&&fragmentInfo["Uniforms"].size()==1,"Shader binding counts invalid");
+    Check(fragmentInfo["Uniforms"][0]["Size"].asUInt()==16,"Uniform byte layout missing");
     Check(fsInfo["Material"]["Name"]=="Custom Lit" && fsInfo["Material"]["Properties"].size()==2,
         "Shader artifact omitted authoring material properties");
     Json::Value material,materialSchema;
@@ -59,14 +65,13 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
         && material["tint"][0].asDouble()==1 && material["tint"][1].asDouble()==1
         && material["tint"][2].asDouble()==1 && material["tint"][3].asDouble()==1,
         "Cannot resolve material properties from the compiled Shader: "+error);
-    write("Shaders/Work.compute.shader","RWStructuredBuffer<float4> result : register(u0,space1);\ncbuffer Params : register(b0,space2) {float4 color;};\n[numthreads(8,4,1)] void main(uint3 id : SV_DispatchThreadID) {result[id.x]=color;}\n");
-    TestMeta compute(eAssetImporterType::Shader,Guid(65,66,67,68),"Shaders/Work.compute.shader");
-    compute.Settings["Stage"]="Compute";
+    write("Shaders/Work.compute","RWStructuredBuffer<float4> result : register(u0,space1);\ncbuffer Params : register(b0,space2) {float4 color;};\n[numthreads(8,4,1)] void main(uint3 id : SV_DispatchThreadID) {result[id.x]=color;}\n");
+    TestMeta compute(eAssetImporterType::ComputeShader,Guid(65,66,67,68),"Shaders/Work.compute");
     auto cs=import(compute,false);Check(cs.Success,"HLSL compute compilation failed: "+cs.Error);persist(compute);
     const auto csInfo=ReadArtifact(library->QueryAsset(compute._Guid,cs.Manifest.Assets[0].LocalID));
     Check(csInfo["ThreadGroupSize"][0].asUInt()==8&&csInfo["ThreadGroupSize"][1].asUInt()==4&&csInfo["Resources"]["ReadWriteStorageBufferCount"].asUInt()==1,"Compute reflection invalid");
-    write("Shaders/Bad.shader","Texture2D<float4> tex : register(t2,space2); SamplerState samp : register(s2,space2); float4 main(float2 uv:TEXCOORD0):SV_Target0 {return tex.Sample(samp,uv);}");
-    TestMeta bad(eAssetImporterType::Shader,Guid(69,70,71,72),"Shaders/Bad.shader");bad.Settings["Stage"]="Fragment";
+    write("Shaders/Bad.shader","/* GameSproutShader {\"Passes\":[{\"Name\":\"Forward\",\"Vertex\":\"VSMain\",\"Fragment\":\"main\"}]} */\nstruct VO{float4 p:SV_Position;float2 uv:TEXCOORD0;}; VO VSMain(uint id:SV_VertexID){VO o;o.p=float4(id,0,0,1);o.uv=0;return o;}\n Texture2D<float4> tex : register(t2,space2); SamplerState samp : register(s2,space2); float4 main(float2 uv:TEXCOORD0):SV_Target0 {return tex.Sample(samp,uv);}");
+    TestMeta bad(eAssetImporterType::Shader,Guid(69,70,71,72),"Shaders/Bad.shader");
     auto rejected=import(bad,false);Check(!rejected.Success&&rejected.Error.find("consecutive")!=std::string::npos,"Sparse SDL bindings were accepted");
     Check(QFile::remove(root.filePath("Assets/Shaders/Bad.shader")),"Cannot remove invalid shader fixture");
     shader.Settings["GenerateDXIL"]=true;
@@ -74,7 +79,7 @@ inline void CheckShaderImports(const QDir & root, ILibraryManager * library,
     Check(dxil.Success,"DXIL compilation failed: "+dxil.Error);
     QByteArray dxilPayload;const auto dxilInfo=ReadArtifact(library->QueryAsset(shader._Guid,dxil.Manifest.Assets[0].LocalID),&dxilPayload);
     bool foundDXIL=false;
-    for(const auto & variant:dxilInfo["Variants"]) if(variant["Format"]=="DXIL") {
+    for(const auto & variant:dxilInfo["Passes"][0]["Vertex"]["Variants"]) if(variant["Format"]=="DXIL") {
         foundDXIL=dxilPayload.mid(qsizetype(variant["Offset"].asUInt64()),4)=="DXBC";
     }
     Check(foundDXIL,"DXIL artifact bytes missing");

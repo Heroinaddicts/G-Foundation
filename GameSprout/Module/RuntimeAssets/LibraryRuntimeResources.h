@@ -16,6 +16,7 @@ public:
     bool LoadMesh(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::MeshRenderData&, std::string&) override;
     bool LoadTexture(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::TextureRenderData&, std::string&) override;
     bool LoadMaterial(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::MaterialRenderData&, std::string&) override;
+    bool LoadShader(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::ShaderRenderData&, std::string&) override;
     bool LoadPhysicsMaterial(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::PhysicsMaterialData&,std::string&) override;
     bool LoadModel(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::ModelData&, std::string&) override;
     bool LoadPrefab(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::PrefabData&, std::string&) override;

@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.21)
+project(ShaderRenderingChecks LANGUAGES CXX)
+get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+include("${gamesprout_root}/Foundation/ParallelBuild.cmake")
+include("${gamesprout_root}/Foundation/FoundationApi.cmake")
+include("${gamesprout_root}/GRHI/GRHI.cmake")
+include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
+if(APPLE)
+    set(shader_binary_root "${gamesprout_root}/../Bin/GameSproutEditor.app/Contents/MacOS")
+else()
+    set(shader_binary_root "${gamesprout_root}/../Bin")
+endif()
+set(SHADER_TEST_BINARY_ROOT "${shader_binary_root}" CACHE PATH "Built Editor modules and Runtime")
+add_library(ShaderRuntimeAssets SHARED IMPORTED)
+set_target_properties(ShaderRuntimeAssets PROPERTIES IMPORTED_LOCATION
+    "${SHADER_TEST_BINARY_ROOT}/Logic/Module/${CMAKE_SHARED_LIBRARY_PREFIX}RuntimeAssets${CMAKE_SHARED_LIBRARY_SUFFIX}")
+if(WIN32)
+    set_target_properties(ShaderRuntimeAssets PROPERTIES IMPORTED_IMPLIB
+        "${SHADER_TEST_BINARY_ROOT}/Logic/Module/RuntimeAssets.lib")
+endif()
+add_executable(ShaderRenderingChecks ShaderRenderingChecks.cpp)
+target_compile_features(ShaderRenderingChecks PRIVATE cxx_std_20)
+target_include_directories(ShaderRenderingChecks PRIVATE
+    "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface"
+    "${gamesprout_root}/GameSproutEditor/Api")
+target_compile_definitions(ShaderRenderingChecks PRIVATE TEST_BINARY_ROOT="${SHADER_TEST_BINARY_ROOT}")
+target_link_libraries(ShaderRenderingChecks PRIVATE ShaderRuntimeAssets Foundation::FoundationApi
+    GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
+set_target_properties(ShaderRenderingChecks PROPERTIES BUILD_RPATH "${SHADER_TEST_BINARY_ROOT}/Logic/Module")
+enable_testing()
+add_test(NAME Shader.PreparedMaterialGPU COMMAND ShaderRenderingChecks)
+set_tests_properties(Shader.PreparedMaterialGPU PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)

@@ -22,6 +22,10 @@ MaterialInspector::MaterialInspector(QWidget * parent) : ImportSettingsInspector
     });
     _Ui->shaderResource->Changed=[this](const GameSproutRuntime::ResourceReference &) { ChangeShader(); };
     QObject::connect(_Ui->extractMaterialButton,&QPushButton::clicked,this,[this] { ExtractMaterial(); });
+    const auto changed=[this] { if (!_Loading && !_Embedded && Changed) Changed(); };
+    QObject::connect(_Ui->specularHighlightsCheck,&QCheckBox::toggled,this,changed);
+    QObject::connect(_Ui->enableGPUInstancingCheck,&QCheckBox::toggled,this,changed);
+    QObject::connect(_Ui->sortingPrioritySpin,qOverload<int>(&QSpinBox::valueChanged),this,changed);
 }
 MaterialInspector::~MaterialInspector() { Deactivate();delete _Ui; }
 void MaterialInspector::Bind(IAssetsManager * assets,ILibraryManager * library,ISelectionManager * selection) {
@@ -34,6 +38,7 @@ void MaterialInspector::SetContext(const std::string & key,bool embedded,const s
     _Ui->shaderModeCombo->setEnabled(!embedded);
     _Ui->shaderResource->setEnabled(!embedded);
     _Ui->propertyHost->setEnabled(!embedded);
+    _Ui->advancedOptionsGroup->setEnabled(!embedded);
     _Ui->materialStatusLabel->setText(embedded?
         QStringLiteral("模型内嵌材质 · 参数只读。可提取为独立 .mat 后编辑。"):
         QStringLiteral("独立材质 · 修改保存在 .mat 源文件中。"));
@@ -42,7 +47,7 @@ void MaterialInspector::SetContext(const std::string & key,bool embedded,const s
 void MaterialInspector::Load(const Json::Value & document) {
     _Loading=true;_Document=document;
     const Json::Value shader=document["Shader"];
-    _Ui->shaderModeCombo->setCurrentIndex(shader.isObject()?1:0);
+    _Ui->shaderModeCombo->setCurrentIndex(shader.isObject()?1:shader=="GameSprout/Lit"?2:0);
     _Ui->shaderResource->SetValue(MaterialDefinition::Reference(shader)?
         GameSproutRuntime::ResourceReference{shader["Guid"].asString(),shader["LocalID"].asUInt64()}:
         GameSproutRuntime::ResourceReference{});
@@ -54,9 +59,15 @@ void MaterialInspector::Load(const Json::Value & document) {
 bool MaterialInspector::Capture(Json::Value & document,std::string & error) const {
     document=_Document;
     for (const auto * row:_Rows) if (!row->Write(document,error)) return false;
+    document["EnableGPUInstancing"]=_Ui->enableGPUInstancingCheck->isChecked();
+    document["SortingPriority"]=_Ui->sortingPrioritySpin->value();
+    if (_Document["Shader"]=="GameSprout/Lit") document["SpecularHighlights"]=_Ui->specularHighlightsCheck->isChecked();
     return true;
 }
 void MaterialInspector::Rebuild() {
+    // Designer controls are refreshed only while loading/handling an event;
+    // setting their defaults must not create an authored material edit.
+    const bool wasLoading=_Loading;_Loading=true;
     for (auto * row:_Rows) { row->Changed={};delete row; }
     _Rows.clear();_Schema=Json::Value();_Error.clear();
     if (MaterialDefinition::ResolveSchema(_Library,_Document,_Schema,_Error) &&
@@ -79,12 +90,18 @@ void MaterialInspector::Rebuild() {
     _Ui->shaderNameLabel->setText(_Schema.isObject()?QString::fromStdString(_Schema.get("Name","Shader").asString()):QString());
     _Ui->materialErrorLabel->setText(QString::fromStdString(_Error));
     _Ui->materialErrorLabel->setVisible(!_Error.empty());
+    _Ui->enableGPUInstancingCheck->setChecked(_Error.empty()?_Document.get("EnableGPUInstancing",true).asBool():true);
+    _Ui->sortingPrioritySpin->setValue(_Error.empty()?_Document.get("SortingPriority",0).asInt():0);
+    _Ui->specularHighlightsCheck->setChecked(_Error.empty()?_Document.get("SpecularHighlights",true).asBool():true);
+    _Ui->specularHighlightsCheck->setVisible(_Document["Shader"]=="GameSprout/Lit");
+    _Ui->advancedOptionsGroup->setEnabled(!_Embedded && _Error.empty());
+    _Loading=wasLoading;
 }
 void MaterialInspector::ChangeShader() {
     if (_Loading || _Embedded) return;
     Json::Value document;std::string error;
     if (!Capture(document,error)) { _Ui->materialErrorLabel->setText(QString::fromStdString(error));_Ui->materialErrorLabel->show();return; }
-    if (_Ui->shaderModeCombo->currentIndex()==0) document["Shader"]="GameSprout/Preview";
+    if (_Ui->shaderModeCombo->currentIndex()!=1) document["Shader"]=_Ui->shaderModeCombo->currentIndex()==2?"GameSprout/Lit":"GameSprout/Preview";
     else {
         const auto resource=_Ui->shaderResource->GetValue();
         document["Shader"]=Json::Value(Json::objectValue);

@@ -1,5 +1,6 @@
 #include "AssetTestSupport.h"
 #include "IShaderCompiler.h"
+#include "ShaderDefinitionChecks.h"
 
 int main(int argc,char ** argv) {
     QCoreApplication application(argc,argv);
@@ -22,6 +23,7 @@ int main(int argc,char ** argv) {
         Check(result.Codes[2].Format==eShaderCodeFormat::DXIL && result.Codes[2].Data.size()>4
             && std::string(reinterpret_cast<const char *>(result.Codes[2].Data.data()),4)=="DXBC","DXIL generation failed");
         Check(!compiler->GetToolchainHash().empty(),"Compiler has no version signature");
+        CheckShaderDefinitions(*compiler,request);
 
         ShaderCompileResult first,second;
         std::thread a([&]{compiler->Compile(request,first);});

@@ -3,14 +3,13 @@
 #include <QRegularExpression>
 #include <set>
 
-ShaderInspector::ShaderInspector(QWidget * parent, bool compute) : ImportSettingsInspector(parent), _Ui(new Ui::ShaderInspectorForm()) {
+ShaderInspector::ShaderInspector(QWidget * parent, bool compute) : ImportSettingsInspector(parent), _Compute(compute), _Ui(new Ui::ShaderInspectorForm()) {
     try {
         _Ui->setupUi(this);
-        if (compute) {
-            setObjectName("ComputeShaderInspectorForm");
-            _Ui->stageCombo->setProperty("settingKey", QString());
-            _Ui->stageCombo->hide();_Ui->StageLabel->hide();
-        }
+        _Ui->stageCombo->setProperty("settingKey",QString());
+        _Ui->stageCombo->hide();_Ui->StageLabel->hide();
+        if(compute){setObjectName("ComputeShaderInspectorForm");_Ui->passDefinitionLabel->hide();}
+        else {_Ui->entryPointEdit->setProperty("settingKey",QString());_Ui->entryPointEdit->hide();_Ui->EntryPointLabel->hide();}
         BindFields();
     } catch (...) { delete _Ui;_Ui=nullptr;throw; }
 }
@@ -19,7 +18,7 @@ void ShaderInspector::RefreshEnabled() {
 }
 bool ShaderInspector::Validate(const Json::Value & settings, std::string & error) const {
     static const QRegularExpression identifier(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
-    if (!identifier.match(QString::fromStdString(settings["EntryPoint"].asString())).hasMatch()) {
+    if (_Compute&&!identifier.match(QString::fromStdString(settings["EntryPoint"].asString())).hasMatch()) {
         error="入口函数必须是有效的标识符。";return false;
     }
     std::set<std::string> names;

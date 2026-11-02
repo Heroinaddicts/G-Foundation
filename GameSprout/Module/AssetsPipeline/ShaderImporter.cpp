@@ -1,8 +1,9 @@
 #include "AssetImportJob.h"
 #include "IShaderCompiler.h"
 #include "../Shared/MaterialDefinition.h"
+#include "../Shared/ShaderDefinition.h"
 
-bool ImportShader(AssetImportJob & job) {
+static bool ImportComputeShader(AssetImportJob & job) {
     Json::Value materialSchema;
     std::string materialError;
     if (!MaterialDefinition::ParseShaderSchema(job.SourceBytes,materialSchema,materialError)) return job.Fail(materialError);
@@ -10,11 +11,7 @@ bool ImportShader(AssetImportJob & job) {
     ShaderCompileRequest request;
     request.SourceRoot=job.Request.AssetsRoot;request.SourcePath=job.Request.SourcePath;
     request.Source=job.SourceBytes.toStdString();request.WorkDirectory=job.Stage;
-    const std::string stage=job.Settings.get("Stage","Vertex").asString();
-    if(stage=="Vertex") request.Stage=eShaderStage::Vertex;
-    else if(stage=="Fragment") request.Stage=eShaderStage::Fragment;
-    else if(stage=="Compute") request.Stage=eShaderStage::Compute;
-    else return job.Fail("Invalid shader stage");
+    request.Stage=eShaderStage::Compute;
     request.EntryPoint=job.Settings.get("EntryPoint","main").asString();
     request.Optimize=job.Settings.get("Optimize",true).asBool();
     request.GenerateDebugInfo=job.Settings.get("GenerateDebugInfo",false).asBool();
@@ -64,6 +61,68 @@ bool ImportShader(AssetImportJob & job) {
         descriptor["Variants"].append(variant);
         payload.append(reinterpret_cast<const char *>(code.Data.data()),qsizetype(code.Data.size()));
     }
-    return job.Emit(request.Stage==eShaderStage::Compute?eAssetType::ComputeShader:eAssetType::Shader,
+    return job.Emit(eAssetType::ComputeShader,
         "main",QFileInfo(QString::fromStdString(job.Request.SourcePath)).completeBaseName().toStdString(),descriptor,payload);
+}
+
+namespace {
+bool AppendProgram(AssetImportJob& job,const ShaderCompileRequest& request,const Json::Value& schema,
+    QByteArray& payload,Json::Value& program) {
+    ShaderCompileResult result;
+    const bool compiled=job.Request.Compiler->Compile(request,result);
+    job.Result.Diagnostics+=result.Diagnostics;
+    if(!compiled)return job.Fail(result.Error);
+    for(const auto& dependency:result.Dependencies) {
+        QByteArray bytes;if(!job.AddDependency(dependency.Path,&bytes))return false;
+        if(AssetArtifactIO::Hash(bytes)!=dependency.ContentHash){job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Shader include changed before import commit");}
+    }
+    Json::Value description;std::string error;
+    if(!AssetArtifactIO::Parse(result.ReflectionJson,description)||!description.isObject())return job.Fail("Invalid ShaderCompiler reflection");
+    if(!ShaderDefinition::ProgramLayout(description["Reflection"],schema,request.Stage==eShaderStage::Vertex,program,error))return job.Fail(error);
+    program["Stage"]=request.Stage==eShaderStage::Vertex?"Vertex":"Fragment";
+    program["Reflection"]=description["Reflection"];
+    program["Variants"]=Json::Value(Json::arrayValue);
+    for(const auto& code:result.Codes) {
+        while(payload.size()%4)payload.append(char(0));
+        Json::Value variant;
+        const char* formats[]={"SPIRV","MSL","DXIL","MetalLib"};
+        const char* platforms[]={"Vulkan","Direct3D12","Apple","macOS","iOS","iOSSimulator"};
+        variant["Format"]=formats[static_cast<unsigned>(code.Format)];variant["Platform"]=platforms[static_cast<unsigned>(code.Platform)];
+        variant["EntryPoint"]=code.EntryPoint;variant["Offset"]=Json::UInt64(payload.size());variant["Size"]=Json::UInt64(code.Data.size());
+        program["Variants"].append(variant);payload.append(reinterpret_cast<const char*>(code.Data.data()),qsizetype(code.Data.size()));
+    }
+    return true;
+}
+
+}
+bool ImportShader(AssetImportJob& job) {
+    if(job.Request.Importer==eAssetImporterType::ComputeShader)return ImportComputeShader(job);
+    if(!job.Request.Compiler)return job.Fail("ShaderCompiler module is unavailable");
+    Json::Value declaration,schema;std::string error;
+    if(!ShaderDefinition::Parse(job.SourceBytes,declaration,error)||!MaterialDefinition::ParseShaderSchema(job.SourceBytes,schema,error))return job.Fail(job.Request.SourcePath+": "+error);
+    ShaderCompileRequest request;
+    request.SourceRoot=job.Request.AssetsRoot;request.SourcePath=job.Request.SourcePath;request.Source=job.SourceBytes.toStdString();
+    request.Optimize=job.Settings.get("Optimize",true).asBool();request.GenerateDebugInfo=job.Settings.get("GenerateDebugInfo",false).asBool();
+    if(job.Settings.isMember("Defines")&&!job.Settings["Defines"].isArray())return job.Fail("Shader Defines must be an array");
+    for(const auto& define:job.Settings["Defines"]){if(!define.isString())return job.Fail("Shader define must be a string");request.Defines.push_back(define.asString());}
+    if(job.Settings.get("GenerateDXIL",false).asBool())request.Targets.push_back({eShaderCodeFormat::DXIL,eShaderPlatform::Direct3D12});
+    request.IsCancellationRequested=[&job]{return job.Context&&job.Context->IsCancellationRequested();};
+    Json::Value descriptor;descriptor["Format"]="GameSproutShader";descriptor["ShaderVersion"]=1;descriptor["Name"]=declaration["Name"];
+    descriptor["Material"]=schema;descriptor["Settings"]=job.Settings;descriptor["ToolchainFingerprint"]=job.Request.Compiler->GetToolchainHash();
+    descriptor["Passes"]=Json::Value(Json::arrayValue);QByteArray payload;
+    for(const auto& sourcePass:declaration["Passes"]) {
+        Json::Value pass=sourcePass;
+        for(const char* stage:{"Vertex","Fragment"}) {
+            if(job.Cancelled())return false;
+            request.Stage=std::string(stage)=="Vertex"?eShaderStage::Vertex:eShaderStage::Fragment;
+            request.EntryPoint=sourcePass[stage].asString();
+            auto stageRequest=request;stageRequest.Defines.push_back(std::string(stage)=="Vertex"?"GAMESPROUT_VERTEX=1":"GAMESPROUT_FRAGMENT=1");
+            request.WorkDirectory=QDir(QString::fromStdString(job.Stage)).filePath(QString::fromStdString(sourcePass["Name"].asString()+"-"+stage)).toStdString();
+            stageRequest.WorkDirectory=request.WorkDirectory;
+            Json::Value program;if(!AppendProgram(job,stageRequest,schema,payload,program))return false;pass[stage]=std::move(program);
+        }
+        if(!ShaderDefinition::ValidateLinkedPass(pass,error))return job.Fail(error);
+        descriptor["Passes"].append(std::move(pass));
+    }
+    return job.Emit(eAssetType::Shader,"main",QFileInfo(QString::fromStdString(job.Request.SourcePath)).completeBaseName().toStdString(),descriptor,payload);
 }

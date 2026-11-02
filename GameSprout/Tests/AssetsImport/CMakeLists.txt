@@ -87,8 +87,19 @@ target_include_directories(ModelTextureChecks PRIVATE
     "${gamesprout_root}/Module/AssetsPipeline" "${gamesprout_root}/Module/Interface"
     "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
 target_link_libraries(ModelTextureChecks PRIVATE ModelTexturePipeline
-    Foundation::FoundationApi GRHI::GRHIApi Qt6::Core Qt6::Gui)
+    Foundation::FoundationApi GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
 set_target_properties(ModelTextureChecks PROPERTIES BUILD_RPATH "${model_texture_module_root}")
+add_executable(NativeMeshChecks NativeMeshChecks.cpp)
+target_compile_features(NativeMeshChecks PRIVATE cxx_std_20)
+target_compile_definitions(NativeMeshChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
+target_include_directories(NativeMeshChecks PRIVATE
+    "${gamesprout_root}/Module/AssetsPipeline" "${gamesprout_root}/Module/Interface"
+    "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(NativeMeshChecks PRIVATE ModelTexturePipeline PreparedRuntimeAssets
+    Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
+set_target_properties(NativeMeshChecks PROPERTIES BUILD_RPATH "${model_texture_module_root}")
+add_test(NAME Assets.NativeMesh COMMAND NativeMeshChecks)
+set_tests_properties(Assets.NativeMesh PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 target_link_libraries(ProjectBrowserChecks PRIVATE Qt6::Widgets)
 target_link_libraries(InspectorChecks PRIVATE Qt6::Widgets)
 target_link_libraries(MaterialInspectorChecks PRIVATE Qt6::Widgets GameSproutRuntime::GameSproutRuntimeApi)

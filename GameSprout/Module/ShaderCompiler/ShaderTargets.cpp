@@ -6,7 +6,7 @@
 static QStringList DXCArguments(const ShaderCompileJob & job,const QString & input,const QString & output,bool spirv) {
     const char * profile=job.Request.Stage==eShaderStage::Vertex?"vs_6_0":job.Request.Stage==eShaderStage::Fragment?"ps_6_0":"cs_6_0";
     QStringList args{"-T",profile,"-E",QString::fromStdString(job.Request.EntryPoint),"-Fo",output,job.Request.Optimize?"-O3":"-Od"};
-    if(spirv) args<<"-spirv"<<"-fvk-use-dx-layout"<<"-fspv-preserve-interface"<<"-fspv-preserve-bindings";
+    if(spirv) args<<"-spirv"<<"-fvk-use-dx-layout"<<"-fspv-preserve-interface";
     if(job.Request.GenerateDebugInfo) {args<<"-Zi";if(spirv) args<<"-fspv-debug=line";else args<<"-Qembed_debug";}
     args<<input;return args;
 }

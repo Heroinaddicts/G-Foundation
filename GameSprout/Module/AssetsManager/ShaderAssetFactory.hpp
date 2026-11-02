@@ -16,8 +16,6 @@ public:
         if (!AssetSettingsJson::WriteEnum(result["SourceLanguage"], _SourceLanguage, SourceLanguageNames)) {
             return false;
         }
-        if (!AssetSettingsJson::WriteEnum(result["Stage"], _Stage, StageNames)) return false;
-        result["EntryPoint"] = _EntryPoint;
         result["Defines"] = Json::Value(Json::arrayValue);
         for (const std::string & item : _Defines) {
             result["Defines"].append(item);
@@ -34,10 +32,7 @@ public:
             return false;
         }
         ShaderImportSettings settings;
-        settings._Stage = _Stage;
-        if (!AssetSettingsJson::ReadEnum(value, "Stage", settings._Stage, StageNames)
-            || !AssetSettingsJson::ReadEnum(value, "SourceLanguage", settings._SourceLanguage, SourceLanguageNames)
-            || !AssetSettingsJson::Read(value, "EntryPoint", settings._EntryPoint)
+        if (!AssetSettingsJson::ReadEnum(value, "SourceLanguage", settings._SourceLanguage, SourceLanguageNames)
             || !AssetSettingsJson::Read(value, "Defines", settings._Defines)
             || !AssetSettingsJson::Read(value, "GenerateDXIL", settings._GenerateDXIL)
             || !AssetSettingsJson::Read(value, "Optimize", settings._Optimize)
@@ -49,9 +44,6 @@ public:
         return true;
     }
 
-    eShaderStage GetStage() const override { return _Stage; }
-    void SetStage(eShaderStage stage) override { _Stage = stage; }
-
     // 当前只支持 HLSL 源码。
     eShaderSourceLanguage GetSourceLanguage() const override {
         return _SourceLanguage;
@@ -59,15 +51,6 @@ public:
 
     void SetSourceLanguage(const eShaderSourceLanguage value) override {
         _SourceLanguage = value;
-    }
-
-    // 编译入口名称；实际有效性由 Shader 管线检查。
-    const std::string & GetEntryPoint() const override {
-        return _EntryPoint;
-    }
-
-    void SetEntryPoint(const std::string & value) override {
-        _EntryPoint = value;
     }
 
     // 编译使用的宏定义，例如 USE_FOG=1。
@@ -102,8 +85,7 @@ public:
 
 private:
     bool Validate() const {
-        if (_Stage != eShaderStage::Vertex && _Stage != eShaderStage::Fragment && _Stage != eShaderStage::Compute) return false;
-        if (_SourceLanguage != eShaderSourceLanguage::HLSL || !QRegularExpression("^[A-Za-z_][A-Za-z0-9_]*$").match(QString::fromStdString(_EntryPoint)).hasMatch()) return false;
+        if (_SourceLanguage != eShaderSourceLanguage::HLSL) return false;
         std::set<std::string> names;
         for (const auto & define : _Defines) {
             const QString value=QString::fromStdString(define), name=value.section('=',0,0);
@@ -116,12 +98,7 @@ private:
         {eShaderSourceLanguage::HLSL, "HLSL"},
     };
 
-    inline static constexpr AssetSettingsJson::EnumName<eShaderStage> StageNames[] = {
-        {eShaderStage::Vertex, "Vertex"}, {eShaderStage::Fragment, "Fragment"}, {eShaderStage::Compute, "Compute"}
-    };
-    eShaderStage _Stage = eShaderStage::Vertex;
     eShaderSourceLanguage _SourceLanguage = eShaderSourceLanguage::HLSL;
-    std::string _EntryPoint = "main";
     std::vector<std::string> _Defines = {};
     bool _GenerateDXIL = false;
     bool _Optimize = true;
@@ -132,10 +109,7 @@ class ShaderMeta : public AssetMetaWithSettings<ShaderImportSettings> {
 public:
     ShaderMeta(const Guid & guid, const std::string & path)
         : AssetMetaWithSettings(eAssetImporterType::Shader, guid, path) {
-        if (QString::fromStdString(path).endsWith(".frag.shader", Qt::CaseInsensitive) || QString::fromStdString(path).endsWith(".ps.shader", Qt::CaseInsensitive))
-            static_cast<ShaderImportSettings *>(GetImportSettings())->SetStage(eShaderStage::Fragment);
-        else if (QString::fromStdString(path).endsWith(".compute.shader", Qt::CaseInsensitive))
-            static_cast<ShaderImportSettings *>(GetImportSettings())->SetStage(eShaderStage::Compute);
+
     }
 
 };

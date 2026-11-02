@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ShaderActionsForm</class>
+ <widget class="QMenu" name="ShaderActionsForm">
+  <property name="title"><string>Shader</string></property>
+  <widget class="QMenu" name="createMenu">
+   <property name="title"><string>Create</string></property>
+   <widget class="QMenu" name="shaderMenu"><property name="title"><string>Shader</string></property><addaction name="createUnlitAction"/></widget>
+   <addaction name="shaderMenu"/><addaction name="createMaterialAction"/>
+  </widget>
+  <addaction name="createMenu"/>
+  <action name="createUnlitAction"><property name="text"><string>Unlit</string></property></action>
+  <action name="createMaterialAction"><property name="text"><string>Material</string></property></action>
+ </widget>
+ <resources/><connections/>
+</ui>

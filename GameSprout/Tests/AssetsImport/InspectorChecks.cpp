@@ -63,7 +63,7 @@ int main(int argc,char ** argv) {
         auto * browser=LoadProjectView();
         auto * inspector=static_cast<IInspectorUI *>(LoadView("InspectorUI"));
         editor.Views["ProjectAssetsUI"]=browser;editor.Views["InspectorUI"]=inspector;
-        auto featureViews=LoadInspectorFeatureViews(editor);
+        auto featureViews=LoadInspectorFeatureViews(editor,false);
         auto views=featureViews;views.push_back(browser);views.push_back(inspector);
         InitializeTestViews(editor,views);
         for (const auto & entry:editor.Modules) if (entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,&api),"Module launch failed");

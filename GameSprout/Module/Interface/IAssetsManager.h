@@ -210,16 +210,10 @@ public:
 class IShaderImportSettings : public IAssetImportSettings {
 public:
     virtual ~IShaderImportSettings() {}
-    virtual eShaderStage GetStage() const = 0;
-    virtual void SetStage(eShaderStage stage) = 0;
 
     // 当前只支持 HLSL 源码。
     virtual eShaderSourceLanguage GetSourceLanguage() const = 0;
     virtual void SetSourceLanguage(const eShaderSourceLanguage value) = 0;
-
-    // 编译入口名称；实际有效性由 Shader 管线检查。
-    virtual const std::string & GetEntryPoint() const = 0;
-    virtual void SetEntryPoint(const std::string & value) = 0;
 
     // 编译使用的宏定义，例如 USE_FOG=1。
     virtual const std::vector<std::string> & GetDefines() const = 0;

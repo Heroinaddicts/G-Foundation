@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CreateMaterialDialogForm</class>
+ <widget class="QDialog" name="CreateMaterialDialogForm">
+  <property name="windowTitle"><string>创建材质</string></property>
+  <property name="minimumSize"><size><width>380</width><height>0</height></size></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item><widget class="QLabel" name="directoryLabel"><property name="text"><string>Assets</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLineEdit" name="nameEdit"><property name="text"><string>New Material</string></property><property name="placeholderText"><string>材质名称，无需扩展名</string></property></widget></item>
+   <item><widget class="QLabel" name="shaderCaption"><property name="text"><string>采用 Shader</string></property></widget></item>
+   <item><widget class="QComboBox" name="presetCombo"><item><property name="text"><string>GameSprout/Preview（内置预览）</string></property></item><item><property name="text"><string>GameSprout/Lit（受光材质）</string></property></item></widget></item>
+   <item><widget class="QLabel" name="shaderLabel"><property name="text"><string>GameSprout/Preview（内置）</string></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+   <item><widget class="QLabel" name="hintLabel"><property name="text"><string>未选择自定义 Shader 时可选择内置材质。选中已导入的 Shader 时采用它及参数默认值。Lit 需要场景光源，支持金属度、粗糙度、法线和自发光。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>color:#ff9b9b;</string></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

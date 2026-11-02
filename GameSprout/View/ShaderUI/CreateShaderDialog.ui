@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CreateShaderDialogForm</class>
+ <widget class="QDialog" name="CreateShaderDialogForm">
+  <property name="windowTitle"><string>创建 Unlit Shader</string></property>
+  <property name="minimumSize"><size><width>380</width><height>0</height></size></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item><widget class="QLabel" name="directoryLabel"><property name="text"><string>Assets</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLineEdit" name="nameEdit"><property name="text"><string>New Unlit</string></property><property name="placeholderText"><string>Shader 名称，无需扩展名</string></property></widget></item>
+   <item><widget class="QLabel" name="hintLabel"><property name="text"><string>生成可直接编辑的 HLSL，包含 Forward Pass、材质参数和顶点／片元入口。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="styleSheet"><string>color:#ff9b9b;</string></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

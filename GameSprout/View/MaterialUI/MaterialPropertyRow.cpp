@@ -9,6 +9,8 @@
 #include <cmath>
 
 namespace {
+double LinearToSRGB(double value){return value<=0.0031308?12.92*value:1.055*std::pow(value,1.0/2.4)-0.055;}
+double SRGBToLinear(double value){return value<=0.04045?value/12.92:std::pow((value+0.055)/1.055,2.4);}
 void ShowNumber(QDoubleSpinBox * control,double value,bool expandRange=true) {
     // 显示源数据的精度，且不让 .ui 的常用范围截断合法的导入值。
     int decimals=6;
@@ -71,15 +73,19 @@ MaterialPropertyRow::MaterialPropertyRow(QWidget * parent) : QWidget(parent), _U
         Notify();
     };
     QObject::connect(_Ui->colorButton,&QPushButton::clicked,this,[this] {
-        const auto channel=[this](Json::ArrayIndex i) {return std::clamp(_Value[i].asDouble(),0.0,1.0);};
+        const bool linear=_Definition.get("ColorSpace","")=="Linear";
+        const auto channel=[this,linear](Json::ArrayIndex i) {const double value=_Value[i].asDouble();return std::clamp(linear&&i<3?LinearToSRGB(value):value,0.0,1.0);};
         const QColor selected=QColorDialog::getColor(QColor::fromRgbF(channel(0),channel(1),channel(2),channel(3)),this,
             _Ui->propertyLabel->text(),QColorDialog::ShowAlphaChannel);
         if (!selected.isValid()) return;
         _Loading=true;
-        _Ui->colorRSpin->setValue(selected.redF());_Ui->colorGSpin->setValue(selected.greenF());
-        _Ui->colorBSpin->setValue(selected.blueF());_Ui->colorASpin->setValue(selected.alphaF());
+        const double red=linear?SRGBToLinear(selected.redF()):selected.redF();
+        const double green=linear?SRGBToLinear(selected.greenF()):selected.greenF();
+        const double blue=linear?SRGBToLinear(selected.blueF()):selected.blueF();
+        _Ui->colorRSpin->setValue(red);_Ui->colorGSpin->setValue(green);
+        _Ui->colorBSpin->setValue(blue);_Ui->colorASpin->setValue(selected.alphaF());
         _Value=Json::Value(Json::arrayValue);
-        for (double value : {selected.redF(),selected.greenF(),selected.blueF(),selected.alphaF()}) _Value.append(value);
+        for (double value : {red,green,blue,static_cast<double>(selected.alphaF())}) _Value.append(value);
         _Loading=false;UpdateColor();Notify();
     });
 }
@@ -87,8 +93,9 @@ MaterialPropertyRow::~MaterialPropertyRow() { Changed={};_Ui->textureResource->C
 void MaterialPropertyRow::Notify() { if (!_Loading && Changed) Changed(); }
 void MaterialPropertyRow::UpdateColor() {
     QPixmap swatch(20,20);
-    swatch.fill(QColor::fromRgbF(std::clamp(_Value[0].asDouble(),0.0,1.0),std::clamp(_Value[1].asDouble(),0.0,1.0),
-        std::clamp(_Value[2].asDouble(),0.0,1.0),std::clamp(_Value[3].asDouble(),0.0,1.0)));
+    const bool linear=_Definition.get("ColorSpace","")=="Linear";
+    const auto display=[this,linear](Json::ArrayIndex index){const double value=_Value[index].asDouble();return std::clamp(linear&&index<3?LinearToSRGB(value):value,0.0,1.0);};
+    swatch.fill(QColor::fromRgbF(display(0),display(1),display(2),display(3)));
     _Ui->colorButton->setIcon(QIcon(swatch));
 }
 void MaterialPropertyRow::Load(const Json::Value & definition,const Json::Value & document,IAssetsManager * assets,

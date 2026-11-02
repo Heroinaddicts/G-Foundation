@@ -28,6 +28,10 @@ public:
     void SetTitle(const QString & title) override {Host.setWindowTitle(title);}
     IIDEMenu * CreateChildMenu(const QString &) override {return nullptr;}
     IContextMenuManager * GetContextMenuManager() const override {return nullptr;}
+    bool IsContentVisible() const override {return Host.isVisible();}
+    std::map<const void*,fContentVisibilityCallback> VisibilityCallbacks;
+    bool RegisterContentVisibilityCallback(const void* owner,const fContentVisibilityCallback& callback) override {return owner&&callback&&VisibilityCallbacks.emplace(owner,callback).second;}
+    void UnregisterContentVisibilityCallback(const void* owner) override {VisibilityCallbacks.erase(owner);}
 };
 class PreviewIDE final : public IIDEWindow {
 public:
@@ -76,16 +80,21 @@ IProjectAssetsUI * LoadProjectView() { return static_cast<IProjectAssetsUI *>(Lo
 
 // Register every View before delivering lifecycle callbacks, as the production
 // host does. Feature Views own their Inspector/asset-browser contributions.
-std::vector<GameSproutEditor::IGameSproutView*> LoadInspectorFeatureViews(PreviewEditor& editor) {
+std::vector<GameSproutEditor::IGameSproutView*> LoadInspectorFeatureViews(PreviewEditor& editor,bool includeSceneObjects=true) {
     std::vector<GameSproutEditor::IGameSproutView*> result;
     for (const std::string name:{"AnimationUI","AssetImportUI","MaterialUI","SceneObjectUI"}) {
+        if(name=="SceneObjectUI"&&!includeSceneObjects)continue;
         auto* view=LoadView(name);editor.Views[name]=view;result.push_back(view);
     }
     return result;
 }
 void InitializeTestViews(PreviewEditor& editor,const std::vector<GameSproutEditor::IGameSproutView*>& views) {
     for (auto* view:views) GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
-    for (auto* view:views) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View initialization failed");
+    for (auto* view:views) {
+        std::string name="<unregistered>";
+        for(const auto& entry:editor.Views)if(entry.second==view){name=entry.first;break;}
+        Check(GameSproutEditor::GameSproutEditorFinal::Initialize(view,&editor),"View initialization failed: "+name);
+    }
 }
 void LaunchTestViews(PreviewEditor& editor,const std::vector<GameSproutEditor::IGameSproutView*>& views) {
     for (auto* view:views) Check(GameSproutEditor::GameSproutEditorFinal::Launch(view,&editor),"View launch failed");

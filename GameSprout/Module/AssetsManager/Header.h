@@ -77,6 +77,7 @@ inline eAssetImporterType GetAssetImporterType(const std::string & extension) {
         {"mesh", eAssetImporterType::Mesh},
         {"mat", eAssetImporterType::Material},
         {"shader", eAssetImporterType::Shader},
+        {"compute", eAssetImporterType::ComputeShader},
         {"hlsli", eAssetImporterType::ShaderInclude},
         {"ttf", eAssetImporterType::Font},
         {"otf", eAssetImporterType::Font},

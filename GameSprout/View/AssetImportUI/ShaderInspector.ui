@@ -177,6 +177,12 @@
         </widget>
       </item>
       <item>
+        <widget class="QLabel" name="passDefinitionLabel">
+          <property name="text"><string>图形 Shader 的 Pass、顶点和片元入口由源文件中的 GameSproutShader 定义。修改源文件后自动重新编译。</string></property>
+          <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+      </item>
+      <item>
         <widget class="QLabel" name="capabilityLabel">
           <property name="text">
             <string>ShaderCompiler 使用 DXC、SDL_shadercross 和 SPIRV-Cross 离线编译 HLSL；缺失工具或编译失败时保留最近成功产物。</string>

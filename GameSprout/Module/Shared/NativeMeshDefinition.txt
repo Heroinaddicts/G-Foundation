@@ -1,0 +1,61 @@
+GameSprout native .mesh source, GSMESH01 / Version 1
+
+Purpose
+An offline author/export tool writes a native mesh in Runtime coordinates:
+right handed, +Y up, metres. The importer does not repeat source-platform unit
+or handedness conversion. Static and collision-only meshes use this same file.
+Skinned export can bake the current pose as a static snapshot; this format does
+not contain a skeleton, bind poses, skin weights or animation semantics.
+
+Binary source layout (all integers and float32 values are little endian)
+0   char[8] "GSMESH01"
+8   uint32 Version = 1
+12  uint32 Flags: bit0 normals, bit1 tangents, bit2 UV0, bit3 colors
+16  uint32 VertexCount >= 3
+20  uint32 IndexCount >= 3 and divisible by 3
+24  uint32 SubMeshCount, 1..1024
+28  uint32 NameUTF8ByteCount, 1..1024
+32  UTF8 name without NUL, followed by zero padding to a four-byte boundary
+
+Then tightly packed planar arrays in this order:
+Position float3[VertexCount] (always)
+Normal float3[VertexCount] when flag bit0 is set
+Tangent float4[VertexCount] when flag bit1 is set
+UV0 float2[VertexCount] when flag bit2 is set
+Color float4[VertexCount] when flag bit3 is set
+Indices uint32[IndexCount]
+SubMeshes {uint32 FirstIndex, uint32 IndexCount, uint32 MaterialSlot}[SubMeshCount]
+
+No other flag bits or trailing bytes are valid. Source and prepared payload are
+bounded to 512 MiB. Submesh ranges partition all indices in order with no gaps,
+overlap or duplicate coverage. Empty sections are permitted in source and omitted
+from the prepared descriptor. MaterialSlot is 0..1023 and retains its original slot.
+All vertex attribute components must be finite. Every index must be in range.
+
+Preparation
+Each .mesh produces one Mesh resource with SourceKey "main". Its LocalID comes
+from the source .meta SubAssets mapping; a predeclared LocalID 1 remains 1.
+The importer interleaves Position, Normal and present optional attributes, then
+appends UInt32 indices. ArtifactDB stores attributes, stride, sections and bounds.
+Library/Artifact payload contains no source header, name, JSON or layout header.
+Existing RuntimeAssets.LoadMesh reads this ordinary RawBytes mesh artifact.
+
+Provided normals and optional arrays are retained; absent normals receive
+area-weighted normals from the final triangle set. Unreferenced vertices or
+cancelling normals receive +Y. Repeated-index and exact zero-area triangles are
+removed with a diagnostic; meshes with no remaining triangles fail import.
+Removing triangles preserves section MaterialSlot and rewrites its index range.
+
+Native attributes/topology have already been authored/exported. Current import
+requires ScaleFactor=1, NormalsMode=Import, MeshCompression=Off and disabled
+GenerateLightmapUVs; unsupported second conversions fail explicitly. The source
+determines optional channels; this pass does not weld vertices, reorder topology,
+recalculate authored tangents, or generate additional UV channels.
+
+Unity bridge note
+Export resolved Mesh data, including Unity native Mesh subassets used by convex
+colliders. Mirroring Z into Runtime coordinates also mirrors normal/tangent Z,
+negates tangent handedness W and reverses triangle winding. Apply baseVertex to
+the exported indices. That conversion belongs to the exporter, not this importer.
+Retain a mapping from Unity GUID+fileID to output .mesh GUID+LocalID rather than
+assuming Unity's imported fileID is a Runtime resource identity.

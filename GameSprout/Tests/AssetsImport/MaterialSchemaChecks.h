@@ -12,6 +12,16 @@ inline void CheckMaterialSchemas() {
     Check(source["CustomData"]["Retain"]==true && source["BaseColor"].size()==4
         && source["BaseColorTexture"].isNull() && source["BaseColorTextureST"]==MaterialDefinition::Vector(1,1,0,0),
         "Material defaults discarded authoring fields or omitted texture transforms");
+    Check(source["EnableGPUInstancing"]==true && source["SortingPriority"]==0,
+        "Automatic batching defaults are missing");
+    for (const char* name : {"EnableGPUInstancing","SpecularHighlights"}) {
+        Json::Value badOption=source;badOption[name]=1;
+        Check(!MaterialDefinition::ValidateValues(schema,badOption,error),"Non-boolean material render option accepted");
+    }
+    for (const Json::Value priority : {Json::Value(-51),Json::Value(51),Json::Value(1.5),Json::Value("1")}) {
+        Json::Value badOption=source;badOption["SortingPriority"]=priority;
+        Check(!MaterialDefinition::ValidateValues(schema,badOption,error),"Invalid sorting priority accepted");
+    }
     Json::Value invalid=source;
     invalid["Roughness"]=2.0;
     const auto before=AssetArtifactIO::JsonText(invalid);
@@ -53,6 +63,8 @@ inline void CheckMaterialSchemas() {
     source=Json::Value(Json::objectValue); source["Version"]=1;
     Check(MaterialDefinition::NormalizeValues(schema,source,error) && source["Mode"]==1 && source["Enabled"]==true
         && source["MapST"]==MaterialDefinition::Vector(1,1,0,0),"Custom material defaults were not applied");
+    Check(source["EnableGPUInstancing"]==true && source["SortingPriority"]==0,
+        "Engine options were omitted from custom materials");
     invalid=source; invalid["Mode"]=2;
     Check(!MaterialDefinition::ValidateValues(schema,invalid,error),"Out-of-range material Enum was accepted");
     invalid=source; invalid["Count"]=2.25;
@@ -60,6 +72,10 @@ inline void CheckMaterialSchemas() {
     Json::Value broken=schema;
     broken["Properties"].append(schema["Properties"][0]);
     Check(!MaterialDefinition::ValidateSchema(broken,error),"Duplicate material property names were accepted");
+    for (const char* name : {"EnableGPUInstancing","SpecularHighlights","SortingPriority"}) {
+        broken=schema;broken["Properties"][0]["Name"]=name;
+        Check(!MaterialDefinition::ValidateSchema(broken,error),"Custom Shader property collided with engine material option");
+    }
     broken=schema; broken["Properties"][1]["Min"]=3;
     Check(!MaterialDefinition::ValidateSchema(broken,error),"Reversed material Range was accepted");
     broken=schema; broken["Properties"][2]["Name"]="MapST";

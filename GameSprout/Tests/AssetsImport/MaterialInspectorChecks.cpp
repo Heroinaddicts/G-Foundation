@@ -10,6 +10,7 @@
 #include <QElapsedTimer>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSpinBox>
 
 namespace {
 QByteArray ReadFile(const QString& path) {
@@ -75,7 +76,8 @@ Connections: {
 }
 )fbx";
 
-const char* ShaderSource = R"hlsl(/* GameSproutMaterial {
+const char* ShaderSource = R"hlsl(/* GameSproutShader {"Name":"Tests/Surface","Passes":[{"Name":"Forward","Vertex":"main","Fragment":"PSMain"}]} */
+/* GameSproutMaterial {
   "Name":"Tests/Surface",
   "Properties":[
     {"Name":"Tint","DisplayName":"颜色","Type":"Color","Default":[0.3,0.4,0.5,1],"Group":"表面"},
@@ -90,6 +92,7 @@ const char* ShaderSource = R"hlsl(/* GameSproutMaterial {
   ]
 } */
 float4 main(uint index:SV_VertexID):SV_Position { return float4(index,0,0,1); }
+float4 PSMain():SV_Target0 {return float4(1,1,1,1);}
 )hlsl";
 }
 
@@ -139,7 +142,7 @@ int main(int argc,char** argv) {
             initialized.push_back(item.second);
         }
         inspector=static_cast<IInspectorUI*>(LoadView("InspectorUI"));
-        editor.Views["InspectorUI"]=inspector;featureViews=LoadInspectorFeatureViews(editor);
+        editor.Views["InspectorUI"]=inspector;featureViews=LoadInspectorFeatureViews(editor,false);
         auto views=featureViews;views.push_back(inspector);InitializeTestViews(editor,views);
         for (const auto& item:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Launch(item.second,api),"Launch "+item.first);
         LaunchTestViews(editor,views);
@@ -194,17 +197,26 @@ int main(int argc,char** argv) {
         };
         stage="built-in edit";select(independent,false);
         Check(spin("material.BaseColor.0")->isEnabled() && !inspector->HasPendingChanges(),"Material opened dirty or disabled");
+        auto* instancing=content->findChild<QCheckBox*>("enableGPUInstancingCheck");
+        auto* priority=content->findChild<QSpinBox*>("sortingPrioritySpin");
+        auto* specular=content->findChild<QCheckBox*>("specularHighlightsCheck");
+        Check(instancing&&priority&&specular&&instancing->isChecked()&&priority->value()==0&&!specular->isVisible(),
+            "Preview advanced options or Lit-only visibility are incorrect");
         const QByteArray originalMeta=ReadFile(root.filePath("Assets/Editable.mat.meta"));
         spin("material.BaseColor.0")->setValue(0.75);
         spin("material.Metallic.number")->setValue(0.4);
+        instancing->setChecked(false);priority->setValue(7);
         Check(inspector->HasPendingChanges() && apply->isEnabled() && apply->text()=="保存材质","Material draft not detected");
         Check(inspector->ApplyChanges(),"Material UI save failed");pump(idle);
         Json::Value document;std::string source;
         Check(assets->LoadMaterialSource(Guid(independent.Guid),source,error) && AssetArtifactIO::Parse(source,document),error);
         Check(document["BaseColor"][0].asDouble()==0.75 && document["Metallic"].asDouble()==0.4,"Saved values missing");
+        Check(document["EnableGPUInstancing"]==false&&document["SortingPriority"]==7,"Advanced material options did not save");
         Check(ReadFile(root.filePath("Assets/Editable.mat.meta"))==originalMeta,"Material edit wrote import settings instead of source");
         spin("material.Metallic.number")->setValue(0.8);inspector->RevertChanges();
         Check(!inspector->HasPendingChanges() && spin("material.Metallic.number")->value()==0.4,"Material revert lost saved value");
+        instancing->setChecked(true);priority->setValue(-4);inspector->RevertChanges();
+        Check(!inspector->HasPendingChanges()&&!instancing->isChecked()&&priority->value()==7,"Advanced options did not revert");
 
         stage="save validation";
         const std::string baseline=source;
@@ -218,6 +230,7 @@ int main(int argc,char** argv) {
         Check(assets->SaveMaterialSource(Guid(independent.Guid),AssetArtifactIO::JsonText(document),baseline,error),error);pump(idle);
         resources=new LibraryRuntimeResources(assets,library);GameSproutRuntime::MaterialRenderData render;
         Check(resources->LoadMaterial(independent,render,error) && render.BaseColorTexture==texture && render.BaseColorTextureST.X==2 && render.BaseColorTextureST.W>0.19f,error);
+        Check(!render.EnableGPUInstancing&&render.SortingPriority==7&&render.SpecularHighlights,"Prepared material advanced options did not reach Runtime");
         auto* baseTextureField=content->findChild<QWidget*>("material.BaseColorTexture")->findChild<QWidget*>("textureResource");
         baseTextureField->findChild<QAction*>("clearResourceAction")->trigger();
         Check(inspector->ApplyChanges(),"Clearing material texture did not save");pump(idle);
@@ -234,6 +247,12 @@ int main(int argc,char** argv) {
         inspector->RevertChanges();Check(spin("material.Metallic.number")->value()==0.2,"Revert failed to load external change");
 
         stage="shader-driven controls";
+        content->findChild<QComboBox*>("shaderModeCombo")->setCurrentIndex(2);
+        Check(specular->isVisible()&&specular->isChecked(),"Lit specular option is missing");
+        specular->setChecked(false);
+        Check(inspector->ApplyChanges(),"Lit advanced option save failed");pump(idle);
+        Check(resources->LoadMaterial(independent,render,error)&&!render.SpecularHighlights&&!render.EnableGPUInstancing&&render.SortingPriority==7,
+            "Lit advanced values were not decoded from the prepared material");
         content->findChild<QComboBox*>("shaderModeCombo")->setCurrentIndex(1);
         auto* shaderField=content->findChild<QWidget*>("shaderResource");
         Check(!DropResource(shaderField,{mesh.Guid,mesh.LocalID,true}),"Mesh accepted in Shader field");
@@ -275,6 +294,8 @@ int main(int argc,char** argv) {
 
         stage="embedded extraction";select(embedded,true);
         Check(!spin("material.BaseColor.0")->isEnabled() && !apply->isVisible(),"Embedded material editable");
+        Check(!content->findChild<QCheckBox*>("enableGPUInstancingCheck")->isEnabled()
+            &&!content->findChild<QSpinBox*>("sortingPrioritySpin")->isEnabled(),"Embedded advanced options are editable");
         const float oldRed=static_cast<float>(spin("material.BaseColor.0")->value());
         std::string dialogError;
         QTimer::singleShot(0,&application,[&] {

@@ -1,5 +1,6 @@
 #include "AssetImportJob.h"
 #include "../Shared/MaterialDefinition.h"
+#include "../Shared/ShaderDefinition.h"
 #include "../Shared/PrefabDefinition.h"
 #include "../Shared/PhysicsMaterialDefinition.h"
 #include "RuntimeBuiltinResources.h"
@@ -38,7 +39,7 @@ bool MaterialValues(AssetImportJob & job, Json::Value & document) {
     std::string error;
     if (!MaterialDefinition::ShaderReference(document,error)) return job.Fail(error);
     Json::Value schema;
-    if (!document.isMember("Shader") || document["Shader"].isString()) schema=MaterialDefinition::PreviewSchema();
+    if (!document.isMember("Shader") || document["Shader"].isString()) schema=MaterialDefinition::BuiltinSchema(document);
     else {
         const Json::Value & shader=document["Shader"];
         const auto source=job.Request.SourcePaths.find(shader["Guid"].asString());
@@ -48,6 +49,8 @@ bool MaterialValues(AssetImportJob & job, Json::Value & document) {
         QByteArray bytes;
         if (!job.AddDependency(source->second,&bytes)) return false;
         if (!MaterialDefinition::ParseShaderSchema(bytes,schema,error)) return job.Fail(error);
+        Json::Value shaderDeclaration;
+        if (!ShaderDefinition::Parse(bytes,shaderDeclaration,error)) return job.Fail(error);
         // Workers read source snapshots and never query the main-thread Library.
         const QString metaPath=QDir(QString::fromStdString(job.Request.AssetsRoot))
             .filePath(QString::fromStdString(source->second)+".meta");
@@ -61,11 +64,9 @@ bool MaterialValues(AssetImportJob & job, Json::Value & document) {
                 || !meta["ImportSettings"].isObject()) return job.Fail("Cannot read material Shader Meta");
             if (!meta["Guid"].isString() || meta["Guid"].asString()!=shader["Guid"].asString())
                 return job.Fail("Material Shader source Meta GUID does not match its reference");
-            if (meta["ImporterType"]=="ComputeShader" || meta["ImportSettings"]["Stage"]=="Compute")
+            if (meta["ImporterType"]=="ComputeShader")
                 return job.Fail("A compute Shader cannot be used as a material Shader");
             if (meta["ImporterType"]!="Shader") return job.Fail("Material reference is not imported by the graphics Shader importer");
-            const Json::Value stage=meta["ImportSettings"].get("Stage","Vertex");
-            if (stage!="Vertex" && stage!="Fragment") return job.Fail("Material Shader must use a graphics Shader stage");
             bool identityFound=false;
             if (meta["SubAssets"].isArray()) for (const auto & identity : meta["SubAssets"]) {
                 if (identity.isObject() && identity["LocalID"].isUInt64() && identity["Type"].isUInt()
@@ -170,7 +171,7 @@ bool ImportDocument(AssetImportJob & job) {
     case eAssetImporterType::Shader:
     case eAssetImporterType::ComputeShader:
         return ImportShader(job);
-    case eAssetImporterType::Mesh: type=eAssetType::Mesh;break;
+    case eAssetImporterType::Mesh:return ImportNativeMesh(job);
     case eAssetImporterType::Material:type=eAssetType::Material;break;
     case eAssetImporterType::Scene:type=eAssetType::Scene;break;
     case eAssetImporterType::Prefab:type=eAssetType::Prefab;break;

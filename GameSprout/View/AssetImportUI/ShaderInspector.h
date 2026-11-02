@@ -11,5 +11,6 @@ protected:
     void RefreshEnabled() override;
     bool Validate(const Json::Value & settings, std::string & error) const override;
 private:
+    bool _Compute=false;
     Ui::ShaderInspectorForm * _Ui = nullptr;
 };

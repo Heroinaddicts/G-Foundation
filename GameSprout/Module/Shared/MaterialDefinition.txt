@@ -20,11 +20,14 @@ Range 必须有有限的 Min/Max；Enum 使用不重复的 Options 字符串数�
 Texture 使用 null 或 {"Guid":"...","LocalID":123}。
 每个 Texture 隐含 <Name>ST 字段：[scaleX,scaleY,offsetX,offsetY]，默认为 [1,1,0,0]。
 可选 Group、Tooltip 文本和 Hidden、HDR 布尔标记。
-同一 Schema 的内部名称不能重复，也不能占用 Version/Name/Shader/ExternalMaterial/Textures/UnresolvedTextures。
+Color 可声明 ColorSpace=Linear 或 SRGB；Linear 的数值及源文件保留线性值，拾色器与色块在 View 边界转换为 sRGB。
+Linear Color 的 RGB 不得为负；未启用 HDR 时不得超过1；Alpha 保持0..1。Float 可用有限 Min 限制最小值。
+同一 Schema 的内部名称不能重复，也不能占用 Version/Name/Shader/ExternalMaterial/Textures/UnresolvedTextures，
+或引擎选项 EnableGPUInstancing/SpecularHighlights/SortingPriority；引擎选项不参与自定义Shader参数反射。
 没有声明的 Shader 提供空属性面板；不会从 GPU float4 猜测颜色等编辑语义。
 
 Shader 产物的 ArtifactDB Descriptor.Material 保存编辑属性定义。
-GPU 绑定槽、常量缓冲偏移等仍由 Descriptor.Reflection 保存，两者职责独立。
+GPU 绑定槽、常量缓冲偏移等由 Descriptor.Passes 的 Vertex/Fragment Reflection 与规范化布局保存，两者职责独立。
 产物文件仍只包含编译代码，参数描述不会作为 JSON 文件头写入代码段。
 
 .mat 是可编辑的源文档：
@@ -37,10 +40,12 @@ GPU 绑定槽、常量缓冲偏移等仍由 Descriptor.Reflection 保存，两�
     "BaseColorTextureST": [1,1,0,0],
     "Metallic": 0,
     "Roughness": 0.5,
-    "DoubleSided": false
+    "DoubleSided": false,
+    "EnableGPUInstancing": true,
+    "SortingPriority": 0
 }
 
-Shader 缺省时使用内置 GameSprout/Preview，也可填写 Shader 的 {Guid,LocalID} 引用。
+Shader 缺省时使用内置 GameSprout/Preview，可显式选择 GameSprout/Lit，也可填写 Shader 的 {Guid,LocalID} 引用。
 自定义材质的参数名称与对应 Shader 的 Properties.Name 一致。
 缺省参数使用 Shader.Default；未知源字段保留，不在编辑过程中丢弃。
 保存会校验参数类型、数值范围和引用，失败保留原文档。
@@ -48,6 +53,28 @@ Shader 缺省时使用内置 GameSprout/Preview，也可填写 Shader 的 {Guid,
 Pipeline 依据同一 schema 校验并生成结构二进制产物，Shader和贴图引用作为依赖登记。
 工作线程通过源文件快照读取 Shader 声明，不调用主线程的 Library/数据库接口。
 
-当前 Runtime 预览支持 BaseColor、BaseColorTexture、BaseColorTextureST、DoubleSided；其余自定义参数
-可编辑、持久化并参与导入，任意用户 Shader 的运行时绑定仍需后续 Renderer 接入。
+内置 GameSprout/Preview 使用 BaseColor、BaseColorTexture、BaseColorTextureST、DoubleSided。
+自定义图形 Shader 采用 ShaderDefinition.txt 中的 Forward Pass 合同；材质常量按反射偏移绑定，
+Texture 按同名 Shader 资源绑定，TextureST 隐含参数同样参与绑定。未使用的作者属性可保留，
+但程序实际声明的材质成员必须有对应属性定义；不支持的数组、矩阵、storage 等会在导入时拒绝。
+改变颜色/数值只更新材质产物和运行缓存，不重新编译没有变化的 Shader；源码/include 改动则重新导入依赖。
 FBX内嵌材质可查看；提取独立.mat后编辑，重映射信息保存在模型的.meta导入设置中。
+
+内置 GameSprout/Lit 的作者属性：
+BaseColor（线性RGBA，0..1）、BaseColorTexture/ST、Metallic（0..1）、Roughness（0..1）、
+NormalTexture/ST、NormalScale（非负，默认1）、Emission（线性HDR颜色）、DoubleSided、SpecularHighlights（默认true）。
+RuntimeAssets 将 Emission 映射到 MaterialRenderData.EmissionColor，ShadingModel=Lit。
+基础贴图按其 TextureImportSettings 的颜色空间采样；法线贴图必须导入为 Linear，错误的 sRGB 法线会明确诊断。
+创建材质对话框可选择内置 Preview/Lit；选择已导入图形 Shader 时优先采用该资源的 GUID + LocalID。
+
+高级渲染选项直接保存在 .mat 根字段，通用 BinaryValueLE1 结构产物保留这些值：
+EnableGPUInstancing（bool，默认true）是允许Runtime自动归组，不是强制采用实例化Shader；
+内置不透明非蒙皮网格满足相同网格/材质/渲染状态等条件时自动实例化，不要求对象勾选Static，
+对象的位置、旋转、缩放可以不同；不满足条件则正常绘制。
+自定义Shader、蒙皮等当前未提供实例化合同，不能因勾选而改变其顶点语义。
+SortingPriority 为[-50,50]整数，默认0；仅在不透明/透明类别内生效，数值越大越晚绘制，
+透明对象仍受距离排序约束，不能为合批破坏混合顺序。
+SpecularHighlights 是内置Lit的直接光镜面高光开关，不控制环境漫反射。
+Inspector 高级区只显示已实现的设置，内嵌材质只读；环境镜面反射和运动矢量暂无空开关。
+Unity桥接保留SpecularHighlights和QueueOffset，传统source.enableInstancing只记录到报告，
+不将其false误译为禁止GameSprout自动实例化，因为Unity GPU Resident Drawer不受该传统开关控制。

@@ -1,0 +1,58 @@
+图形 Shader 当前资源合同
+
+.shader 是自包含 HLSL。除 GameSproutMaterial 参数注释外，还必须包含唯一的程序声明：
+
+/* GameSproutShader {
+    "Name": "Example/Unlit",
+    "Passes": [{
+        "Name": "Forward", "LightMode": "Forward",
+        "Vertex": "VSMain", "Fragment": "PSMain",
+        "Cull": "Back", "Blend": "Opaque",
+        "DepthTest": true, "DepthWrite": true, "DepthCompare": "LessEqual"
+    }]
+} */
+
+当前只支持一个 Forward Pass，数据结构保留 Pass 集合。未知状态与未实现用途必须明确报错。
+Cull: Off / Front / Back。
+Blend: Opaque / Alpha / PremultipliedAlpha。
+DepthCompare: Never / Less / Equal / LessEqual / Greater / NotEqual / GreaterEqual / Always。
+状态缺省为上述示例值。Alpha 不自动改变 DepthWrite，作者必须明确设置所需深度语义。
+
+Mesh 输入约定（可使用合法子集）：
+location 0 / TEXCOORD0: float3 Position
+location 1 / TEXCOORD1: float3 Normal
+location 2 / TEXCOORD2: float4 Color
+location 3 / TEXCOORD3: float2 UV
+Runtime 负责为缺少 Color/UV 的网格提供默认值，源 Shader 不猜测网格内存布局。
+蒙皮自定义 Shader 尚未实现时必须诊断，不能无声用静态顶点代替动画。
+
+VS b0,space1 是可选的引擎 Draw 常量块，使用时必须按顺序声明：
+column_major float4x4 Model;
+column_major float4x4 ViewProjection;
+column_major float4x4 NormalMatrix;
+总大小192字节，偏移0/64/128。使用列向量 P*V*M*position；CPU矩阵为列主序。
+注意 DXC 的 SPIR-V 反射将 HLSL column_major 表示为 row_major 装饰，导入器校验实际编译布局。
+
+VS b1,space1 起、FS b0,space3 起是材质常量块，槽位须满足SDL连续编号规则。
+支持 float、int、uint、float4，成员与 GameSproutMaterial 属性名/类型匹配。
+Float/Range 对应 float；Int 对应 int；Toggle/Enum 对应 int 或 uint；Color/Vector 对应 float4。
+Texture 的隐含 <Name>ST 对应 float4。数组、材质矩阵、未声明成员及storage资源暂不支持。
+每块按编译反射的成员偏移填充，上传大小向上对齐16字节，最多16KiB；不靠C++结构体猜偏移。
+同一材质成员在各阶段的类型必须一致。
+
+片元 Texture2D 与配对 Sampler 分别使用 t0/s0,space2 起的连续槽位。
+纹理变量名必须匹配 Texture 作者属性。null 纹理使用白色GPU默认纹理，但不改变作者引用。
+当前不支持顶点采样、资源数组、MRT及Storage；Fragment 只输出一个 float4 SV_Target0。
+Vertex输出与Fragment输入按位置、类型和数组形态校验，不匹配时导入失败。
+
+AssetsPipeline 逐Pass编译Vertex/Fragment，继续使用 DXC + SDL_shadercross + SPIRV-Cross。
+编译时分别定义 GAMESPROUT_VERTEX=1 / GAMESPROUT_FRAGMENT=1；需要阶段专用声明时可用其条件编译。
+反射只保留当前入口实际使用的资源，跨阶段引用错误寄存器空间仍会拒绝。
+每个程序的 SPIRV/MSL/DXIL/MetalLib 代码拼入纯二进制产物；ArtifactDB 保存独立描述：
+Format=GameSproutShader，ShaderVersion=1，Material，Passes，平台程序的Offset/Size/EntryPoint，
+Reflection，以及规范化Uniforms/Textures布局。不存在代码文件头部JSON。
+平台/格式、代码范围、magic、MSL结尾NUL、反射布局在加载时再次校验。
+
+ComputeShader 是独立导入类型，仍用其 Stage/EntryPoint 单阶段合同；
+图形 .shader 不能通过设置 Stage=Compute 绕过完整程序声明。
+只支持当前格式；算法版本失效触发正常缓存重建，不做旧格式迁移。

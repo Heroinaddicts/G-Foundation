@@ -17,9 +17,10 @@ constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     case eAssetImporterType::AvatarMask: return 4;
     case eAssetImporterType::Scene: return 4; // Preserve Missing references and stable GUID dependency edges.
     case eAssetImporterType::Prefab: return 3;
-    case eAssetImporterType::Material:
+    case eAssetImporterType::Mesh: return 3; // Current native GSMESH01 source -> prepared GPU vertex/index bytes.
+    case eAssetImporterType::Shader: return 4; // Complete graphics Pass programs and reflected material bindings.
+    case eAssetImporterType::Material: return 4; // Current engine rendering options, independent of Shader reflection.
     case eAssetImporterType::PhysicsMaterial:
-    case eAssetImporterType::Shader:
     case eAssetImporterType::ComputeShader: return 3;
     default: return 2;
     }
@@ -95,6 +96,7 @@ bool ImportTexture(AssetImportJob & job);
 bool ImportTextureBytes(AssetImportJob & job, QByteArray bytes, const std::string & key,
     const std::string & name, const Json::Value & settings);
 bool ImportModel(AssetImportJob & job);
+bool ImportNativeMesh(AssetImportJob & job);
 bool ImportMedia(AssetImportJob & job);
 bool ImportFont(AssetImportJob & job);
 bool ImportDocument(AssetImportJob & job);
