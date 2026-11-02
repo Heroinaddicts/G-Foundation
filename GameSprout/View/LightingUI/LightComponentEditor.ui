@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LightComponentEditorForm</class>
+ <widget class="QWidget" name="LightComponentEditorForm">
+  <layout class="QFormLayout" name="formLayout">
+   <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+   <item row="0" column="0"><widget class="QLabel" name="typeLabel"><property name="text"><string>类型</string></property></widget></item>
+   <item row="0" column="1"><widget class="QLabel" name="typeValue"><property name="text"><string>Directional · 方向光</string></property></widget></item>
+   <item row="1" column="0"><widget class="QLabel" name="stateLabel"><property name="text"><string>状态</string></property></widget></item>
+   <item row="1" column="1"><widget class="QCheckBox" name="enabledCheck"><property name="text"><string>启用光源</string></property></widget></item>
+   <item row="2" column="0"><widget class="QLabel" name="colorLabel"><property name="text"><string>颜色</string></property><property name="toolTip"><string>RGB 数值为线性颜色，可大于 1；色块与拾色器按 sRGB 显示。</string></property></widget></item>
+   <item row="2" column="1"><layout class="QHBoxLayout" name="colorLayout">
+    <item><widget class="QLineEdit" name="redEdit"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>32</width><height>0</height></size></property><property name="accessibleName"><string>R（线性）</string></property><property name="placeholderText"><string>R</string></property><property name="toolTip"><string>线性红色分量，可大于 1。拾色器按 sRGB 显示。</string></property></widget></item>
+    <item><widget class="QLineEdit" name="greenEdit"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>32</width><height>0</height></size></property><property name="accessibleName"><string>G（线性）</string></property><property name="placeholderText"><string>G</string></property></widget></item>
+    <item><widget class="QLineEdit" name="blueEdit"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>32</width><height>0</height></size></property><property name="accessibleName"><string>B（线性）</string></property><property name="placeholderText"><string>B</string></property></widget></item>
+    <item><widget class="QPushButton" name="colorButton"><property name="text"><string/></property><property name="minimumSize"><size><width>36</width><height>0</height></size></property><property name="maximumSize"><size><width>36</width><height>16777215</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Fixed" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="accessibleName"><string>选择光源颜色</string></property><property name="toolTip"><string>选择颜色；拾色器按 sRGB 显示，保存为线性 RGB。</string></property></widget></item>
+   </layout></item>
+   <item row="3" column="0"><widget class="QLabel" name="intensityLabel"><property name="text"><string>强度</string></property></widget></item>
+   <item row="3" column="1"><widget class="QLineEdit" name="intensityEdit"><property name="toolTip"><string>线性光照强度，0 关闭照明；通过 Transform 旋转改变照射方向。</string></property></widget></item>
+   <item row="4" column="0"><widget class="QLabel" name="maskLabel"><property name="text"><string>影响层</string></property></widget></item>
+   <item row="4" column="1"><widget class="LayerMaskCombo" name="maskCombo"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>
+   <item row="5" column="0" colspan="2"><widget class="QLabel" name="directionHint"><property name="text"><string>沿对象局部 -Z 方向照射；旋转对象调整方向。当前位置不影响方向光。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+  </layout>
+ </widget>
+ <customwidgets><customwidget><class>LayerMaskCombo</class><extends>QComboBox</extends><header>LayerMaskCombo.h</header></customwidget></customwidgets>
+ <resources/><connections/>
+</ui>

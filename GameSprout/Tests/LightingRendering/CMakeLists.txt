@@ -1,0 +1,32 @@
+cmake_minimum_required(VERSION 3.21)
+project(LightingRenderingChecks LANGUAGES CXX)
+get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+include("${gamesprout_root}/Foundation/ParallelBuild.cmake")
+include("${gamesprout_root}/Foundation/FoundationApi.cmake")
+include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
+if(APPLE)
+    set(lighting_binary_root "${gamesprout_root}/../Bin/GameSproutEditor.app/Contents/MacOS")
+else()
+    set(lighting_binary_root "${gamesprout_root}/../Bin")
+endif()
+set(LIGHTING_TEST_BINARY_ROOT "${lighting_binary_root}" CACHE PATH "Built Editor modules and Runtime")
+add_library(LightingRuntimeAssets SHARED IMPORTED)
+set_target_properties(LightingRuntimeAssets PROPERTIES IMPORTED_LOCATION
+    "${LIGHTING_TEST_BINARY_ROOT}/Logic/Module/${CMAKE_SHARED_LIBRARY_PREFIX}RuntimeAssets${CMAKE_SHARED_LIBRARY_SUFFIX}")
+if(WIN32)
+    set_target_properties(LightingRuntimeAssets PROPERTIES IMPORTED_IMPLIB
+        "${LIGHTING_TEST_BINARY_ROOT}/Logic/Module/RuntimeAssets.lib")
+endif()
+add_executable(LightingRenderingChecks LightingRenderingChecks.cpp)
+target_compile_features(LightingRenderingChecks PRIVATE cxx_std_20)
+target_include_directories(LightingRenderingChecks PRIVATE
+    "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface"
+    "${gamesprout_root}/GameSproutEditor/Api")
+target_compile_definitions(LightingRenderingChecks PRIVATE TEST_BINARY_ROOT="${LIGHTING_TEST_BINARY_ROOT}")
+target_link_libraries(LightingRenderingChecks PRIVATE LightingRuntimeAssets Foundation::FoundationApi
+    GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
+set_target_properties(LightingRenderingChecks PROPERTIES BUILD_RPATH "${LIGHTING_TEST_BINARY_ROOT}/Logic/Module")
+enable_testing()
+add_test(NAME Lighting.PreparedMaterialGPU COMMAND LightingRenderingChecks)
+set_tests_properties(Lighting.PreparedMaterialGPU PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
