@@ -88,6 +88,9 @@ struct RenderStatistics {
     std::uint32_t SavedDrawCalls = 0;
     std::uint32_t InstanceBufferUploads = 0;
     std::uint64_t ResidentInstanceBytes = 0;
+    // CPU scene/light snapshots rebuilt this frame (unchanged scenes use zero).
+    std::uint32_t SceneSnapshotRebuilds = 0;
+    std::uint32_t LightSnapshotRebuilds = 0;
 };
 
 class IRuntimeRenderer {

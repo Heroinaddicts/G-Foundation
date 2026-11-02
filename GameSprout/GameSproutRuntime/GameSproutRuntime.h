@@ -33,6 +33,10 @@ public:
     void UnregisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
     bool SynchronizePhysics(std::string&) override;
     void MarkObjectPropertiesChanged(std::uint64_t objectID);
+    // Internal matrix cache clock. Mutations advance it synchronously, before
+    // deferred Editor events, so every query observes the committed hierarchy.
+    std::uint64_t GetTransformEpoch() const {return _TransformEpoch;}
+    void InvalidateTransforms();
     void CheckObservedScriptProperties(std::uint64_t objectID);
     void MarkNativeScriptPropertiesChanged() {if(!_PropertyObservations.empty())_ObservedScriptFieldsDirty=true;}
     const RuntimeProjectSettings& GetProjectSettings() const override { return _ProjectSettings; }
@@ -186,6 +190,7 @@ private:
     };
     std::map<std::uint64_t,ObjectPropertyObservation> _PropertyObservations;
     std::uint64_t _NextPropertyObserver=0;
+    std::uint64_t _TransformEpoch=1;
     bool _ReadingObservedProperties=false;
     bool _ObservedScriptFieldsDirty=false;
     std::uint64_t _NextID = 0;

@@ -19,6 +19,7 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
         }
         if(root->Object!=object.SceneOwner || Find(root->Object)!=root) return;
     } else if(!IsInScene(&object)) return;
+    object.SceneOwner->InvalidateRenderSnapshot();
     MarkObjectPropertiesChanged(object.ID);
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。
     try {

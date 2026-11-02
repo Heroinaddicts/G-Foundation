@@ -14,6 +14,10 @@ public:
     ICameraComponent* GetMainCamera() const override;
     const EnvironmentLightingSettings& GetEnvironmentLighting() const override { return _EnvironmentLighting; }
     bool SetEnvironmentLighting(const EnvironmentLightingSettings&) override;
+    // Runtime-internal snapshot invalidation. Changes are visible before queued
+    // listener dispatch, including direct Set* -> Render calls in editor/tests.
+    std::uint64_t GetRenderRevision() const {return _RenderRevision;}
+    void InvalidateRenderSnapshot() {++_RenderRevision;}
     void ClearMainCameraForNode(std::uint64_t id);
     bool BindObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) override {
         auto* node=State().Owner.Find(object);
@@ -30,5 +34,6 @@ private:
     std::uint64_t _MainCameraID = 0;
     bool _SimulationEnabled = true;
     EnvironmentLightingSettings _EnvironmentLighting;
+    std::uint64_t _RenderRevision=1;
 };
 }

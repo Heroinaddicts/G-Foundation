@@ -1,10 +1,19 @@
 #include "RuntimeRenderer.h"
 #include "RuntimeMath.h"
+#include "Scene.h"
 #include <algorithm>
 #include <cmath>
 
 namespace GameSproutRuntime {
 bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights) {
+    const auto sceneID=scene->GetInstanceID();
+    const auto revision=static_cast<Scene*>(scene)->GetRenderRevision();
+    if(_LightSnapshotKnown&&_LightSceneID==sceneID&&_LightSceneRevision==revision) {
+        Diagnostic(_LightDiagnostic);return true;
+    }
+    _LightSnapshotKnown=false;lights.clear();
+    const auto diagnosticBefore=_Error.size();
+    ++_Statistics.LightSnapshotRebuilds;
     std::vector<IGameObject*> pending{scene};
     while(!pending.empty()) {
         auto* object=pending.back();pending.pop_back();
@@ -36,6 +45,10 @@ bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights
         const auto luminance=[](Color color){return double(color.R)*.2126+double(color.G)*.7152+double(color.B)*.0722;};
         return luminance(left.Radiance)>luminance(right.Radiance);
     });
+    _LightSceneID=sceneID;_LightSceneRevision=revision;
+    _LightDiagnostic=_Error.substr(diagnosticBefore);
+    if(!_LightDiagnostic.empty()&&_LightDiagnostic.front()=='\n')_LightDiagnostic.erase(0,1);
+    _LightSnapshotKnown=true;
     return true;
 }
 

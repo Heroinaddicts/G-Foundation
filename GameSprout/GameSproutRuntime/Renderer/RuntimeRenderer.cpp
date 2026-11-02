@@ -38,6 +38,7 @@ bool Renderer::Render(const RenderView& view) {
     _HasRenderedCamera=false;_RenderedCamera={};
     if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsShuttingDown() || _Runtime.IsConstructing()) return Fail("Runtime Renderer cannot run inside a Runtime callback, construction or another Render");
     _Error.clear();_Statistics={};
+    _PreparedDraws.clear();
     if(!_Surface&&!_ColorTarget){_Statistics={};return true;}
     if(_Surface&&_ColorTarget)return Fail("Viewport has conflicting render targets");
     if(view.DrawScene) {
@@ -94,27 +95,31 @@ bool Renderer::Render(const RenderView& view) {
         }
         std::vector<DebugBatch> debugBatches;
         if(view.DrawScene && !PrepareDebug(view.DebugDraw,debugBatches)) return false;
-        std::vector<DrawObject> objects;
+        std::vector<DrawObject> emptyObjects;
+        auto& objects=view.DrawScene?_SceneObjects:emptyObjects;
         if(view.DrawScene && !Extract(view,objects)) return false;
         const RenderFrustum::Frustum frustum(viewProjection);
-        std::vector<DirectionalLight> lights;
+        auto& lights=_SceneLights;
         if(view.DrawScene&&!ExtractLights(view.Scene,lights))return false;
         RenderEnvironment::Uniform environment{};
         if(view.DrawScene&&!RenderEnvironment::Prepare(view.Scene->GetEnvironmentLighting(),environment))
             Diagnostic("Scene environment radiance is invalid or exceeds finite shader precision; diffuse environment disabled for this frame");
         const MaterialRenderData defaultMaterial;
-        std::vector<PreparedDraw> prepared;
+        static const ResourceReference defaultMaterialReference;
+        auto& prepared=_PreparedDraws;
         for(auto& object:objects) {
-            auto* mesh=Mesh(object.Mesh);
+            if(!object.Geometry)object.Geometry=Mesh(object.Mesh);
+            auto* mesh=object.Geometry;
             if(mesh && object.Skinned) {
                 auto* node=_Runtime.QueryGameObject(object.ObjectID);
                 if(!node || !SkinMatrices(*node,*mesh,object.SkinMatrices)) {++_Statistics.SkippedObjects;continue;}
             }
             // 更新已加载资源的派生 bounds；不修改节点属性、主相机、Undo 或源场景快照。
-            if(auto* node=_Runtime.QueryGameObject(object.ObjectID)) {
+            if(object.Skinned||!object.BoundsInitialized)if(auto* node=_Runtime.QueryGameObject(object.ObjectID)) {
                 if(auto* component=dynamic_cast<MeshComponent*>(node->GetComponent<IMeshComponent>());
                    component && component->GetMesh()==object.Mesh) {
                     component->_Bounds=mesh?mesh->Data.LocalBounds:Bounds{};
+                    object.BoundsInitialized=true;
                     if(mesh && object.Skinned) {
                         std::vector<Vector3> positions;
                         if(!PosedPositions(*node,*mesh,positions)) {++_Statistics.SkippedObjects;continue;}
@@ -147,13 +152,14 @@ bool Renderer::Render(const RenderView& view) {
                 if(!section.IndexCount) continue;
                 const MaterialRenderData* material=&defaultMaterial;
                 Material* cachedMaterial=nullptr;
-                ResourceReference materialReference;
+                const ResourceReference* materialReference=&defaultMaterialReference;
                 if(section.MaterialSlot<object.Materials.size()) {
                     const auto& reference=object.Materials[section.MaterialSlot];
                     if(!reference.Guid.empty() || reference.LocalID) {
-                        auto* cached=MaterialData(reference);
+                        auto*& cached=object.MaterialCache[section.MaterialSlot];
+                        if(!cached)cached=MaterialData(reference);
                         if(!cached) {skipped=true;continue;}
-                        cachedMaterial=cached;material=&cached->Data;materialReference=reference;
+                        cachedMaterial=cached;material=&cached->Data;materialReference=&reference;
                     }
                 }
                 // User vertex shaders have no displacement-bounds contract yet;

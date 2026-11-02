@@ -122,14 +122,19 @@ void Runtime::TickComponents(float deltaSeconds,bool fixed) {
     try {
         std::string initializationError;
         InitializePendingComponents(initializationError,deltaSeconds>0);
-        if(!_ConstructionDepth) {
+        // Editor scenes suspend simulation without disabling their rendered
+        // hierarchy. Do not copy or visit every node just to reject all of them.
+        const bool hasSimulatingScene=std::any_of(_Scenes.begin(),_Scenes.end(),
+            [](const Scene* scene){return scene->IsSimulationEnabled();});
+        if(!_ConstructionDepth&&hasSimulatingScene) {
             RuntimeOperation operation(*this);
             std::vector<std::uint64_t> objects;
             objects.reserve(_Nodes.size());
             for(const auto& entry:_Nodes) objects.push_back(entry.first);
             for(auto id:objects) {
                 GameObjectState* node=Find(id);
-                if(!IsInScene(node) || !node->IsActiveInHierarchy() || !node->SceneOwner->IsSimulationEnabled()) continue;
+                if(!node || !node->SceneOwner || !node->SceneOwner->IsSimulationEnabled() ||
+                    !IsInScene(node) || !node->IsActiveInHierarchy()) continue;
                 const auto components=node->Components;
                 for(const auto& component:components) {
                     if(!IsUsable(node) || !node->SceneOwner->IsSimulationEnabled()) break;

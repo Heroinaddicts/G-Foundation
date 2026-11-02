@@ -1,7 +1,9 @@
 #include "TransformComponent.h"
 #include "ComponentFactory.h"
 #include "RuntimeMath.h"
+#include "GameObject.h"
 #include <limits>
+#include <vector>
 
 namespace {
 bool UnitRotation(GameSproutRuntime::Quaternion value,GameSproutRuntime::Quaternion& unit) {
@@ -18,7 +20,14 @@ bool UnitRotation(GameSproutRuntime::Quaternion value,GameSproutRuntime::Quatern
 
 namespace GameSproutRuntime {
 TransformComponent::TransformComponent(IGameObject* owner)
-    : BuiltinComponent<ITransformComponent>(owner, "GameSproutRuntime.Transform") {}
+    : BuiltinComponent<ITransformComponent>(owner, "GameSproutRuntime.Transform") {
+    if(auto* access=dynamic_cast<ObjectAccess*>(owner))_Runtime=&access->State().Owner;
+}
+
+void TransformComponent::InvalidateLocalMatrix() {
+    _LocalMatrixKnown=false;
+    if(_Runtime)_Runtime->InvalidateTransforms();
+}
 
 bool TransformComponent::IsSceneRoot() const {
     return _GameObject && static_cast<IGameObject*>(_GameObject->GetScene()) == _GameObject;
@@ -29,6 +38,7 @@ void TransformComponent::SetLocalPosition(Vector3 value) {
         (value.X == GetLocalPosition().X && value.Y == GetLocalPosition().Y && value.Z == GetLocalPosition().Z)) return;
     PrepareAuthoringChange();
     _Position = value;
+    InvalidateLocalMatrix();
     ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
 }
@@ -41,6 +51,7 @@ bool TransformComponent::SetLocalRotation(Quaternion value) {
     if (unit.X == current.X && unit.Y == current.Y && unit.Z == current.Z && unit.W == current.W) return true;
     PrepareAuthoringChange();
     _Rotation = unit;
+    InvalidateLocalMatrix();
     ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
     return true;
@@ -51,15 +62,20 @@ void TransformComponent::SetLocalScale(Vector3 value) {
         (value.X == _Scale.X && value.Y == _Scale.Y && value.Z == _Scale.Z)) return;
     PrepareAuthoringChange();
     _Scale = value;
+    InvalidateLocalMatrix();
     ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
 }
 
 Mat4 TransformComponent::GetLocalMatrix() const {
-    if (_HasPhysicsPose && _PhysicsDynamic) return _PhysicsMatrix;
-    if (_PoseOwner) return _EvaluatedMatrix;
-    if (_HasPhysicsPose) return _PhysicsMatrix;
-    return RuntimeMath::ComposeTRS(_Position, _Rotation, _Scale);
+    if(!_LocalMatrixKnown) {
+        if(_HasPhysicsPose&&_PhysicsDynamic)_LocalMatrixCache=_PhysicsMatrix;
+        else if(_PoseOwner)_LocalMatrixCache=_EvaluatedMatrix;
+        else if(_HasPhysicsPose)_LocalMatrixCache=_PhysicsMatrix;
+        else _LocalMatrixCache=RuntimeMath::ComposeTRS(_Position,_Rotation,_Scale);
+        _LocalMatrixKnown=true;
+    }
+    return _LocalMatrixCache;
 }
 
 bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& matrix) {
@@ -67,18 +83,38 @@ bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& m
     bool changed=_PoseOwner!=animatorID;
     for(unsigned index=0;index<16&&!changed;++index)changed=_EvaluatedMatrix.Data[index]!=matrix.Data[index];
     _EvaluatedMatrix=matrix;_PoseOwner=animatorID;
-    if(changed)NotifyRuntimePropertiesChanged(_GameObject);
+    if(changed){InvalidateLocalMatrix();NotifyRuntimePropertiesChanged(_GameObject);}
     return true;
 }
-void TransformComponent::ClearEvaluatedPose(std::uint64_t animatorID) {if(_PoseOwner==animatorID){_PoseOwner=0;NotifyRuntimePropertiesChanged(_GameObject);}}
+void TransformComponent::ClearEvaluatedPose(std::uint64_t animatorID) {if(_PoseOwner==animatorID){_PoseOwner=0;InvalidateLocalMatrix();NotifyRuntimePropertiesChanged(_GameObject);}}
 
 Mat4 TransformComponent::GetWorldMatrix() const {
-    Mat4 world = GetLocalMatrix();
-    // 迭代沿父链累积，避免深层树递归消耗调用栈；节点管理器负责拒绝父子循环。
-    for (IGameObject* parent = _GameObject->Parent(); parent; parent = parent->Parent()) {
-        if (ITransformComponent* transform = parent->GetTransform()) world = transform->GetLocalMatrix() * world;
+    if(!_Runtime) {
+        Mat4 world=GetLocalMatrix();
+        for(IGameObject* parent=_GameObject->Parent();parent;parent=parent->Parent())
+            if(auto* transform=parent->GetTransform())world=transform->GetLocalMatrix()*world;
+        return world;
     }
-    return world;
+    const auto epoch=_Runtime->GetTransformEpoch();
+    if(_WorldMatrixEpoch==epoch)return _WorldMatrixCache;
+    // Resolve a cold/changed ancestor chain iteratively. Cache every visited
+    // parent, so a scene traversal computes each unchanged world matrix once.
+    std::vector<const TransformComponent*> chain;
+    const TransformComponent* current=this;
+    Mat4 world;
+    while(current) {
+        if(current->_WorldMatrixEpoch==epoch){world=current->_WorldMatrixCache;break;}
+        chain.push_back(current);
+        auto* parent=current->_GameObject->Parent();
+        auto* parentTransform=parent?parent->GetTransform():nullptr;
+        current=dynamic_cast<const TransformComponent*>(parentTransform);
+        if(parentTransform&&!current){world=parentTransform->GetWorldMatrix();break;}
+    }
+    for(auto item=chain.rbegin();item!=chain.rend();++item) {
+        world=world*(*item)->GetLocalMatrix();
+        (*item)->_WorldMatrixCache=world;(*item)->_WorldMatrixEpoch=epoch;
+    }
+    return _WorldMatrixCache;
 }
 
 bool TransformComponent::SetLocalMatrix(const Mat4& value) {
@@ -92,6 +128,7 @@ bool TransformComponent::SetLocalMatrix(const Mat4& value) {
     _Rotation = unit;
     _Scale = scale;
     _HasPhysicsPose=false;
+    InvalidateLocalMatrix();
     ++_AuthoringRevision;
     NotifyComponentChanged(_GameObject, this);
     return true;
@@ -109,8 +146,12 @@ bool TransformComponent::SetPhysicsPose(const Mat4& local,bool dynamic) {
     for(unsigned index=0;index<16&&!changed;++index)changed=_PhysicsMatrix.Data[index]!=local.Data[index];
     _PhysicsPosition=position;_PhysicsRotation=rotation;_PhysicsMatrix=local;
     _HasPhysicsPose=true;_PhysicsDynamic=dynamic;
-    if(changed)NotifyRuntimePropertiesChanged(_GameObject);
+    if(changed){InvalidateLocalMatrix();NotifyRuntimePropertiesChanged(_GameObject);}
     return true;
 }
-void TransformComponent::ClearPhysicsPose(){if(_HasPhysicsPose)NotifyRuntimePropertiesChanged(_GameObject);_HasPhysicsPose=false;_PhysicsDynamic=false;}
+void TransformComponent::ClearPhysicsPose(){
+    const bool changed=_HasPhysicsPose;
+    _HasPhysicsPose=false;_PhysicsDynamic=false;
+    if(changed){InvalidateLocalMatrix();NotifyRuntimePropertiesChanged(_GameObject);}
+}
 }

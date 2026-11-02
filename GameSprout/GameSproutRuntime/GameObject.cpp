@@ -226,7 +226,10 @@ void NotifyComponentChanged(IGameObject* owner,IComponent* component) {
 void NotifyRuntimePropertiesChanged(IGameObject* owner) {
     if(auto* access=dynamic_cast<ObjectAccess*>(owner)) {
         auto& state=access->State();
-        if(state.Owner.IsInScene(&state))state.Owner.MarkObjectPropertiesChanged(state.ID);
+        if(state.Owner.IsInScene(&state)) {
+            state.SceneOwner->InvalidateRenderSnapshot();
+            state.Owner.MarkObjectPropertiesChanged(state.ID);
+        }
     }
 }
 }

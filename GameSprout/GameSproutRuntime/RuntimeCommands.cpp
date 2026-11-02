@@ -68,6 +68,7 @@ bool Runtime::ReparentNow(GameObjectState& child,GameObjectState* parent,bool ke
     }
     if(parent) parent->Children.push_back(&child);
     child.Parent=parent;child.PendingAttach=false;child.Initializing=false;
+    InvalidateTransforms();
     for(auto* node:subtree) {
         node->SceneOwner=newScene;
         if(willBeInScene) _DetachedObjects.erase(node->ID);

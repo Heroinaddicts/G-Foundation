@@ -1,9 +1,23 @@
 #include "RuntimeRenderer.h"
 #include "RuntimeMath.h"
+#include "Scene.h"
 #include <cmath>
 
 namespace GameSproutRuntime {
 bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) {
+    const auto sceneID=view.Scene->GetInstanceID();
+    const auto revision=static_cast<Scene*>(view.Scene)->GetRenderRevision();
+    const auto mask=view.Camera.Projection.CullingMask;
+    if(_ObjectSnapshotKnown&&_ObjectSceneID==sceneID&&_ObjectSceneRevision==revision&&_ObjectCullingMask==mask) {
+        _Statistics.SkippedObjects+=_ExtractionSkipped;
+        Diagnostic(_ExtractionDiagnostic);
+        return true;
+    }
+    _ObjectSnapshotKnown=false;
+    objects.clear();
+    const auto skippedBefore=_Statistics.SkippedObjects;
+    const auto diagnosticBefore=_Error.size();
+    ++_Statistics.SceneSnapshotRebuilds;
     std::vector<IGameObject*> pending{view.Scene};
     while(!pending.empty()) {
         auto* object=pending.back();pending.pop_back();
@@ -27,8 +41,14 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         data.Negative=determinant<0;data.Mesh=mesh->GetMesh();
         data.Materials.reserve(renderer->GetMaterialCount());
         for(std::size_t slot=0;slot<renderer->GetMaterialCount();++slot) data.Materials.push_back(renderer->GetMaterial(slot));
+        data.MaterialCache.resize(data.Materials.size(),nullptr);
         objects.push_back(std::move(data));
     }
+    _ObjectSceneID=sceneID;_ObjectSceneRevision=revision;_ObjectCullingMask=mask;
+    _ExtractionSkipped=_Statistics.SkippedObjects-skippedBefore;
+    _ExtractionDiagnostic=_Error.substr(diagnosticBefore);
+    if(!_ExtractionDiagnostic.empty()&&_ExtractionDiagnostic.front()=='\n')_ExtractionDiagnostic.erase(0,1);
+    _ObjectSnapshotKnown=true;
     return true;
 }
 }

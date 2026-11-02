@@ -95,6 +95,10 @@ Renderer::~Renderer() {
     if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
+    _PreparedDraws.clear();_SceneObjects.clear();_SceneLights.clear();
+    _SortedMeshCount=0;_SortedMaterialCount=0;
+    _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;
+    _ExtractionDiagnostic.clear();_LightDiagnostic.clear();
     ClearInstanceBuffers();
     for(auto& entry:_ShaderPipelines)delete entry.second;
     _ShaderPipelines.clear();

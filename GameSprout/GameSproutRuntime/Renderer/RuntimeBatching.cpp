@@ -4,6 +4,17 @@
 
 namespace GameSproutRuntime {
 void Renderer::SortPrepared(std::vector<PreparedDraw>& draws) {
+    // Assign numeric ranks in the same GUID/LocalID order as the resource maps.
+    // The order stays identical to the previous string comparator, but static
+    // frames no longer compare or copy GUID strings for every visible section.
+    if(_SortedMeshCount!=_Meshes.size()) {
+        std::uint64_t rank=0;for(auto& entry:_Meshes)entry.second.SortRank=++rank;
+        _SortedMeshCount=_Meshes.size();
+    }
+    if(_SortedMaterialCount!=_Materials.size()) {
+        std::uint64_t rank=0;for(auto& entry:_Materials)entry.second.SortRank=++rank;
+        _SortedMaterialCount=_Materials.size();
+    }
     // Queue class always wins over material priority. Transparent draws remain
     // back-to-front inside each priority; custom vertex/depth programs are not
     // assumed order independent and remain barriers to opaque state sorting.
@@ -19,12 +30,17 @@ void Renderer::SortPrepared(std::vector<PreparedDraw>& draws) {
         while(end<draws.size()&&!draws[end].Transparent&&!draws[end].Shader&&
             draws[end].Material->SortingPriority==draws[begin].Material->SortingPriority)++end;
         std::stable_sort(draws.begin()+begin,draws.begin()+end,[](const PreparedDraw& left,const PreparedDraw& right) {
-            return std::tie(left.Material->ShadingModel,left.Material->DoubleSided,left.MaterialReference.Guid,left.MaterialReference.LocalID,
-                left.Object->Mesh.Guid,left.Object->Mesh.LocalID,left.Section.FirstIndex,left.Section.IndexCount,
-                left.Object->Negative,left.Object->Layer,left.Object->Skinned)<
-                std::tie(right.Material->ShadingModel,right.Material->DoubleSided,right.MaterialReference.Guid,right.MaterialReference.LocalID,
-                right.Object->Mesh.Guid,right.Object->Mesh.LocalID,right.Section.FirstIndex,right.Section.IndexCount,
-                right.Object->Negative,right.Object->Layer,right.Object->Skinned);
+            if(left.Material->ShadingModel!=right.Material->ShadingModel)return left.Material->ShadingModel<right.Material->ShadingModel;
+            if(left.Material->DoubleSided!=right.Material->DoubleSided)return left.Material->DoubleSided<right.Material->DoubleSided;
+            const auto leftMaterial=left.CachedMaterial?left.CachedMaterial->SortRank:0;
+            const auto rightMaterial=right.CachedMaterial?right.CachedMaterial->SortRank:0;
+            if(leftMaterial!=rightMaterial)return leftMaterial<rightMaterial;
+            if(left.Mesh->SortRank!=right.Mesh->SortRank)return left.Mesh->SortRank<right.Mesh->SortRank;
+            if(left.Section.FirstIndex!=right.Section.FirstIndex)return left.Section.FirstIndex<right.Section.FirstIndex;
+            if(left.Section.IndexCount!=right.Section.IndexCount)return left.Section.IndexCount<right.Section.IndexCount;
+            if(left.Object->Negative!=right.Object->Negative)return left.Object->Negative<right.Object->Negative;
+            if(left.Object->Layer!=right.Object->Layer)return left.Object->Layer<right.Object->Layer;
+            return left.Object->Skinned<right.Object->Skinned;
         });
         begin=end;
     }
@@ -117,7 +133,7 @@ bool Renderer::DrawPrepared(GRHI::IRenderPass& pass,const std::vector<PreparedDr
             if(count>1) {
                 InstanceBatchKey key;key.SceneID=view.Scene->GetInstanceID();key.FirstObjectID=draws[begin].Object->ObjectID;key.Mesh=draw.Object->Mesh;
                 key.GroupOrdinal=draws[begin].SectionOrdinal;
-                key.Material=draw.MaterialReference;key.FirstIndex=draw.Section.FirstIndex;key.IndexCount=draw.Section.IndexCount;
+                key.Material=*draw.MaterialReference;key.FirstIndex=draw.Section.FirstIndex;key.IndexCount=draw.Section.IndexCount;
                 key.Part=part;key.Layer=draw.Object->Layer;key.Negative=draw.Object->Negative;
                 instances=InstanceBuffer(key,draws,begin,count);
             }

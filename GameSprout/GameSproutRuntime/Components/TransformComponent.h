@@ -2,6 +2,7 @@
 #include "BuiltinComponent.h"
 
 namespace GameSproutRuntime {
+class Runtime;
 class TransformComponent final : public BuiltinComponent<ITransformComponent> {
 public:
     explicit TransformComponent(IGameObject* owner);
@@ -32,6 +33,11 @@ public:
 private:
     bool IsSceneRoot() const;
     void PrepareAuthoringChange();
+    void InvalidateLocalMatrix();
+    Runtime* _Runtime=nullptr;
+    mutable bool _LocalMatrixKnown=false;
+    mutable Mat4 _LocalMatrixCache,_WorldMatrixCache;
+    mutable std::uint64_t _WorldMatrixEpoch=0;
     Vector3 _Position;
     Quaternion _Rotation;
     Vector3 _Scale{1.0f, 1.0f, 1.0f};
@@ -42,5 +48,6 @@ private:
     Quaternion _PhysicsRotation;
     Mat4 _PhysicsMatrix;
     std::uint64_t _AuthoringRevision=0;
+    friend class Runtime;
 };
 }

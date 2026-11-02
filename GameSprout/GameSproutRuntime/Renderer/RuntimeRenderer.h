@@ -33,6 +33,7 @@ private:
         bool operator<(const ResourceKey& other) const {return std::tie(Guid,LocalID)<std::tie(other.Guid,other.LocalID);}
     };
     struct MeshGPU {
+        std::uint64_t SortRank=0;
         struct SkinVertex { std::uint32_t Bones[4]{}; float Weights[4]{}; };
         MeshRenderData Data;
         std::vector<Vector3> Positions;
@@ -56,6 +57,7 @@ private:
     };
     struct BoundUniform {std::uint32_t Slot=0;std::vector<std::uint8_t> Bytes;};
     struct Material {
+        std::uint64_t SortRank=0;
         MaterialRenderData Data;bool Loaded=false;std::string Error;
         bool ShaderAttempted=false,ShaderReady=false;
         std::vector<BoundUniform> VertexUniforms,FragmentUniforms;
@@ -92,6 +94,11 @@ private:
         Mat4 Model,Normal;
         ResourceReference Mesh;
         std::vector<ResourceReference> Materials;
+        // Renderer-owned resource pointers, invalidated with the resource
+        // provider revision. No Runtime node pointers survive between frames.
+        MeshGPU* Geometry=nullptr;
+        std::vector<Material*> MaterialCache;
+        bool BoundsInitialized=false;
         std::string Name;
         std::vector<Mat4> SkinMatrices;
         bool Skinned=false;
@@ -114,7 +121,7 @@ private:
         MeshGPU* Mesh=nullptr;
         MeshSection Section;
         const MaterialRenderData* Material=nullptr;
-        ResourceReference MaterialReference;
+        const ResourceReference* MaterialReference=nullptr;
         TextureGPU* Texture=nullptr;
         TextureGPU* NormalTexture=nullptr;
         Renderer::Material* CachedMaterial=nullptr;
@@ -198,6 +205,14 @@ private:
     std::map<ResourceKey,ShaderGPU> _UserShaders;
     std::map<ShaderPipelineKey,GRHI::IGraphicsPipeline*> _ShaderPipelines;
     std::map<PipelineKey,GRHI::IGraphicsPipeline*> _Pipelines;
+    std::vector<DrawObject> _SceneObjects;
+    std::vector<DirectionalLight> _SceneLights;
+    std::vector<PreparedDraw> _PreparedDraws;
+    std::size_t _SortedMeshCount=0,_SortedMaterialCount=0;
+    std::uint64_t _ObjectSceneID=0,_ObjectSceneRevision=0,_LightSceneID=0,_LightSceneRevision=0;
+    std::uint32_t _ObjectCullingMask=0,_ExtractionSkipped=0;
+    bool _ObjectSnapshotKnown=false,_LightSnapshotKnown=false;
+    std::string _ExtractionDiagnostic,_LightDiagnostic;
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
     GRHI::IShader* _Shaders[16]{};
     std::map<InstanceBatchKey,InstanceBatch> _InstanceBatches;
