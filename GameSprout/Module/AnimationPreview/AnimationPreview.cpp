@@ -18,6 +18,7 @@ bool AnimationPreview::Launch(GameSproutEditor::GameSproutModuleApi*){
 GameSproutRuntime::IGameSproutRuntime* AnimationPreview::Runtime() const{return _Runtime;}
 bool AnimationPreview::Ready(std::string& error) const{
     error.clear();
+    if((_Host&&_Host->IsGameplayActive())||(_Scenes&&_Scenes->IsPlaySessionActive())){error="正式运行期间不能启动编辑动画预览。";return false;}
     if(!Runtime()||!_Scenes||!_Scenes->GetActiveScene()){error="当前没有可预览的场景。";return false;}
     if(_Scenes->HasTransformEdit()){error="请先完成或取消 Scene 中的变换拖拽。";return false;}
     if(Runtime()->IsExecuting()){error="Runtime 正在执行回调，不能重入动画预览。";return false;}
@@ -85,6 +86,7 @@ bool AnimationPreview::SeekAnimationClipPreview(uint64_t objectID,float seconds,
     PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();error.clear();return true;
 }
 void AnimationPreview::StopAnimationClipPreview(uint64_t objectID){
+    if((_Host&&_Host->IsGameplayActive())||(_Scenes&&_Scenes->IsPlaySessionActive()))return;
     if(!objectID||objectID!=_ClipObjectID||!Runtime()||Runtime()->IsExecuting())return;
     ClearClip();PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();
 }
@@ -104,6 +106,7 @@ void AnimationPreview::SetAnimationPreviewPlaying(bool playing){
     PublishState();UpdateClock();_Host->ResetClock();UpdateFrameSubscription();
 }
 void AnimationPreview::ResetAnimationPreview(){
+    if((_Host&&_Host->IsGameplayActive())||(_Scenes&&_Scenes->IsPlaySessionActive()))return;
     auto* runtime=Runtime();if(!runtime||runtime->IsExecuting())return;
     ClearClip();_Playing=false;_PendingAnimators.clear();_CheckClip=false;
     std::vector<GameSproutRuntime::IGameObject*> nodes;
