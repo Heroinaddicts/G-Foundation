@@ -6,6 +6,7 @@ include("${gamesprout_root}/Foundation/FoundationApi.cmake")
 include("${gamesprout_root}/GRHI/GRHI.cmake")
 include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_executable(AssetsImportChecks AssetsImportChecks.cpp)
 add_executable(StartupReconcileChecks StartupReconcileChecks.cpp)
 add_executable(WarmStartupChecks WarmStartupChecks.cpp)
@@ -20,6 +21,14 @@ add_executable(HierarchySceneChecks HierarchySceneChecks.cpp NodeInspectorChecks
 add_executable(SceneEditingChecks SceneEditingChecks.cpp)
 add_executable(PreparedRenderChecks PreparedRenderChecks.cpp)
 add_executable(PrefabImportEntryChecks PrefabImportEntryChecks.cpp)
+add_executable(PhysicsMaterialDiscoveryChecks PhysicsMaterialDiscoveryChecks.cpp)
+target_compile_features(PhysicsMaterialDiscoveryChecks PRIVATE cxx_std_20)
+target_include_directories(PhysicsMaterialDiscoveryChecks PRIVATE
+    "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(PhysicsMaterialDiscoveryChecks PRIVATE Foundation::FoundationApi
+    GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
+target_compile_definitions(PhysicsMaterialDiscoveryChecks PRIVATE
+    TEST_GENERATOR="${gamesprout_root}/Examples/ThirdPerson/CreateProject.py" TEST_PYTHON="${Python3_EXECUTABLE}")
 target_compile_features(PrefabImportEntryChecks PRIVATE cxx_std_20)
 target_include_directories(PrefabImportEntryChecks PRIVATE
     "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
@@ -51,6 +60,7 @@ target_compile_definitions(${check_target} PRIVATE TEST_BINARY_ROOT="${assets_te
 endforeach()
 target_compile_definitions(PreparedRenderChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
 target_compile_definitions(PrefabImportEntryChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
+target_compile_definitions(PhysicsMaterialDiscoveryChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
 # Exercise the exported core and the same already-built plugin used by the editor.
 # Tests must not add product source subdirectories or overwrite the application DLLs.
 add_library(ModelTexturePipeline SHARED IMPORTED)
@@ -100,6 +110,8 @@ add_custom_command(TARGET SceneEditingChecks POST_BUILD
     VERBATIM
 )
 enable_testing()
+add_test(NAME Assets.PhysicsMaterialDiscovery COMMAND PhysicsMaterialDiscoveryChecks)
+set_tests_properties(Assets.PhysicsMaterialDiscovery PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 45)
 add_test(NAME Assets.PrefabPublicImport COMMAND PrefabImportEntryChecks)
 set_tests_properties(Assets.PrefabPublicImport PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 add_test(NAME Assets.ModelTextures COMMAND ModelTextureChecks)
