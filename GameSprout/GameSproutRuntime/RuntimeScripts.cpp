@@ -22,6 +22,7 @@ const std::vector<BuiltinEntry>& Builtins() {
         {"GameSproutRuntime.MeshRenderer","Mesh Renderer","Rendering",&typeid(IMeshRendererComponent),false},
         {"GameSproutRuntime.SkinnedMeshRenderer","Skinned Mesh Renderer","Rendering",&typeid(ISkinnedMeshRendererComponent),false},
         {"GameSproutRuntime.Camera","Camera","Rendering",&typeid(ICameraComponent),false},
+        {"GameSproutRuntime.Light","Light","Rendering",&typeid(ILightComponent),false},
         {"GameSproutRuntime.Animator","Animator","Animation",&typeid(IAnimatorComponent),false},
         {"GameSproutRuntime.Rigidbody","Rigidbody","Physics",&typeid(IRigidbodyComponent),false},
         {"GameSproutRuntime.BoxCollider","Box Collider","Physics",&typeid(IBoxColliderComponent),false},

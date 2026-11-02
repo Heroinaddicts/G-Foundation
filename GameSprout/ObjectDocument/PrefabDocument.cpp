@@ -6,6 +6,7 @@
 namespace PrefabDocument {
 bool Validate(const Json::Value& data,std::string& error) {
     if(!SceneDocument::Validate(data,error))return false;
+    if(data.isMember("EnvironmentLighting")) {error="Prefab must not contain scene environment lighting";return false;}
     if(!data["RootComponents"].empty()||data.get("RootMainCamera",false).asBool()) {
         error="Prefab must not contain scene-root components or a scene-root camera";return false;
     }

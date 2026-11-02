@@ -22,7 +22,7 @@ static void CheckStaticFlagDocuments(GameSproutRuntime::IGameSproutRuntime& runt
     }
     auto bad=document;bad["RootStaticFlags"]=128;Check(!SceneDocument::Validate(bad,error),"Invalid root static declaration accepted");
     auto prefab=document;prefab.removeMember("RootComponents");prefab.removeMember("RootStaticFlags");prefab.removeMember("RootLayer");prefab.removeMember("RootTagID");
-    prefab.removeMember("RootActive");prefab["MainCameraID"]=Json::UInt64(0);
+    prefab.removeMember("RootActive");prefab.removeMember("EnvironmentLighting");prefab["MainCameraID"]=Json::UInt64(0);
     Check(PrefabDocument::Validate(prefab,error),error);
     GameSproutRuntime::IGameObject* instance=nullptr;std::vector<GameSproutRuntime::PrefabObjectMapping> mappings;
     Check(SceneDocument::InstantiatePrefab(prefab,runtime,*restored,*restored,instance,mappings,error),error);

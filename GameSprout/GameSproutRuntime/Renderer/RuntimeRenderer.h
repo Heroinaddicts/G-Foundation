@@ -39,9 +39,14 @@ private:
         std::vector<SkinVertex> Skin;
         std::vector<std::uint32_t> Indices;
         GRHI::IBuffer* Buffer=nullptr;
+        GRHI::IBuffer* ShaderVertexBuffer=nullptr; // Canonical P/N/C/UV, only allocated for user shaders.
+        // A private render-only bound derived from validated vertex positions.
+        // Does not replace the provider's authored/queried LocalBounds contract.
+        Vector3 CullMinimum,CullMaximum;
+        bool CullBoundsKnown=false;
         std::string Error;
     };
-    struct TextureGPU {GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;std::string Error;};
+    struct TextureGPU {GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;bool SRGB=false;std::string Error;};
     struct ColliderMeshWire {
         ResourceReference Reference;
         bool Convex=false;
@@ -49,15 +54,36 @@ private:
         std::vector<std::pair<Vector3,Vector3>> Edges;
         std::string Error;
     };
-    struct Material {MaterialRenderData Data;bool Loaded=false;std::string Error;};
+    struct BoundUniform {std::uint32_t Slot=0;std::vector<std::uint8_t> Bytes;};
+    struct Material {
+        MaterialRenderData Data;bool Loaded=false;std::string Error;
+        bool ShaderAttempted=false,ShaderReady=false;
+        std::vector<BoundUniform> VertexUniforms,FragmentUniforms;
+        std::vector<TextureGPU*> ShaderTextures;
+    };
+    struct ShaderGPU {
+        ShaderRenderData Data;
+        GRHI::IShader* Vertex=nullptr;
+        GRHI::IShader* Fragment=nullptr;
+        bool Loaded=false;
+        std::string Error;
+    };
+    struct ShaderPipelineKey {
+        std::string Guid;std::uint64_t LocalID=0;
+        GRHI::TextureFormat Format=GRHI::TextureFormat::Unknown;
+        bool Negative=false;
+        bool operator<(const ShaderPipelineKey& other) const {
+            return std::tie(Guid,LocalID,Format,Negative)<std::tie(other.Guid,other.LocalID,other.Format,other.Negative);
+        }
+    };
     struct PipelineKey {
         GRHI::TextureFormat Format=GRHI::TextureFormat::Unknown;
         std::uint32_t Stride=0,Position=0,Normal=0;
         std::int32_t Color=-1,UV=-1,BoneIndices=-1,BoneWeights=-1;
-        bool Grid=false,DoubleSided=false,Negative=false,DebugTriangles=false,DepthTest=true;
+        bool Grid=false,DoubleSided=false,Negative=false,DebugTriangles=false,DepthTest=true,Lit=false,Instanced=false;
         bool operator<(const PipelineKey& other) const {
-            return std::tie(Format,Stride,Position,Normal,Color,UV,BoneIndices,BoneWeights,Grid,DoubleSided,Negative,DebugTriangles,DepthTest)<
-                std::tie(other.Format,other.Stride,other.Position,other.Normal,other.Color,other.UV,other.BoneIndices,other.BoneWeights,other.Grid,other.DoubleSided,other.Negative,other.DebugTriangles,other.DepthTest);
+            return std::tie(Format,Stride,Position,Normal,Color,UV,BoneIndices,BoneWeights,Grid,DoubleSided,Negative,DebugTriangles,DepthTest,Lit,Instanced)<
+                std::tie(other.Format,other.Stride,other.Position,other.Normal,other.Color,other.UV,other.BoneIndices,other.BoneWeights,other.Grid,other.DoubleSided,other.Negative,other.DebugTriangles,other.DepthTest,other.Lit,other.Instanced);
         }
     };
     struct Depth {GRHI::ITexture* Texture=nullptr;std::uint64_t LastUsed=0;};
@@ -70,8 +96,64 @@ private:
         std::vector<Mat4> SkinMatrices;
         bool Skinned=false;
         bool Negative=false;
+        std::uint8_t Layer=0;
     };
     struct DrawUniform {Mat4 Model,ViewProjection,Normal;Color BaseColor;Vector4 TextureST{1,1,0,0};};
+    static constexpr std::size_t MaxDirectionalLights=4;
+    struct DirectionalLight {Vector3 TowardsLight;Color Radiance;std::uint32_t CullingMask=0;};
+    struct LitUniform {
+        Vector4 CameraPosition;
+        Vector4 Directions[MaxDirectionalLights]; // W is one for an active slot.
+        Color Radiances[MaxDirectionalLights];
+        Vector4 Parameters; // Metallic, perceptual roughness, normal scale, has normal map.
+        Color Emission;
+        Vector4 NormalTextureST;
+    };
+    struct PreparedDraw {
+        const DrawObject* Object=nullptr;
+        MeshGPU* Mesh=nullptr;
+        MeshSection Section;
+        const MaterialRenderData* Material=nullptr;
+        ResourceReference MaterialReference;
+        TextureGPU* Texture=nullptr;
+        TextureGPU* NormalTexture=nullptr;
+        Renderer::Material* CachedMaterial=nullptr;
+        ShaderGPU* Shader=nullptr;
+        bool Transparent=false;
+        float DistanceSquared=0;
+        std::uint64_t SectionOrdinal=0;
+    };
+    struct InstanceVertex {Mat4 Model,Normal;};
+    struct InstanceBatchKey {
+        std::uint64_t SceneID=0,FirstObjectID=0,GroupOrdinal=0;
+        ResourceReference Mesh,Material;
+        std::uint32_t FirstIndex=0,IndexCount=0,Part=0;
+        std::uint8_t Layer=0;
+        bool Negative=false;
+        bool operator<(const InstanceBatchKey& other) const {
+            return std::tie(SceneID,FirstObjectID,GroupOrdinal,Mesh.Guid,Mesh.LocalID,Material.Guid,Material.LocalID,FirstIndex,IndexCount,Part,Layer,Negative)<
+                std::tie(other.SceneID,other.FirstObjectID,other.GroupOrdinal,other.Mesh.Guid,other.Mesh.LocalID,other.Material.Guid,other.Material.LocalID,
+                    other.FirstIndex,other.IndexCount,other.Part,other.Layer,other.Negative);
+        }
+    };
+    struct InstanceBatch {
+        GRHI::IBuffer* Buffer=nullptr;
+        std::vector<InstanceVertex> Vertices;
+        std::uint64_t LastUsed=0;
+    };
+    static constexpr std::size_t MaxBatchInstances=4096;
+    static constexpr std::uint64_t MaxResidentInstanceBytes=32u*1024u*1024u;
+    void SortPrepared(std::vector<PreparedDraw>&);
+    bool DrawPrepared(GRHI::IRenderPass&,const std::vector<PreparedDraw>&,const RenderView&,
+        const Mat4&,GRHI::TextureFormat,const std::vector<DirectionalLight>&,const void*,std::size_t);
+    bool DrawBuiltin(GRHI::IRenderPass&,const PreparedDraw&,const RenderView&,const Mat4&,
+        GRHI::TextureFormat,const std::vector<DirectionalLight>&,const void*,std::size_t,
+        GRHI::IBuffer* instances=nullptr,std::uint32_t instanceCount=1);
+    GRHI::IBuffer* InstanceBuffer(const InstanceBatchKey&,const std::vector<PreparedDraw>&,std::size_t,std::size_t);
+    void PruneInstanceBuffers(std::uint64_t requiredBytes=0);
+    void ClearInstanceBuffers();
+    bool ExtractLights(IScene*,std::vector<DirectionalLight>&);
+    LitUniform MakeLitUniform(const RenderView&,const DrawObject&,const MaterialRenderData&,const std::vector<DirectionalLight>&,bool);
     // Keep this limit equal to Preview.hlsl. Uniform data is per object, never shared with the Mesh.
     static constexpr std::size_t MaxSkinBones = 128;
     struct SkinUniform { Mat4 Bones[MaxSkinBones]; };
@@ -83,6 +165,12 @@ private:
     ColliderMeshWire* ColliderMesh(IColliderComponent& collider,const ResourceReference& reference,bool convex,const Mat4& relative);
     TextureGPU* Texture(const ResourceReference& reference);
     Material* MaterialData(const ResourceReference& reference);
+    ShaderGPU* Shader(const ResourceReference& reference);
+    bool PrepareShaderMaterial(Material& material,ShaderGPU& shader);
+    bool EnsureShaderVertices(MeshGPU& mesh,const ResourceReference& reference);
+    GRHI::IGraphicsPipeline* ShaderPipeline(const ResourceReference&,ShaderGPU&,GRHI::TextureFormat,bool negative);
+    bool DrawShaderMaterial(GRHI::IRenderPass&,Material&,ShaderGPU&,MeshGPU&,const ResourceReference&,
+        const MeshSection&,const DrawObject&,const Mat4&,GRHI::TextureFormat);
     GRHI::IGraphicsPipeline* Pipeline(const PipelineKey& key);
     GRHI::ITexture* DepthTarget(std::uint32_t width,std::uint32_t height);
     bool DrawGrid(GRHI::IRenderPass& pass,const Mat4& viewProjection,GRHI::TextureFormat format);
@@ -107,9 +195,14 @@ private:
     std::map<std::pair<std::uint64_t,std::uint64_t>,ColliderMeshWire> _ColliderMeshes;
     std::map<ResourceKey,TextureGPU> _Textures;
     std::map<ResourceKey,Material> _Materials;
+    std::map<ResourceKey,ShaderGPU> _UserShaders;
+    std::map<ShaderPipelineKey,GRHI::IGraphicsPipeline*> _ShaderPipelines;
     std::map<PipelineKey,GRHI::IGraphicsPipeline*> _Pipelines;
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
-    GRHI::IShader* _Shaders[11]{};
+    GRHI::IShader* _Shaders[16]{};
+    std::map<InstanceBatchKey,InstanceBatch> _InstanceBatches;
+    std::vector<InstanceVertex> _InstanceScratch;
+    std::uint64_t _ResidentInstanceBytes=0;
     GRHI::ITexture* _White=nullptr;
     GRHI::ISampler* _DefaultSampler=nullptr;
     GRHI::IBuffer* _Grid=nullptr;

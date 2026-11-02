@@ -49,6 +49,7 @@ add_executable(SceneManagerChecks
     "${gamesprout_root}/Module/SceneManager/SceneDocumentSession.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneDeletion.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneTransformEditing.cpp"
+    "${gamesprout_root}/Module/SceneManager/ScenePropertyPreview.cpp"
 )
 target_include_directories(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager"

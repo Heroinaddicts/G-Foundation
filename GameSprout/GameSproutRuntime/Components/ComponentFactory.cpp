@@ -6,6 +6,7 @@
 #include "MeshComponent.h"
 #include "MeshRendererComponent.h"
 #include "CameraComponent.h"
+#include "LightComponent.h"
 #include "AnimatorComponent.h"
 #include "SkinnedMeshRendererComponent.h"
 #include "Physics/PhysicsComponents.h"
@@ -21,6 +22,7 @@ IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owne
     if (type == typeid(IMeshComponent)) return new MeshComponent(owner);
     if (type == typeid(IMeshRendererComponent)) return new MeshRendererComponent(owner);
     if (type == typeid(ICameraComponent)) return new CameraComponent(owner);
+    if (type == typeid(ILightComponent) && owner!=owner->GetScene()) return new LightComponent(owner);
     if (type == typeid(IAnimatorComponent)) return new AnimatorComponent(owner);
     if (type == typeid(ISkinnedMeshRendererComponent)) return new SkinnedMeshRendererComponent(owner);
     if (owner==owner->GetScene()) return nullptr;

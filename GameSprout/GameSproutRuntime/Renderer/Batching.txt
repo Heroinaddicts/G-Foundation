@@ -1,0 +1,38 @@
+Runtime 自动合批与状态复用
+
+职责
+- Runtime 收集可见对象、尊重绘制顺序并归组。游戏代码正常创建 GameObject、设置 Mesh/Material 即可。
+- Shader 负责读取实例矩阵和材质参数；GRHI/SDL 只负责实例输入、绘制命令与底层状态复用。
+- Editor Module 保存材质设置并发布资源修订；MaterialUI 用 .ui 展示与编辑；不参与渲染归组。
+
+自动实例化
+- 默认开启。MaterialRenderData.EnableGPUInstancing 或 RenderView.EnableGPUInstancing 可关闭。
+- 内置 Preview/Lit 的不透明、非蒙皮对象按 Mesh、子网格索引范围、材质身份、镜像绕序和灯光 Layer 归组。
+- 不要求对象设置 Static；位置/旋转/缩放可以不同，也可以在运行时改变。
+- 四种 Color/UV 顶点布局都有实例化变体。每实例 128 字节，包含 Model 与逆转置 Normal 矩阵。
+- 每批最多 4096 实例；超出时继续分批。单个对象或不满足条件的绘制自动采用普通路径。
+- 自定义 Shader 未声明实例数据契约，暂不自动改写其顶点语义；透明和蒙皮也保持普通路径。
+- 不透明类始终先于透明类；各类先按 SortingPriority（-50..50）排序。
+- 透明同优先级保持由远到近。自定义 Shader 是内置不透明状态排序的屏障，避免跨越未知深度行为。
+
+驻留与失效
+- 每个视口持有自己的实例缓存，不向 Editor 暴露 GPU 资源。相同矩阵列表直接复用 GPU 缓冲。
+- 变换或成员变化仅替换对应组；普通相机运动不改变剩余组的稳定 section 标识。
+- 可见性改变可能重组部分批次。资源修订、删除、视口释放会清理相应缓存。
+- 实例缓存预算 32 MiB，超过预算优先清理本帧未引用的旧组；仍不足时退回普通绘制。
+- 离开视野的组保留两帧复用窗口；本帧已记录命令引用的缓冲绝不被替换或驱逐。
+- 这是 CPU 归组、GPU 实例绘制与驻留缓存；尚未实现 GPU 计算剔除、间接绘制或 Unity BRG API。
+
+状态与材质
+- GRHI 每个 RenderPass 独立缓存 Pipeline、Viewport、VB/IB、采样器和 Uniform 状态。
+- Uniform 在录制时复制进入 Pass 持有的不可变字节池；同内容复用快照，绘制不再重复深拷贝。
+- Pipeline 切换保守失效相关绑定，缓存不跨 Pass/命令，保留资源生命周期验证。
+- 这降低每次绘制的 CPU 设置成本；不能将这种状态优化计为 Draw Call 合并。
+- Lit SpecularHighlights 只控制直接光镜面高光，不关闭环境漫反射、发光或直接漫反射。
+- 环境镜面反射、Alembic/XR Motion Vectors 尚无对应渲染功能，不展示无实际作用的材质开关。
+
+验证
+- Runtime.AutomaticInstancingGPU：批次数、完整像素对照、四种布局、镜像/非均匀缩放、材质/子网格/灯光层隔离、优先级、4096 分批、失效与多视口。
+- UnitySceneBridgeChecks --project-root=<project> --render-all --compare-batching：同场景、相机、几何的批次数与完整画面对照，输出热帧 Render 调用耗时。
+- RenderStatistics 公开 InstancedDrawCalls、InstancedInstances、SavedDrawCalls、InstanceBufferUploads、ResidentInstanceBytes。
+- InstancedInstances 按子网格实例计数；同一对象有两个材质 section 时计两次。Scene/Game 状态栏展示实例数量与节省的绘制次数。

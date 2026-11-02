@@ -4,6 +4,8 @@
 #include "Scene.h"
 #include "Components/MeshComponent.h"
 #include "RuntimeMath.h"
+#include "RuntimeFrustum.h"
+#include "RuntimeEnvironment.h"
 #include <exception>
 #include <algorithm>
 
@@ -49,63 +51,10 @@ bool Renderer::Render(const RenderView& view) {
     RuntimeOperation operation(_Runtime);
     try {
         ++_Frame;
+        PruneInstanceBuffers();
         if(view.DrawScene) {
             SyncRevision();
             if(!Initialize()) return false;
-        }
-        std::vector<DebugBatch> debugBatches;
-        if(view.DrawScene && !PrepareDebug(view.DebugDraw,debugBatches)) return false;
-        std::vector<DrawObject> objects;
-        if(view.DrawScene && !Extract(view,objects)) return false;
-        struct Prepared {const DrawObject* Object;MeshGPU* Mesh;MeshSection Section;MaterialRenderData Material;TextureGPU* Texture=nullptr;};
-        std::vector<Prepared> prepared;
-        for(auto& object:objects) {
-            auto* mesh=Mesh(object.Mesh);
-            if(mesh && object.Skinned) {
-                auto* node=_Runtime.QueryGameObject(object.ObjectID);
-                if(!node || !SkinMatrices(*node,*mesh,object.SkinMatrices)) {++_Statistics.SkippedObjects;continue;}
-            }
-            // 更新已加载资源的派生 bounds；不修改节点属性、主相机、Undo 或源场景快照。
-            if(auto* node=_Runtime.QueryGameObject(object.ObjectID)) {
-                if(auto* component=dynamic_cast<MeshComponent*>(node->GetComponent<IMeshComponent>());
-                   component && component->GetMesh()==object.Mesh) {
-                    component->_Bounds=mesh?mesh->Data.LocalBounds:Bounds{};
-                    if(mesh && object.Skinned) {
-                        std::vector<Vector3> positions;
-                        if(!PosedPositions(*node,*mesh,positions)) {++_Statistics.SkippedObjects;continue;}
-                        if(!positions.empty()) {
-                            Vector3 minimum=positions.front(),maximum=minimum;
-                            for(const auto& point:positions) {
-                                minimum={std::min(minimum.X,point.X),std::min(minimum.Y,point.Y),std::min(minimum.Z,point.Z)};
-                                maximum={std::max(maximum.X,point.X),std::max(maximum.Y,point.Y),std::max(maximum.Z,point.Z)};
-                            }
-                            component->_Bounds={minimum*0.5f+maximum*0.5f,maximum*0.5f-minimum*0.5f};
-                        }
-                    }
-                }
-            }
-            if(!mesh) {++_Statistics.SkippedObjects;continue;}
-            bool drawn=false,skipped=false;
-            for(const auto& section:mesh->Data.Sections) {
-                if(!section.IndexCount) continue;
-                MaterialRenderData material;
-                if(section.MaterialSlot<object.Materials.size()) {
-                    const auto& reference=object.Materials[section.MaterialSlot];
-                    if(!reference.Guid.empty() || reference.LocalID) {
-                        auto* cached=MaterialData(reference);
-                        if(!cached) {skipped=true;continue;}
-                        material=cached->Data;
-                    }
-                }
-                TextureGPU* texture=nullptr;
-                if(mesh->Data.UVOffset>=0 && !material.BaseColorTexture.Guid.empty()) {
-                    texture=Texture(material.BaseColorTexture);
-                    if(!texture) {skipped=true;continue;}
-                }
-                prepared.push_back({&object,mesh,section,std::move(material),texture});drawn=true;
-            }
-            if(drawn) ++_Statistics.VisibleObjects;
-            if(skipped || !drawn) ++_Statistics.SkippedObjects;
         }
         // 缓冲在Command提交/取消后释放；异常退出也保持这一顺序。
         DebugBufferScope debugBuffers;
@@ -143,6 +92,100 @@ bool Renderer::Render(const RenderView& view) {
             if(!valid || !RuntimeMath::IsFinite(viewProjection)) return Fail("Invalid explicit RenderView camera projection");
             depth=DepthTarget(width,height);if(!depth) return false;
         }
+        std::vector<DebugBatch> debugBatches;
+        if(view.DrawScene && !PrepareDebug(view.DebugDraw,debugBatches)) return false;
+        std::vector<DrawObject> objects;
+        if(view.DrawScene && !Extract(view,objects)) return false;
+        const RenderFrustum::Frustum frustum(viewProjection);
+        std::vector<DirectionalLight> lights;
+        if(view.DrawScene&&!ExtractLights(view.Scene,lights))return false;
+        RenderEnvironment::Uniform environment{};
+        if(view.DrawScene&&!RenderEnvironment::Prepare(view.Scene->GetEnvironmentLighting(),environment))
+            Diagnostic("Scene environment radiance is invalid or exceeds finite shader precision; diffuse environment disabled for this frame");
+        const MaterialRenderData defaultMaterial;
+        std::vector<PreparedDraw> prepared;
+        for(auto& object:objects) {
+            auto* mesh=Mesh(object.Mesh);
+            if(mesh && object.Skinned) {
+                auto* node=_Runtime.QueryGameObject(object.ObjectID);
+                if(!node || !SkinMatrices(*node,*mesh,object.SkinMatrices)) {++_Statistics.SkippedObjects;continue;}
+            }
+            // 更新已加载资源的派生 bounds；不修改节点属性、主相机、Undo 或源场景快照。
+            if(auto* node=_Runtime.QueryGameObject(object.ObjectID)) {
+                if(auto* component=dynamic_cast<MeshComponent*>(node->GetComponent<IMeshComponent>());
+                   component && component->GetMesh()==object.Mesh) {
+                    component->_Bounds=mesh?mesh->Data.LocalBounds:Bounds{};
+                    if(mesh && object.Skinned) {
+                        std::vector<Vector3> positions;
+                        if(!PosedPositions(*node,*mesh,positions)) {++_Statistics.SkippedObjects;continue;}
+                        if(!positions.empty()) {
+                            Vector3 minimum=positions.front(),maximum=minimum;
+                            for(const auto& point:positions) {
+                                minimum={std::min(minimum.X,point.X),std::min(minimum.Y,point.Y),std::min(minimum.Z,point.Z)};
+                                maximum={std::max(maximum.X,point.X),std::max(maximum.Y,point.Y),std::max(maximum.Z,point.Z)};
+                            }
+                            component->_Bounds={minimum*0.5f+maximum*0.5f,maximum*0.5f-minimum*0.5f};
+                        }
+                    }
+                }
+            }
+            if(!mesh) {++_Statistics.SkippedObjects;continue;}
+            bool outside=false;
+            if(!object.Skinned) {
+                if(!mesh->CullBoundsKnown&&!mesh->Positions.empty()) {
+                    mesh->CullMinimum=mesh->CullMaximum=mesh->Positions.front();
+                    for(const auto& point:mesh->Positions) {
+                        mesh->CullMinimum={std::min(mesh->CullMinimum.X,point.X),std::min(mesh->CullMinimum.Y,point.Y),std::min(mesh->CullMinimum.Z,point.Z)};
+                        mesh->CullMaximum={std::max(mesh->CullMaximum.X,point.X),std::max(mesh->CullMaximum.Y,point.Y),std::max(mesh->CullMaximum.Z,point.Z)};
+                    }
+                    mesh->CullBoundsKnown=true;
+                }
+                if(mesh->CullBoundsKnown)outside=!frustum.Intersects(mesh->CullMinimum,mesh->CullMaximum,object.Model);
+            }
+            bool drawn=false,skipped=false;
+            for(const auto& section:mesh->Data.Sections) {
+                if(!section.IndexCount) continue;
+                const MaterialRenderData* material=&defaultMaterial;
+                Material* cachedMaterial=nullptr;
+                ResourceReference materialReference;
+                if(section.MaterialSlot<object.Materials.size()) {
+                    const auto& reference=object.Materials[section.MaterialSlot];
+                    if(!reference.Guid.empty() || reference.LocalID) {
+                        auto* cached=MaterialData(reference);
+                        if(!cached) {skipped=true;continue;}
+                        cachedMaterial=cached;material=&cached->Data;materialReference=reference;
+                    }
+                }
+                // User vertex shaders have no displacement-bounds contract yet;
+                // never reject them using undeformed mesh bounds. Skinned meshes
+                // are likewise retained regardless of their bind-pose position.
+                if(outside&&material->Shader.Guid.empty()){skipped=true;continue;}
+                TextureGPU* texture=nullptr;TextureGPU* normalTexture=nullptr;
+                ShaderGPU* shader=nullptr;bool transparent=false;
+                if(!material->Shader.Guid.empty()) {
+                    if(object.Skinned){Diagnostic("User Shader currently supports static meshes; skinned Shader variants are not implemented");skipped=true;continue;}
+                    shader=Shader(material->Shader);
+                    if(!shader||!PrepareShaderMaterial(*cachedMaterial,*shader)||!EnsureShaderVertices(*mesh,object.Mesh)){skipped=true;continue;}
+                    transparent=shader->Data.Passes[0].Blend!=ShaderBlendMode::Opaque;
+                }else if(mesh->Data.UVOffset>=0 && !material->BaseColorTexture.Guid.empty()) {
+                    texture=Texture(material->BaseColorTexture);
+                    if(!texture) {skipped=true;continue;}
+                }
+                if(material->ShadingModel==MaterialShadingModel::Lit&&!material->NormalTexture.Guid.empty()) {
+                    if(mesh->Data.UVOffset<0){Diagnostic("Lit normal map requires mesh UV coordinates");skipped=true;continue;}
+                    normalTexture=Texture(material->NormalTexture);
+                    if(!normalTexture){skipped=true;continue;}
+                    if(normalTexture->SRGB){Diagnostic("Lit normal map must be imported in Linear color space");skipped=true;continue;}
+                }
+                const Vector3 difference{object.Model(0,3)-view.Camera.Position.X,object.Model(1,3)-view.Camera.Position.Y,object.Model(2,3)-view.Camera.Position.Z};
+                const float distance=difference.X*difference.X+difference.Y*difference.Y+difference.Z*difference.Z;
+                prepared.push_back({&object,mesh,section,material,materialReference,texture,normalTexture,cachedMaterial,shader,transparent,distance,
+                    static_cast<std::uint64_t>(&section-mesh->Data.Sections.data())});drawn=true;
+            }
+            if(drawn) ++_Statistics.VisibleObjects;
+            if(skipped || !drawn) ++_Statistics.SkippedObjects;
+        }
+        SortPrepared(prepared);
         GRHI::RenderPassDesc pass;
         pass.ColorTarget=target;pass.ClearColor={view.ClearColor.R,view.ClearColor.G,view.ClearColor.B,view.ClearColor.A};
         if(depth){pass.DepthTarget=depth->GetDepthTargetView();pass.DepthLoad=GRHI::LoadOp::Clear;pass.ClearDepth=1.0f;}
@@ -150,28 +193,7 @@ bool Renderer::Render(const RenderView& view) {
         if(!command.Pass) return Fail(DeviceError("Begin Runtime depth/color pass"));
         _Statistics.Width=width;_Statistics.Height=height;
         if(view.DrawScene && view.DrawGrid && !DrawGrid(*command.Pass,viewProjection,format)) return false;
-        for(const auto& draw:prepared) {
-            const auto& data=draw.Mesh->Data;
-            PipelineKey key;key.Format=format;key.Stride=data.VertexStride;key.Position=data.PositionOffset;key.Normal=data.NormalOffset;
-            key.Color=data.ColorOffset;key.UV=data.UVOffset;key.DoubleSided=draw.Material.DoubleSided;key.Negative=draw.Object->Negative;
-            if(draw.Object->Skinned) {key.BoneIndices=data.BoneIndicesOffset;key.BoneWeights=data.BoneWeightsOffset;}
-            auto* pipeline=Pipeline(key);if(!pipeline) return false;
-            DrawUniform uniform;uniform.Model=draw.Object->Model;uniform.ViewProjection=viewProjection;
-            uniform.Normal=draw.Object->Normal;uniform.BaseColor=draw.Material.BaseColor;
-            uniform.TextureST=draw.Material.BaseColorTextureST;
-            command.Pass->SetPipeline(pipeline);
-            command.Pass->SetVertexBuffer(0,draw.Mesh->Buffer,0);
-            command.Pass->SetIndexBuffer(draw.Mesh->Buffer,GRHI::IndexFormat::UInt32,static_cast<std::size_t>(data.IndexOffset));
-            command.Pass->SetVertexUniform(0,&uniform,sizeof(uniform));
-            if(draw.Object->Skinned) {
-                SkinUniform skin;
-                std::copy(draw.Object->SkinMatrices.begin(),draw.Object->SkinMatrices.end(),skin.Bones);
-                command.Pass->SetVertexUniform(1,&skin,sizeof(skin));
-            }
-            command.Pass->SetFragmentTextureSampler(0,draw.Texture?draw.Texture->Texture:_White,draw.Texture?draw.Texture->Sampler:_DefaultSampler);
-            command.Pass->DrawIndexed(draw.Section.IndexCount,1,draw.Section.FirstIndex,0,0);
-            ++_Statistics.DrawCalls;_Statistics.Triangles+=draw.Section.IndexCount/3;
-        }
+        if(!DrawPrepared(*command.Pass,prepared,view,viewProjection,format,lights,&environment,sizeof(environment)))return false;
         if(view.DrawScene && !DrawDebug(*command.Pass,viewProjection,format,debugBatches,debugBuffers.Buffers)) return false;
         command.Command->EndRenderPass(command.Pass);command.Pass=nullptr;
         auto* submitted=command.Command;command.Command=nullptr;

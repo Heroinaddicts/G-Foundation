@@ -14,7 +14,7 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         if(!mesh || !object->IsActiveInHierarchy() || !renderer->IsVisible() || !(view.Camera.Projection.CullingMask&(1u<<object->GetLayer()))) {
             ++_Statistics.SkippedObjects;continue;
         }
-        DrawObject data;data.ObjectID=object->GetInstanceID();data.Name=object->GetName();data.Model=object->GetTransform()->GetWorldMatrix();
+        DrawObject data;data.ObjectID=object->GetInstanceID();data.Layer=object->GetLayer();data.Name=object->GetName();data.Model=object->GetTransform()->GetWorldMatrix();
         data.Skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
         Mat4 inverse;
         if(!RuntimeMath::IsFinite(data.Model) || !RuntimeMath::TryInverseAffine(data.Model,inverse)) {

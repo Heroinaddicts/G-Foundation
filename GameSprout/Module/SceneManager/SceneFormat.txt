@@ -31,6 +31,7 @@ GameSproutRuntime.Canvas
 GameSproutRuntime.Mesh
 GameSproutRuntime.MeshRenderer
 GameSproutRuntime.Camera
+GameSproutRuntime.Light
 GameSproutRuntime.Animator
 GameSproutRuntime.SkinnedMeshRenderer
 GameSproutRuntime.ScriptComponent
@@ -38,6 +39,10 @@ GameSproutRuntime.ScriptComponent
 资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
 未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
 MainCameraID 指向包含 Camera 组件的节点。
+Light 使用 Settings={Type:"Directional",Enabled:true,Color:[1,1,1,1],Intensity:1,CullingMask:4294967295}。
+Color 是线性 RGB（允许 HDR）与 0..1 Alpha，Intensity 为非负有限数，CullingMask 按目标对象 Layer 过滤。
+方向光沿节点局部 -Z 发射；位置和缩放不影响光照方向或强度。当前只支持 Directional 类型，未知字段/类型直接报错。
+Light 属于普通节点，不能挂到 Scene 根；Scene 与 Prefab 使用同一组件值格式，支持事务快照、实例 Override 和独立实例化。
 
 启动尝试恢复本项目 UserSettings/EditorState.json 中的 LastScenePath（相对 Assets）。
 没有有效记录时建立未保存的 Untitled 场景，默认有 Main Camera。打开、另存为成功后原子记录路径，退出不自动保存场景修改。
@@ -86,6 +91,14 @@ EditObjectDocument 在一个撤销事务内提交对象图和作者记录，支�
 Nested/Variant 仅预留数据边界，本版拒绝嵌套实例及非空 Base/NestedInstances。
 
 职责与生命周期
+环境光照是场景数据：顶层 EnvironmentLighting 保存 Mode（None/Color/Gradient/SphericalHarmonics）、
+AmbientColor、SkyColor、EquatorColor、GroundColor（线性 RGBA，RGB 可为 HDR）、Intensity 及 SHCoefficients。
+SHCoefficients 是 9 个有符号 RGB 三元组，已经包含漫反射卷积及 E/pi，基底顺序为
+[1,y,z,x,xy,yz,3*z*z-1,xz,x*x-y*y]，着色器不得重复乘归一化系数或 pi。
+省略 EnvironmentLighting 使用正常的 None 默认；未知字段、未知 Mode、错误数组长度、非有限值严格拒绝。
+环境随完整 Scene/Play 作者快照保存和恢复；Prefab 及普通子树不携带场景环境。
+LightingAuthoring 通过 ObjectEditing 对场景根执行可撤销事务；Play 写临时运行世界，不保存源 .scene。
+Module 订阅 Scene/Play/Runtime 环境事件并推送值快照，View 不通过帧轮询更新环境控件。
 编辑器应用组合层创建并销毁 Runtime，经 EditorApi 的 const _Runtime 指针统一注入；Module 和 View 只借用。
 RuntimeHost 仅管理资源提供者连接、时钟和唯一每帧 Update，不创建或 delete Runtime。
 SceneManager 管理 .scene 文档、活动场景、稳定文件 ID、保存基线和场景编辑事务，不拥有 Runtime、GPU 或动画时钟。

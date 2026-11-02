@@ -2,6 +2,7 @@
 #include "RuntimePhysicsData.h"
 #include "GameSproutRuntimeApi.h"
 #include "RuntimeAnimationData.h"
+#include "RuntimeShaderData.h"
 
 namespace GameSproutRuntime {
 
@@ -45,11 +46,32 @@ struct TextureRenderData {
     SamplerSettings Sampler;
 };
 
+enum class MaterialShadingModel : std::uint8_t { Preview, Lit };
 struct MaterialRenderData {
     Color BaseColor;
     ResourceReference BaseColorTexture;
     Vector4 BaseColorTextureST{1,1,0,0}; // XY 为平铺倍率，ZW 为 UV 偏移。
     bool DoubleSided = false;
+    // Permission for Runtime's automatic grouping, never a requirement to use
+    // an instanced shader. Unsupported meshes/passes keep their normal draws.
+    bool EnableGPUInstancing = true;
+    // Applied within the opaque/transparent category; higher values draw later.
+    std::int32_t SortingPriority = 0; // [-50,50].
+    MaterialShadingModel ShadingModel = MaterialShadingModel::Preview;
+    // Built-in Lit uses linear RGB/HDR colors, as defined by Color. Roughness
+    // is perceptual roughness [0,1]; Metallic is [0,1]. Normal maps are linear
+    // tangent-space RGB with +Y convention and use their own UV transform.
+    float Metallic = 0;
+    float Roughness = 0.5f;
+    bool SpecularHighlights = true; // Built-in Lit's direct-light specular term.
+    ResourceReference NormalTexture;
+    Vector4 NormalTextureST{1,1,0,0};
+    float NormalScale = 1;
+    Color EmissionColor{0,0,0,1};
+    // Empty Shader selects the engine's existing built-in preview material.
+    ResourceReference Shader;
+    std::vector<MaterialPropertyData> Properties;
+    std::vector<MaterialTextureData> Textures;
 };
 
 class IRuntimeResourceProvider {
@@ -61,6 +83,9 @@ public:
     virtual bool LoadMesh(const ResourceReference& reference, MeshRenderData& data, std::string& error) = 0;
     virtual bool LoadTexture(const ResourceReference& reference, TextureRenderData& data, std::string& error) = 0;
     virtual bool LoadMaterial(const ResourceReference& reference, MaterialRenderData& data, std::string& error) = 0;
+    virtual bool LoadShader(const ResourceReference&,ShaderRenderData& data,std::string& error) {
+        data={};error="Shader loading is unavailable";return false;
+    }
     virtual bool LoadPhysicsMaterial(const ResourceReference&,PhysicsMaterialData& data,std::string& error) {
         data={};error="Physics material loading is unavailable";return false;
     }

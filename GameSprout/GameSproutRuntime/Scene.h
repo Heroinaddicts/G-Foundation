@@ -12,6 +12,8 @@ public:
     bool IsSimulationEnabled() const override;
     bool SetMainCamera(ICameraComponent* camera) override;
     ICameraComponent* GetMainCamera() const override;
+    const EnvironmentLightingSettings& GetEnvironmentLighting() const override { return _EnvironmentLighting; }
+    bool SetEnvironmentLighting(const EnvironmentLightingSettings&) override;
     void ClearMainCameraForNode(std::uint64_t id);
     bool BindObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) override {
         auto* node=State().Owner.Find(object);
@@ -27,5 +29,6 @@ public:
 private:
     std::uint64_t _MainCameraID = 0;
     bool _SimulationEnabled = true;
+    EnvironmentLightingSettings _EnvironmentLighting;
 };
 }

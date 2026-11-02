@@ -37,6 +37,7 @@ namespace GameSproutRuntime {
     struct BuiltinComponentInfo;
     struct PhysicsQuerySettings;
     struct PhysicsRaycastHit;
+    struct EnvironmentLightingSettings;
     class IObject {
     public:
         virtual ~IObject() {}
@@ -228,6 +229,9 @@ namespace GameSproutRuntime {
         virtual bool BindObjectIdentities(const std::vector<SceneObjectIdentity>&, std::string& error) {
             error="Scene object identities are unavailable";return false;
         }
+        virtual const EnvironmentLightingSettings& GetEnvironmentLighting() const = 0;
+        // Scene-owned state; invalid input leaves the complete state unchanged.
+        virtual bool SetEnvironmentLighting(const EnvironmentLightingSettings&) = 0;
     };
 
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE ITransformComponent : public IComponent {
@@ -335,7 +339,8 @@ namespace GameSproutRuntime {
         Create, Destroy, Reparent, Rename, ActiveChanged,
         ComponentAdded, ComponentRemoved, ComponentChanged, OperationFailed, MainCameraChanged,
         TagChanged, LayerChanged, StaticFlagsChanged,
-        SiblingOrderChanged // ParentID/OldParentID 相同，仅兄弟顺序改变。
+        SiblingOrderChanged, // ParentID/OldParentID 相同，仅兄弟顺序改变。
+        EnvironmentLightingChanged
     };
     struct SceneNodeEvent {
         SceneNodeEventType Type = SceneNodeEventType::Create;
@@ -498,5 +503,6 @@ namespace GameSproutRuntime {
 #include "RuntimeAnimationApi.h"
 #include "RuntimeScriptApi.h"
 #include "RuntimePhysicsApi.h"
+#include "RuntimeLightingApi.h"
 
 #endif //__GameSproutRuntimeApi_h__

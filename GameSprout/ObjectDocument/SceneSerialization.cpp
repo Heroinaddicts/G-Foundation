@@ -2,6 +2,8 @@
 #include "SceneAnimationDocument.h"
 #include "SceneScriptDocument.h"
 #include "ScenePhysicsDocument.h"
+#include "SceneLightingDocument.h"
+#include "SceneEnvironmentLightingDocument.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -76,6 +78,8 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
             data["Visible"]=value->IsVisible();data["Materials"]=Json::Value(Json::arrayValue);
             if (value->GetMaterialCount()>1024) throw std::runtime_error("Too many material slots");
             for (std::size_t slot=0;slot<value->GetMaterialCount();++slot) data["Materials"].append(Reference(value->GetMaterial(slot)));
+        } else if (SceneLightingDocument::Handles(type)) {
+            data=SceneLightingDocument::Serialize(component);
         } else if (ScenePhysicsDocument::Handles(type)) {
             data=ScenePhysicsDocument::Serialize(component);
         } else if (SceneAnimationDocument::Handles(type)) {
@@ -156,6 +160,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
         document["RootStaticFlags"]=Json::UInt(static_cast<std::uint32_t>(scene.GetStaticFlags()));
         document["RootComponents"]=Components(scene,next);document["NextObjectID"]=Json::UInt64(next.Next);
         document["MainCameraID"]=Json::UInt64(0);document["Objects"]=Json::Value(Json::arrayValue);
+        document["EnvironmentLighting"]=SceneEnvironmentLightingDocument::Serialize(scene.GetEnvironmentLighting());
         for (const auto& entry:ordered) {
             auto* object=entry.Object;auto* parent=object->Parent();
             if (!parent) throw std::runtime_error("Detached Runtime object has no scene parent");

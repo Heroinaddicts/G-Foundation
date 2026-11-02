@@ -33,7 +33,7 @@ static void CheckTagLayerDocuments(GameSproutRuntime::IGameSproutRuntime& runtim
     Check(!SceneDocument::Instantiate(bad,runtime,output,error)&&output==restored&&runtime.GetSceneCount()==count,
         "Undefined Tag instantiated a partial scene");
     auto prefab=document;prefab.removeMember("RootComponents");prefab.removeMember("RootLayer");prefab.removeMember("RootTagID");
-    prefab.removeMember("RootActive");prefab["MainCameraID"]=Json::UInt64(0);
+    prefab.removeMember("RootActive");prefab.removeMember("EnvironmentLighting");prefab["MainCameraID"]=Json::UInt64(0);
     Check(PrefabDocument::Validate(prefab,error),error);
     GameSproutRuntime::IGameObject* instance=nullptr;std::vector<GameSproutRuntime::PrefabObjectMapping> mappings;
     Check(SceneDocument::InstantiatePrefab(prefab,runtime,*restored,*restored,instance,mappings,error),error);

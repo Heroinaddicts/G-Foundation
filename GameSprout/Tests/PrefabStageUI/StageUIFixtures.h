@@ -85,6 +85,9 @@ public:
     bool DestroyGameObject(IGameObject*) override{return false;}
     bool SetMainCamera(GameSproutRuntime::ICameraComponent*) override{return false;}
     GameSproutRuntime::ICameraComponent* GetMainCamera() const override{return nullptr;}
+    GameSproutRuntime::EnvironmentLightingSettings Environment;
+    const GameSproutRuntime::EnvironmentLightingSettings& GetEnvironmentLighting() const override{return Environment;}
+    bool SetEnvironmentLighting(const GameSproutRuntime::EnvironmentLightingSettings& value) override{if(!GameSproutRuntime::IsValidEnvironmentLighting(value))return false;Environment=value;return true;}
 };
 
 class Scenes final : public Module<ISceneManager> {

@@ -2,6 +2,8 @@
 #include "SceneAnimationDocument.h"
 #include "SceneScriptDocument.h"
 #include "ScenePhysicsDocument.h"
+#include "SceneLightingDocument.h"
+#include "SceneEnvironmentLightingDocument.h"
 #include "PrefabDocument.h"
 
 #include <algorithm>
@@ -226,6 +228,9 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if (!component->SetMaterials(materials)) Fail(path,"Runtime rejected material slots");
             component->SetVisible(visible);
         }
+    } else if (SceneLightingDocument::Handles(type)) {
+        SceneLightingDocument::Validate(value,path);
+        if(object)SceneLightingDocument::Create(value,*object);
     } else if (ScenePhysicsDocument::Handles(type)) {
         ScenePhysicsDocument::Validate(value,path);
         if(object)ScenePhysicsDocument::Create(value,*object);
@@ -282,6 +287,7 @@ struct Node {
     bool Camera=false;
 };
 struct Plan {
+    GameSproutRuntime::EnvironmentLightingSettings EnvironmentLighting;
     std::string Name;
     bool RootActive=true;
     std::uint8_t RootLayer=0;
@@ -346,10 +352,11 @@ void PublishComponentIdentities(GameSproutRuntime::IScene& scene,const SceneDocu
     if(!runtime.SetSceneComponentIdentities(&scene,identities,error))Fail("Component.Identity",error);
 }
 Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
-    Members(document,"Scene",{"Version","Name","RootActive","RootLayer","RootTagID","RootStaticFlags","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations"});
+    Members(document,"Scene",{"Version","Name","RootActive","RootLayer","RootTagID","RootStaticFlags","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations","EnvironmentLighting"});
     if(document.isMember("Annotations")&&!document["Annotations"].isObject())Fail("Scene.Annotations","expected object");
     if (Unsigned(document["Version"],"Scene.Version")!=1) Fail("Scene.Version","only version 1 is supported");
     Plan plan;
+    if(document.isMember("EnvironmentLighting"))plan.EnvironmentLighting=SceneEnvironmentLightingDocument::Read(document["EnvironmentLighting"]);
     plan.Name=Name(document["Name"],"Scene.Name");
     plan.RootActive=BoolMember(document,"RootActive",true,"Scene");
     if(document.isMember("RootLayer")) {
@@ -370,7 +377,7 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
             const std::string path="Scene.RootComponents["+std::to_string(c)+"]";
             ComponentData(component,nullptr,path);
             const std::string type=component["Type"].asString();
-            if(SceneAnimationDocument::Handles(type)||ScenePhysicsDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/physics/script components require a regular object, not the scene root");
+            if(SceneAnimationDocument::Handles(type)||ScenePhysicsDocument::Handles(type)||SceneLightingDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/physics/light/script components require a regular object, not the scene root");
             const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):
                 ScenePhysicsDocument::IsCollider(type)?type+":"+(component.isMember("ID")?std::to_string(component["ID"].asUInt64()):"new"+std::to_string(c)):type;
             if (!types.insert(identity).second) Fail(path,"duplicate component identity");
@@ -655,6 +662,7 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         candidate=runtime.CreateScene(plan.Name);
         if (!candidate) Fail("Scene","Runtime could not create scene");
         candidateID=candidate->GetInstanceID();
+        if(!candidate->SetEnvironmentLighting(plan.EnvironmentLighting))Fail("Scene.EnvironmentLighting","Runtime rejected environment lighting");
         std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
         ObjectIDs candidateIDs;
         candidateIDs.Next=plan.Next;

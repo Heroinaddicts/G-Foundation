@@ -6,6 +6,8 @@ namespace GameSproutRuntime {
 bool Renderer::Initialize() {
     static_assert(sizeof(DrawUniform)==224,"Shader draw uniform must match std140 layout");
     static_assert(sizeof(SkinUniform)==8192,"Shader skin uniform must match 128 column-major matrices");
+    static_assert(sizeof(LitUniform)==192,"Lit fragment uniform must match its HLSL layout");
+    static_assert(sizeof(InstanceVertex)==128,"Instanced vertex data must contain two column-major matrices");
     const PreviewShader kinds[]={PreviewShader::MeshVertex,PreviewShader::MeshNoUVVertex,PreviewShader::MeshNoColorVertex,
         PreviewShader::MeshNoUVNoColorVertex,PreviewShader::MeshFragment,PreviewShader::GridVertex,PreviewShader::GridFragment,
         PreviewShader::SkinnedMeshVertex,PreviewShader::SkinnedMeshNoUVVertex,PreviewShader::SkinnedMeshNoColorVertex,PreviewShader::SkinnedMeshNoUVNoColorVertex};
@@ -47,8 +49,9 @@ bool Renderer::Initialize() {
 GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
     const auto found=_Pipelines.find(key);
     if(found!=_Pipelines.end()) return found->second;
-    GRHI::VertexBindingDesc binding;binding.Binding=0;binding.Stride=key.Grid?28:key.Stride;
-    GRHI::VertexAttributeDesc attributes[6];
+    GRHI::VertexBindingDesc bindings[2];bindings[0].Binding=0;bindings[0].Stride=key.Grid?28:key.Stride;
+    bindings[1].Binding=1;bindings[1].Stride=sizeof(InstanceVertex);bindings[1].Rate=GRHI::VertexInputRate::Instance;
+    GRHI::VertexAttributeDesc attributes[12];
     attributes[0]={0,0,GRHI::VertexFormat::Float3,key.Grid?0:key.Position};
     std::size_t count=1;
     if(key.Grid) attributes[count++]={1,0,GRHI::VertexFormat::Float4,12};
@@ -61,19 +64,28 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
             attributes[count++]={5,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.BoneWeights)};
         }
     }
+    if(key.Instanced) {
+        for(std::uint32_t column=0;column<8;++column)
+            attributes[count++]={4+column,1,GRHI::VertexFormat::Float4,column*16};
+    }
     const std::size_t variant=key.Color<0?(key.UV<0?3:2):(key.UV<0?1:0);
-    const std::size_t shader=key.Grid?5:variant+(key.BoneIndices>=0?7:0);
+    const std::size_t shader=key.Grid?5:variant+(key.Instanced?12:(key.BoneIndices>=0?7:0));
     if(!_Shaders[shader]) {
         _Shaders[shader]=CreatePreviewShader(_Device,static_cast<PreviewShader>(shader));
         if(!_Shaders[shader]) {Fail(DeviceError("Create Runtime skinned vertex shader"));return nullptr;}
     }
     GRHI::GraphicsPipelineDesc description;
-    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[key.Grid?6:4];
+    const std::size_t fragment=key.Grid?6:(key.Lit?11:4);
+    if(!_Shaders[fragment]) {
+        _Shaders[fragment]=CreatePreviewShader(_Device,static_cast<PreviewShader>(fragment));
+        if(!_Shaders[fragment]) {Fail(DeviceError("Create Runtime Lit fragment shader"));return nullptr;}
+    }
+    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[fragment];
     description.ColorFormat=key.Format;description.Primitive=key.Grid&&!key.DebugTriangles?GRHI::PrimitiveType::LineList:GRHI::PrimitiveType::TriangleList;
     if(key.Grid) description.Blend=GRHI::BlendMode::Alpha;
     description.Cull=key.Grid || key.DoubleSided?GRHI::CullMode::None:GRHI::CullMode::Back;
     description.Winding=key.Negative?GRHI::FrontFace::Clockwise:GRHI::FrontFace::CounterClockwise;
-    description.VertexBindings=&binding;description.VertexBindingCount=1;
+    description.VertexBindings=bindings;description.VertexBindingCount=key.Instanced?2:1;
     description.VertexAttributes=attributes;description.VertexAttributeCount=count;
     description.DepthFormat=GRHI::TextureFormat::D32_Float;description.DepthTest=key.DepthTest;description.DepthWrite=!key.Grid;
     description.DepthCompare=GRHI::CompareOp::LessEqual;

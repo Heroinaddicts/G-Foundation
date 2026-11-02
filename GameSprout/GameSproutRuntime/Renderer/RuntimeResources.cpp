@@ -95,7 +95,12 @@ Renderer::~Renderer() {
     if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
-    for(auto& entry:_Meshes) delete entry.second.Buffer;
+    ClearInstanceBuffers();
+    for(auto& entry:_ShaderPipelines)delete entry.second;
+    _ShaderPipelines.clear();
+    for(auto& entry:_UserShaders){delete entry.second.Vertex;delete entry.second.Fragment;}
+    _UserShaders.clear();
+    for(auto& entry:_Meshes) {delete entry.second.Buffer;delete entry.second.ShaderVertexBuffer;}
     for(auto& entry:_Textures) {delete entry.second.Texture;delete entry.second.Sampler;}
     _Meshes.clear();_ColliderMeshes.clear();_Textures.clear();_Materials.clear();
 }
@@ -162,6 +167,7 @@ Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference) {
                 else {
                     GRHI::TextureDesc description;description.Width=data.Width;description.Height=data.Height;
                     description.Format=data.SRGB?GRHI::TextureFormat::RGBA8_UNorm_sRGB:GRHI::TextureFormat::RGBA8_UNorm;
+                    entry.SRGB=data.SRGB;
                     description.Usage=GRHI::TextureUsage::Sampled;
                     GRHI::TextureInitialData initial{data.Pixels.data(),data.Pixels.size(),0};
                     entry.Texture=_Device.CreateTexture(description,&initial);
@@ -184,8 +190,23 @@ Renderer::Material* Renderer::MaterialData(const ResourceReference& reference) {
             if(entry.Loaded && (!RuntimeMath::IsFinite(entry.Data.BaseColor) ||
                 entry.Data.BaseColor.R<0 || entry.Data.BaseColor.G<0 || entry.Data.BaseColor.B<0 ||
                 entry.Data.BaseColor.A<0 || entry.Data.BaseColor.A>1 ||
-                (entry.Data.BaseColorTexture.Guid.empty()!= (entry.Data.BaseColorTexture.LocalID==0)))) {
+                (entry.Data.BaseColorTexture.Guid.empty()!= (entry.Data.BaseColorTexture.LocalID==0)) ||
+                (entry.Data.Shader.Guid.empty()!= (entry.Data.Shader.LocalID==0)) ||
+                static_cast<unsigned>(entry.Data.ShadingModel)>static_cast<unsigned>(MaterialShadingModel::Lit)||
+                entry.Data.SortingPriority < -50 || entry.Data.SortingPriority > 50)) {
                 entry.Error="Invalid prepared material color or texture identity";entry.Loaded=false;
+            }
+            if(entry.Loaded&&entry.Data.ShadingModel==MaterialShadingModel::Lit) {
+                const auto& data=entry.Data;
+                const auto finite=[](Vector4 value){return std::isfinite(value.X)&&std::isfinite(value.Y)&&std::isfinite(value.Z)&&std::isfinite(value.W);};
+                if(!std::isfinite(data.Metallic)||data.Metallic<0||data.Metallic>1||
+                    !std::isfinite(data.Roughness)||data.Roughness<0||data.Roughness>1||
+                    !std::isfinite(data.NormalScale)||data.NormalScale<0||
+                    !RuntimeMath::IsFinite(data.EmissionColor)||data.EmissionColor.R<0||data.EmissionColor.G<0||data.EmissionColor.B<0||
+                    !finite(data.BaseColorTextureST)||!finite(data.NormalTextureST)||
+                    (data.NormalTexture.Guid.empty()!=(data.NormalTexture.LocalID==0))||!data.Shader.Guid.empty()) {
+                    entry.Error="Invalid prepared Lit material parameters, normal map or conflicting user Shader";entry.Loaded=false;
+                }
             }
         } catch(const std::exception& exception) {entry.Error=exception.what();entry.Loaded=false;}
         catch(...) {entry.Error="Resource provider threw while loading material";entry.Loaded=false;}

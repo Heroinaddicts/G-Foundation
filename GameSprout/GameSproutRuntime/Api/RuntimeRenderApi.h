@@ -55,6 +55,9 @@ struct RenderView {
     // false：仅清空指定目标；忽略 Scene/Camera/Grid/DebugDraw，不生成绘制或有效相机快照。
     // 可用于尚未加载场景或没有活动游戏相机的宿主窗口。
     bool DrawScene = true;
+    // Runtime 自动归组；关闭可用于逐对象绘制对照，不改变资源或场景数据。
+    // 材质也必须允许实例化，且 Shader/绘制顺序满足合批条件。
+    bool EnableGPUInstancing = true;
 };
 
 struct SceneRaycastHit {
@@ -79,6 +82,12 @@ struct RenderStatistics {
     std::uint32_t SkippedObjects = 0;
     std::uint32_t Width = 0;
     std::uint32_t Height = 0;
+    // Instances counts mesh sections (an object with two sections counts twice).
+    std::uint32_t InstancedDrawCalls = 0;
+    std::uint32_t InstancedInstances = 0;
+    std::uint32_t SavedDrawCalls = 0;
+    std::uint32_t InstanceBufferUploads = 0;
+    std::uint64_t ResidentInstanceBytes = 0;
 };
 
 class IRuntimeRenderer {
