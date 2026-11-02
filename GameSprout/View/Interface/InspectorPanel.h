@@ -66,6 +66,24 @@ protected:
     InspectorServices _Services;
 };
 
+// Additive scene-object UI. Load receives the Inspector's resolved target,
+// including its lock; false means the section is inapplicable and should hide.
+// Qt parent owns the section. Deactivate clears borrowed target identities.
+class InspectorSection : public QWidget {
+public:
+    explicit InspectorSection(const InspectorServices& services,QWidget* parent)
+        : QWidget(parent),_Services(services) {}
+    ~InspectorSection() override = default;
+    virtual bool Load(const InspectorTarget&,bool changed,std::string& error)=0;
+    virtual void Deactivate() {}
+    std::function<void(const std::string&)> ReportError;
+    std::function<void()> RequestRefresh;
+    // Selecting an asset from a section preserves the Inspector lock.
+    std::function<void(const ProjectAssetSelection&)> RequestSelection;
+protected:
+    InspectorServices _Services;
+};
+
 // 注册表只在 InspectorUI 实例中保存。扩展注销后，其页面由宿主销毁。
 class IInspectorExtension {
 public:
@@ -74,4 +92,6 @@ public:
     virtual bool CanInspect(const InspectorServices&, const InspectorTarget&) const { return false; }
     virtual InspectorPanel* CreatePanel(const InspectorServices&, QWidget*) { return nullptr; }
     virtual ComponentEditor* CreateComponentEditor(const std::type_info&, QWidget*) { return nullptr; }
+    // Does not compete with CanInspect/CreatePanel; component pages stay active.
+    virtual InspectorSection* CreateSceneObjectSection(const InspectorServices&,QWidget*) { return nullptr; }
 };

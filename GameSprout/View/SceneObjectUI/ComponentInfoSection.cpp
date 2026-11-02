@@ -28,7 +28,10 @@ ComponentInfoSection::ComponentInfoSection(QWidget* parent) : QWidget(parent), _
     QObject::connect(_Ui->removeComponentButton,&QToolButton::clicked,this,[this] {
         if (!_Context.Scenes || _BuiltinType.empty()) return;
         std::string error;
-        if (!_Context.Scenes->RemoveComponent(_Context.ObjectID,_BuiltinType,error) && _Context.Report) _Context.Report(error);
+        const bool removed=_Context.ComponentID
+            ?_Context.Scenes->RemoveComponentInstance(_Context.ObjectID,_Context.ComponentID,error)
+            :_Context.Scenes->RemoveComponent(_Context.ObjectID,_BuiltinType,error);
+        if(!removed&&_Context.Report)_Context.Report(error);
     });
     UpdateDebugVisibility();
 }
@@ -74,7 +77,8 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         if(!info.Intrinsic && info.TypeID==type.toStdString()) {_BuiltinType=info.TypeID;break;}
     auto* owner=component.GetGameObject();
     _Ui->removeComponentButton->setVisible(!_BuiltinType.empty() && owner && owner!=owner->GetScene());
-    const std::string editorKey=type.toStdString()+(script?"#"+std::to_string(script->GetScriptInstanceID()):std::string());
+    const std::string editorKey=type.toStdString()+"#"+std::to_string(_Context.ComponentID)+
+        (script?"/"+std::to_string(script->GetScriptInstanceID()):std::string());
     if (_EditorType != editorKey) {
         delete _Editor;
         _Editor = _Context.Inspector ? _Context.Inspector->CreateComponentEditor(component.GetComponentType(),_Ui->editorHost) : nullptr;
@@ -95,6 +99,8 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
     _Ui->componentProperties->setObjectName("componentProperties."+type);
     _Ui->componentProperties->clear();
     QString caption=type;
+    if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetBuiltinComponentTypes())
+        if(info.TypeID==type.toStdString()){caption=QString::fromStdString(info.Name);break;}
     Add("TypeName",QStringLiteral("类型标识"),type);
     if(auto* value=dynamic_cast<GameSproutRuntime::ITransformComponent*>(&component)) {
         caption="Transform";

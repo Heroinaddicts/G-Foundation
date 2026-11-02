@@ -63,7 +63,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     const auto create=[&](const QString& item,bool child,std::uint64_t context,bool keyboard=false) {
         std::cerr<<"Node Inspector create "<<(child?"child ":"root ")<<item.toStdString()<<'\n';
         QMenu* menu=showMenu(context,keyboard);
-        QMenu* submenu=MenuAction(menu,child?"Create Child (Context Node)":"Create (Scene Root)")->menu();
+        QMenu* submenu=MenuAction(menu,child?"Create Child (Context Node)":"Create")->menu();
         QAction* action=MenuAction(submenu,item);Check(action->isEnabled(),"Node creation menu disabled");
         action->trigger();submenu->hide();menu->hide();
         const auto chosen=selection->GetSceneObjectSelection();

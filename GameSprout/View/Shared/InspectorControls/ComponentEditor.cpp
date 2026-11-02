@@ -1,4 +1,5 @@
 #include "ComponentEditor.h"
+#include "InspectorNumberText.h"
 #include <QApplication>
 #include <QLineEdit>
 #include <QLocale>
@@ -6,12 +7,15 @@
 #include <limits>
 
 void ComponentEditor::Bind(const ComponentEditContext& context) {
-    const bool changed = context.Runtime != _Context.Runtime || context.SceneID != _Context.SceneID || context.ObjectID != _Context.ObjectID;
+    const bool changed = context.Runtime != _Context.Runtime || context.SceneID != _Context.SceneID || context.ObjectID != _Context.ObjectID || context.ComponentID != _Context.ComponentID;
     _Context = context;
     if (changed) { _Force = true; ContextChanged(); }
 }
 void ComponentEditor::Load(GameSproutRuntime::IComponent& component) {
     _Type = &component.GetComponentType();
+    if(_Context.ComponentID!=component.GetComponentInstanceID()) {
+        _Context.ComponentID=component.GetComponentInstanceID();_Force=true;ContextChanged();
+    }
     QWidget* focused = QApplication::focusWidget();
     auto* text = qobject_cast<QLineEdit*>(focused);
     if (!_Force && text && isAncestorOf(text) && text->isModified()) return;
@@ -26,7 +30,8 @@ void ComponentEditor::Reload() {
     if (!object || !_Type) { setEnabled(false); return; }
     for (std::size_t index = 0; index < object->GetComponentCount(); ++index) {
         auto* component = object->GetComponentAt(index);
-        if (component && component->GetComponentType() == *_Type) {
+        if (component && component->GetComponentType() == *_Type &&
+            (!_Context.ComponentID||component->GetComponentInstanceID()==_Context.ComponentID)) {
             _Force = true; Load(*component); return;
         }
     }
@@ -40,7 +45,7 @@ bool ComponentEditor::ReadNumber(QLineEdit* edit, float& output) const {
     return true;
 }
 void ComponentEditor::ShowNumber(QLineEdit* edit, float value) {
-    const QString text=QString::number(value,'g',9);
+    const QString text=InspectorNumbers::Format(value);
     const bool focused=edit->hasFocus();
     const int cursor=edit->cursorPosition(),selection=edit->selectionStart(),length=edit->selectedText().size();
     edit->setText(text);

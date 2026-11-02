@@ -3,7 +3,7 @@
  <class>HierarchyContextMenu</class>
  <widget class="QMenu" name="HierarchyContextMenu">
   <widget class="QMenu" name="menuCreate">
-   <property name="title"><string>Create (Scene Root)</string></property>
+   <property name="title"><string>Create</string></property>
    <addaction name="actionEmpty"/><addaction name="actionCamera"/><addaction name="actionMesh"/>
    <addaction name="separator"/>
    <addaction name="actionCanvas"/><addaction name="actionImage"/><addaction name="actionUIEmpty"/>

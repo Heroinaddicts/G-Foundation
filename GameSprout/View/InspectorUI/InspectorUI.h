@@ -20,6 +20,8 @@ public:
     bool RegisterExtension(IInspectorExtension*) override;
     void UnregisterExtension(IInspectorExtension*) override;
     ComponentEditor* CreateComponentEditor(const std::type_info&, QWidget*) override;
+    InspectorViewState CaptureViewState() const override;
+    void RestoreViewState(const InspectorViewState&) override;
     void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>&) override { RequestRefresh(); }
     void OnSceneObjectSelectionChanged(const SceneObjectSelection&) override { RequestRefresh(); }
     void OnActiveSceneChanged() override { RequestRefresh(); }
@@ -44,6 +46,8 @@ private:
     bool ResolvePendingChanges();
     void Clear(const QString&);
     bool SceneTargetExists(const SceneObjectSelection&) const;
+    void RefreshSceneSections(const InspectorTarget&,bool changed);
+    void DeactivateSceneSections();
     QWidget* _Window = nullptr;
     QObject* _Dispatch = nullptr;
     Ui::InspectorUIWindow* _Ui = nullptr;
@@ -55,6 +59,7 @@ private:
     InspectorTarget _Target;
     std::vector<IInspectorExtension*> _Extensions;
     std::map<IInspectorExtension*, InspectorPanel*> _Panels;
+    std::map<IInspectorExtension*, InspectorSection*> _SceneSections;
     InspectorPanel* _ActivePanel = nullptr;
     IInspectorExtension* _ActiveExtension = nullptr;
     GameSproutRuntime::IGameSproutRuntime* _Runtime = nullptr;

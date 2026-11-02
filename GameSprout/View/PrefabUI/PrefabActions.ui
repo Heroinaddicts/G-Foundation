@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PrefabActionsForm</class>
+ <widget class="QMenu" name="PrefabActionsForm">
+  <property name="title"><string>Prefab</string></property>
+  <addaction name="savePrefabAction"/>
+  <addaction name="instantiatePrefabAction"/>
+  <action name="savePrefabAction"><property name="text"><string>创建 Prefab…</string></property></action>
+  <action name="instantiatePrefabAction"><property name="text"><string>实例化到场景</string></property></action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

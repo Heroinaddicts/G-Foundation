@@ -80,6 +80,7 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
             if (!_Rebuilding) { _FolderSelected=false;UpdateStatus();PublishSelection(); }
         });
         InstallContextCapture();
+        InstallDropRouting();
     } catch (...) { Release(nullptr); throw; }
     return true;
 }
@@ -112,7 +113,7 @@ void ProjectAssetsUI::RefreshMenu() { if (g_Self) g_Self->QueueRefresh(); }
 
 void ProjectAssetsUI::Release(GameSproutEditor::GameSproutViewApi *) {
     for (auto& action:_ContextActions) if (_Docker && action.Menu) action.Menu->SetClickCalback(nullptr);
-    _ContextActions.clear();_OpenHandlers.clear();
+    _ContextActions.clear();_OpenHandlers.clear();_DropHandlers.clear();
     if (_Subscribed && _Assets) _Assets->UnregisterAssetListener(this);
     if (_SelectionSubscribed && _Selection) _Selection->UnregisterSelectionListener(this);
     _SelectionSubscribed=false;_Selection=nullptr;

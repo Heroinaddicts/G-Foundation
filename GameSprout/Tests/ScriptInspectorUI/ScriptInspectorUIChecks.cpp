@@ -111,6 +111,10 @@ public:
     bool RemoveComponent(uint64_t id,const std::string& type,std::string& error)override{
         const bool result=Runtime->RemoveBuiltinComponent(Runtime->QueryGameObject(id),type,error);if(result&&Changed)Changed();return result;
     }
+    bool RemoveComponentInstance(uint64_t id,uint64_t componentID,std::string& error) override {
+        auto* object=Runtime->QueryGameObject(id);const bool result=object&&object->RemoveComponentInstance(componentID);
+        if(!result)error="Component instance is unavailable";if(result&&Changed)Changed();return result;
+    }
     bool AttachScriptComponent(uint64_t id,const std::string& type,const GameSproutRuntime::ResourceReference& source,std::string& error)override{
         const bool result=Runtime->AddScriptComponent(Runtime->QueryGameObject(id),type,source,0,error)!=nullptr;if(result&&Changed)Changed();return result;
     }

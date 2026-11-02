@@ -1,6 +1,7 @@
 #include "InspectorUI.h"
 #include "ui_InspectorUI.h"
 void InspectorUI::Clear(const QString& message) {
+    DeactivateSceneSections();
     if (_ActivePanel) { _ActivePanel->Deactivate(); _ActivePanel->hide(); }
     _ActivePanel = nullptr; _ActiveExtension = nullptr;
     _OperationError.clear(); _Ui->assetNameLabel->setText("Inspector"); _Ui->assetNameLabel->setToolTip({});
@@ -56,6 +57,36 @@ void InspectorUI::Refresh() {
     if (!_ActivePanel->Load(desired, changed, error)) { Clear(QString::fromStdString(error)); return; }
     _OperationError = QString::fromStdString(error);
     for (auto& entry : _Panels) entry.second->setVisible(entry.second == _ActivePanel);
+    RefreshSceneSections(desired,changed);
     _Ui->textureHost->show(); _Ui->contentStack->setCurrentWidget(desired.Scene.ObjectID ? _Ui->scenePage : _Ui->propertiesPage);
     UpdateButtons();
+}
+
+void InspectorUI::DeactivateSceneSections() {
+    for(auto& entry:_SceneSections)if(entry.second){entry.second->Deactivate();entry.second->hide();}
+    if(_Window)_Ui->sceneSectionsHost->hide();
+}
+void InspectorUI::RefreshSceneSections(const InspectorTarget& target,bool changed) {
+    if(!target.Scene.ObjectID){DeactivateSceneSections();return;}
+    bool visible=false;
+    for(auto* extension:_Extensions) {
+        auto found=_SceneSections.find(extension);
+        if(found==_SceneSections.end()) {
+            auto* section=extension->CreateSceneObjectSection(_Services,_Ui->sceneSectionsHost);
+            found=_SceneSections.emplace(extension,section).first;
+            if(section) {
+                _Ui->sceneSectionsLayout->addWidget(section);
+                section->ReportError=[this](const std::string& error){_OperationError=QString::fromStdString(error);UpdateButtons();};
+                section->RequestRefresh=[this]{RequestRefresh();};
+                section->RequestSelection=[this](const ProjectAssetSelection& asset){_Services.Selection->SetAssetSelection({asset});};
+            }
+        }
+        if(auto* section=found->second) {
+            std::string error;
+            const bool applicable=section->Load(target,changed,error);
+            section->setVisible(applicable);visible=visible||applicable;
+            if(!error.empty())_OperationError=QString::fromStdString(error);
+        }
+    }
+    _Ui->sceneSectionsHost->setVisible(visible);
 }

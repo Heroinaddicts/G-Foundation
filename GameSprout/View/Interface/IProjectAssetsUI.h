@@ -9,6 +9,10 @@ struct ProjectAssetActionContext {
     std::string Directory; // Assets 相对目录；空字符串表示 Assets 根目录。
     std::vector<ProjectAssetSelection> Selection; // 右键目标或当前选择的身份快照。
 };
+struct SceneObjectDropContext {
+    std::string Directory;
+    uint64_t SessionID=0,WorldID=0,ObjectID=0;
+};
 
 class IProjectAssetsUI : public GameSproutEditor::IGameSproutView {
 public:
@@ -19,6 +23,11 @@ public:
     using fAssetOpenHandler = std::function<bool(const ProjectAssetSelection&)>;
     using fContextActionCallback = void(*)();
     using fContextActionEnabled = std::function<bool(const ProjectAssetActionContext&)>;
+    using fDropProbe = std::function<bool(const SceneObjectDropContext&)>;
+    using fDropExecute = std::function<bool(const SceneObjectDropContext&,std::string&)>;
+    // 仅路由身份值；probe可在拖动时多次调用，不得修改业务数据。
+    // execute只在有效drop调用；失败error由浏览器状态栏显示。
+    virtual bool RegisterDropHandler(const void*,const fDropProbe&,const fDropExecute&) {return false;}
     // 由功能 View 在 Launch 注册，在 Release 注销；不转移 owner 所有权。
     // handler 返回 true 表示已经接管打开操作；未接管的源文件交给系统打开。
     virtual bool RegisterAssetOpenHandler(const void* owner, const fAssetOpenHandler& handler) = 0;

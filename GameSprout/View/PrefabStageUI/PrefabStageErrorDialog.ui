@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>PrefabStageErrorDialog</class>
+ <widget class="QDialog" name="PrefabStageErrorDialog"><property name="windowTitle"><string>Prefab Stage</string></property>
+  <layout class="QVBoxLayout" name="mainLayout"><item><widget class="QLabel" name="messageLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item><item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Ok</set></property></widget></item></layout>
+ </widget><resources/><connections/>
+</ui>

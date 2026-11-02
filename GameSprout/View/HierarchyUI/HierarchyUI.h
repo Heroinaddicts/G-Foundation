@@ -6,6 +6,7 @@
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
 #include <array>
+#include <QPointer>
 #include <set>
 #include <vector>
 #include <utility>
@@ -14,6 +15,8 @@ QT_BEGIN_NAMESPACE
 class QWidget;
 class QObject;
 class QModelIndex;
+class QMimeData;
+class QPoint;
 class QSortFilterProxyModel;
 namespace Ui {
 class HierarchyUIWindow;
@@ -34,6 +37,13 @@ public:
     void Show() override;
     void Hide() override;
     std::uint64_t GetSelectedObjectID() const override { return _SelectedID; }
+    bool AttachHeaderWidget(QWidget*) override;
+    bool SetHeaderWidgetVisible(QWidget*,bool) override;
+    bool RemoveHeaderWidget(QWidget*) override;
+    bool RegisterAssetDropHandler(const void*,const fAssetDropProbe&,const fAssetDropExecute&) override;
+    bool RegisterContextAction(const void*,const std::vector<std::string>&,fContextActionCallback,const fContextActionEnabled& = {}) override;
+    HierarchyActionContext GetActionContext() const override;
+    void UnregisterExtensions(const void*) override;
     void OnActiveSceneChanged() override;
     void OnSceneStateChanged() override { QueueRefresh(false); }
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) override;
@@ -57,10 +67,20 @@ private:
     void RefreshPresentation();
     void UpdateStatus();
     void InstallContextCapture();
+    void RefreshHeaderVisibility();
     void RememberContext(const QModelIndex& index);
     void RegisterContextMenus();
+    void RegisterExtensionMenus();
+    void RefreshContextActions();
+    void InstallDropRouting();
+    bool RouteAssetDrop(const QPoint&,const QMimeData*,bool execute,std::string& error);
     void RegisterCreateMenu(IContextMenu*,fMenuClickCallback);
     std::vector<std::pair<IContextMenu*,fMenuClickCallback>> _CreateMenus;
+    struct ExtensionAction {const void* Owner;std::vector<std::string> Path;fContextActionCallback Callback;fContextActionEnabled Enabled;IContextMenu* Menu=nullptr;};
+    struct AssetDropHandler {uint64_t ID;const void* Owner;fAssetDropProbe Probe;fAssetDropExecute Execute;};
+    std::vector<ExtensionAction> _ExtensionActions;
+    std::vector<AssetDropHandler> _AssetDropHandlers;
+    uint64_t _NextExtensionID=0;
     void PublishSelection();
     void FocusDoubleClickedNode(const QModelIndex& index);
     void ReadSharedSelection();
@@ -73,6 +93,7 @@ private:
     static void RefreshMenu();
 
     QWidget* _Window = nullptr;
+    std::vector<QPointer<QWidget>> _HeaderWidgets;
     QObject* _Dispatch = nullptr;
     QObject* _ContextCapture = nullptr;
     Ui::HierarchyUIWindow* _Ui = nullptr;

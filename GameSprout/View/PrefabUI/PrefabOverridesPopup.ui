@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>PrefabOverridesPopup</class>
+ <widget class="QDialog" name="PrefabOverridesPopup">
+  <property name="windowTitle"><string>Prefab Overrides</string></property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>420</width><height>260</height></rect></property>
+  <property name="minimumSize"><size><width>320</width><height>220</height></size></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item><widget class="QTreeWidget" name="overridesTree"><property name="rootIsDecorated"><bool>false</bool></property><property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property><column><property name="text"><string>覆盖</string></property></column><column><property name="text"><string>对象 / 组件</string></property></column><column><property name="text"><string>属性</string></property></column><column><property name="text"><string>来源值 → 实例值</string></property></column></widget></item>
+   <item><widget class="QLabel" name="messageLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+   <item><layout class="QHBoxLayout" name="actionsLayout"><item><widget class="QPushButton" name="revertAllButton"><property name="text"><string>Revert All</string></property></widget></item><item><widget class="QPushButton" name="applyAllButton"><property name="text"><string>Apply All</string></property></widget></item></layout></item>
+  </layout>
+ </widget><resources/><connections/>
+</ui>

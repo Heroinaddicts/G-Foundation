@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PrefabSaveDialog</class>
+ <widget class="QDialog" name="PrefabSaveDialog">
+  <property name="windowTitle"><string>保存 Prefab</string></property>
+  <property name="minimumSize"><size><width>420</width><height>0</height></size></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="objectLabel"><property name="text"><string>将所选对象及其子树保存为 Prefab。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><layout class="QFormLayout" name="formLayout">
+    <item row="0" column="0"><widget class="QLabel" name="directoryLabel"><property name="text"><string>Assets 相对目录</string></property></widget></item>
+    <item row="0" column="1"><widget class="QLineEdit" name="directoryEdit"><property name="placeholderText"><string>留空表示 Assets 根目录</string></property></widget></item>
+    <item row="1" column="0"><widget class="QLabel" name="nameLabel"><property name="text"><string>文件名</string></property></widget></item>
+    <item row="1" column="1"><widget class="QLineEdit" name="nameEdit"><property name="text"><string>NewPrefab</string></property></widget></item>
+   </layout></item>
+   <item><widget class="QLabel" name="helpLabel"><property name="text"><string>扩展名为 .prefab。目录必须已经存在；不会覆盖已有资源。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="errorLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+   <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Save</set></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

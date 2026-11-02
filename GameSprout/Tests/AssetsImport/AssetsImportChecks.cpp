@@ -1,5 +1,6 @@
 #include "AssetTestSupport.h"
 #include "ShaderImportChecks.h"
+#include "PhysicsMaterialImportChecks.h"
 
 int main(int argc,char **argv) {
     QGuiApplication application(argc,argv);
@@ -42,6 +43,7 @@ int main(int argc,char **argv) {
             if(result.Success)meta.Identities=result.Manifest.SubAssetsJson;
             return result;
         };
+        CheckPhysicsMaterialImport(root,library,import);
         QImage image(7,5,QImage::Format_RGBA8888);image.fill(QColor(30,100,200,128));
         const QString png=root.filePath("Assets/Test.png");Check(image.save(png),"PNG fixture failed");
         TestMeta texture(eAssetImporterType::Texture,Guid(1,2,3,4),"Test.png");texture.Settings["MaxSize"]=4;texture.Settings["GenerateMipmaps"]=true;

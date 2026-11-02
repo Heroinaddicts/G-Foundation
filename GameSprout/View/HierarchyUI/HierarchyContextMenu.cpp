@@ -65,8 +65,9 @@ void HierarchyUI::RememberContext(const QModelIndex& index) {
     _ContextObjectID = index.isValid() ? index.data(HierarchyTreeModel::NodeIDRole).toULongLong() : 0;
     _ContextCaptured = true;
     auto* object=_Runtime?_Runtime->QueryGameObject(_ContextObjectID):nullptr;
-    if(_DeleteMenu)_DeleteMenu->SetClickCalback(scene&&object&&object!=scene&&object->GetScene()==scene&&
+    if(_DeleteMenu)_DeleteMenu->SetClickCalback(scene&&object&&object!=scene&&object!=_SceneManager->GetDocumentContentRoot()&&object->GetScene()==scene&&
         _CanEdit&&_SceneManager&&!_SceneManager->HasTransformEdit()?&HierarchyUI::DeleteContextMenu:nullptr);
+    RefreshContextActions();
 }
 
 template<HierarchyUI::NodeKind Kind, bool Child>

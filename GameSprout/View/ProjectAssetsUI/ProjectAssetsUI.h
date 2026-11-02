@@ -11,6 +11,8 @@ class ProjectAssetsModel;
 class IProject;
 class QModelIndex;
 class QTreeView;
+class QPoint;
+class QMimeData;
 namespace Ui { class ProjectAssetsUIWindow; }
 
 class ProjectAssetsUI : public IProjectAssetsUI, public IAssetListener, public ISelectionListener {
@@ -24,6 +26,7 @@ public:
     std::vector<ProjectAssetSelection> GetSelection() const override;
     bool NavigateToDirectory(const std::string & path) override;
     bool RegisterAssetOpenHandler(const void* owner, const fAssetOpenHandler& handler) override;
+    bool RegisterDropHandler(const void* owner,const fDropProbe& probe,const fDropExecute& execute) override;
     bool RegisterContextAction(const void* owner, const std::vector<std::string>& menuPath,
         fContextActionCallback callback, const fContextActionEnabled& enabled = {}) override;
     void UnregisterExtensions(const void* owner) override;
@@ -46,6 +49,8 @@ private:
     void PublishSelection();
     void RegisterContextMenus();
     void InstallContextCapture();
+    void InstallDropRouting();
+    bool RouteSceneObjectDrop(QTreeView*,const QPoint&,const QMimeData*,bool execute,std::string& error);
     void RememberContextDirectory(QTreeView* tree, const QModelIndex& index);
     void OpenAsset(const QModelIndex& index);
     void OpenAsset(const ProjectAssetSelection& selected);
@@ -96,6 +101,8 @@ private:
         IContextMenu* Menu = nullptr; // Docker 借用；Release 后不再访问。
     };
     std::vector<OpenHandler> _OpenHandlers;
+    struct DropHandler {uint64_t ID;const void* Owner;fDropProbe Probe;fDropExecute Execute;};
+    std::vector<DropHandler> _DropHandlers;
     std::vector<ContextAction> _ContextActions;
     uint64_t _NextExtensionID = 0;
 };

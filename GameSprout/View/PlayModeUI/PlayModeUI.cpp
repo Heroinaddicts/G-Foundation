@@ -7,6 +7,7 @@ void PlayModeUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
     g_Self=this; g_GameSproutEditor=editor;
     g_IIDEWindow=editor?editor->GetGameSproutView<IIDEWindow>("IDEWindow"):nullptr;
     _Play=editor?editor->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
+    _Scenes=editor?editor->GetGameSproutModule<ISceneManager>("SceneManager"):nullptr;
 }
 bool PlayModeUI::Initialize(GameSproutEditor::GameSproutViewApi*) {
     if (_Window) return true;
@@ -33,9 +34,10 @@ bool PlayModeUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if (!g_IIDEWindow->AttachToolbarWidget(_Window)) return false;
     _Attached=true;
     _Subscribed=_Play->RegisterPlayModeListener(this);
+    if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if (!_Subscribed) return false;
     OnPlayModeStateChanged(_Play->GetState());
-    return true;
+    return !_Scenes||_SceneSubscribed;
 }
 void PlayModeUI::Show(){if(_Window)_Window->show();}
 void PlayModeUI::Hide(){if(_Window)_Window->hide();}
@@ -58,7 +60,8 @@ void PlayModeUI::OnPlayModeStateChanged(const PlayModeState& state) {
     const bool entering=state.State==EditorPlayState::EnteringPlay;
     const QSignalBlocker playBlocker(_Ui->playButton),pauseBlocker(_Ui->pauseButton);
     _Ui->playButton->setChecked(!editing);
-    _Ui->playButton->setEnabled(editing||playing||paused||entering||(state.State==EditorPlayState::ExitingPlay&&!state.Error.empty()));
+    _Ui->playButton->setEnabled((!_Scenes||!_Scenes->IsDocumentSessionActive())&&
+        (editing||playing||paused||entering||(state.State==EditorPlayState::ExitingPlay&&!state.Error.empty())));
     _Ui->pauseButton->setChecked(paused);
     _Ui->pauseButton->setEnabled(playing||paused);
     _Ui->stepButton->setEnabled(paused);
@@ -70,6 +73,8 @@ void PlayModeUI::OnPlayModeStateChanged(const PlayModeState& state) {
     _Ui->errorLabel->setVisible(!state.Error.empty());
 }
 void PlayModeUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_SceneSubscribed&&_Scenes)_Scenes->UnregisterSceneListener(this);
+    _SceneSubscribed=false;_Scenes=nullptr;
     if (_Subscribed && _Play) _Play->UnregisterPlayModeListener(this);
     _Subscribed=false;
     delete _Dispatch;_Dispatch=nullptr;

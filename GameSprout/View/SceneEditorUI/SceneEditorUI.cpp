@@ -56,6 +56,7 @@ void SceneEditorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if (_ProjectAssets) _ProjectAssets->UnregisterExtensions(this);
     if (_Subscribed && _Scenes) _Scenes->UnregisterSceneListener(this);
     _Subscribed = false;
+    _DocumentHandlers.clear();
     delete _SaveDialog; _SaveDialog = nullptr;
     delete _UnsavedDialog; _UnsavedDialog = nullptr;
     delete _ErrorDialog; _ErrorDialog = nullptr;
@@ -73,8 +74,9 @@ std::uint64_t SceneEditorUI::SceneID() const {
 }
 void SceneEditorUI::RefreshActions() {
     const bool editing = !_CanEdit || (_Scenes && _Scenes->HasTransformEdit());
+    DocumentHandler document;const bool external=ReadDocumentHandler(document);
     if (_Save) _Save->SetEnabled(SceneID() != 0 && !editing);
-    if (_SaveAs) _SaveAs->SetEnabled(SceneID() != 0 && !editing);
+    if (_SaveAs) _SaveAs->SetEnabled(SceneID() != 0 && !editing && !external);
     if (_Undo) _Undo->SetEnabled(_Scenes && !editing && _Scenes->CanUndo());
     if (_Redo) _Redo->SetEnabled(_Scenes && !editing && _Scenes->CanRedo());
 }
@@ -105,6 +107,8 @@ void SceneEditorUI::RedoMenu() {
 void SceneEditorUI::SaveScene() {
     if (!_CanEdit || !_Scenes || !SceneID() || _Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
+    DocumentHandler document;
+    if(ReadDocumentHandler(document)){document.Save();return;}
     if (_Scenes->GetActiveScenePath().empty()) { ShowSaveDialog(); return; }
     std::string error;
     if (!_Scenes->SaveScene(error)) ShowError(error);
@@ -112,6 +116,7 @@ void SceneEditorUI::SaveScene() {
 void SceneEditorUI::SaveSceneAs() {
     if (!_CanEdit || !_Scenes || _Scenes->HasTransformEdit()) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
+    DocumentHandler document;if(ReadDocumentHandler(document))return;
     if (SceneID()) ShowSaveDialog();
 }
 void SceneEditorUI::OpenNow(const std::string& path) {

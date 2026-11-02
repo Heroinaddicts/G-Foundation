@@ -15,6 +15,7 @@ public:
     void Load(GameSproutRuntime::IComponent& component);
     void Bind(const ComponentEditContext& context) { _Context = context; }
     bool IsExpanded() const;
+    std::uint64_t GetComponentInstanceID() const {return _Context.ComponentID;}
     void SetExpanded(bool expanded);
     void SetDebugMode(bool debug);
     void SetReadOnly(bool value);

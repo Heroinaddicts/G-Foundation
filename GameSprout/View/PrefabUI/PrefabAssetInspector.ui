@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>PrefabAssetInspectorForm</class>
+ <widget class="QWidget" name="PrefabAssetInspectorForm"><layout class="QVBoxLayout" name="mainLayout">
+  <item><widget class="QLabel" name="sourcePathLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  <item><widget class="QLabel" name="scopeLabel"><property name="text"><string>Prefab 资源。可拖入 Hierarchy 创建实例，或通过资源右键菜单明确选择“实例化到场景”。双击资源进入 Prefab Stage 独立编辑。</string></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  <item><widget class="QPushButton" name="openStageButton"><property name="text"><string>Open Prefab</string></property><property name="toolTip"><string>进入 Prefab Stage 独立编辑。</string></property></widget></item>
+  <item><spacer name="bottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
+ </layout></widget><resources/><connections/>
+</ui>

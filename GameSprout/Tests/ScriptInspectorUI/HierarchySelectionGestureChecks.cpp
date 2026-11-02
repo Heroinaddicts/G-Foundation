@@ -67,7 +67,8 @@ int main(int argc,char** argv) {
         tree.setExpandsOnDoubleClick(false);
         tree.setEditTriggers(QAbstractItemView::NoEditTriggers);
         tree.setDragEnabled(true);
-        tree.setDragDropMode(QAbstractItemView::DragOnly);
+        tree.setDragDropMode(QAbstractItemView::DragDrop);
+        tree.setAcceptDrops(true);
         tree.setDefaultDropAction(Qt::CopyAction);
         tree.resize(480,320);
         tree.expandAll();

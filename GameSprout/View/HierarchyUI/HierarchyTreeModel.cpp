@@ -20,18 +20,20 @@ QStandardItem* HierarchyTreeModel::MakeItem(GameSproutRuntime::IGameObject* obje
     return item;
 }
 
-void HierarchyTreeModel::Build(GameSproutRuntime::IScene* scene, const QColor& inactiveColor) {
+void HierarchyTreeModel::Build(GameSproutRuntime::IScene* scene, const QColor& inactiveColor,GameSproutRuntime::IGameObject* contentRoot) {
     _Nodes.clear();
     clear();
     setColumnCount(1);
     _SceneID=scene?scene->GetInstanceID():0;
     if (!scene) return;
-    QStandardItem* root = MakeItem(scene, true, inactiveColor);
+    if(!contentRoot)contentRoot=scene;
+    if(contentRoot->GetScene()!=scene)return;
+    QStandardItem* root = MakeItem(contentRoot, contentRoot==scene, inactiveColor);
     if (!root) return;
     appendRow(root);
     // 使用显式栈，深层节点不递归消耗调用栈；Model 只保存节点 ID，不借用运行对象。
     struct Pending { GameSproutRuntime::IGameObject* Object; QStandardItem* Item; };
-    std::vector<Pending> pending{{scene, root}};
+    std::vector<Pending> pending{{contentRoot, root}};
     while (!pending.empty()) {
         const Pending current = pending.back();
         pending.pop_back();

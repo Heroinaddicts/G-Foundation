@@ -61,7 +61,7 @@ void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
     if(_Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene);
 }
 void GameViewUI::OnActiveSceneChanged() {
-    _ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
+    _ActiveScene=_Scenes?_Scenes->GetMainScene():nullptr;
 }
 void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
     if(!_Window || !_Ui)return;

@@ -16,7 +16,7 @@ AddComponentPopup::AddComponentPopup(const ComponentEditContext& context,QWidget
             auto* component=object->GetComponentAt(i);
             if (component && component->GetTypeName() && type.TypeID==component->GetTypeName()) {exists=true;break;}
         }
-        _Entries.push_back({type.Name,type.Category,type.TypeID,{},false,!exists});
+        _Entries.push_back({type.Name,type.Category,type.TypeID,{},false,type.AllowMultiple||!exists});
     }
     if (_Context.Scripts) {
         for (const auto& type:_Context.Scripts->GetScriptTypes()) {

@@ -9,6 +9,7 @@
 #include <QSignalBlocker>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <map>
 
 GameObjectInspector::GameObjectInspector(QWidget* parent) : QWidget(parent), _Ui(new Ui::GameObjectInspectorForm()) {
     _Ui->setupUi(this);
@@ -45,6 +46,9 @@ void GameObjectInspector::Clear() {
     _Loading=false;
 }
 void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
+    std::map<std::uint64_t,bool> expanded;
+    if(_LoadedID==object.GetInstanceID())for(auto* section:_Sections)
+        if(section->GetComponentInstanceID())expanded[section->GetComponentInstanceID()]=section->IsExpanded();
     if (_LoadedID!=object.GetInstanceID() && _AddPopup) delete _AddPopup;
     _Loading=true;setEnabled(true);
     struct Guard { bool& Value;~Guard(){Value=false;} } guard{_Loading};
@@ -67,8 +71,14 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
             _Ui->componentLayout->insertWidget(_Ui->componentLayout->count()-2,section);
             _Sections.push_back(section);
         }
-        _Sections[index]->Bind(_Context);
+        auto componentContext=_Context;
+        componentContext.ComponentID=component->GetComponentInstanceID();
+        _Sections[index]->Bind(componentContext);
         _Sections[index]->Load(*component);
+        if(componentContext.ComponentID) {
+            const auto previous=expanded.find(componentContext.ComponentID);
+            _Sections[index]->SetExpanded(previous==expanded.end()?true:previous->second);
+        }
         _Sections[index]->SetReadOnly(_ReadOnly);
         _Sections[index]->SetDebugMode(_DebugMode);
         _Sections[index]->setVisible(!_SceneRoot || _DebugMode);

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>PrefabInstanceSectionForm</class>
+ <widget class="QWidget" name="PrefabInstanceSectionForm">
+  <property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Maximum"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>6</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>6</number></property><property name="bottomMargin"><number>4</number></property><property name="spacing"><number>3</number></property>
+   <item><layout class="QHBoxLayout" name="sourceLayout">
+    <item><widget class="QLabel" name="prefabLabel"><property name="text"><string>Prefab</string></property></widget></item>
+    <item><widget class="QLabel" name="sourceLabel"><property name="text"><string/></property><property name="textFormat"><enum>Qt::PlainText</enum></property><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Preferred"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>
+    <item><widget class="QToolButton" name="openSourceButton"><property name="text"><string>Open</string></property><property name="toolTip"><string>在 Prefab Stage 中独立编辑来源。</string></property></widget></item>
+    <item><widget class="QToolButton" name="selectSourceButton"><property name="text"><string>Select</string></property><property name="toolTip"><string>在 Project 中选择来源资源；保持 Inspector 的锁定状态。</string></property></widget></item>
+    <item><widget class="QToolButton" name="overridesButton"><property name="text"><string>Overrides ▾</string></property><property name="toolTip"><string>查看此实例根的全部覆盖。</string></property></widget></item>
+   </layout></item>
+   <item><widget class="QLabel" name="stateLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+  </layout>
+ </widget><resources/><connections/>
+</ui>

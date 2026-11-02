@@ -63,6 +63,7 @@ void ProjectAssetsUI::UnregisterExtensions(const void* owner) {
     for (auto& action:_ContextActions) if (_Docker && action.Owner==owner && action.Menu) action.Menu->SetClickCalback(nullptr);
     std::erase_if(_ContextActions,[owner](const ContextAction& action) {return action.Owner==owner;});
     std::erase_if(_OpenHandlers,[owner](const OpenHandler& handler) {return handler.Owner==owner;});
+    std::erase_if(_DropHandlers,[owner](const DropHandler& handler) {return handler.Owner==owner;});
 }
 
 ProjectAssetActionContext ProjectAssetsUI::GetActionContext() const {

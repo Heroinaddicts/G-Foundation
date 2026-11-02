@@ -1,0 +1,14 @@
+#pragma once
+#include "IPrefabUI.h"
+#include "IInspectorUI.h"
+#include "InspectorPanel.h"
+#include "IPrefabManager.h"
+#include "ISelectionManager.h"
+#include "IAssetsManager.h"
+#include "ILibraryManager.h"
+#include "ISceneManager.h"
+#include "IPlayMode.h"
+#include "IProjectAssetsUI.h"
+#include "IHierarchyUI.h"
+#include "IScriptEditor.h"
+#include <QtGlobal>

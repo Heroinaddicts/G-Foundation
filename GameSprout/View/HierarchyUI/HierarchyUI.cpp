@@ -60,6 +60,8 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
             [this](const QModelIndex& index) { FocusDoubleClickedNode(index); });
         QObject::connect(_Window, &QObject::destroyed, _Dispatch, [this]() {
             _Window = nullptr; _Model = nullptr; _Proxy = nullptr; _Docker = nullptr; _DeleteMenu=nullptr; _Attached = false;
+            _HeaderWidgets.clear();
+            for(auto& action:_ExtensionActions)action.Menu=nullptr;
         });
         QObject::connect(_Ui->searchEdit, &QLineEdit::textChanged, _Dispatch, [this]() { QueueRefresh(false); });
         QObject::connect(_Ui->hierarchyTree, &QTreeView::expanded, _Dispatch, [this](const QModelIndex& index) {
@@ -84,6 +86,7 @@ bool HierarchyUI::Initialize(GameSproutEditor::GameSproutViewApi * const editor)
                 UpdateStatus();
             });
         InstallContextCapture();
+        InstallDropRouting();
     } catch (...) { Release(nullptr); throw; }
     return true;
 }
@@ -97,6 +100,7 @@ bool HierarchyUI::Launch(GameSproutEditor::GameSproutViewApi * const editor) {
     _Docker->SetTitle(QStringLiteral("Hierarchy"));
     if (IIDEMenu* menu = _Docker->CreateChildMenu(_Ui->actionRefresh->property("panelText").toString())) menu->SetClickCallback(&HierarchyUI::RefreshMenu);
     RegisterContextMenus();
+    RegisterExtensionMenus();
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     // Docker 刚为内容安装了弹出过滤器；重新安装上下文捕获，使真实目标先被记录。
     InstallContextCapture();
@@ -143,7 +147,12 @@ void HierarchyUI::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     if(_Docker)for(const auto& menu:_CreateMenus)menu.first->SetClickCalback(nullptr);
     _CreateMenus.clear();
     if(_DeleteMenu)_DeleteMenu->SetClickCalback(nullptr);
+    for(auto& action:_ExtensionActions)if(action.Menu)action.Menu->SetClickCalback(nullptr);
+    _ExtensionActions.clear();_AssetDropHandlers.clear();
     delete _Dispatch; _Dispatch = nullptr;
+    const auto headers = std::move(_HeaderWidgets);
+    _HeaderWidgets.clear();
+    for (const auto& header : headers) delete header.data();
     _ContextCapture = nullptr;
     if (!_Attached) delete _Window;
     _Window = nullptr; _Docker = nullptr; _DeleteMenu=nullptr; _Attached = false;
@@ -173,6 +182,7 @@ void HierarchyUI::OnActiveSceneChanged() {
     _DragSessionID=0;
     _SceneID = 0; _SelectedID = 0; _ExpandedIDs.clear();
     _ContextSceneID = 0; _ContextObjectID = 0; _ContextCaptured = false;
+    RefreshContextActions();
     QueueRefresh();
 }
 
@@ -209,10 +219,12 @@ void HierarchyUI::RefreshPresentation() {
     struct Guard {bool& Flag;~Guard(){Flag=false;}} guard{_Rebuilding};
     auto* scene=_SceneManager?_SceneManager->GetActiveScene():nullptr;
     if(scene&&scene->GetInstanceID()==_SceneID) {
-        if(auto* root=_Model->itemFromIndex(_Model->FindNode(_SceneID))) {
-            root->setText(QString::fromStdString(scene->GetName())+(_SceneManager->HasUnsavedChanges()?QStringLiteral(" *"):QString{}));
+        auto* content=_SceneManager->GetDocumentContentRoot();
+        if(auto* root=content?_Model->itemFromIndex(_Model->FindNode(content->GetInstanceID())):nullptr) {
+            root->setText(QString::fromStdString(content->GetName())+(_SceneManager->HasUnsavedChanges()?QStringLiteral(" *"):QString{}));
             const auto& path=_SceneManager->GetActiveScenePath();
-            root->setToolTip(path.empty()?QStringLiteral("未保存的场景"):QStringLiteral("Assets/")+QString::fromStdString(path));
+            root->setToolTip(_SceneManager->IsDocumentSessionActive()?QStringLiteral("独立编辑文档"):
+                path.empty()?QStringLiteral("未保存的场景"):QStringLiteral("Assets/")+QString::fromStdString(path));
         }
     }
     _Proxy->setFilterFixedString(_Ui->searchEdit->text());
@@ -227,11 +239,14 @@ void HierarchyUI::Refresh() {
     if (!BindRuntime()) return;
     GameSproutRuntime::IScene* scene = _SceneManager ? _SceneManager->GetActiveScene() : nullptr;
     const std::uint64_t sceneID = scene ? scene->GetInstanceID() : 0;
-    if (sceneID != _SceneID) {
+    const bool sceneChanged=sceneID!=_SceneID;
+    if (sceneChanged) {
         _SelectedID = 0; _ExpandedIDs.clear();
         if (sceneID) _ExpandedIDs.insert(sceneID);
     }
     _SceneID = sceneID;
+    auto* content=_SceneManager?_SceneManager->GetDocumentContentRoot():scene;
+    if(sceneChanged&&sceneID&&content)_ExpandedIDs.insert(content->GetInstanceID());
     _DragSessionID=0;
     if(_Scripts&&scene) {
         ScriptObjectTarget scope;std::string error;
@@ -242,14 +257,15 @@ void HierarchyUI::Refresh() {
     const int scroll = _Ui->hierarchyTree->verticalScrollBar()->value();
     _Rebuilding = true;
     struct ResetRebuilding { bool& Flag; ~ResetRebuilding() { Flag = false; } } reset{_Rebuilding};
-    _Model->Build(scene, _Window->property("inactiveColor").value<QColor>());
+    _Model->Build(scene, _Window->property("inactiveColor").value<QColor>(),content);
     if (scene && _SceneManager) {
-        QStandardItem* root = _Model->itemFromIndex(_Model->FindNode(sceneID));
+        QStandardItem* root = content?_Model->itemFromIndex(_Model->FindNode(content->GetInstanceID())):nullptr;
         if (root) {
-            const QString name = QString::fromStdString(scene->GetName());
+            const QString name = QString::fromStdString(content->GetName());
             root->setText(name + (_SceneManager->HasUnsavedChanges() ? QStringLiteral(" *") : QString{}));
             const std::string& path = _SceneManager->GetActiveScenePath();
-            root->setToolTip(path.empty() ? QStringLiteral("未保存的场景") : QStringLiteral("Assets/") + QString::fromStdString(path));
+            root->setToolTip(_SceneManager->IsDocumentSessionActive()?QStringLiteral("独立编辑文档"):
+                path.empty()?QStringLiteral("未保存的场景"):QStringLiteral("Assets/")+QString::fromStdString(path));
         }
     }
     _Proxy->setFilterFixedString(_Ui->searchEdit->text());
@@ -273,13 +289,15 @@ void HierarchyUI::UpdateStatus() {
     else if (!_SceneID) _Ui->statusLabel->setText(QStringLiteral("当前没有打开的场景"));
     else {
         const std::size_t count = _Model->GetNodeCount();
-        _Ui->statusLabel->setText(QStringLiteral("%1 个对象%2").arg(static_cast<qulonglong>(count ? count - 1 : 0))
+        const bool syntheticRoot=_SceneManager->GetDocumentContentRoot()==_SceneManager->GetActiveScene();
+        _Ui->statusLabel->setText(QStringLiteral("%1 个对象%2").arg(static_cast<qulonglong>(count-(syntheticRoot&&count?1:0)))
             .arg(_SelectedID ? QStringLiteral(" · 已选择节点") : QString{}));
     }
 }
 
 void HierarchyUI::OnPlayModeStateChanged(const PlayModeState& state) {
     _CanEdit=state.State==EditorPlayState::Edit;
+    RefreshContextActions();
     if(!_Docker)return;
     for(const auto& menu:_CreateMenus)menu.first->SetClickCalback(_CanEdit?menu.second:nullptr);
     if(_DeleteMenu)_DeleteMenu->SetClickCalback(nullptr);

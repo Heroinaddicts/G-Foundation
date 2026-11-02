@@ -9,7 +9,7 @@ class HierarchyTreeModel final : public QStandardItemModel {
 public:
     enum Role { NodeIDRole = Qt::UserRole + 1, ActiveRole, SceneRootRole, SceneIDRole };
     explicit HierarchyTreeModel(QObject* parent) : QStandardItemModel(parent) {}
-    void Build(GameSproutRuntime::IScene* scene, const QColor& inactiveColor);
+    void Build(GameSproutRuntime::IScene* scene, const QColor& inactiveColor,GameSproutRuntime::IGameObject* contentRoot=nullptr);
     QModelIndex FindNode(std::uint64_t id) const;
     std::size_t GetNodeCount() const { return _Nodes.size(); }
     QStringList mimeTypes() const override;

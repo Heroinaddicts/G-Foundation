@@ -247,7 +247,22 @@ bool IDEWindow::AttachToolbarWidget(QWidget* widget) {
         if (_Ui->editorToolBar->widgetForAction(action) == widget) return false;
     if (widget->parentWidget()) return false;
     _Ui->editorToolBar->addWidget(widget);
-    _Ui->editorToolBar->show();
+    SetToolbarWidgetVisible(widget, true);
+    return true;
+}
+bool IDEWindow::SetToolbarWidgetVisible(QWidget* widget, bool visible) {
+    if (!_Window || !_Ui || !widget) return false;
+    bool found = false;
+    for (QAction* action : _Ui->editorToolBar->actions()) {
+        if (_Ui->editorToolBar->widgetForAction(action) != widget) continue;
+        action->setVisible(visible);
+        found = true;
+        break;
+    }
+    if (!found) return false;
+    bool anyVisible = false;
+    for (QAction* action : _Ui->editorToolBar->actions()) anyVisible |= action->isVisible();
+    _Ui->editorToolBar->setVisible(anyVisible);
     return true;
 }
 bool IDEWindow::RemoveToolbarWidget(QWidget* widget) {
@@ -256,7 +271,9 @@ bool IDEWindow::RemoveToolbarWidget(QWidget* widget) {
         if (_Ui->editorToolBar->widgetForAction(action) != widget) continue;
         _Ui->editorToolBar->removeAction(action);
         delete action; // QWidgetAction also owns the feature widget.
-        if (_Ui->editorToolBar->actions().isEmpty()) _Ui->editorToolBar->hide();
+        bool anyVisible = false;
+        for (QAction* remaining : _Ui->editorToolBar->actions()) anyVisible |= remaining->isVisible();
+        _Ui->editorToolBar->setVisible(anyVisible);
         return true;
     }
     return false;

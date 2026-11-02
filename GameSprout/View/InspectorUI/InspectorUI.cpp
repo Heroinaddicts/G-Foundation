@@ -23,6 +23,7 @@ bool InspectorUI::Initialize(GameSproutEditor::GameSproutViewApi*) {
         QObject::connect(_Window, &QObject::destroyed, _Dispatch, [this] {
             _Window = nullptr; _Info = nullptr; _Docker = nullptr; _Attached = false;
             _ActivePanel = nullptr; _ActiveExtension = nullptr; _Panels.clear();
+            _SceneSections.clear();
             _NormalModeMenu = nullptr; _DebugModeMenu = nullptr;
         });
         QObject::connect(_Ui->applyButton, &QPushButton::clicked, _Dispatch, [this] { ApplyChanges(); });
@@ -85,6 +86,11 @@ void InspectorUI::UnregisterExtension(IInspectorExtension* extension) {
     const auto found = std::find(_Extensions.begin(), _Extensions.end(), extension);
     if (found == _Extensions.end()) return;
     _Extensions.erase(found);
+    const auto section=_SceneSections.find(extension);
+    if(section!=_SceneSections.end()) {
+        if(section->second){section->second->Deactivate();delete section->second;}
+        _SceneSections.erase(section);
+    }
     // Remaining node pages can contain component editors created by this extension.
     for (auto& entry : _Panels) entry.second->Deactivate();
     const auto panel = _Panels.find(extension);
@@ -108,6 +114,11 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if (_SceneSubscribed && _Services.Scenes) _Services.Scenes->UnregisterSceneListener(this);
     if (_Subscribed) { _Services.Assets->UnregisterAssetListener(this); _Services.Selection->UnregisterSelectionListener(this); }
     _Subscribed = false; _RuntimeSubscribed = false; _SceneSubscribed = false;
+    for(auto& entry:_SceneSections)if(entry.second) {
+        entry.second->ReportError={};entry.second->RequestSelection={};entry.second->RequestRefresh={};
+        entry.second->Deactivate();delete entry.second;
+    }
+    _SceneSections.clear();
     for (auto& entry : _Panels) {
         entry.second->Changed = {}; entry.second->RequestSelection = {}; entry.second->RequestLock = {};
         entry.second->ReportError = {};

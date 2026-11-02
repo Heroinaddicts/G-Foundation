@@ -5,6 +5,7 @@
 #include "IIDEWindow.h"
 #include "IProjectAssetsUI.h"
 #include <functional>
+#include <vector>
 class QObject;
 class QDialog;
 class IAssetsManager;
@@ -20,6 +21,9 @@ public:
     void OpenSceneAsset(const std::string& path) override;
     void OnActiveSceneChanged() override;
     void OnSceneStateChanged() override;
+    bool RegisterDocumentHandler(const void*,const fDocumentActive&,const fDocumentSave&,const fDocumentClose&) override;
+    void UnregisterDocumentHandler(const void*) override;
+    void RefreshDocumentActions() override {RefreshActions();}
 private:
     IPlayMode* _PlayMode=nullptr;
     bool _PlaySubscribed=false;
@@ -63,4 +67,15 @@ private:
     IIDEMenu* _Redo = nullptr;
     bool _Subscribed = false;
     bool _Opening = false;
+    struct DocumentHandler {
+        uint64_t ID=0;
+        const void* Owner=nullptr;
+        fDocumentActive Active;
+        fDocumentSave Save;
+        fDocumentClose Close;
+    };
+    bool ReadDocumentHandler(DocumentHandler&) const;
+    bool CloseActiveDocument(const std::function<void()>&);
+    std::vector<DocumentHandler> _DocumentHandlers;
+    uint64_t _NextDocumentHandler=0;
 };

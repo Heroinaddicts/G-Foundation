@@ -13,7 +13,8 @@ void HierarchyUI::CreateNode(NodeKind kind, bool child) {
     const std::uint64_t contextObject = _ContextObjectID;
     const bool captured = _ContextCaptured;
     _ContextCaptured = false; _ContextSceneID = 0; _ContextObjectID = 0;
-    GameSproutRuntime::IGameObject* parent = scene;
+    GameSproutRuntime::IGameObject* parent = _SceneManager->GetDocumentContentRoot();
+    if(!parent){_Ui->statusLabel->setText(QStringLiteral("当前文档内容根已经失效。"));return;}
     if (child && captured) {
         if (contextScene != scene->GetInstanceID()) {
             _Ui->statusLabel->setText(QStringLiteral("场景已经切换，请重新右键选择父节点。")); return;

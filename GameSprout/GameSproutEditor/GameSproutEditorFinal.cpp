@@ -261,6 +261,12 @@ namespace GameSproutEditor {
         // still exist. OnRelease callbacks must finish before unloading GameLogic.
         const auto play=_ModuleMap.find("PlayMode");
         if(play!=_ModuleMap.end())play->second->Release(_Api);
+        // Restore the parked author world before releasing source/scene services.
+        const auto prefabStage=_ModuleMap.find("PrefabStage");
+        if(prefabStage!=_ModuleMap.end())prefabStage->second->Release(_Api);
+        // Prefab owns source/scene subscriptions; detach before those providers.
+        const auto prefabs=_ModuleMap.find("PrefabManager");
+        if(prefabs!=_ModuleMap.end())prefabs->second->Release(_Api);
         // External-project generation owns worker processes and a loading scope.
         // Cancel them while the IDE, asset registry and compiler are still alive.
         const auto codeEditor=_ModuleMap.find("CodeEditor");
@@ -280,7 +286,7 @@ namespace GameSproutEditor {
             if(found!=_ModuleMap.end())found->second->Release(_Api);
         }
         for (const auto& [name, module] : _ModuleMap) {
-            if(name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
+            if(name!="PrefabStage"&&name!="PrefabManager"&&name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
         }
         _ViewMap.clear();
         _ModuleMap.clear();

@@ -19,6 +19,12 @@ add_executable(IDEContextMenuChecks IDEContextMenuChecks.cpp)
 add_executable(HierarchySceneChecks HierarchySceneChecks.cpp NodeInspectorChecks.h)
 add_executable(SceneEditingChecks SceneEditingChecks.cpp)
 add_executable(PreparedRenderChecks PreparedRenderChecks.cpp)
+add_executable(PrefabImportEntryChecks PrefabImportEntryChecks.cpp)
+target_compile_features(PrefabImportEntryChecks PRIVATE cxx_std_20)
+target_include_directories(PrefabImportEntryChecks PRIVATE
+    "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface" "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(PrefabImportEntryChecks PRIVATE Foundation::FoundationApi
+    GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
 foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks WarmStartupChecks ProjectBrowserChecks InspectorChecks MaterialInspectorChecks ArtifactFormatChecks CurrentFormatChecks ShaderCompilerChecks IDEContextMenuChecks HierarchySceneChecks SceneEditingChecks)
 target_compile_features(${check_target} PRIVATE cxx_std_20)
 target_include_directories(${check_target} PRIVATE
@@ -44,6 +50,7 @@ foreach(check_target IN ITEMS AssetsImportChecks StartupReconcileChecks WarmStar
 target_compile_definitions(${check_target} PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
 endforeach()
 target_compile_definitions(PreparedRenderChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
+target_compile_definitions(PrefabImportEntryChecks PRIVATE TEST_BINARY_ROOT="${assets_test_binary_root}")
 # Exercise the exported core and the same already-built plugin used by the editor.
 # Tests must not add product source subdirectories or overwrite the application DLLs.
 add_library(ModelTexturePipeline SHARED IMPORTED)
@@ -93,6 +100,8 @@ add_custom_command(TARGET SceneEditingChecks POST_BUILD
     VERBATIM
 )
 enable_testing()
+add_test(NAME Assets.PrefabPublicImport COMMAND PrefabImportEntryChecks)
+set_tests_properties(Assets.PrefabPublicImport PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 add_test(NAME Assets.ModelTextures COMMAND ModelTextureChecks)
 set_tests_properties(Assets.ModelTextures PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 120)
 add_test(NAME IDE.PreparedRendering COMMAND PreparedRenderChecks)

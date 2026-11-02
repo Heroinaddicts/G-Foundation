@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0"><class>PrefabMessageDialog</class>
+ <widget class="QDialog" name="PrefabMessageDialog"><property name="windowTitle"><string>Prefab</string></property><property name="minimumSize"><size><width>320</width><height>0</height></size></property><layout class="QVBoxLayout" name="mainLayout">
+ <item><widget class="QLabel" name="messageLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="textFormat"><enum>Qt::PlainText</enum></property></widget></item>
+ <item><widget class="QDialogButtonBox" name="buttonBox"><property name="standardButtons"><set>QDialogButtonBox::Close</set></property></widget></item>
+ </layout></widget><resources/><connections/>
+</ui>

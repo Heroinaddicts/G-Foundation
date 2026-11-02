@@ -5,6 +5,15 @@ GameSproutRuntime::IGameObject* ComponentEditContext::Resolve() const {
     auto* scene = object ? object->GetScene() : nullptr;
     return scene && scene->GetInstanceID() == SceneID ? object : nullptr;
 }
+GameSproutRuntime::IComponent* ComponentEditContext::ResolveComponent() const {
+    auto* object=Resolve();
+    if(!object||!ComponentID)return nullptr;
+    for(std::size_t index=0;index<object->GetComponentCount();++index) {
+        auto* component=object->GetComponentAt(index);
+        if(component&&component->GetComponentInstanceID()==ComponentID)return component;
+    }
+    return nullptr;
+}
 bool ComponentEditContext::Execute(const std::string& label, const ISceneManager::fSceneEditOperation& apply,
                                    const ISceneManager::fSceneEditOperation& revert) const {
     std::string error;
@@ -18,5 +27,5 @@ bool ComponentEditContext::Execute(const std::string& label, const ISceneManager
     return success;
 }
 std::string ComponentEditContext::Key(const std::string& component, const std::string& field) const {
-    return std::to_string(SceneID) + "/" + std::to_string(ObjectID) + "/" + component + "/" + field;
+    return std::to_string(SceneID) + "/" + std::to_string(ObjectID) + "/" + std::to_string(ComponentID) + "/" + component + "/" + field;
 }

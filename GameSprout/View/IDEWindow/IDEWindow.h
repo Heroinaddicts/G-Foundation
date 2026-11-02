@@ -25,6 +25,7 @@ public:
 
     IIDEMenuBar* GetMenuBar() const override;
     bool AttachToolbarWidget(QWidget* widget) override;
+    bool SetToolbarWidgetVisible(QWidget* widget, bool visible) override;
     bool RemoveToolbarWidget(QWidget* widget) override;
     IIDEDocker* CreateDocker(const QString& name) override;
     IIDEDocker* QueryDocker(const QString& name) override;
