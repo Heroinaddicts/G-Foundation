@@ -26,12 +26,18 @@ int main(int argc,char** argv) {
         runtime->ProcessPendingEvents();Listener listener;Check(runtime->RegisterListener(&listener),"Environment event registration failed");
         auto settings=scene->GetEnvironmentLighting();settings.Mode=GameSproutRuntime::AmbientLightMode::SphericalHarmonics;
         settings.AmbientColor={4,.5f,.25f,1};settings.Intensity=2.5f;
+        settings.Atmosphere.Enabled=true;settings.Atmosphere.DrawSky=false;
+        settings.Atmosphere.ZenithColor={.1f,.3f,.7f,1};settings.Atmosphere.FogColor={.4f,.6f,.8f,1};
+        settings.Atmosphere.FogStart=80;settings.Atmosphere.FogEnd=700;settings.Atmosphere.FogMaxOpacity=.7f;
         settings.SHCoefficients[0]={.2f,.3f,.4f};settings.SHCoefficients[6]={-.5f,.125f,-.25f};
         Check(scene->SetEnvironmentLighting(settings),"Signed SH and linear HDR must be valid");runtime->ProcessPendingEvents();
         Check(listener.Changes==1&&listener.SceneID==scene->GetInstanceID()&&listener.ObjectID==scene->GetInstanceID(),"Wrong environment root event identity");
         Check(other->GetEnvironmentLighting().Mode==GameSproutRuntime::AmbientLightMode::None,"Environment leaked to another scene");
         Check(scene->SetEnvironmentLighting(settings),"Unchanged valid environment rejected");runtime->ProcessPendingEvents();
         Check(listener.Changes==1,"Unchanged environment emitted duplicate event");
+        settings.Atmosphere.FogStart=90;
+        Check(scene->SetEnvironmentLighting(settings),"Atmosphere-only edit rejected");runtime->ProcessPendingEvents();
+        Check(listener.Changes==2&&scene->GetEnvironmentLighting().Atmosphere.FogStart==90,"Atmosphere-only edit did not publish an environment event");
         const auto invalid=[&](GameSproutRuntime::EnvironmentLightingSettings value) {
             Check(!scene->SetEnvironmentLighting(value)&&scene->GetEnvironmentLighting().Mode==settings.Mode&&
                 scene->GetEnvironmentLighting().Intensity==settings.Intensity&&scene->GetEnvironmentLighting().AmbientColor.R==4&&
@@ -42,7 +48,11 @@ int main(int argc,char** argv) {
         badSettings=settings;badSettings.AmbientColor.G=-.1f;invalid(badSettings);
         badSettings=settings;badSettings.SkyColor.B=std::numeric_limits<float>::infinity();invalid(badSettings);
         badSettings=settings;badSettings.SHCoefficients[8].X=std::numeric_limits<float>::quiet_NaN();invalid(badSettings);
-        runtime->ProcessPendingEvents();Check(listener.Changes==1,"Rejected environment emitted a notification");runtime->UnregisterListener(&listener);
+        badSettings=settings;badSettings.Atmosphere.FogStart=-1;invalid(badSettings);
+        badSettings=settings;badSettings.Atmosphere.FogEnd=settings.Atmosphere.FogStart;invalid(badSettings);
+        badSettings=settings;badSettings.Atmosphere.FogMaxOpacity=1.1f;invalid(badSettings);
+        badSettings=settings;badSettings.Atmosphere.ZenithColor.R=std::numeric_limits<float>::infinity();invalid(badSettings);
+        runtime->ProcessPendingEvents();Check(listener.Changes==2,"Rejected environment emitted a notification");runtime->UnregisterListener(&listener);
 
         auto* object=scene->CreateGameObject("Prefab object");Check(object,"Cannot create ordinary object");
         SceneDocument::ObjectIDs ids;Json::Value document;std::string error;
@@ -50,6 +60,9 @@ int main(int argc,char** argv) {
         Check(document["EnvironmentLighting"]["Mode"]=="SphericalHarmonics"&&
             document["EnvironmentLighting"]["SHCoefficients"].size()==9&&
             document["EnvironmentLighting"]["SHCoefficients"][6][0].asFloat()==-.5f,"Scene lost the signed SH source data");
+        Check(document["EnvironmentLighting"]["Atmosphere"]["Enabled"].asBool()&&
+            !document["EnvironmentLighting"]["Atmosphere"]["DrawSky"].asBool()&&
+            document["EnvironmentLighting"]["Atmosphere"]["FogStart"].asFloat()==90,"Scene lost its atmosphere settings");
         GameSproutRuntime::IScene* loaded=nullptr;SceneDocument::ObjectIDs loadedIDs;
         Check(SceneDocument::Instantiate(document,*runtime,loaded,loadedIDs,error),error);
         Json::Value again;Check(SceneDocument::Serialize(*loaded,loadedIDs,again,error)&&again==document,"Environment scene round trip changed data");
@@ -63,6 +76,11 @@ int main(int argc,char** argv) {
         bad=document;bad["EnvironmentLighting"]["SHCoefficients"]=Json::Value(Json::arrayValue);reject(bad);
         bad=document;bad["EnvironmentLighting"]["SHCoefficients"][4][0]=std::numeric_limits<double>::infinity();reject(bad);
         bad=document;bad["EnvironmentLighting"]["GroundColor"][0]=-1;reject(bad);
+        bad=document;bad["EnvironmentLighting"]["Atmosphere"]["Unknown"]=true;reject(bad);
+        bad=document;bad["EnvironmentLighting"]["Atmosphere"]["Enabled"]=1;reject(bad);
+        bad=document;bad["EnvironmentLighting"]["Atmosphere"]["FogStart"]=1000;reject(bad);
+        bad=document;bad["EnvironmentLighting"]["Atmosphere"]["FogMaxOpacity"]=1.1;reject(bad);
+        bad=document;bad["EnvironmentLighting"]["Atmosphere"]["FogColor"][0]=-1;reject(bad);
         bad=document;bad["EnvironmentLighting"]=Json::Value();reject(bad);
         bad=document;bad.removeMember("EnvironmentLighting");GameSproutRuntime::IScene* omitted=nullptr;
         Check(SceneDocument::Instantiate(bad,*runtime,omitted,error)&&omitted->GetEnvironmentLighting().Mode==GameSproutRuntime::AmbientLightMode::None,

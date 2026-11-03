@@ -157,6 +157,13 @@ int main(int argc,char** argv) {
         Check(!environmentEvents.Events.empty()&&environmentEvents.Events.back().Settings.Intensity==2,"Environment mutation did not push values");
         Check(scenes.Undo(environmentError)&&scenes.GetActiveScene()->GetEnvironmentLighting().Mode==GameSproutRuntime::AmbientLightMode::None,"Environment Undo failed: "+environmentError);
         Check(scenes.Redo(environmentError)&&scenes.GetActiveScene()->GetEnvironmentLighting().SkyColor.R==2,"Environment Redo failed: "+environmentError);
+        environmentValue.Atmosphere.Enabled=true;environmentValue.Atmosphere.FogStart=120;
+        const auto beforeAtmosphere=environmentEvents.Events.size();
+        Check(lighting.SetEnvironment(environment.SceneID,environmentValue,environmentError),environmentError);
+        Check(environmentEvents.Events.size()==beforeAtmosphere+1&&environmentEvents.Events.back().Settings.Atmosphere.FogStart==120,
+            "Atmosphere-only transaction did not publish its new value");
+        Check(scenes.Undo(environmentError)&&!scenes.GetActiveScene()->GetEnvironmentLighting().Atmosphere.Enabled,"Atmosphere Undo failed: "+environmentError);
+        Check(scenes.Redo(environmentError)&&scenes.GetActiveScene()->GetEnvironmentLighting().Atmosphere.Enabled,"Atmosphere Redo failed: "+environmentError);
         auto invalidEnvironment=environmentValue;invalidEnvironment.Intensity=-1;
         Check(!lighting.SetEnvironment(environment.SceneID,invalidEnvironment,environmentError)&&scenes.GetActiveScene()->GetEnvironmentLighting().Intensity==2,"Invalid environment changed source");
         host.Frame=true;Check(!lighting.SetEnvironment(environment.SceneID,environmentValue,environmentError),"Host-frame environment mutation accepted");host.Frame=false;

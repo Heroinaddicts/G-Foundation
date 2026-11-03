@@ -7,7 +7,8 @@
 namespace {
 bool Same(const EnvironmentLightingSnapshot& a,const EnvironmentLightingSnapshot& b) {
     if(a.SceneID!=b.SceneID||a.Available!=b.Available||a.Editable!=b.Editable||
-       a.Settings.Mode!=b.Settings.Mode||a.Settings.Intensity!=b.Settings.Intensity)return false;
+       a.Settings.Mode!=b.Settings.Mode||a.Settings.Intensity!=b.Settings.Intensity||
+       !(a.Settings.Atmosphere==b.Settings.Atmosphere))return false;
     const auto color=[](GameSproutRuntime::Color x,GameSproutRuntime::Color y){return x.R==y.R&&x.G==y.G&&x.B==y.B&&x.A==y.A;};
     if(!color(a.Settings.AmbientColor,b.Settings.AmbientColor)||!color(a.Settings.SkyColor,b.Settings.SkyColor)||
        !color(a.Settings.EquatorColor,b.Settings.EquatorColor)||!color(a.Settings.GroundColor,b.Settings.GroundColor))return false;

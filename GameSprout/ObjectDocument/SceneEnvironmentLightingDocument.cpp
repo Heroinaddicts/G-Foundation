@@ -27,7 +27,7 @@ namespace SceneEnvironmentLightingDocument {
 GameSproutRuntime::EnvironmentLightingSettings Read(const Json::Value& data,const std::string& path) {
     if(!data.isObject())Fail(path,"expected object");
     for(const auto& name:data.getMemberNames())
-        if(name!="Mode"&&name!="AmbientColor"&&name!="SkyColor"&&name!="EquatorColor"&&name!="GroundColor"&&name!="Intensity"&&name!="SHCoefficients")
+        if(name!="Mode"&&name!="AmbientColor"&&name!="SkyColor"&&name!="EquatorColor"&&name!="GroundColor"&&name!="Intensity"&&name!="SHCoefficients"&&name!="Atmosphere")
             Fail(path+"."+name,"unknown field");
     GameSproutRuntime::EnvironmentLightingSettings result;
     if(data.isMember("Mode")) {
@@ -52,6 +52,27 @@ GameSproutRuntime::EnvironmentLightingSettings Read(const Json::Value& data,cons
             result.SHCoefficients[index]={Number(coefficient[0],key+"[0]",true),Number(coefficient[1],key+"[1]",true),Number(coefficient[2],key+"[2]",true)};
         }
     }
+    if(data.isMember("Atmosphere")) {
+        const auto& atmosphere=data["Atmosphere"];const auto key=path+".Atmosphere";
+        if(!atmosphere.isObject())Fail(key,"expected object");
+        for(const auto& name:atmosphere.getMemberNames())
+            if(name!="Enabled"&&name!="DrawSky"&&name!="ZenithColor"&&name!="HorizonColor"&&name!="FogColor"&&
+               name!="FogStart"&&name!="FogEnd"&&name!="FogMaxOpacity")Fail(key+"."+name,"unknown field");
+        auto& settings=result.Atmosphere;
+        for(const auto& entry:{std::pair{"Enabled",&settings.Enabled},std::pair{"DrawSky",&settings.DrawSky}})
+            if(atmosphere.isMember(entry.first)) {
+                if(!atmosphere[entry.first].isBool())Fail(key+"."+entry.first,"expected boolean");
+                *entry.second=atmosphere[entry.first].asBool();
+            }
+        for(const auto& entry:{std::pair{"ZenithColor",&settings.ZenithColor},std::pair{"HorizonColor",&settings.HorizonColor},
+            std::pair{"FogColor",&settings.FogColor}})
+            if(atmosphere.isMember(entry.first))*entry.second=Color(atmosphere[entry.first],key+"."+entry.first);
+        for(const auto& entry:{std::pair{"FogStart",&settings.FogStart},std::pair{"FogEnd",&settings.FogEnd},
+            std::pair{"FogMaxOpacity",&settings.FogMaxOpacity}})
+            if(atmosphere.isMember(entry.first))*entry.second=Number(atmosphere[entry.first],key+"."+entry.first);
+        if(settings.FogEnd<=settings.FogStart)Fail(key+".FogEnd","must be greater than FogStart");
+        if(settings.FogMaxOpacity>1)Fail(key+".FogMaxOpacity","must be between zero and one");
+    }
     return result;
 }
 Json::Value Serialize(const GameSproutRuntime::EnvironmentLightingSettings& settings) {
@@ -71,6 +92,11 @@ Json::Value Serialize(const GameSproutRuntime::EnvironmentLightingSettings& sett
         Json::Value value(Json::arrayValue);value.append(coefficient.X);value.append(coefficient.Y);value.append(coefficient.Z);
         result["SHCoefficients"].append(std::move(value));
     }
+    const auto& atmosphere=settings.Atmosphere;auto& data=result["Atmosphere"];
+    data["Enabled"]=atmosphere.Enabled;data["DrawSky"]=atmosphere.DrawSky;
+    data["ZenithColor"]=Color(atmosphere.ZenithColor);data["HorizonColor"]=Color(atmosphere.HorizonColor);
+    data["FogColor"]=Color(atmosphere.FogColor);data["FogStart"]=atmosphere.FogStart;
+    data["FogEnd"]=atmosphere.FogEnd;data["FogMaxOpacity"]=atmosphere.FogMaxOpacity;
     return result;
 }
 }

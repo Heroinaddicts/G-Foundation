@@ -5,6 +5,7 @@ bool Scene::SetEnvironmentLighting(const EnvironmentLightingSettings& settings) 
     if(!IsValidEnvironmentLighting(settings))return false;
     const auto sameColor=[](Color a,Color b){return a.R==b.R&&a.G==b.G&&a.B==b.B&&a.A==b.A;};
     bool same=settings.Mode==_EnvironmentLighting.Mode&&settings.Intensity==_EnvironmentLighting.Intensity&&
+        settings.Atmosphere==_EnvironmentLighting.Atmosphere&&
         sameColor(settings.AmbientColor,_EnvironmentLighting.AmbientColor)&&sameColor(settings.SkyColor,_EnvironmentLighting.SkyColor)&&
         sameColor(settings.EquatorColor,_EnvironmentLighting.EquatorColor)&&sameColor(settings.GroundColor,_EnvironmentLighting.GroundColor);
     for(std::size_t index=0;same&&index<settings.SHCoefficients.size();++index) {

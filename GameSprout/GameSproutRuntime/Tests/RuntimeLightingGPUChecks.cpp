@@ -109,6 +109,33 @@ int main(int argc,char** argv){
         Check(std::abs(render()[0]-int(white*1.75f))<3,"Light budget was consumed before per-object mask filtering");
         for(auto* extra:extraLights)extra->SetEnabled(false);
         secondLight->SetEnabled(false);
+        // Stylization is opt-in and colors actual ambient illumination; it must
+        // neither invent fill in an unlit scene nor change the zero-strength PBR path.
+        light->SetEnabled(false);
+        EnvironmentLightingSettings ambient;ambient.Mode=AmbientLightMode::Color;ambient.AmbientColor={.25f,.25f,.25f,1};
+        Check(scene->SetEnvironmentLighting(ambient),"Cannot set stylization ambient fixture");
+        const auto originalAmbient=render();
+        provider.Material.Stylization=1;provider.Material.StylizedShadowTint={.4f,.6f,1,1};++provider.Revision;
+        const auto tinted=render();
+        Check(tinted[0]<originalAmbient[0]*.5f&&tinted[1]>tinted[0]&&std::abs(tinted[2]-originalAmbient[2])<2,
+            "Stylized shadow tint did not modulate actual environment illumination");
+        provider.Material.ColorSaturation=0;++provider.Revision;pixel=render();
+        Check(std::abs(pixel[0]-pixel[1])<2&&std::abs(pixel[1]-pixel[2])<2&&pixel[0]>5,
+            "Stylized material saturation did not reach the GPU");
+        provider.Material.Stylization=0;provider.Material.ColorSaturation=7;provider.Material.StylizedShadowTint={0,0,0,1};++provider.Revision;
+        Check(render()==originalAmbient,"Zero stylization changed the existing Lit result");
+        provider.Material.Stylization=1.1f;++provider.Revision;render();
+        Check(viewport->GetStatistics().DrawCalls==0&&viewport->GetLastError().find("Lit material")!=std::string::npos,
+            "Out-of-range style parameter reached the GPU");
+        provider.Material.Stylization=1;provider.Material.ColorSaturation=1;provider.Material.StylizedShadowTint={.4f,.6f,1,1};++provider.Revision;
+        Check(scene->SetEnvironmentLighting({}),"Cannot clear stylization ambient fixture");
+        pixel=render();Check(pixel[0]==0&&pixel[1]==0&&pixel[2]==0,"Stylized Lit fabricated light in a dark scene");
+        light->SetEnabled(true);sunObject->GetTransform()->SetLocalRotation({0,.93969262f,0,.34202014f});
+        provider.Material.SpecularHighlights=false;provider.Material.Stylization=0;++provider.Revision;
+        const auto lambert=render();provider.Material.Stylization=1;++provider.Revision;
+        Check(render()[0]>lambert[0]+5,"Stylized diffuse did not replace angular Lambert falloff with the soft light band");
+        provider.Material.Stylization=0;provider.Material.SpecularHighlights=true;++provider.Revision;
+        sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
         provider.Skin=true;provider.UV=true;++provider.Revision;auto* animator=object->AddComponent<IAnimatorComponent>();
         auto* bone=scene->CreateGameObject("Bone",object);Check(animator->SetNodeBindings({{"Bone",bone->GetInstanceID()}}),"Skin node binding failed");
         auto* skin=object->AddComponent<ISkinnedMeshRendererComponent>();Check(skin->SetAnimatorObjectID(object->GetInstanceID()),"Skin owner failed");

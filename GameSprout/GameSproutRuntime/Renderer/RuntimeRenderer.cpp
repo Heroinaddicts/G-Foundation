@@ -113,6 +113,7 @@ bool Renderer::Render(const RenderView& view) {
         command.Pass=command.Command->BeginRenderPass(pass);
         if(!command.Pass) return Fail(DeviceError("Begin Runtime depth/color pass"));
         _Statistics.Width=width;_Statistics.Height=height;
+        if(view.DrawScene&&!DrawSky(*command.Pass,view,format,float(width)/float(height),lights))return false;
         if(view.DrawScene && view.DrawGrid && !DrawGrid(*command.Pass,viewProjection,format)) return false;
         if(!DrawPrepared(*command.Pass,prepared,view,viewProjection,format,lights,&environment,sizeof(environment)))return false;
         if(view.DrawScene && !DrawDebug(*command.Pass,viewProjection,format,debugBatches,debugBuffers.Buffers)) return false;

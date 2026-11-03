@@ -71,6 +71,12 @@ struct MaterialRenderData {
     Vector4 NormalTextureST{1,1,0,0};
     float NormalScale = 1;
     Color EmissionColor{0,0,0,1};
+    // Optional environment-art shading. Zero keeps the existing Lit result;
+    // authoring controls never change instancing, geometry or shadow casting.
+    float Stylization = 0;
+    Color StylizedShadowTint{.65f,.75f,1,1};
+    float LightThreshold = .35f, LightSoftness = .25f;
+    float ColorSaturation = 1;
     // Empty Shader selects the engine's existing built-in preview material.
     ResourceReference Shader;
     std::vector<MaterialPropertyData> Properties;

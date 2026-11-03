@@ -64,6 +64,8 @@ Renderer::LitUniform Renderer::MakeLitUniform(const RenderView& view,const DrawO
     result.CameraPosition={view.Camera.Position.X,view.Camera.Position.Y,view.Camera.Position.Z,material.SpecularHighlights?1.0f:0.0f};
     result.Parameters={material.Metallic,material.Roughness,material.NormalScale,hasNormalMap?1.0f:0.0f};
     result.Emission=material.EmissionColor;result.NormalTextureST=material.NormalTextureST;
+    result.StyleParameters={material.Stylization,material.LightThreshold,material.LightSoftness,material.ColorSaturation};
+    result.StylizedShadowTint=material.StylizedShadowTint;
     std::size_t count=0;
     for(const auto& light:lights) {
         const auto lightIndex=static_cast<std::size_t>(&light-lights.data());

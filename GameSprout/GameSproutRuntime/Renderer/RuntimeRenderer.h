@@ -130,7 +130,10 @@ private:
         Vector4 Parameters; // Metallic, perceptual roughness, normal scale, has normal map.
         Color Emission;
         Vector4 NormalTextureST;
+        Vector4 StyleParameters; // Strength, light threshold, softness, saturation.
+        Color StylizedShadowTint;
     };
+    static_assert(sizeof(LitUniform)==224,"Lit material block must match HLSL packing");
     struct PreparedDraw;
     struct ShadowUniform {
         Mat4 WorldToShadow[4];
@@ -209,6 +212,8 @@ private:
     GRHI::IGraphicsPipeline* Pipeline(const PipelineKey& key);
     GRHI::ITexture* DepthTarget(std::uint32_t width,std::uint32_t height);
     bool DrawGrid(GRHI::IRenderPass& pass,const Mat4& viewProjection,GRHI::TextureFormat format);
+    bool DrawSky(GRHI::IRenderPass&,const RenderView&,GRHI::TextureFormat,float aspect,
+        const std::vector<DirectionalLight>&);
     bool PrepareDebug(const DebugDrawList* draw,std::vector<DebugBatch>& batches);
     bool DrawDebug(GRHI::IRenderPass& pass,const Mat4& viewProjection,GRHI::TextureFormat format,
                    const std::vector<DebugBatch>& batches,std::vector<GRHI::IBuffer*>& buffers);
@@ -251,7 +256,7 @@ private:
     bool _ObjectSnapshotKnown=false,_LightSnapshotKnown=false;
     std::string _ExtractionDiagnostic,_LightDiagnostic;
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
-    GRHI::IShader* (&_Shaders)[17];
+    GRHI::IShader* (&_Shaders)[19];
     GRHI::ITexture* _ShadowAtlas=nullptr;
     GRHI::ISampler* _ShadowSampler=nullptr;
     std::uint32_t _ShadowResolution=0;

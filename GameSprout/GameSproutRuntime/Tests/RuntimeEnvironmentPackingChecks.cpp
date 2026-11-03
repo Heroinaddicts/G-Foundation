@@ -26,6 +26,13 @@ int main(){
         settings.Mode=AmbientLightMode::SphericalHarmonics;settings.Intensity=1;settings.SHCoefficients={};settings.SHCoefficients[6]={std::numeric_limits<float>::max(),0,0};
         Check(!RenderEnvironment::Prepare(settings,packed)&&packed.Info.X==7,"Finite SH terms were allowed to overflow during GPU polynomial evaluation");
         settings.Mode=AmbientLightMode::None;Check(RenderEnvironment::Prepare(settings,packed)&&packed.Info.X==0,"An inactive mode multiplied unused HDR values");
+        settings.Atmosphere.Enabled=true;settings.Atmosphere.FogStart=12;settings.Atmosphere.FogEnd=120;
+        settings.Atmosphere.FogMaxOpacity=.5f;settings.Atmosphere.FogColor={.1f,.2f,.3f,1};settings.Intensity=0;
+        Check(RenderEnvironment::Prepare(settings,packed)&&packed.AtmosphereParameters.X==1&&packed.AtmosphereParameters.Y==12&&
+            packed.AtmosphereParameters.Z==120&&packed.AtmosphereParameters.W==.5f&&packed.AtmosphereFogColor.Y==.2f,
+            "Atmosphere was disabled or multiplied by diffuse ambient intensity");
+        settings.Atmosphere.Enabled=false;Check(RenderEnvironment::Prepare(settings,packed)&&packed.AtmosphereParameters.X==0,
+            "Disabled atmosphere retained an enabled GPU state");
         std::cout<<"PASS environment GPU packing: modes, linear HDR, signed SH, intensity/padding and derived overflow\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';return 1;}
 }

@@ -63,6 +63,11 @@ FBX内嵌材质可查看；提取独立.mat后编辑，重映射信息保存在�
 内置 GameSprout/Lit 的作者属性：
 BaseColor（线性RGBA，0..1）、BaseColorTexture/ST、Metallic（0..1）、Roughness（0..1）、
 NormalTexture/ST、NormalScale（非负，默认1）、Emission（线性HDR颜色）、DoubleSided、SpecularHighlights（默认true）。
+风格化参数：Stylization（0..1，默认0）、ShadowTint（线性非HDR阴影色，默认[.65,.75,1,1]）、
+LightThreshold（0..1，默认.35）、LightSoftness（0..1，默认.25）、ColorSaturation（非负，默认1）。
+Stylization=0严格沿用原Lit光照；大于0按强度混合柔和明暗分区、环境阴影色和受限高光。
+阴影色只调制实际环境光，不补造环境光；方向光、阴影遮挡、正常法线和自动实例化仍然生效。
+这些参数由同一schema提供Inspector控件，并随材质结构产物传到Runtime；不是某款游戏的原始Shader。
 RuntimeAssets 将 Emission 映射到 MaterialRenderData.EmissionColor，ShadingModel=Lit。
 基础贴图按其 TextureImportSettings 的颜色空间采样；法线贴图必须导入为 Linear，错误的 sRGB 法线会明确诊断。
 创建材质对话框可选择内置 Preview/Lit；选择已导入图形 Shader 时优先采用该资源的 GUID + LocalID。

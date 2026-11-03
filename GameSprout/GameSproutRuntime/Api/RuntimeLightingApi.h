@@ -6,6 +6,27 @@
 namespace GameSproutRuntime {
 enum class AmbientLightMode : std::uint8_t { None, Color, Gradient, SphericalHarmonics };
 
+// Scene appearance, independent of the diffuse ambient-light source. All
+// colors are linear RGB; distances are world-space metres from the view camera.
+struct SceneAtmosphereSettings {
+    bool Enabled = false;
+    bool DrawSky = true;
+    Color ZenithColor{.07f,.28f,.6f,1};
+    Color HorizonColor{.48f,.72f,.85f,1};
+    Color FogColor{.48f,.68f,.8f,1};
+    float FogStart = 150;
+    float FogEnd = 1000;
+    float FogMaxOpacity = .65f;
+
+    bool operator==(const SceneAtmosphereSettings& other) const {
+        const auto sameColor=[](Color a,Color b){return a.R==b.R&&a.G==b.G&&a.B==b.B&&a.A==b.A;};
+        return Enabled==other.Enabled&&DrawSky==other.DrawSky&&
+            sameColor(ZenithColor,other.ZenithColor)&&sameColor(HorizonColor,other.HorizonColor)&&
+            sameColor(FogColor,other.FogColor)&&FogStart==other.FogStart&&FogEnd==other.FogEnd&&
+            FogMaxOpacity==other.FogMaxOpacity;
+    }
+};
+
 struct EnvironmentLightingSettings {
     AmbientLightMode Mode = AmbientLightMode::None;
     // Linear RGB/HDR, nonnegative and finite; alpha is unused by lighting.
@@ -18,17 +39,23 @@ struct EnvironmentLightingSettings {
     // Basis: [1,y,z,x,xy,yz,3*z*z-1,xz,x*x-y*y]. Signed RGB is valid.
     // Evaluate directly: do not apply normalization constants or pi again.
     std::array<Vector3,9> SHCoefficients{};
+    SceneAtmosphereSettings Atmosphere;
 };
 
 inline bool IsValidEnvironmentLighting(const EnvironmentLightingSettings& settings) {
     if(settings.Mode!=AmbientLightMode::None && settings.Mode!=AmbientLightMode::Color &&
        settings.Mode!=AmbientLightMode::Gradient && settings.Mode!=AmbientLightMode::SphericalHarmonics)return false;
     if(!std::isfinite(settings.Intensity)||settings.Intensity<0)return false;
-    for(const auto& color:{settings.AmbientColor,settings.SkyColor,settings.EquatorColor,settings.GroundColor})
+    for(const auto& color:{settings.AmbientColor,settings.SkyColor,settings.EquatorColor,settings.GroundColor,
+        settings.Atmosphere.ZenithColor,settings.Atmosphere.HorizonColor,settings.Atmosphere.FogColor})
         if(!std::isfinite(color.R)||!std::isfinite(color.G)||!std::isfinite(color.B)||!std::isfinite(color.A)||
            color.R<0||color.G<0||color.B<0||color.A<0||color.A>1)return false;
     for(const auto& coefficient:settings.SHCoefficients)
         if(!std::isfinite(coefficient.X)||!std::isfinite(coefficient.Y)||!std::isfinite(coefficient.Z))return false;
+    const auto& atmosphere=settings.Atmosphere;
+    if(!std::isfinite(atmosphere.FogStart)||atmosphere.FogStart<0||
+       !std::isfinite(atmosphere.FogEnd)||atmosphere.FogEnd<=atmosphere.FogStart||
+       !std::isfinite(atmosphere.FogMaxOpacity)||atmosphere.FogMaxOpacity<0||atmosphere.FogMaxOpacity>1)return false;
     return true;
 }
 

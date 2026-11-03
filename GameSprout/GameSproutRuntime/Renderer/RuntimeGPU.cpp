@@ -6,7 +6,7 @@ namespace GameSproutRuntime {
 bool Renderer::Initialize() {
     static_assert(sizeof(DrawUniform)==224,"Shader draw uniform must match std140 layout");
     static_assert(sizeof(SkinUniform)==8192,"Shader skin uniform must match 128 column-major matrices");
-    static_assert(sizeof(LitUniform)==192,"Lit fragment uniform must match its HLSL layout");
+    static_assert(sizeof(LitUniform)==224,"Lit fragment uniform must match its HLSL layout");
     static_assert(sizeof(InstanceVertex)==128,"Instanced vertex data must contain two column-major matrices");
     const PreviewShader kinds[]={PreviewShader::MeshVertex,PreviewShader::MeshNoUVVertex,PreviewShader::MeshNoColorVertex,
         PreviewShader::MeshNoUVNoColorVertex,PreviewShader::MeshFragment,PreviewShader::GridVertex,PreviewShader::GridFragment,

@@ -47,9 +47,11 @@ int main(int argc,char** argv) {
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create isolated Lit project");
         QDir root(temporary.path());Check(root.mkpath("Assets"),"Cannot create Assets");
         std::string error;
-        Json::Value document;document["Version"]=GameSproutRuntime::SceneDocumentVersion;document["Name"]="Lit integration";
+        Json::Value document;document["Version"]=1;document["Name"]="Lit integration";
         document["Shader"]="GameSprout/Lit";document["BaseColor"]=Vector(.5f,.25f,.125f,1);
         document["Metallic"]=0;document["Roughness"]=1;document["Emission"]=Vector(0,0,0,1);
+        document["Stylization"]=0;document["ShadowTint"]=Vector(.4f,.6f,1,1);
+        document["LightThreshold"]=.31f;document["LightSoftness"]=.22f;document["ColorSaturation"]=1.2f;
         const auto write=[&](const QString& path,const QByteArray& bytes) {
             Check(AssetArtifactIO::Write(root.filePath("Assets/"+path),bytes,error),error);
         };
@@ -78,6 +80,9 @@ int main(int argc,char** argv) {
         resources=new LibraryRuntimeResources(assets,library);MaterialRenderData data;
         Check(resources->LoadMaterial(reference,data,error),error);
         Check(data.ShadingModel==MaterialShadingModel::Lit&&data.BaseColor.R==.5f&&data.Roughness==1,"Lit prepared fields were lost or color decoded twice");
+        Check(data.Stylization==0&&data.StylizedShadowTint.R==.4f&&data.StylizedShadowTint.G==.6f&&
+            data.LightThreshold==.31f&&data.LightSoftness==.22f&&data.ColorSaturation==1.2f,
+            "Lit stylization values were lost between source, Artifact and Runtime");
         runtime=Export(TEST_BINARY_ROOT);Check(runtime,"Cannot load Runtime");
         viewport=runtime->CreateOffscreenRenderer(96,96,resources,error);Check(viewport,error);
         auto* scene=runtime->CreateScene("Lit integration");auto* cube=scene->CreateGameObject("Cube");
@@ -87,7 +92,11 @@ int main(int argc,char** argv) {
         Check(TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Camera matrix failed");
         const auto draw=[&] {Check(viewport->Render(view),viewport->GetLastError());return Pixel(*viewport);};
         auto pixel=draw();Check(pixel[0]<3&&pixel[1]<3&&pixel[2]<3,"Lit without light/emission must be black");
-        auto* lightObject=scene->CreateGameObject("Directional Light");auto* light=lightObject->AddComponent<ILightComponent>();Check(light,"Missing Light factory");
+        auto* lightObject=scene->CreateGameObject("Directional Light");
+        // Unity-compatible light rays follow local +Z. Point them toward the
+        // camera-facing (+Z normal) cube face rather than away from it.
+        lightObject->GetTransform()->SetLocalRotation({0,1,0,0});
+        auto* light=lightObject->AddComponent<ILightComponent>();Check(light,"Missing Light factory");
         auto settings=light->GetSettings();settings.Intensity=1;Check(light->SetSettings(settings),"Light settings failed");
         const auto lit=draw();Check(lit[0]>25&&lit[0]>lit[1]&&lit[1]>lit[2],"Prepared Lit material did not respond to scene light");
         settings.Enabled=false;Check(light->SetSettings(settings),"Disable light failed");pixel=draw();Check(pixel[0]<3,"Disabled light still illuminated");
@@ -109,6 +118,8 @@ int main(int argc,char** argv) {
         Json::Value bad=document;bad["Metallic"]=2;
         Check(!assets->SaveMaterialSource(Guid(reference.Guid),AssetArtifactIO::JsonText(bad),previous,error),"Out-of-range Lit property was saved");
         std::string unchanged;Check(assets->LoadMaterialSource(Guid(reference.Guid),unchanged,error)&&unchanged==previous,"Rejected material edit changed the file");
+        bad=document;bad["Stylization"]=2;
+        Check(!assets->SaveMaterialSource(Guid(reference.Guid),AssetArtifactIO::JsonText(bad),previous,error),"Out-of-range stylization was saved");
         Check(ide.Loads==ide.Unloads&&ide.Count==0,"Lit imports left Loading unbalanced");
         if(application.arguments().contains("--keep-project")) {
             // Optional manual Editor review uses the same imported data as the GPU checks.

@@ -1,6 +1,7 @@
 #pragma once
 #include "../../Module/Shared/MaterialDefinition.h"
 #include <limits>
+#include <vector>
 
 inline void CheckMaterialSchemas() {
     std::string error;
@@ -42,6 +43,19 @@ inline void CheckMaterialSchemas() {
     invalid=source; invalid["Shader"]=Json::Value(Json::objectValue);
     invalid["Shader"]["Guid"]=Guid(1,2,3,4).GetGuidString(); invalid["Shader"]["LocalID"]=Json::UInt64(0);
     Check(!MaterialDefinition::ValidateValues(schema,invalid,error),"Material Shader accepted LocalID zero");
+
+    const auto litSchema=MaterialDefinition::LitSchema();
+    Json::Value litSource;litSource["Shader"]="GameSprout/Lit";
+    Check(MaterialDefinition::NormalizeValues(litSchema,litSource,error),error);
+    Check(litSource["Stylization"]==0.0&&litSource["ShadowTint"]==MaterialDefinition::Vector(.65,.75,1,1)&&
+        litSource["LightThreshold"]==.35&&litSource["LightSoftness"]==.25&&litSource["ColorSaturation"]==1.0,
+        "Lit stylization defaults changed existing materials or omitted author controls");
+    for(const auto& change:std::vector<std::pair<std::string,Json::Value>>{
+        {"Stylization",1.1},{"LightThreshold",-.1},{"LightSoftness",2},{"ColorSaturation",-1},
+        {"ShadowTint",MaterialDefinition::Vector(1.1,1,1,1)}}) {
+        auto bad=litSource;bad[change.first]=change.second;
+        Check(!MaterialDefinition::ValidateValues(litSchema,bad,error),"Invalid Lit style parameter accepted: "+change.first);
+    }
 
     const QByteArray declaration=R"material(/* GameSproutMaterial {
         "Name":"测试材质",

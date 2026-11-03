@@ -11,8 +11,10 @@ struct Uniform {
     Vector4 Info; // X: AmbientLightMode. Remaining components are zero padding.
     Vector4 AmbientColor,SkyColor,EquatorColor,GroundColor;
     std::array<Vector4,9> SH;
+    Vector4 AtmosphereParameters; // Enabled, fog start/end metres, maximum opacity.
+    Vector4 AtmosphereFogColor,AtmosphereZenithColor,AtmosphereHorizonColor;
 };
-static_assert(sizeof(Uniform)==224,"Environment fragment block must match HLSL packing");
+static_assert(sizeof(Uniform)==288,"Environment fragment block must match HLSL packing");
 
 // Intensity is applied once while preparing this frame's scene state. Overflow
 // in derived HDR radiance is diagnosed by the Renderer; no Infinity is uploaded.
@@ -21,6 +23,11 @@ inline bool Prepare(const EnvironmentLightingSettings& settings,Uniform& output)
     if(!IsValidEnvironmentLighting(settings))return false;
     Uniform candidate{};
     candidate.Info.X=static_cast<float>(settings.Mode);
+    const auto& atmosphere=settings.Atmosphere;
+    candidate.AtmosphereParameters={atmosphere.Enabled?1.0f:0.0f,atmosphere.FogStart,atmosphere.FogEnd,atmosphere.FogMaxOpacity};
+    candidate.AtmosphereFogColor={atmosphere.FogColor.R,atmosphere.FogColor.G,atmosphere.FogColor.B,0};
+    candidate.AtmosphereZenithColor={atmosphere.ZenithColor.R,atmosphere.ZenithColor.G,atmosphere.ZenithColor.B,0};
+    candidate.AtmosphereHorizonColor={atmosphere.HorizonColor.R,atmosphere.HorizonColor.G,atmosphere.HorizonColor.B,0};
     const auto scaled=[&](double value,float& destination) {
         const double result=value*settings.Intensity;
         if(!std::isfinite(result)||std::fabs(result)>std::numeric_limits<float>::max())return false;

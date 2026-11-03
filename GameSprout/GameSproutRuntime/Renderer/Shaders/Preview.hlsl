@@ -1,4 +1,5 @@
-// Runtime preview convention: RH, Y up, camera forward -Z, NDC depth [0,1].
+// Authored world: Unity-compatible, Y up, +Z forward. GPU view space is RH,
+// camera forward -Z; canonical projection NDC depth is [0,1].
 // CPU matrices are column-major and multiply column vectors: P * V * M * position.
 cbuffer DrawUniform : register(b0, space1)
 {
@@ -169,6 +170,8 @@ cbuffer LitUniform : register(b0, space3)
     float4 LitParameters; // Metallic, perceptual roughness, normal scale, has normal map.
     float4 Emission;
     float4 NormalTextureST;
+    float4 StyleParameters; // Strength, light threshold, transition softness, saturation.
+    float4 StylizedShadowTint;
 };
 cbuffer EnvironmentUniform : register(b1, space3)
 {
@@ -178,7 +181,12 @@ cbuffer EnvironmentUniform : register(b1, space3)
     float4 EquatorColor;
     float4 GroundColor;
     float4 EnvironmentSH[9];
+    float4 AtmosphereParameters;
+    float4 AtmosphereFogColor;
+    float4 AtmosphereZenithColor;
+    float4 AtmosphereHorizonColor;
 };
+#include "Atmosphere.hlsl"
 // Canonical light clip -> top-first atlas UV. This block is independent from
 // scene ambient diffuse; shadows only attenuate the selected direct light.
 cbuffer ShadowUniform : register(b2, space3)
@@ -304,7 +312,10 @@ float4 LitFragment(MeshOutput input) : SV_Target0
     // the diffuse lobe: oneMinusReflectivity = .96 * (1 - metallic). Diffuse
     // irradiance remains independent of the viewing camera. Missing reflection
     // IBL is not replaced with an ambient specular constant.
-    color += DiffuseEnvironment(normal) * albedo * (0.96 * (1.0 - metallic));
+    float3 ambient = DiffuseEnvironment(normal) * albedo * (0.96 * (1.0 - metallic));
+    color += ambient;
+    float3 stylizedDirect = 0.0;
+    float stylizedIllumination = 0.0;
     [unroll] for (int index = 0; index < 4; ++index)
     {
         float3 light = LightDirections[index].xyz;
@@ -328,8 +339,30 @@ float4 LitFragment(MeshOutput input) : SV_Target0
         float3 specular = CameraPosition.w >= 0.5 ? distribution * visibility * fresnel * pi : 0.0;
         float shadow = LightDirections[index].w > 1.5 ? DirectionalShadow(input.WorldPosition, SafeDirection(input.Normal, float3(0, 1, 0))) : 1.0;
         color += (diffuse + specular) * LightRadiances[index].rgb * nDotL * shadow;
+        if (StyleParameters.x > 0.0)
+        {
+            // A soft light band preserves broad painted forms. Screen-space
+            // filtering keeps a near-hard author threshold from shimmering.
+            float width = max(max(StyleParameters.z, fwidth(nDotL)), 0.001);
+            float band = smoothstep(StyleParameters.y - width, StyleParameters.y + width, nDotL);
+            float illumination = lerp(nDotL, band, 0.9) * shadow;
+            stylizedIllumination = max(stylizedIllumination, illumination);
+            // Keep shiny surfaces legible without tiny, clipped white GGX peaks.
+            float3 softSpecular = min(specular, 0.25) * 0.25;
+            stylizedDirect += (diffuse * illumination + softSpecular * nDotL * shadow) * LightRadiances[index].rgb;
+        }
     }
-    return float4(color, base.a);
+    if (StyleParameters.x > 0.0)
+    {
+        // Occluded and back-facing regions retain real ambient light, tinted
+        // by the material. No ambient or direct illumination is fabricated.
+        float3 ambientTint = lerp(StylizedShadowTint.rgb, float3(1, 1, 1), saturate(stylizedIllumination));
+        float3 stylized = max(Emission.rgb, 0.0) + ambient * ambientTint + stylizedDirect;
+        float luminance = dot(stylized, float3(0.2126, 0.7152, 0.0722));
+        stylized = max(lerp(luminance.xxx, stylized, StyleParameters.w), 0.0);
+        color = lerp(color, stylized, StyleParameters.x);
+    }
+    return float4(ApplySceneFog(color, input.WorldPosition), base.a);
 }
 
 struct GridInput {

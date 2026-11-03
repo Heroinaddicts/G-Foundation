@@ -107,6 +107,9 @@ bool LibraryRuntimeResources::LoadMaterial(const GameSproutRuntime::ResourceRefe
             value=normalized[name].asFloat();return value>=0;
         };
         if(!readNumber("Metallic",data.Metallic)||!readNumber("Roughness",data.Roughness)||!readNumber("NormalScale",data.NormalScale))return fail();
+        if(!readNumber("Stylization",data.Stylization)||!readNumber("LightThreshold",data.LightThreshold)||
+            !readNumber("LightSoftness",data.LightSoftness)||!readNumber("ColorSaturation",data.ColorSaturation)||
+            !ColorValue(normalized["ShadowTint"],data.StylizedShadowTint))return fail();
         if(!normalized["NormalTexture"].isNull()&&!ReferenceValue(normalized["NormalTexture"],data.NormalTexture))return fail();
         const auto& transform=normalized["NormalTextureST"];
         if(!MaterialDefinition::VectorValue(transform))return fail();

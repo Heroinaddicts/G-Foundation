@@ -29,12 +29,14 @@ def main():
                              ("SkinnedMeshNoColorVertex", "vertex"), ("SkinnedMeshNoUVNoColorVertex", "vertex"),
                              ("LitFragment", "fragment"),
                              ("InstancedMeshVertex", "vertex"), ("InstancedMeshNoUVVertex", "vertex"),
-                             ("InstancedMeshNoColorVertex", "vertex"), ("InstancedMeshNoUVNoColorVertex", "vertex"), ("ShadowFragment", "fragment")]:
+                             ("InstancedMeshNoColorVertex", "vertex"), ("InstancedMeshNoUVNoColorVertex", "vertex"), ("ShadowFragment", "fragment"),
+                             ("SkyVertex", "vertex"), ("SkyFragment", "fragment")]:
             spirv = root / (entry + ".spv")
             # One source contains several entry points. Keep only resources used
             # by that entry; retaining a fragment binding in a vertex module
             # violates SDL's stage-specific descriptor conventions.
-            run([options.shadercross, source, "-s", "HLSL", "-d", "SPIRV", "-t", stage, "-e", entry, "-c", "-o", spirv])
+            run([options.shadercross, source, "-s", "HLSL", "-d", "SPIRV", "-t", stage, "-e", entry,
+                 "-I", source.parent, "-c", "-o", spirv])
             reflection = root / (entry + ".json")
             run([options.shadercross, spirv, "-s", "SPIRV", "-d", "JSON", "-t", stage, "-e", entry, "-o", reflection])
             resources = json.loads(reflection.read_text())

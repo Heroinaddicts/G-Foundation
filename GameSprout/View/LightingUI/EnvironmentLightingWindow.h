@@ -28,6 +28,6 @@ private:
     Ui::EnvironmentLightingForm* _Ui=nullptr;
     ILightingAuthoring* _Authoring=nullptr;
     EnvironmentLightingSnapshot _Snapshot;
-    std::array<ColorRow,4> _Colors;
+    std::array<ColorRow,7> _Colors;
     bool _Subscribed=false,_Loading=false,_Committing=false;
 };

@@ -214,6 +214,15 @@ Renderer::Material* Renderer::MaterialData(const ResourceReference& reference) {
                 if(!std::isfinite(data.Metallic)||data.Metallic<0||data.Metallic>1||
                     !std::isfinite(data.Roughness)||data.Roughness<0||data.Roughness>1||
                     !std::isfinite(data.NormalScale)||data.NormalScale<0||
+                    !std::isfinite(data.Stylization)||data.Stylization<0||data.Stylization>1||
+                    !std::isfinite(data.LightThreshold)||data.LightThreshold<0||data.LightThreshold>1||
+                    !std::isfinite(data.LightSoftness)||data.LightSoftness<0||data.LightSoftness>1||
+                    !std::isfinite(data.ColorSaturation)||data.ColorSaturation<0||
+                    !RuntimeMath::IsFinite(data.StylizedShadowTint)||
+                    data.StylizedShadowTint.R<0||data.StylizedShadowTint.R>1||
+                    data.StylizedShadowTint.G<0||data.StylizedShadowTint.G>1||
+                    data.StylizedShadowTint.B<0||data.StylizedShadowTint.B>1||
+                    data.StylizedShadowTint.A<0||data.StylizedShadowTint.A>1||
                     !RuntimeMath::IsFinite(data.EmissionColor)||data.EmissionColor.R<0||data.EmissionColor.G<0||data.EmissionColor.B<0||
                     !finite(data.BaseColorTextureST)||!finite(data.NormalTextureST)||
                     (data.NormalTexture.Guid.empty()!=(data.NormalTexture.LocalID==0))||!data.Shader.Guid.empty()) {

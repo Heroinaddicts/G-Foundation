@@ -36,6 +36,7 @@ void RenderResourceCache::ClearPreparedResources() {
 RenderResourceCache::~RenderResourceCache() {
     ClearPreparedResources();
     for(auto& entry:Pipelines)delete entry.second;
+    for(auto& entry:SkyPipelines)delete entry.second;
     for(auto* shader:Shaders)delete shader;
     delete White;delete DefaultSampler;delete Grid;
 }

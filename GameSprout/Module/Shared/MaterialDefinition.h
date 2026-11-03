@@ -161,6 +161,13 @@ inline Json::Value LitSchema() {
     add("Emission","自发光","Color",Vector(0,0,0,1),"自发光");
     schema["Properties"][6]["HDR"]=true;
     add("DoubleSided","双面渲染","Toggle",false,"渲染");
+    add("Stylization","风格化强度","Range",0.0,"风格化");
+    schema["Properties"][8]["Tooltip"]="0 保留物理光照；1 使用柔和明暗分区和彩色阴影。";
+    add("ShadowTint","阴影色调","Color",Vector(.65,.75,1,1),"风格化");
+    add("LightThreshold","明暗分界","Range",.35,"风格化");
+    add("LightSoftness","明暗过渡","Range",.25,"风格化");
+    add("ColorSaturation","颜色饱和度","Float",1.0,"风格化");
+    schema["Properties"][12]["Min"]=0.0;
     return schema;
 }
 inline Json::Value BuiltinSchema(const Json::Value& document) {

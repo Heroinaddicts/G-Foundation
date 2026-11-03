@@ -20,7 +20,10 @@ EnvironmentLightingWindow::EnvironmentLightingWindow(QWidget* parent)
     _Colors={ColorRow{_Ui->ambientLabel,_Ui->ambientRow,{_Ui->ambientRedEdit,_Ui->ambientGreenEdit,_Ui->ambientBlueEdit},_Ui->ambientColorButton},
         ColorRow{_Ui->skyLabel,_Ui->skyRow,{_Ui->skyRedEdit,_Ui->skyGreenEdit,_Ui->skyBlueEdit},_Ui->skyColorButton},
         ColorRow{_Ui->equatorLabel,_Ui->equatorRow,{_Ui->equatorRedEdit,_Ui->equatorGreenEdit,_Ui->equatorBlueEdit},_Ui->equatorColorButton},
-        ColorRow{_Ui->groundLabel,_Ui->groundRow,{_Ui->groundRedEdit,_Ui->groundGreenEdit,_Ui->groundBlueEdit},_Ui->groundColorButton}};
+        ColorRow{_Ui->groundLabel,_Ui->groundRow,{_Ui->groundRedEdit,_Ui->groundGreenEdit,_Ui->groundBlueEdit},_Ui->groundColorButton},
+        ColorRow{_Ui->zenithLabel,_Ui->zenithRow,{_Ui->zenithRedEdit,_Ui->zenithGreenEdit,_Ui->zenithBlueEdit},_Ui->zenithColorButton},
+        ColorRow{_Ui->horizonLabel,_Ui->horizonRow,{_Ui->horizonRedEdit,_Ui->horizonGreenEdit,_Ui->horizonBlueEdit},_Ui->horizonColorButton},
+        ColorRow{_Ui->fogLabel,_Ui->fogRow,{_Ui->fogRedEdit,_Ui->fogGreenEdit,_Ui->fogBlueEdit},_Ui->fogColorButton}};
     for(std::size_t row=0;row<_Colors.size();++row) {
         for(std::size_t channel=0;channel<3;++channel)
             QObject::connect(_Colors[row].Fields[channel],&QLineEdit::editingFinished,this,[this,row,channel]{CommitColor(row,channel);});
@@ -36,6 +39,29 @@ EnvironmentLightingWindow::EnvironmentLightingWindow(QWidget* parent)
         if(!valid||!std::isfinite(number)||number<0||number>std::numeric_limits<float>::max()) {Error("强度须为有限非负数值。");return;}
         auto value=_Snapshot.Settings;value.Intensity=float(number);Commit(value);
     });
+    QObject::connect(_Ui->atmosphereGroup,&QGroupBox::toggled,this,[this](bool enabled){
+        if(_Loading)return;auto value=_Snapshot.Settings;value.Atmosphere.Enabled=enabled;Commit(value);
+    });
+    QObject::connect(_Ui->drawSkyCheck,&QCheckBox::toggled,this,[this](bool enabled){
+        if(_Loading)return;auto value=_Snapshot.Settings;value.Atmosphere.DrawSky=enabled;Commit(value);
+    });
+    const std::array<QLineEdit*,3> fogFields{_Ui->fogStartEdit,_Ui->fogEndEdit,_Ui->fogMaxOpacityEdit};
+    for(std::size_t index=0;index<fogFields.size();++index)
+        QObject::connect(fogFields[index],&QLineEdit::editingFinished,this,[this,index,field=fogFields[index]]{
+            if(_Loading)return;
+            bool valid=false;const double number=QLocale::c().toDouble(field->text().trimmed(),&valid);
+            if(!valid||!std::isfinite(number)||number<0||number>std::numeric_limits<float>::max()) {
+                Error("雾参数须为有限非负数值。");return;
+            }
+            auto value=_Snapshot.Settings;
+            if(index==0)value.Atmosphere.FogStart=float(number);
+            else if(index==1)value.Atmosphere.FogEnd=float(number);
+            else value.Atmosphere.FogMaxOpacity=float(number);
+            if(!GameSproutRuntime::IsValidEnvironmentLighting(value)) {
+                Error("雾终点须大于起点；最大雾浓度须在 0 到 1 之间。");return;
+            }
+            Commit(value);
+        });
     QObject::connect(_Ui->resetButton,&QPushButton::clicked,this,[this]{Commit({});});
     QObject::connect(_Ui->coefficientsToggle,&QToolButton::toggled,this,[this](bool expanded){
         _Ui->coefficientsToggle->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);
@@ -68,18 +94,28 @@ void EnvironmentLightingWindow::OnEnvironmentLightingChanged(const EnvironmentLi
     UpdateControls();
 }
 GameSproutRuntime::Color& EnvironmentLightingWindow::Color(GameSproutRuntime::EnvironmentLightingSettings& value,std::size_t row) const {
-    if(row==0)return value.AmbientColor;if(row==1)return value.SkyColor;if(row==2)return value.EquatorColor;return value.GroundColor;
+    if(row==0)return value.AmbientColor;if(row==1)return value.SkyColor;if(row==2)return value.EquatorColor;
+    if(row==3)return value.GroundColor;if(row==4)return value.Atmosphere.ZenithColor;
+    if(row==5)return value.Atmosphere.HorizonColor;return value.Atmosphere.FogColor;
 }
 void EnvironmentLightingWindow::UpdateControls() {
     _Loading=true;
     const auto mode=_Snapshot.Settings.Mode;const bool enabled=_Snapshot.Available&&_Snapshot.Editable;
     _Ui->settingsGroup->setEnabled(enabled);_Ui->resetButton->setEnabled(enabled);
+    _Ui->atmosphereGroup->setEnabled(enabled);
+    _Ui->atmosphereGroup->setChecked(_Snapshot.Settings.Atmosphere.Enabled);
+    _Ui->drawSkyCheck->setChecked(_Snapshot.Settings.Atmosphere.DrawSky);
+    const std::array<std::pair<QLineEdit*,float>,3> fogFields{{
+        {_Ui->fogStartEdit,_Snapshot.Settings.Atmosphere.FogStart},
+        {_Ui->fogEndEdit,_Snapshot.Settings.Atmosphere.FogEnd},
+        {_Ui->fogMaxOpacityEdit,_Snapshot.Settings.Atmosphere.FogMaxOpacity}}};
+    for(const auto& [field,value]:fogFields)if(!field->hasFocus()||_Committing)field->setText(QString::number(value,'g',8));
     _Ui->availabilityLabel->setVisible(!enabled);
     _Ui->modeCombo->setCurrentIndex(static_cast<int>(mode));
     if(!_Ui->intensityEdit->hasFocus()||_Committing)_Ui->intensityEdit->setText(QString::number(_Snapshot.Settings.Intensity,'g',8));
     _Ui->intensityEdit->setEnabled(mode!=GameSproutRuntime::AmbientLightMode::None);
     for(std::size_t row=0;row<_Colors.size();++row) {
-        const bool visible=row==0?mode==GameSproutRuntime::AmbientLightMode::Color:mode==GameSproutRuntime::AmbientLightMode::Gradient;
+        const bool visible=row>=4||(row==0?mode==GameSproutRuntime::AmbientLightMode::Color:mode==GameSproutRuntime::AmbientLightMode::Gradient);
         _Colors[row].Label->setVisible(visible);_Colors[row].Row->setVisible(visible);
         const auto color=Color(_Snapshot.Settings,row);const float channels[]={color.R,color.G,color.B};
         for(std::size_t channel=0;channel<3;++channel)if(!_Colors[row].Fields[channel]->hasFocus()||_Committing)
