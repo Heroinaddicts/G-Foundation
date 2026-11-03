@@ -30,7 +30,20 @@ SetSiblingIndex 同步调整当前父节点内的顺序，超界放到末尾，�
 回调/遍历中请求的重挂载、移除与销毁在最外层调用结束后统一执行，执行后相关借用指针失效。
 创建对象立即分配可用接口，但其挂载在遍历结束后执行；添加组件立即登记，当前遍历快照不包含新项。
 延迟操作返回 true 表示请求已接受；执行时再次校验，约束失效通过 OperationFailed 事件报告。
-Update 拒绝负数、非有限时间和重入调用，更新活跃节点；跳过待销毁节点与待移除组件。
+AdvanceFrame(deltaSeconds, fixedStepCount, fixedDeltaSeconds) 是宿主唯一完整帧入口：
+全体 EarlyUpdate → 0～多次（全体 FixedUpdate → Jolt 模拟/回写/碰撞通知）→ 全体 Update
+→ 独立 Animator 求值/IK/RootMotion/动画通知 → 全体 LateUpdate → 场景和属性通知。
+EarlyUpdate 是 GameSprout 自定义的帧前置脚本回调；LateUpdate 使用 Unity 同名约定。
+Update(delta) 等价于 AdvanceFrame(delta,0,0)；FixedUpdate(delta) 是独立固定步入口，
+不执行 Early/Update/Late。宿主如需 Early 先于物理，必须调用 AdvanceFrame。
+只有已初始化、位于活跃且允许模拟场景中的组件参加帧回调；只遍历登记集合，不扫描静态节点。
+帧开始冻结组件身份，阶段之间提交结构命令；帧回调中新建的组件初始化后下一帧才参加帧回调。
+待删除、失活、已移除或初始化失败的组件立即失去后续阶段资格，不保留跨阶段裸指针。
+无效时间或重入调用整体拒绝；有固定步时 fixedDeltaSeconds 必须为有限正数。
+零 delta 可刷新 Animator 预览和事件，但不调用用户脚本帧回调；暂停仅处理必要事件。
+帧回调内的 BeginConstruction/EndConstruction 必须配对；泄漏时恢复深度、报错并隔离脚本，不能冻结后续帧。
+动画阶段后及 Late/帧尾初始化后各派发一次固定通知批次，保证宿主绘制前提交本帧通知，不递归排空。
+新虚接口要求 Runtime、宿主、GameLogic 使用同一 SDK 重新构建，不改变场景/Prefab 文件格式。
 组件回调异常不打断其他组件，通知回调异常不打断其他监听者；调用方不能在回调中 delete Runtime。
 删除通过迭代完成，不递归销毁整棵子树。所有内存显式释放，不使用智能指针。
 Transform 固有、唯一、不能移除；场景根固定为单位变换。

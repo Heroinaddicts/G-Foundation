@@ -47,7 +47,7 @@ protected:
             throw std::runtime_error("Cannot keep the character capsule upright");
         if (Animator) Animator->SetRootMotionMode(GameSproutRuntime::RootMotionMode::Disabled);
     }
-    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
         if (!runtime || !std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) return;
         const auto& input = runtime->GetInputState();
         if (!input.Focused) {
@@ -61,10 +61,14 @@ protected:
                             (input.GetKey(GameSproutRuntime::InputKey::S).Held ? 1.0f : 0.0f);
             _Move = {x,y};
             _Run = input.GetKey(GameSproutRuntime::InputKey::Shift).Held;
-            // Pressed lasts one rendered input frame, which can contain several
-            // fixed steps. Latch once here; consume once in FixedUpdate.
+            // EarlyUpdate sees this frame's input before any fixed step.
+            // Latch once here, including frames without a fixed step; consume
+            // once in FixedUpdate so catch-up steps cannot repeat the jump.
             _JumpRequested = _JumpRequested || input.GetKey(GameSproutRuntime::InputKey::Space).Pressed;
         }
+    }
+    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
+        if (!runtime || !std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) return;
         Turn(deltaSeconds);
         Animate();
     }

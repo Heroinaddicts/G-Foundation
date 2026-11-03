@@ -7,7 +7,8 @@ class Runtime;
 class AnimatorComponent final : public BuiltinComponent<IAnimatorComponent> {
 public:
     explicit AnimatorComponent(IGameObject*);
-    void Update(IGameSproutRuntime*,float) override;
+    // Runtime animation stage: after all Update callbacks, before all LateUpdate callbacks.
+    void Evaluate(float);
     void OnRelease(IGameSproutRuntime*) override;
     ResourceReference GetAvatar() const override {return _Avatar;}
     void SetAvatar(const ResourceReference&) override;

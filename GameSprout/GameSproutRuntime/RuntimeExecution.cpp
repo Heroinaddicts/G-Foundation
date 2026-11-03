@@ -44,6 +44,7 @@ bool Runtime::EndExecution(std::string& error) {
 }
 void Runtime::ProcessPendingEvents() {
     if(IsExecuting()||_ShuttingDown) return;
+    PauseShaderClock();
     _Updating=true;
     try {
         // Structural commands normally flush at the operation boundary. This

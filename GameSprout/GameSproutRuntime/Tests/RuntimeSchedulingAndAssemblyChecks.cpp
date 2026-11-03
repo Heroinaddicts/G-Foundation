@@ -26,8 +26,8 @@ protected:
 static_assert(Runtime::ComponentTickMask<TransformComponent>()==0);
 static_assert(Runtime::ComponentTickMask<BoxColliderComponent>()==0);
 static_assert(Runtime::ComponentTickMask<RigidbodyComponent>()==0);
-static_assert(Runtime::ComponentTickMask<AnimatorComponent>()==1);
-static_assert(Runtime::ComponentTickMask<ScriptComponent>()==3);
+static_assert(Runtime::ComponentTickMask<AnimatorComponent>()==0);
+static_assert(Runtime::ComponentTickMask<ScriptComponent>()==Runtime::AllTicks);
 // Friend access to IComponent does not grant access to this derived override.
 // Inaccessible hooks must remain scheduled, rather than silently disappearing.
 static_assert(Runtime::ComponentTickMask<ProtectedCounter>()==3);
@@ -56,7 +56,7 @@ void Scheduling(){
     const auto serial=++state.NextComponentSerial;
     auto* counter=new ProtectedCounter(owner);
     GameObjectState::ComponentEntry entry{counter,serial};entry.Initialized=true;
-    state.Components.push_back(entry); // Unknown implementation defaults to both hooks.
+    state.Components.push_back(entry); // Unknown implementation defaults to every hook.
     runtime.RegisterComponentTick(state.ID,entry.TickMask);
     runtime.Update(.01f);runtime.FixedUpdate(.02f);
     Check(ProtectedCounter::Variable==1&&ProtectedCounter::Fixed==1,"Protected custom hooks stopped running");

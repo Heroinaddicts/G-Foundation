@@ -3,6 +3,7 @@
 #include "Animation/AnimationResources.h"
 #include "GRHIApi.h"
 #include <deque>
+#include <chrono>
 #include <map>
 #include <set>
 #include <typeindex>
@@ -40,8 +41,11 @@ public:
     // deferred Editor events, so every query observes the committed hierarchy.
     std::uint64_t GetTransformEpoch() const {return _TransformEpoch;}
     void InvalidateTransforms();
+    // Shared once per host frame; rendering two views never advances this clock.
+    Vector4 GetShaderTime() const;
     // Internal factory metadata: inherited IComponent no-op hooks do not need
     // a frame visit. Inaccessible/ambiguous user overrides stay conservative.
+    static constexpr std::uint8_t UpdateTick=1,FixedTick=2,EarlyTick=4,LateTick=8,AllTicks=15;
     template<typename Implementation> static constexpr std::uint8_t ComponentTickMask() {
         std::uint8_t mask=0;
         if constexpr(requires { &Implementation::Update; }) {
@@ -50,6 +54,12 @@ public:
         if constexpr(requires { &Implementation::FixedUpdate; }) {
             if constexpr(!std::is_same_v<decltype(&Implementation::FixedUpdate),decltype(&IComponent::FixedUpdate)>)mask|=2;
         }else mask|=2;
+        if constexpr(requires { &Implementation::EarlyUpdate; }) {
+            if constexpr(!std::is_same_v<decltype(&Implementation::EarlyUpdate),decltype(&IComponent::EarlyUpdate)>)mask|=EarlyTick;
+        }else mask|=EarlyTick;
+        if constexpr(requires { &Implementation::LateUpdate; }) {
+            if constexpr(!std::is_same_v<decltype(&Implementation::LateUpdate),decltype(&IComponent::LateUpdate)>)mask|=LateTick;
+        }else mask|=LateTick;
         return mask;
     }
     void RegisterAnimationComponent(std::uint64_t objectID,const IComponent*);
@@ -118,6 +128,7 @@ public:
     bool RegisterListener(IRuntimeListener* listener) override;
     void UnregisterListener(IRuntimeListener* listener) override;
     bool IsExecuting() const override { return _Depth != 0 || _Updating || _Flushing || _InitializingComponents || _EndingFrame; }
+    void AdvanceFrame(float deltaSeconds,std::uint32_t fixedStepCount,float fixedDeltaSeconds) override;
     void Update(float deltaSeconds) override;
     void FixedUpdate(float fixedDeltaSeconds) override;
     void Render() override;
@@ -187,13 +198,23 @@ private:
     bool QueueAnimationRecord(AnimatorComponent&,AnimationRecord);
     void RenderWorld();
     void RenderUI();
-    void TickComponents(float deltaSeconds, bool fixed);
+    struct FrameComponent {
+        std::uint64_t ObjectID=0,Serial=0;
+        std::uint8_t Mask=0;
+        bool Animation=false,Skipped=false;
+    };
+    std::vector<FrameComponent> SnapshotFrameComponents(bool fixedOnly) const;
+    IComponent* ResolveFrameComponent(const FrameComponent&) const;
+    void RecoverCallbackConstruction(FrameComponent&,IComponent&,std::size_t expectedDepth);
+    void TickComponentPhase(std::vector<FrameComponent>&,std::uint8_t,float);
+    void TickAnimationPhase(std::vector<FrameComponent>&,float);
+    void FinishTickNotifications();
     void StepPhysics(float deltaSeconds);
     bool InitializePendingComponents(std::string& error,bool allowScripts);
     void NotifyInitializationError(GameObjectState&,IComponent&,const std::string&);
     std::vector<Scene*> _Scenes;
     std::map<std::uint64_t,GameObjectState*> _Nodes;
-    struct TickCounts {std::size_t Variable=0,Fixed=0;};
+    struct TickCounts {std::size_t Variable=0,Fixed=0,Early=0,Late=0;};
     std::map<std::uint64_t,TickCounts> _TickObjects;
     std::map<std::uint64_t,std::size_t> _AnimationObjects;
     std::set<std::pair<std::uint64_t,std::uint64_t>> _ScriptIdentities;
@@ -228,6 +249,11 @@ private:
     std::size_t _ConstructionDepth = 0;
     bool _Flushing = false;
     bool _Updating = false;
+    void AdvanceShaderClock(float deltaSeconds);
+    void PauseShaderClock();
+    double _ShaderElapsedSeconds=0;
+    float _ShaderDeltaSeconds=0;
+    std::chrono::steady_clock::time_point _ShaderClockSample=std::chrono::steady_clock::now();
     bool _ShuttingDown = false;
     bool _ScriptExecutionEnabled = false;
     bool _StartingScripts = false;

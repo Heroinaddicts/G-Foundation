@@ -10,20 +10,28 @@ public:
     virtual ~#CLASSNAME#() {}
 
 protected:
-    void OnCreate(IGameSproutRuntime* const runtime) {
+    void OnCreate(IGameSproutRuntime* const runtime) override {
     }
 
     // Called after this construction batch's components, fields and hierarchy are ready.
-    void OnInitialized(IGameSproutRuntime* const runtime) {
+    void OnInitialized(IGameSproutRuntime* const runtime) override {
     }
 
-    void Update(IGameSproutRuntime* const runtime, float deltaSeconds) {
+    // Runs once before this frame's fixed steps, for example to latch input.
+    void EarlyUpdate(IGameSproutRuntime* const runtime, float deltaSeconds) override {
     }
 
-    void FixedUpdate(IGameSproutRuntime* const runtime, float fixedDeltaSeconds) {
+    void Update(IGameSproutRuntime* const runtime, float deltaSeconds) override {
     }
 
-    void OnRelease(IGameSproutRuntime* const runtime) {
+    // Runs after all Update callbacks and animation evaluation.
+    void LateUpdate(IGameSproutRuntime* const runtime, float deltaSeconds) override {
+    }
+
+    void FixedUpdate(IGameSproutRuntime* const runtime, float fixedDeltaSeconds) override {
+    }
+
+    void OnRelease(IGameSproutRuntime* const runtime) override {
     }
 };
 GAMESPROUT_SCRIPT(#CLASSNAME#)

@@ -31,7 +31,7 @@ protected:
         // Serialized Target and settings have been assigned at this stage.
         Place(runtime, 0.0f, true);
     }
-    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
         if (!runtime || !std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) return;
         const auto& input = runtime->GetInputState();
         const auto orbit = input.GetMouseButton(GameSproutRuntime::InputMouseButton::Right);
@@ -44,9 +44,13 @@ protected:
             Pitch = Finite(Pitch, 18.0f) + Finite(input.MouseDelta.Y, 0.0f) * sensitivity;
         }
         _OrbitHeld = held;
+    }
+    void LateUpdate(GameSproutRuntime::IGameSproutRuntime* runtime, float deltaSeconds) override {
+        if (!runtime || !std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) return;
+        // Observe the target after fixed simulation, all gameplay Update
+        // callbacks and animation/root-motion evaluation have finished.
         Place(runtime, deltaSeconds, false);
     }
-    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*, float) override {}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {
         _HasPosition = false;
         _OrbitHeld = false;

@@ -87,6 +87,7 @@ int main(int argc,char** argv){
         const auto created=Read(code+"/Mover.hpp");
         Require(created.contains("GAMESPROUT_SCRIPT(Mover)")&&!created.contains("ScriptFields")&&!created.contains("::ScriptBehaviour;")&&!created.contains("explicit Mover"),"Created script exposes constructor forwarding or manual binding metadata");
         Require(created.contains("void OnInitialized(")&&!created.contains("void OnInitialize("),"Created script does not use the current OnInitialized lifecycle");
+        Require(created.contains("void EarlyUpdate(")&&created.contains("void LateUpdate(")&&!created.contains("void LaterUpdate("),"Created script is missing current Early/Late callbacks");
         Require(!editor.CreateScript("Code","Mover",path,error),"Duplicate source must fail");
         Require(!editor.CreateScript("../","Escaped",path,error),"Escape must fail");
         Require(!editor.CreateScript("Code","class",path,error),"C++ keyword must fail");
@@ -101,11 +102,13 @@ public:
     std::string Title = "Player";
     GameSproutRuntime::Vector3 Offset = {1,2,3};
     GameSproutRuntime::ResourceReference Texture = {"abcdef0123456789abcdef0123456789",7};
-    std::vector<int> RuntimeOnly;
+    std::function<void()> RuntimeOnly;
 #include "OnlyInsideClass.inl"
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=Speed;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {}
     void Update(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.X+=Speed*delta*MotionMultiplier;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void LateUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {}
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=Speed*delta;_GameObject->GetTransform()->SetLocalPosition(p);}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {}
 private:

@@ -208,6 +208,24 @@ IScript* ScriptComponent::EnsureStarted() {
     if(!InvokeCreate()||!_Instance||!_Enabled||!IsAttached()) return nullptr;
     return _StopRequested?nullptr:_Instance;
 }
+void ScriptComponent::EarlyUpdate(IGameSproutRuntime*,float delta) {
+    if(delta<=0) return;
+    auto* instance=IsInitialized()&&_Enabled&&IsAttached()&&_Runtime.IsInScene(_Runtime.Find(_GameObject))?_Instance:nullptr;
+    if(!instance) return;
+    InvocationScope invocation(*this);
+    try {instance->EarlyUpdate(&_Runtime,delta);}
+    catch(const std::exception& exception) {Fail(exception.what());}
+    catch(...) {Fail("Native script EarlyUpdate threw an exception: "+_TypeID);}
+}
+void ScriptComponent::LateUpdate(IGameSproutRuntime*,float delta) {
+    if(delta<=0) return;
+    auto* instance=IsInitialized()&&_Enabled&&IsAttached()&&_Runtime.IsInScene(_Runtime.Find(_GameObject))?_Instance:nullptr;
+    if(!instance) return;
+    InvocationScope invocation(*this);
+    try {instance->LateUpdate(&_Runtime,delta);}
+    catch(const std::exception& exception) {Fail(exception.what());}
+    catch(...) {Fail("Native script LateUpdate threw an exception: "+_TypeID);}
+}
 void ScriptComponent::Update(IGameSproutRuntime*,float delta) {
     if(delta<=0) return;
     auto* instance=IsInitialized()&&_Enabled&&IsAttached()&&_Runtime.IsInScene(_Runtime.Find(_GameObject))?_Instance:nullptr;

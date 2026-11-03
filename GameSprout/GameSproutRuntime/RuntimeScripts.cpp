@@ -164,10 +164,10 @@ IScriptComponent* Runtime::AddScriptComponent(IGameObject* object,const std::str
     bool tickRegistered=false;
     try {
         node->Components.push_back({script,++node->NextComponentSerial,false});
-        RegisterComponentTick(node->ID,3);tickRegistered=true;
+        RegisterComponentTick(node->ID,AllTicks);tickRegistered=true;
         RegisterScriptIdentity(node->ID,id);
     }catch(...) {
-        if(tickRegistered)UnregisterComponentTick(node->ID,3);
+        if(tickRegistered)UnregisterComponentTick(node->ID,AllTicks);
         UnregisterScriptIdentity(node->ID,id);
         if(!node->Components.empty()&&node->Components.back().Pointer==script)node->Components.pop_back();
         delete script;error="Cannot allocate script component";return nullptr;

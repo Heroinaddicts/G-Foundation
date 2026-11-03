@@ -20,11 +20,11 @@ open -n Bin/GameSproutEditor.app --args --ProjectRoot=/Users/max/Documents/GameS
 
 ## 数据与职责
 
-`ThirdPersonCharacter.hpp` 根据固定步控制 Dynamic Rigidbody，保留重力产生的 Y 速度，冻结物理旋转，并让独立 Visual 节点朝向移动方向。它使用普通 Raycast 排除自身物体，检查地面法线与坡度；输入边沿由 Update 锁存，在一个 FixedUpdate 中消费一次，避免多固定步重复跳跃。它是刚体角色例子，尚未实现专用 CharacterController 的自动跨台阶或移动平台补偿。
+`ThirdPersonCharacter.hpp` 根据固定步控制 Dynamic Rigidbody，保留重力产生的 Y 速度，冻结物理旋转，并让独立 Visual 节点朝向移动方向。它使用普通 Raycast 排除自身物体，检查地面法线与坡度；输入边沿由 EarlyUpdate 在物理前锁存，在一个 FixedUpdate 中消费一次，避免多固定步重复跳跃。它是刚体角色例子，尚未实现专用 CharacterController 的自动跨台阶或移动平台补偿。
 
 角色胶囊使用独立的 `Character.physicmaterial`：摩擦为 0、弹性为 0、摩擦合并为 Minimum。持续写入水平速度会使角色不断压向墙面，普通材质的接触摩擦可能抵消重力而产生“贴墙悬停”；角色材质避免这种摩擦支撑。墙和地面保持默认材质。零摩擦自身不足以保证合并结果为零，故明确使用 Minimum；若对方材质采用优先级更高的 Maximum，仍需按项目材质规则配置。游戏移动和刹停继续由脚本控制，角色仍与墙碰撞并受重力。
 
-`ThirdPersonCamera.hpp` 通过 Runtime 输入读取右键旋转，夹紧俯仰角并平滑跟随。遮挡使用五条射线，立即回拉、平滑恢复，不能等同于完整球形 Sweep。父级变换通过公开数学接口转换；它不控制 Scene 的编辑相机。
+`ThirdPersonCamera.hpp` 在 EarlyUpdate 通过 Runtime 输入读取右键旋转，在 LateUpdate 读取角色本帧经过物理、脚本和动画后的最终位置，夹紧俯仰角并平滑跟随。遮挡使用五条射线，立即回拉、平滑恢复，不能等同于完整球形 Sweep。父级变换通过公开数学接口转换；它不控制 Scene 的编辑相机。
 
 示例采用 Unity 世界坐标：X 向右、Y 向上、+Z 向前，零旋转时按 W 沿 +Z 移动。相机初始位于角色的 -Z 一侧，Yaw 为零时朝 +Z，正 Pitch 向下俯视。脚本通过 `RuntimeMath::TryMakeLookRotation` 生成对象旋转；相机 View 的 -Z 前方属于渲染空间，不作为对象的世界前向。生成的 Scene 和 Prefab 内部节点文档使用当前版本 2。
 
@@ -32,6 +32,8 @@ open -n Bin/GameSproutEditor.app --args --ProjectRoot=/Users/max/Documents/GameS
 
 场景预设了相机、刚体、碰撞体和 Animator 的脚本引用；Player.prefab 保留内部组件引用，外部场景相机引用为空。手动将 Prefab 拖入其他场景后，可为 ViewCamera 配置该场景的相机。
 
+完整帧由宿主调用 `AdvanceFrame(deltaSeconds, fixedStepCount, fixedDeltaSeconds)`：EarlyUpdate → 固定步循环 → Update → 动画求值 → LateUpdate。角色在 Update 中选择动画和更新外观朝向，刚体速度只在 FixedUpdate 写入；两个渲染视口共享这一帧结果。
+
 ## 验证
 
-`Tests/ThirdPerson` 的 `Gameplay.ThirdPerson` 使用真实 ScriptCompiler 编译并加载动态库，通过真实 FBX/动画导入和 Runtime 资源解码器运行场景；覆盖移动、对角线限速、跑步、单次跳跃、落地、贴墙持续按键下降和沿墙滑动、动画切换、右键/失焦、相机遮挡、Prefab 引用重映射、源文件隔离与作者快照恢复。测试数据库查询由隔离内存表提供，不改用户项目。可向测试可执行文件传入 PNG 绝对路径，额外执行真实 GPU 渲染读回。
+`Tests/ThirdPerson` 的 `Gameplay.ThirdPerson` 使用真实 ScriptCompiler 编译并加载动态库，通过真实 FBX/动画导入和 Runtime 资源解码器运行场景；覆盖本帧输入直接作用于首个固定步、LateUpdate 相机跟随本帧脚本更新后的目标、移动、对角线限速、跑步、单次跳跃、落地、贴墙持续按键下降和沿墙滑动、动画切换、右键/失焦、相机遮挡、Prefab 引用重映射、源文件隔离与作者快照恢复。测试数据库查询由隔离内存表提供，不改用户项目。可向测试可执行文件传入 PNG 绝对路径，额外执行真实 GPU 渲染读回。

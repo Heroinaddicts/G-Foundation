@@ -111,55 +111,6 @@ bool Runtime::DestroyScene(IScene* scene) {
     GameObjectState* node=Find(scene);
     return node && node->SceneOwner==scene && RequestDestroy(node,true);
 }
-void Runtime::Update(float deltaSeconds) {
-    TickComponents(deltaSeconds,false);
-}
-void Runtime::FixedUpdate(float fixedDeltaSeconds) {
-    if(fixedDeltaSeconds<=0) return;
-    TickComponents(fixedDeltaSeconds,true);
-}
-void Runtime::TickComponents(float deltaSeconds,bool fixed) {
-    if (_ShuttingDown || _Updating || _Depth || _ConstructionDepth || _InitializingComponents || !std::isfinite(deltaSeconds) || deltaSeconds<0.0f) return;
-    _Updating=true;
-    try {
-        std::string initializationError;
-        InitializePendingComponents(initializationError,deltaSeconds>0);
-        // Editor scenes suspend simulation without disabling their rendered
-        // hierarchy. Do not copy or visit every node just to reject all of them.
-        const bool hasSimulatingScene=std::any_of(_Scenes.begin(),_Scenes.end(),
-            [](const Scene* scene){return scene->IsSimulationEnabled();});
-        if(!_ConstructionDepth&&hasSimulatingScene) {
-            RuntimeOperation operation(*this);
-            std::vector<std::uint64_t> objects;
-            objects.reserve(_TickObjects.size());
-            for(const auto& [id,counts]:_TickObjects)
-                if(fixed?counts.Fixed:counts.Variable)objects.push_back(id);
-            for(auto id:objects) {
-                GameObjectState* node=Find(id);
-                if(!node || !node->SceneOwner || !node->SceneOwner->IsSimulationEnabled() ||
-                    !node->IsActiveInHierarchy()) continue;
-                const auto components=node->Components;
-                for(const auto& component:components) {
-                    if(!(component.TickMask&(fixed?2:1)))continue;
-                    if(!IsUsable(node) || !node->SceneOwner->IsSimulationEnabled()) break;
-                    const auto current=std::find_if(node->Components.begin(),node->Components.end(),[&](const auto& item){return item.Serial==component.Serial;});
-                    if(current==node->Components.end() || current->PendingRemove || !current->Initialized || current->InitializationFailed) continue;
-                    try {
-                        if(fixed) component.Pointer->FixedUpdate(this,deltaSeconds);
-                        else component.Pointer->Update(this,deltaSeconds);
-                    } catch (...) {}
-                }
-            }
-        }
-        InitializePendingComponents(initializationError,deltaSeconds>0);
-        if(fixed)StepPhysics(deltaSeconds);
-        DispatchAnimationEvents();
-        DispatchEvents();
-        RefreshObservedScriptProperties();
-        DispatchObjectPropertyChanges();
-    } catch (...) { _Updating=false;throw; }
-    _Updating=false;
-}
 void Runtime::Render() {
     if (_ShuttingDown || _Depth || _ConstructionDepth || _InitializingComponents) return;
     RuntimeOperation operation(*this);

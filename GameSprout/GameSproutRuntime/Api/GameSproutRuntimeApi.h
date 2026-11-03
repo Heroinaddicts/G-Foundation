@@ -74,11 +74,14 @@ namespace GameSproutRuntime {
         // 生命周期仅由 Runtime 调用：登记归属后 OnCreate 一次，销毁前 OnRelease 一次。
         // OnInitialized 在本批节点、组件、属性及引用装配完成、结构修改提交后调用一次。
         // 它保证同批组件的数据可访问，不保证其他组件已执行自己的 OnInitialized。
-        // 尚未初始化成功的组件不会进入 Update / FixedUpdate；资源引用就绪不等于 GPU 上传完成。
+        // 尚未初始化成功的组件不会进入任何帧回调；资源引用就绪不等于 GPU 上传完成。
+        // Early/Update/Late 分别全体执行；本帧回调中新增组件从下一帧参加回调。
         // 回调中请求的结构修改与销毁延迟至当前回调/遍历结束，不直接 delete。
         virtual void OnCreate(IGameSproutRuntime * const runtime) {}
         virtual void OnInitialized(IGameSproutRuntime * const runtime) {}
+        virtual void EarlyUpdate(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
         virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
+        virtual void LateUpdate(IGameSproutRuntime * const runtime, float deltaSeconds) {} // 秒。
         virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
         virtual void OnRelease(IGameSproutRuntime * const runtime) {}
 
@@ -492,6 +495,12 @@ namespace GameSproutRuntime {
             std::vector<PrefabObjectMapping>&, std::string& error) { error="Prefab instantiation is unavailable";return nullptr; }
         virtual IGameObject* InstantiatePrefab(IScene*, const ResourceReference&, IGameObject*,
             std::vector<PrefabObjectMapping>&, std::string& error) { error="Prefab instantiation is unavailable";return nullptr; }
+        // 完整宿主帧：Early → 每个 Fixed + Physics → Update → Animation → Late。
+        // fixedStepCount 由宿主时钟计算；仅它推进模拟，Scene/Game 等视口不再推进。
+        // 所有时间必须有限且非负；有固定步时 fixedDeltaSeconds 必须大于零。
+        // 本帧新增组件先完成初始化，从下一帧开始接收帧回调。
+        virtual void AdvanceFrame(float deltaSeconds, std::uint32_t fixedStepCount, float fixedDeltaSeconds) = 0;
+        // 变量帧入口，等价于 AdvanceFrame(deltaSeconds, 0, 0)。
         virtual void Update(float deltaSeconds) = 0;
         // Explicit host fixed-step dispatch; editing and animation preview do not run player code.
         virtual void FixedUpdate(float fixedDeltaSeconds) {} // 有限且非负，单位秒。

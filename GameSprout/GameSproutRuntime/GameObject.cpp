@@ -157,7 +157,7 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
     IComponent* component=nullptr;
     bool registered=false;
     try {
-        std::uint8_t tickMask=3;
+        std::uint8_t tickMask=Runtime::AllTicks;
         component=CreateBuiltinComponent(type,Object,&tickMask);
         if (!component) return nullptr;
         if (NextComponentSerial==std::numeric_limits<std::uint64_t>::max()) { delete component; return nullptr; }

@@ -32,7 +32,9 @@ public:
     bool IsInitialized() const {return _Initialized && _Instance && !_Failed && !_StopRequested;}
     bool HasFailed() const {return _Failed;}
     void ReportInitializationFailure(const std::string& message);
+    void EarlyUpdate(IGameSproutRuntime*,float) override;
     void Update(IGameSproutRuntime*,float) override;
+    void LateUpdate(IGameSproutRuntime*,float) override;
     void FixedUpdate(IGameSproutRuntime*,float) override;
     void OnRelease(IGameSproutRuntime*) override {Stop();}
     void Stop() noexcept;

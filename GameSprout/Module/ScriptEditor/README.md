@@ -2,11 +2,11 @@
 
 `ScriptEditor` 负责源码创建、资产事件订阅、TaskApi 调度、类型目录和动态库替换；`ScriptCompiler` 负责源码快照、Clang AST、生成内部绑定、CMake 编译与缓存。界面只通过公开接口与事件协作，不查询功能模块的私有实现。
 
-用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`Update`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，五个生命周期统一放在 protected，由 Runtime 调用；不要求构造函数、构造继承、UUID 或字段注册表。
+用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`EarlyUpdate`、`Update`、`LateUpdate`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，七个生命周期统一放在 protected，并使用 `override` 检查签名，由 Runtime 调用；不要求构造函数、构造继承、UUID 或字段注册表。
 
 - `GAMESPROUT_SCRIPT(Type)` 只生成编译期类型标记，不执行注册和用户构造。默认构造时的 GameObject 归属由 SDK 内部注入。
 - 游戏代码通过 `_GameObject->AddComponent<T>()`、`GetComponent<T>()`、`RemoveComponent<T>()` 使用脚本。每个对象同类脚本最多一个，重复添加返回 `nullptr`；`OnCreate` 中查询自身返回当前真实实例，也可以查询或创建内置组件。内置组件重复添加仍返回已有组件。
-- 实例在 `OnCreate` 前已经登记并恢复作者字段。Runtime 完成本批节点、组件、字段与引用的装配，并提交 `OnCreate` 产生的结构修改后，调用一次 `OnInitialized`，之后才允许 `Update` 和 `FixedUpdate`。此时可以访问同批其他组件及其数据，但不保证其他组件已经执行完自己的 `OnInitialized`；后续新增组件不会重新初始化已有组件。可变帧调用 `Runtime.Update(deltaSeconds)`；固定步调用 `Runtime.FixedUpdate(fixedDeltaSeconds)`，两者独立，由宿主决定调度。停止执行或移除组件时调用 `OnRelease`，回调中的移除延迟到安全边界处理。
+- 实例在 `OnCreate` 前已经登记并恢复作者字段。Runtime 完成本批节点、组件、字段与引用的装配，并提交 `OnCreate` 产生的结构修改后，调用一次 `OnInitialized`，之后才允许 `EarlyUpdate`、`Update`、`LateUpdate` 和 `FixedUpdate`。此时可以访问同批其他组件及其数据，但不保证其他组件已经执行完自己的 `OnInitialized`；后续新增组件不会重新初始化已有组件。宿主通过 `Runtime.AdvanceFrame(deltaSeconds, fixedStepCount, fixedDeltaSeconds)` 推进完整帧：全体 `EarlyUpdate` → 零到多次（全体 `FixedUpdate` → 物理）→ 全体 `Update` → 独立动画求值及相关通知 → 全体 `LateUpdate`。`EarlyUpdate` 是 GameSprout 自定义的脚本前置阶段，用于本帧输入锁存；Unity 的同名 PlayerLoop 阶段并非 MonoBehaviour 回调。`Runtime.Update(deltaSeconds)` 推进不含固定步的完整变量帧；`Runtime.FixedUpdate(fixedDeltaSeconds)` 保留为低层单固定步入口，完整游戏循环优先使用 `AdvanceFrame`。停止执行或移除组件时调用 `OnRelease`，回调中的移除延迟到安全边界处理。
 - 每个 `.hpp` 资源最多标记一个组件，可以包含其他辅助类。隐藏 TypeID 直接使用该源资源 `.meta` GUID；类、文件、目录改名不会改变身份。复制资源时由 AssetsManager 创建新 `.meta` GUID。源引用是同一 GUID 加固定 LocalID `1`。
 - `ScriptBindingsGenerator` 调用本机 Clang JSON AST，识别标记的真实 C++ 类、访问权限和字段类型，再生成 `GameLogic.generated.cpp`。不使用正则猜测 C++ 声明，也不创建用户类实例来读取默认值。
 - 支持的 public 实例字段自动序列化；private / protected 使用 `GAMESPROUT_SERIALIZE_FIELD` 标记。字段类型包括 bool、有符号/无符号整数、float/double、枚举、std::string、Vector2/3/4、Quaternion、Color、ResourceReference、`IGameObject*` 和类型明确的组件指针。结构体/普通数据类递归展开；C 数组、std::array、std::vector、std::list 与 std::map/std::unordered_map 保存逻辑元素，不保存容器地址、分配器或内部节点。访问器通过每个声明类授权的友元生成，继承字段由其声明类处理；字段 ID 为 `声明类型::成员名`。字段更名视为新字段。

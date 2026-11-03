@@ -18,6 +18,8 @@ void Runtime::RegisterComponentTick(std::uint64_t objectID,std::uint8_t mask) {
     auto& counts=_TickObjects[objectID];
     if(mask&1)++counts.Variable;
     if(mask&2)++counts.Fixed;
+    if(mask&EarlyTick)++counts.Early;
+    if(mask&LateTick)++counts.Late;
 }
 void Runtime::UnregisterComponentTick(std::uint64_t objectID,std::uint8_t mask) {
     if(!mask)return;
@@ -25,7 +27,9 @@ void Runtime::UnregisterComponentTick(std::uint64_t objectID,std::uint8_t mask) 
     auto& counts=found->second;
     if((mask&1)&&counts.Variable)--counts.Variable;
     if((mask&2)&&counts.Fixed)--counts.Fixed;
-    if(!counts.Variable&&!counts.Fixed)_TickObjects.erase(found);
+    if((mask&EarlyTick)&&counts.Early)--counts.Early;
+    if((mask&LateTick)&&counts.Late)--counts.Late;
+    if(!counts.Variable&&!counts.Fixed&&!counts.Early&&!counts.Late)_TickObjects.erase(found);
 }
 void Runtime::RegisterScriptIdentity(std::uint64_t objectID,std::uint64_t instanceID) {
     _ScriptIdentities.emplace(objectID,instanceID);

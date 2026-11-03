@@ -53,6 +53,9 @@ public:
     bool EndConstruction(std::string& error)override{error.clear();return true;}
     bool EndFrame(std::string& error)override{error.clear();return true;}
     void Update(float)override{}
+    void AdvanceFrame(float seconds,std::uint32_t fixedSteps,float fixedSeconds)override{
+        if(Real)Real->AdvanceFrame(seconds,fixedSteps,fixedSeconds);
+    }
     void Render()override{}
 };
 static void Pump(){QCoreApplication::processEvents();}

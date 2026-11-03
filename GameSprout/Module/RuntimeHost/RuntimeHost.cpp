@@ -76,21 +76,23 @@ void RuntimeHost::Update(GameSproutEditor::GameSproutModuleApi*){
         const bool step=_StepPending;_StepPending=false;
         if(step){
             delta=static_cast<float>(fixedSeconds);
-            _Runtime->FixedUpdate(delta);_Runtime->Update(delta);
+            _Runtime->AdvanceFrame(delta,1,delta);
         }else if(!_Paused){
             // Bound debugger stalls/import delays and avoid an unbounded catch-up loop.
             delta=static_cast<float>(std::clamp(elapsed,0.0,0.1));
             _FixedAccumulator+=delta;
             unsigned steps=0;
-            while(_FixedAccumulator+1e-9>=fixedSeconds&&steps++<6){
-                _Runtime->FixedUpdate(static_cast<float>(fixedSeconds));_FixedAccumulator-=fixedSeconds;
+            while(_FixedAccumulator+1e-9>=fixedSeconds&&steps<6){
+                ++steps;_FixedAccumulator-=fixedSeconds;
             }
             _FixedAccumulator=std::max(0.0,_FixedAccumulator);
-            _Runtime->Update(delta);
+            // Runtime owns the complete phase barrier, including Early before
+            // all fixed steps and Late before either viewport observes the frame.
+            _Runtime->AdvanceFrame(delta,steps,static_cast<float>(fixedSeconds));
         }else _Runtime->ProcessPendingEvents();
     }else{
         delta=_Playing?static_cast<float>(std::clamp(elapsed,0.0,0.1)):0.f;
-        _Runtime->Update(delta);
+        _Runtime->AdvanceFrame(delta,0,0);
     }
     _Runtime->CompleteInputFrame();
     NotifyFrame({++_FrameNumber,delta,_Playing,_Gameplay,_Paused});

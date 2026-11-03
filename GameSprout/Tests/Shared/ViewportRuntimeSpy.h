@@ -71,5 +71,8 @@ public:
     GameSproutRuntime::IGameObject* InstantiateModel(GameSproutRuntime::IScene* scene,const GameSproutRuntime::ResourceReference& reference,
         GameSproutRuntime::IGameObject* parent,std::string& error) override{return Real?Real->InstantiateModel(scene,reference,parent,error):nullptr;}
     void Update(float seconds) override{if(Real)Real->Update(seconds);}
+    void AdvanceFrame(float seconds,std::uint32_t fixedSteps,float fixedSeconds) override{
+        if(Real)Real->AdvanceFrame(seconds,fixedSteps,fixedSeconds);
+    }
     void Render() override{if(Real)Real->Render();}
 };

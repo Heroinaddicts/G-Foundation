@@ -13,13 +13,14 @@ struct RuntimeFrameEvent {
 class IRuntimeFrameListener {
 public:
     virtual ~IRuntimeFrameListener() = default;
-    // 宿主主线程：Runtime Update 已完成，可刷新本帧视口或当前播放信息。
+    // 宿主主线程：Runtime 全帧阶段（包括动画和 LateUpdate）已完成。
+    // 两种视口共用本次结果，不再分别推进生命周期。
     virtual void OnRuntimeFrame(const RuntimeFrameEvent&) = 0;
     virtual void OnSimulationPlayingChanged(bool) {}
 };
 
 // Editor 的 Runtime 更新服务。使用 EditorApi 注入的运行实例，
-// 只管理资源提供者、时钟和唯一每帧 Update，不创建或 delete Runtime。
+// 只管理资源提供者、时钟和唯一每帧 AdvanceFrame，不创建或 delete Runtime。
 class IRuntimeHost : public GameSproutEditor::IGameSproutModule {
 public:
     virtual ~IRuntimeHost() = default;
@@ -30,7 +31,7 @@ public:
     virtual bool BeginGameplay(std::string& error) {error="Gameplay execution is unavailable";return false;}
     virtual void EndGameplay() {}
     virtual void SetGameplayPaused(bool) {}
-    // 仅暂停中接受，下一次Host帧推进1/60秒（一次FixedUpdate和Update），随后仍暂停。
+    // 仅暂停中接受，下一次Host帧推进1/60秒：Early、一次固定步、Update、动画、Late，随后仍暂停。
     virtual bool StepGameplay(std::string& error) {error="Gameplay stepping is unavailable";return false;}
     virtual bool IsGameplayActive() const {return false;}
     virtual bool IsGameplayPaused() const {return false;}

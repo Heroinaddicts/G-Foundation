@@ -61,7 +61,9 @@ public:
     // Exact virtual implementations do not require an explicit override token.
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {}
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {}
     void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {}
+    void LateUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {}
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float) {}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {}
     using GameSproutRuntime::IComponent::GetGameObject;
@@ -94,6 +96,8 @@ public:
             {"data hides lifecycle",emptyBase,"private:\n int OnCreate=0;","OnCreate","IComponent"},
             {"wrong Initialized arity",emptyBase,"public:\n void OnInitialized() {}","OnInitialized","IComponent"},
             {"wrong Update delta type",emptyBase,"public:\n void Update(GameSproutRuntime::IGameSproutRuntime*,double) {}","Update","IComponent"},
+            {"wrong EarlyUpdate arity",emptyBase,"protected:\n void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime*) {}","EarlyUpdate","IComponent"},
+            {"wrong LateUpdate delta type",emptyBase,"protected:\n void LateUpdate(GameSproutRuntime::IGameSproutRuntime*,double) {}","LateUpdate","IComponent"},
             {"wrong lifecycle const qualifier",emptyBase,"public:\n void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float) const {}","FixedUpdate","IComponent"},
             {"wrong Release argument",emptyBase,"public:\n void OnRelease(int) {}","OnRelease","IComponent"},
             {"using does not excuse wrong lifecycle",emptyBase,"public:\n using Base::Update;\n void Update(GameSproutRuntime::IGameSproutRuntime*) {}","Update","IComponent"},

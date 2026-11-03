@@ -22,6 +22,7 @@ public:
     bool BeginConstruction(std::string& error) override { error.clear();return true; }
     bool EndConstruction(std::string& error) override { error.clear();return true; }
     bool EndFrame(std::string& error) override { error.clear();return true; }
+    void AdvanceFrame(float,std::uint32_t,float) override {}
     void Update(float) override {}
     void Render() override {}
 };
