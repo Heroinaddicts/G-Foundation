@@ -11,11 +11,11 @@
 namespace {
 bool DiskMatches(const QString& path,const std::string& expected,std::string& error) {
     QFile source(path);
-    if(expected.empty() || !source.open(QIODevice::ReadOnly) || source.size()>32*1024*1024) {
+    if(expected.empty() || !source.open(QIODevice::ReadOnly)) {
         error="磁盘场景已消失或无法核对，未覆盖。请重新打开场景或另存为新文件。";return false;
     }
     const QByteArray bytes=source.readAll();
-    if(source.error()!=QFileDevice::NoError || bytes.size()>32*1024*1024 || AssetArtifactIO::Hash(bytes)!=expected) {
+    if(source.error()!=QFileDevice::NoError || AssetArtifactIO::Hash(bytes)!=expected) {
         error="场景文件已被外部修改，未覆盖。请重新打开场景或另存为新文件。";return false;
     }
     return true;
@@ -91,10 +91,8 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
     if(QFileInfo(source).suffix().compare("scene",Qt::CaseInsensitive)!=0) {error="请选择 .scene 场景文件。";return false;}
     QFile file(source);
     if(!file.open(QIODevice::ReadOnly)) {error=file.errorString().toStdString();return false;}
-    if(file.size()>32*1024*1024) {error="场景文件超过当前 32 MiB 读取上限。";return false;}
     const QByteArray bytes=file.readAll();
     if(file.error()!=QFileDevice::NoError) {error=file.errorString().toStdString();return false;}
-    if(bytes.size()>32*1024*1024) {error="场景文件超过当前 32 MiB 读取上限。";return false;}
     Json::Value document;
     if(!AssetArtifactIO::Parse(bytes.toStdString(),document)) {error="场景 JSON 格式无效。";return false;}
     _Switching=true;
@@ -149,7 +147,6 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     Json::Value document;std::string text;
     if (!Capture(document,text,error)) return false;
     const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
-    if (bytes.size()>32*1024*1024) {error="场景数据超过当前 32 MiB 文件上限。";return false;}
     // 在提交文件前准备所有拥有内存的状态，提交成功后的替换不再分配字符串。
     std::string savedPath=normalized,savedBaseline=text,savedState=text,savedHash=AssetArtifactIO::Hash(bytes);
     QSaveFile file(target);

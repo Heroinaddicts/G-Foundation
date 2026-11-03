@@ -28,7 +28,7 @@ bool PrefabStage::ReadSource(const std::string& text,Json::Value& data,std::stri
     if(!meta||meta->_ImporterType!=eAssetImporterType::Prefab){error="Prefab来源已移除或身份无效。";return false;}
     path=meta->GetPath();QString full;if(!Resolve(_Project,path,full,error))return false;
     QFile file(full);
-    if(!file.open(QIODevice::ReadOnly)||file.size()>64*1024*1024){error="无法读取Prefab源，或源超过64 MiB。";return false;}
+    if(!file.open(QIODevice::ReadOnly)){error="无法读取Prefab源。";return false;}
     const auto bytes=file.readAll();if(file.error()!=QFileDevice::NoError){error="读取Prefab源失败。";return false;}
     Json::Value source;
     if(!AssetArtifactIO::Parse(bytes.toStdString(),source)){error="Prefab源不是有效JSON。";return false;}

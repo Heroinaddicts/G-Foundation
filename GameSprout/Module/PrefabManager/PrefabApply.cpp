@@ -38,8 +38,10 @@ bool PrefabManager::ApplyOverrides(uint64_t objectID,std::string& error) {
         // Reject external scene refs before touching either source or instance.
         if(!PrefabDefinition::Validate(document,verified,error))return false;
         const QString full=QDir(QString::fromStdString(_Project->GetProjectRoot()+"/Assets")).filePath(QString::fromStdString(path));
-        QFile old(full);if(!old.open(QIODevice::ReadOnly)||old.size()>64*1024*1024){error="无法读取Apply目标。";return false;}
-        const auto before=old.readAll();old.close();
+        QFile old(full);if(!old.open(QIODevice::ReadOnly)){error="无法读取Apply目标。";return false;}
+        const auto before=old.readAll();
+        if(old.error()!=QFileDevice::NoError){error="读取Apply目标失败。";return false;}
+        old.close();
         if(AssetArtifactIO::Hash(before)!=hash){error="Prefab源文件被外部修改，请刷新后重试。";return false;}
         const auto bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
         if(!AssetArtifactIO::Write(full,bytes,error))return false;

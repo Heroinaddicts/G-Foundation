@@ -52,7 +52,6 @@ bool SceneManager::BeginDocumentSession(const SceneDocumentSessionRequest& reque
     if(IsDocumentSessionActive()){error="请先关闭当前临时文档。";return false;}
     if(!Ready(error))return false;
     if(Runtime()->IsScriptExecutionEnabled()){error="临时文档不能在游戏脚本执行中打开。";return false;}
-    if(request.DocumentJson.size()>32*1024*1024){error="临时文档超过32 MiB。";return false;}
     Json::Value document;
     if(!AssetArtifactIO::Parse(request.DocumentJson,document)||!SceneDocument::Validate(document,error)||
        !ContentGraph(document,request.ContentRootFileID,error)) {

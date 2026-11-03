@@ -85,6 +85,7 @@ public:
 };
 
 #include "PrefabStageScriptChecks.h"
+#include "LargeDocumentChecks.h"
 
 void CheckOpenDiscardAndHistory(Fixture& fixture) {
     std::string error;auto* main=fixture.Scenes->GetActiveScene();auto* first=fixture.Runtime->QueryGameObject(fixture.FirstID);
@@ -202,6 +203,12 @@ int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
     try {
         Check(argc==2||argc==3,"Pass the independently built Runtime directory and optional read-only user Assets directory");
+        if(argc==3&&std::string(argv[2])=="--large-documents") {
+            CheckLargeSceneDocument(argv[1]);
+            CheckLargeSourceAndTemporaryDocuments(argv[1]);
+            CheckLargePreparedPrefab(argv[1]);
+            return 0;
+        }
         {
             Fixture fixture(argv[1]);fixture.Initialize();
             CheckOpenDiscardAndHistory(fixture);CheckSavingAndPropagation(fixture);CheckFailureBoundaries(fixture);CheckSourceEventsAndPlay(fixture);

@@ -52,7 +52,7 @@ bool PrefabManager::Load(const GameSproutRuntime::ResourceReference& reference,J
     auto* meta=_Assets&&guid.IsValid()?_Assets->QueryAsset(guid):nullptr;
     if(!meta||meta->_ImporterType!=eAssetImporterType::Prefab||!reference.LocalID){error="Prefab来源缺失或身份无效。";return false;}
     path=meta->GetPath();const auto full=Path(_Project,path,false,error);if(full.isEmpty())return false;
-    QFile file(full);if(!file.open(QIODevice::ReadOnly)||file.size()>64*1024*1024){error="无法读取Prefab源文件。";return false;}
+    QFile file(full);if(!file.open(QIODevice::ReadOnly)){error="无法读取Prefab源文件。";return false;}
     const auto bytes=file.readAll();if(file.error()!=QFileDevice::NoError){error="读取Prefab源文件失败。";return false;}
     hash=AssetArtifactIO::Hash(bytes);Json::Value source;
     if(!AssetArtifactIO::Parse(bytes.toStdString(),source)||!PrefabDefinition::Validate(source,data,error)){if(error.empty())error="Prefab格式无效。";return false;}
@@ -62,10 +62,12 @@ bool PrefabManager::Load(const GameSproutRuntime::ResourceReference& reference,J
         auto* asset=_Library->QueryAsset(guid,reference.LocalID);
         if(!asset||asset->GetAssetType()!=eAssetType::Prefab){error="找不到Prefab预处理产物。";return false;}
         QFile prepared(QString::fromStdString(asset->GetArtifactPath()));
-        if(!prepared.open(QIODevice::ReadOnly)||prepared.size()>64*1024*1024){error="无法读取Prefab预处理产物。";return false;}
-        const auto content=prepared.readAll();std::vector<uint8_t> binary(reinterpret_cast<const uint8_t*>(content.constData()),reinterpret_cast<const uint8_t*>(content.constData())+content.size());
+        if(!prepared.open(QIODevice::ReadOnly)){error="无法读取Prefab预处理产物。";return false;}
+        const auto content=prepared.readAll();
+        if(prepared.error()!=QFileDevice::NoError){error="读取Prefab预处理产物失败。";return false;}
+        std::vector<uint8_t> binary(reinterpret_cast<const uint8_t*>(content.constData()),reinterpret_cast<const uint8_t*>(content.constData())+content.size());
         Json::Value decoded;
-        if(prepared.error()!=QFileDevice::NoError||!PrefabDocument::Decode(binary,decoded,error))return false;
+        if(!PrefabDocument::Decode(binary,decoded,error))return false;
         if(decoded!=data){error="Prefab预处理产物与源快照不一致。";return false;}
         data=std::move(decoded);
     }

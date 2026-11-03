@@ -47,8 +47,8 @@ void References(const Json::Value& value,std::set<uint64_t>& output) {
     }
 }
 bool ParseAnnotations(const std::string& text,Json::Value& output,std::string& error) {
-    if(text.size()>8*1024*1024||!AssetArtifactIO::Parse(text,output)||!output.isObject()) {
-        error="场景 annotations 必须是有效 JSON object，且不能超过 8 MiB。";return false;
+    if(!AssetArtifactIO::Parse(text,output)||!output.isObject()) {
+        error="场景 annotations 必须是有效 JSON object。";return false;
     }
     return true;
 }
@@ -60,7 +60,7 @@ Json::Value Subtree(const Json::Value& document,uint64_t root) {
     const auto nodes=Nodes(document);std::set<uint64_t> selected{root};
     bool added=true;
     while(added) {added=false;for(const auto& entry:nodes)if(selected.count(entry.second["ParentID"].asUInt64())&&selected.insert(entry.first).second)added=true;}
-    Json::Value result(Json::objectValue);result["Version"]=Json::UInt(1);result["Name"]="Object document";
+    Json::Value result(Json::objectValue);result["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);result["Name"]="Object document";
     result["NextObjectID"]=document["NextObjectID"];
     result["MainCameraID"]=Json::UInt64(selected.count(document["MainCameraID"].asUInt64())?document["MainCameraID"].asUInt64():0);
     result["Objects"]=Json::Value(Json::arrayValue);
@@ -110,8 +110,8 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
         edit.DocumentAfter=edit.DocumentBefore;edit.AnnotationsBefore=_Annotations;edit.AnnotationsAfter=_Annotations;
         Json::Value subtree;std::map<uint64_t,uint64_t> mapping;uint64_t rootFile=0;
         if(!request.DocumentJson.empty()) {
-            if(request.DocumentJson.size()>32*1024*1024||!AssetArtifactIO::Parse(request.DocumentJson,subtree)||!SceneDocument::ValidateSubtree(subtree,error)) {
-                if(error.empty())error="子树文档 JSON 无效或超过 32 MiB。";return false;
+            if(!AssetArtifactIO::Parse(request.DocumentJson,subtree)||!SceneDocument::ValidateSubtree(subtree,error)) {
+                if(error.empty())error="子树文档 JSON 无效。";return false;
             }
             if(!subtree["Objects"].isArray()||subtree["Objects"].empty()||!subtree["RootComponents"].isNull()) {error="子树文档必须只包含一个普通节点根。";return false;}
             for(const auto& node:subtree["Objects"])if(!node["ParentID"].asUInt64()) {

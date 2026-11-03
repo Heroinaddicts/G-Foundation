@@ -12,7 +12,7 @@ foreach(module IN ITEMS SceneManager PrefabManager PrefabStage)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules")
 endforeach()
-add_executable(PrefabStageChecks PrefabStageChecks.cpp PrefabStageTestSupport.h PrefabStageScriptChecks.h)
+add_executable(PrefabStageChecks PrefabStageChecks.cpp PrefabStageTestSupport.h PrefabStageScriptChecks.h LargeDocumentChecks.h)
 target_compile_features(PrefabStageChecks PRIVATE cxx_std_20)
 target_include_directories(PrefabStageChecks PRIVATE "${gamesprout_root}/Module/Interface" "${gamesprout_root}/GameSproutEditor/Api")
 target_link_libraries(PrefabStageChecks PRIVATE Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi
@@ -24,3 +24,5 @@ set(PREFAB_STAGE_RUNTIME_DIRECTORY "${gamesprout_root}/../Bin" CACHE PATH "Indep
 enable_testing()
 add_test(NAME PrefabStage.IsolatedEditingAndSourcePropagation COMMAND PrefabStageChecks "${PREFAB_STAGE_RUNTIME_DIRECTORY}")
 set_tests_properties(PrefabStage.IsolatedEditingAndSourcePropagation PROPERTIES TIMEOUT 60)
+add_test(NAME PrefabStage.LargeSceneAndPrefabDocuments COMMAND PrefabStageChecks "${PREFAB_STAGE_RUNTIME_DIRECTORY}" --large-documents)
+set_tests_properties(PrefabStage.LargeSceneAndPrefabDocuments PROPERTIES TIMEOUT 180)
