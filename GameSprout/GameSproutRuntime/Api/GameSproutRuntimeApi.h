@@ -204,6 +204,12 @@ namespace GameSproutRuntime {
         std::uint64_t FileID = 0; // Document-wide nonzero FileID, distinct from lifetime ID.
     };
 
+    enum class SceneNodeEventType;
+    struct SceneAuthoringChange {
+        std::uint64_t ObjectID=0;
+        SceneNodeEventType Type;
+        std::string ComponentType;
+    };
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScene : public IGameObject {
     public:
         virtual ~IScene() {}
@@ -235,6 +241,12 @@ namespace GameSproutRuntime {
         virtual const EnvironmentLightingSettings& GetEnvironmentLighting() const = 0;
         // Scene-owned state; invalid input leaves the complete state unchanged.
         virtual bool SetEnvironmentLighting(const EnvironmentLightingSettings&) = 0;
+        // Authored values/structure only; evaluated animation/physics poses and
+        // transient host simulation state do not advance this revision.
+        virtual std::uint64_t GetAuthoringRevision() const {return 0;}
+        // Independent readers. False means the bounded journal no longer covers
+        // afterRevision; rebuild one snapshot. Values are committed before queued events.
+        virtual bool GetAuthoringChanges(std::uint64_t,std::vector<SceneAuthoringChange>& changes) const {changes.clear();return false;}
     };
 
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE ITransformComponent : public IComponent {
@@ -362,6 +374,9 @@ namespace GameSproutRuntime {
         virtual ~IRuntimeListener() = default;
         virtual void OnAnimatorIK(const AnimatorIKNotification&) {}
         virtual void OnSceneNodeEvent(const SceneNodeEvent& event) = 0;
+        // Coalesced at the Runtime event boundary, including evaluated poses.
+        // Visual invalidation does not imply a change to the authored document.
+        virtual void OnSceneVisualChanged(std::uint64_t) {}
         // Host-thread, end-of-Update delivery. Unregister before destroying the listener.
         virtual void OnAnimationEvent(const AnimationNotification&) {}
         // Return true to take over movement (e.g. GPhysics); builtin ApplyToObject then does not apply it.

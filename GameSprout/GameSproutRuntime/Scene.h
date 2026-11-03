@@ -1,5 +1,6 @@
 #pragma once
 #include "GameObject.h"
+#include <deque>
 
 namespace GameSproutRuntime {
 class Scene final : public GameObjectBase<IScene> {
@@ -17,7 +18,25 @@ public:
     // Runtime-internal snapshot invalidation. Changes are visible before queued
     // listener dispatch, including direct Set* -> Render calls in editor/tests.
     std::uint64_t GetRenderRevision() const {return _RenderRevision;}
-    void InvalidateRenderSnapshot() {++_RenderRevision;}
+    void InvalidateRenderSnapshot() {++_RenderRevision;_VisualPending=true;}
+    bool TakeVisualInvalidation() {const bool pending=_VisualPending;_VisualPending=false;return pending;}
+    std::uint64_t GetAuthoringRevision() const override {return _AuthoringRevision;}
+    bool GetAuthoringChanges(std::uint64_t after,std::vector<SceneAuthoringChange>& changes) const override {
+        changes.clear();
+        if(after>_AuthoringRevision||_AuthoringRevision-after>_AuthoringChanges.size())return false;
+        const auto start=_AuthoringChanges.size()-static_cast<std::size_t>(_AuthoringRevision-after);
+        changes.reserve(_AuthoringChanges.size()-start);
+        for(auto index=start;index<_AuthoringChanges.size();++index)changes.push_back(_AuthoringChanges[index]);
+        return true;
+    }
+    void RecordAuthoringChange(std::uint64_t objectID,SceneNodeEventType type,const char* component) {
+        if(type==SceneNodeEventType::OperationFailed)return;
+        ++_AuthoringRevision;
+        try {
+            _AuthoringChanges.push_back({objectID,type,component?component:""});
+            if(_AuthoringChanges.size()>2048)_AuthoringChanges.pop_front();
+        } catch(...) {_AuthoringChanges.clear();}
+    }
     void ClearMainCameraForNode(std::uint64_t id);
     bool BindObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) override {
         auto* node=State().Owner.Find(object);
@@ -35,5 +54,8 @@ private:
     bool _SimulationEnabled = true;
     EnvironmentLightingSettings _EnvironmentLighting;
     std::uint64_t _RenderRevision=1;
+    std::uint64_t _AuthoringRevision=1;
+    std::deque<SceneAuthoringChange> _AuthoringChanges;
+    bool _VisualPending=false;
 };
 }

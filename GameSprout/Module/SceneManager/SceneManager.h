@@ -2,6 +2,7 @@
 #include "ISceneManager.h"
 #include "IProject.h"
 #include "SceneDocument.h"
+#include "SceneDirtyState.h"
 #include <map>
 #include <array>
 class IRuntimeHost;
@@ -82,6 +83,11 @@ private:
     GameSproutRuntime::IGameSproutRuntime* Runtime() const;
     bool Ready(std::string& error) const;
     bool Capture(Json::Value& document,std::string& text,std::string& error) const;
+    SceneDirtyState MakeDirtyBaseline(const Json::Value&) const;
+    bool SynchronizeDirtyState(std::string& error) const;
+    bool RefreshDirtyDocument(const Json::Value&,std::string& error) const;
+    bool RefreshDirtyRoot(std::string& error) const;
+    bool DirtyFromSnapshot() const;
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
     struct Edit {
@@ -110,6 +116,7 @@ private:
         std::size_t HistoryPosition=0;
         bool Unsaved=false;
         Json::Value Annotations;
+        SceneDirtyState DirtyState;
     };
     PlaySession* _PlaySession=nullptr;
     struct DocumentContext {
@@ -120,6 +127,7 @@ private:
         std::size_t HistoryPosition=0;
         Json::Value Annotations{Json::objectValue};
         bool Unsaved=true,StatePending=false;
+        SceneDirtyState DirtyState;
     };
     struct DocumentSession {DocumentContext Main;uint64_t ContentRootFileID=0;bool MainSimulationEnabled=true;};
     DocumentSession* _DocumentSession=nullptr;
@@ -158,6 +166,7 @@ private:
     bool _PropertyPreview = false;
     bool _StatePending = false;
     mutable bool _Unsaved = true;
+    mutable SceneDirtyState _DirtyState;
     mutable SceneDocument::ObjectIDs _ObjectIDs;
     Json::Value _Annotations{Json::objectValue};
     std::string _BaselineText;

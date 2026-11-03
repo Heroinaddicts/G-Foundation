@@ -66,9 +66,7 @@ bool SceneManager::BeginTransformEdit(uint64_t objectID,const std::string& label
         }
     }
     try {
-        // 拖拽不能以无法序列化/世界矩阵已经溢出的场景作为起点。
-        Json::Value document;std::string text;
-        if(!Capture(document,text,error))return false;
+        if(!SynchronizeDirtyState(error))return false;
         TransformEdit edit;edit.Active=true;edit.SceneID=_ActiveID;edit.ObjectID=objectID;edit.Label=label;
         edit.Before=edit.Last=Read(*object->GetTransform());
         if(auto* parent=object->Parent()){edit.ParentID=parent->GetInstanceID();edit.ParentWorld=parent->GetTransform()->GetWorldMatrix();}
@@ -86,8 +84,7 @@ bool SceneManager::PreviewTransformEdit(const SceneTransformState& value,std::st
     try {
         accepted=Write(*object,value,error);
         if(accepted) {
-            Json::Value document;std::string text;
-            accepted=Capture(document,text,error);
+            accepted=SynchronizeDirtyState(error);
         }
         if(accepted)_TransformEdit.Last=Read(*object->GetTransform());
     } catch(const std::exception& exception) {accepted=false;error=exception.what();}

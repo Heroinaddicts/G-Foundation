@@ -28,11 +28,8 @@ uint64_t SceneManager::GetObjectFileID(uint64_t objectID) const {
 GameSproutRuntime::IGameObject* SceneManager::QueryObjectByFileID(uint64_t fileID) const {
     auto* scene=GetActiveScene();if(!scene)return nullptr;
     if(!fileID)return scene;
-    for(const auto& entry:_ObjectIDs.RuntimeToFile) if(entry.second==fileID) {
-        auto* object=Runtime()->QueryGameObject(entry.first);
-        return object&&object->GetScene()==scene?object:nullptr;
-    }
-    return nullptr;
+    auto* object=Runtime()->QuerySceneObjectByFileID(scene,fileID);
+    return object&&object->GetScene()==scene?object:nullptr;
 }
 bool SceneManager::CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& edit,std::string& error) const {
     auto* scene=GetActiveScene();auto* parent=object.Parent();

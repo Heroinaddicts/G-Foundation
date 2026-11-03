@@ -32,6 +32,7 @@ void SceneManager::SwapDocumentContext(DocumentContext& context) noexcept {
     _DiskHash.swap(context.DiskHash);_LastStateText.swap(context.LastStateText);
     _History.swap(context.History);std::swap(_HistoryPosition,context.HistoryPosition);
     _Annotations.swap(context.Annotations);std::swap(_Unsaved,context.Unsaved);std::swap(_StatePending,context.StatePending);
+    std::swap(_DirtyState,context.DirtyState);
 }
 GameSproutRuntime::IScene* SceneManager::GetMainScene() const {
     if(!_DocumentSession||_EditingSuspended)return GetActiveScene();
@@ -74,6 +75,9 @@ bool SceneManager::BeginDocumentSession(const SceneDocumentSessionRequest& reque
         if(!SceneDocument::Serialize(*candidate,temporary.IDs,normalized,error))throw std::runtime_error(error);
         if(!temporary.Annotations.empty())normalized["Annotations"]=temporary.Annotations;
         temporary.BaselineText=AssetArtifactIO::JsonText(normalized);temporary.LastStateText=temporary.BaselineText;temporary.Unsaved=false;
+        temporary.DirtyState=MakeDirtyBaseline(normalized);
+        temporary.DirtyState.SceneID=candidate->GetInstanceID();temporary.DirtyState.Revision=candidate->GetAuthoringRevision();
+        temporary.DirtyState.NotifiedRevision=temporary.DirtyState.Revision;temporary.DirtyState.NotifiedDirty=false;
         SwapDocumentContext(session->Main);SwapDocumentContext(temporary);_DocumentSession=session;
         if(auto* main=GetMainScene())main->SetSimulationEnabled(false);
         _TransformEdit={};NotifySceneChanged();NotifyStateChanged();_Switching=false;return true;
@@ -98,7 +102,9 @@ bool SceneManager::MarkDocumentSessionSaved(std::string& error) {
     if(!IsTemporaryDocumentContext()){error="当前没有可保存的临时文档。";return false;}
     if(!Ready(error))return false;
     Json::Value document;std::string text;if(!Capture(document,text,error))return false;
+    auto dirtyState=MakeDirtyBaseline(document);dirtyState.NotifiedDirty=false;
     std::string state=text;_BaselineText.swap(text);_LastStateText.swap(state);_Unsaved=false;_StatePending=false;
+    _DirtyState=std::move(dirtyState);
     NotifyStateChanged();return true;
 }
 bool SceneManager::EditSuspendedDocument(const std::function<bool(std::string&)>& operation,std::string& error) {

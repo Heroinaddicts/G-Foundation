@@ -45,6 +45,7 @@ add_executable(SceneManagerChecks
     "${gamesprout_root}/Module/SceneManager/SceneManager.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneAssetFiles.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneEditing.cpp"
+    "${gamesprout_root}/Module/SceneManager/SceneDirtyState.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneDocumentEditing.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneDocumentSession.cpp"
     "${gamesprout_root}/Module/SceneManager/SceneDeletion.cpp"

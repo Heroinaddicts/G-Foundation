@@ -20,6 +20,7 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
         if(root->Object!=object.SceneOwner || Find(root->Object)!=root) return;
     } else if(!IsInScene(&object)) return;
     object.SceneOwner->InvalidateRenderSnapshot();
+    object.SceneOwner->RecordAuthoringChange(object.ID,type,component);
     MarkObjectPropertiesChanged(object.ID);
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。
     try {
@@ -59,6 +60,24 @@ void Runtime::DispatchEvents() {
             const auto found=_Listeners.find(id);
             if(found==_Listeners.end() || record.Sequence<=found->second.AfterSequence) continue;
             try {found->second.Pointer->OnSceneNodeEvent(record.Event);} catch (...) {}
+        }
+    }
+    // Snapshot identities before calling listeners; callbacks may unsubscribe or
+    // request deferred destruction. Clear first so newly invalidated poses wait
+    // for the next boundary rather than recursively notifying this one.
+    std::vector<std::uint64_t> visualScenes;
+    for(std::size_t index=0;index<GetSceneCount();++index)
+        if(auto* scene=dynamic_cast<Scene*>(GetScene(index));scene&&scene->TakeVisualInvalidation())
+            visualScenes.push_back(scene->GetInstanceID());
+    for(const auto sceneID:visualScenes) {
+        if(!Find(sceneID))continue;
+        std::vector<std::uint64_t> listeners;
+        for(const auto& entry:_Listeners)listeners.push_back(entry.first);
+        RuntimeOperation operation(*this);
+        for(const auto id:listeners) {
+            const auto found=_Listeners.find(id);
+            if(found==_Listeners.end())continue;
+            try {found->second.Pointer->OnSceneVisualChanged(sceneID);}catch(...) {}
         }
     }
 }

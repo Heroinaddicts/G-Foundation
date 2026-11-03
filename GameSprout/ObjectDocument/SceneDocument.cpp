@@ -646,6 +646,23 @@ bool ValidateSubtree(const Json::Value& document,std::string& error) {
     try {ValidatePlan(document,false);return true;}
     catch(const std::exception& exception){error=exception.what();return false;}
 }
+bool ValidateProperties(const Json::Value& properties,bool sceneRoot,std::string& error) {
+    Json::Value document(Json::objectValue);
+    if(sceneRoot) {
+        document=properties;
+        document["MainCameraID"]=Json::UInt64(0);
+        document.removeMember("RootMainCamera");
+        document.removeMember("Annotations");
+    } else {
+        document["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);document["Name"]="Property validation";
+        document["MainCameraID"]=Json::UInt64(0);
+    }
+    document["Objects"]=Json::Value(Json::arrayValue);
+    if(!sceneRoot) {
+        Json::Value node=properties;node["ParentID"]=Json::UInt64(0);document["Objects"].append(std::move(node));
+    }
+    return ValidateSubtree(document,error);
+}
 bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRuntime& runtime,
                  GameSproutRuntime::IScene*& output, ObjectIDs& ids, std::string& error) {
     GameSproutRuntime::IScene* candidate=nullptr;

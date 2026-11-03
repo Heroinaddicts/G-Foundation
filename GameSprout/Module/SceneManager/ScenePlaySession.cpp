@@ -37,6 +37,7 @@ bool SceneManager::BeginPlaySession(std::string& error) {
     if(IsPlaySessionActive()) {error="已经存在运行场景会话。";return false;}
     if(!Ready(error)) return false;
     if(Runtime()->IsScriptExecutionEnabled()) {error="捕获场景前必须先停止脚本执行。";return false;}
+    if(!SynchronizeDirtyState(error))return false;
     SwitchingScope switching(_Switching);
     PlaySession* snapshot=nullptr;
     std::vector<GameSproutRuntime::IScene*> candidates,previous;
@@ -77,6 +78,7 @@ bool SceneManager::BeginPlaySession(std::string& error) {
     // 所有可能失败的文档读取与节点分配在发布之前完成。旧树仍可用于选择快照。
     NotifyPlaySession(true,true);
     snapshot->History.swap(_History);_HistoryPosition=0;
+    snapshot->DirtyState=std::move(_DirtyState);
     _PlaySession=snapshot;
     _ActiveID=candidates[snapshot->ActiveIndex]->GetInstanceID();
     _ObjectIDs=std::move(candidateIDs[snapshot->ActiveIndex]);
@@ -126,6 +128,10 @@ bool SceneManager::EndPlaySession(std::string& error) {
     _History.swap(snapshot->History);_HistoryPosition=snapshot->HistoryPosition;
     _Unsaved=snapshot->Unsaved;_StatePending=false;
     _Annotations.swap(snapshot->Annotations);
+    _DirtyState=std::move(snapshot->DirtyState);
+    _DirtyState.SceneID=_ActiveID;
+    _DirtyState.Revision=GetActiveScene()->GetAuthoringRevision();
+    _DirtyState.NotifiedRevision=_DirtyState.Revision;_DirtyState.NotifiedDirty=_Unsaved;
     _PlaySession=nullptr;
     NotifySceneChanged();
     DestroyCandidates(*Runtime(),previous);

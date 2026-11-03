@@ -149,6 +149,7 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
     // 在提交文件前准备所有拥有内存的状态，提交成功后的替换不再分配字符串。
     std::string savedPath=normalized,savedBaseline=text,savedState=text,savedHash=AssetArtifactIO::Hash(bytes);
+    auto savedDirtyState=MakeDirtyBaseline(document);savedDirtyState.NotifiedDirty=false;
     QSaveFile file(target);
     file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly)) {error=file.errorString().toStdString();return false;}
@@ -164,6 +165,7 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     if (!file.commit()) {error=file.errorString().toStdString();return false;}
     _ActivePath.swap(savedPath);_BaselineText.swap(savedBaseline);_LastStateText.swap(savedState);
     _DiskHash.swap(savedHash);
+    _DirtyState=std::move(savedDirtyState);
     _Unsaved=false;_StatePending=false;
     RememberActiveScene();
     NotifyStateChanged();

@@ -50,6 +50,11 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
 // 输出按深度优先顺序写入。成功后提交新分配的稳定文件 ID，失败保留 ids/output。
 bool Serialize(GameSproutRuntime::IScene& scene, ObjectIDs& ids,
                Json::Value& output, std::string& error);
+// Existing identities only. No tree walk, ID allocation or binding publication.
+// A scene root returns header fields; an ordinary object returns one node record.
+bool SerializeProperties(GameSproutRuntime::IGameObject&,const ObjectIDs&,Json::Value&,std::string& error);
+// Local component/value validation. Cross-object graph changes still require Validate.
+bool ValidateProperties(const Json::Value&,bool sceneRoot,std::string& error);
 bool Validate(const Json::Value& document, std::string& error);
 // Validated, closed template -> fresh identities in the target scene.
 bool InstantiatePrefab(const Json::Value&, GameSproutRuntime::IGameSproutRuntime&,

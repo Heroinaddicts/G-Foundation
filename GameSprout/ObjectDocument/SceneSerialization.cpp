@@ -40,6 +40,40 @@ Json::Value Components(GameSproutRuntime::IGameObject& object, const SceneDocume
 }
 
 namespace SceneDocument {
+bool SerializeProperties(GameSproutRuntime::IGameObject& object,const ObjectIDs& ids,Json::Value& output,std::string& error) {
+    error.clear();
+    try {
+        auto* scene=object.GetScene();
+        if(!scene)throw std::runtime_error("Object is not attached to a scene");
+        const auto world=object.GetTransform()->GetWorldMatrix();
+        for(const float value:world.Data)if(!std::isfinite(value))throw std::runtime_error("World transform overflows for object "+object.GetName());
+        for(std::size_t index=0;index<object.GetComponentCount();++index)
+            if(!ids.FindComponentFileID(object.GetComponentAt(index)))throw std::runtime_error("Object has an unpublished component identity");
+        Json::Value data(Json::objectValue);
+        if(&object==scene) {
+            data["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);data["Name"]=scene->GetName();data["RootActive"]=scene->IsActiveSelf();
+            data["RootLayer"]=Json::UInt(scene->GetLayer());data["RootTagID"]=Json::UInt64(scene->GetTagID());
+            data["RootStaticFlags"]=Json::UInt(static_cast<std::uint32_t>(scene->GetStaticFlags()));
+            data["RootComponents"]=Components(*scene,ids);data["NextObjectID"]=Json::UInt64(ids.Next);
+            data["MainCameraID"]=Json::UInt64(0);data["EnvironmentLighting"]=SceneEnvironmentLightingDocument::Serialize(scene->GetEnvironmentLighting());
+            if(auto* camera=scene->GetMainCamera()) {
+                auto* owner=camera->GetGameObject();
+                if(owner==scene)data["RootMainCamera"]=true;
+                else data["MainCameraID"]=Json::UInt64(ids.RuntimeToFile.at(owner->GetInstanceID()));
+            }
+        } else {
+            auto* parent=object.Parent();if(!parent)throw std::runtime_error("Detached object has no parent");
+            data["ID"]=Json::UInt64(ids.RuntimeToFile.at(object.GetInstanceID()));
+            data["ParentID"]=Json::UInt64(parent==scene?0:ids.RuntimeToFile.at(parent->GetInstanceID()));
+            data["Name"]=object.GetName();data["Active"]=object.IsActiveSelf();data["Layer"]=Json::UInt(object.GetLayer());
+            data["TagID"]=Json::UInt64(object.GetTagID());data["StaticFlags"]=Json::UInt(static_cast<std::uint32_t>(object.GetStaticFlags()));
+            data["Components"]=Components(object,ids);
+        }
+        output.swap(data);return true;
+    } catch(const std::exception& exception){error=exception.what();}
+      catch(...){error="Cannot snapshot object properties";}
+    return false;
+}
 Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const ObjectIDs& ids) {
         if (!component.GetTypeName()) throw std::runtime_error("Invalid Runtime component");
         Json::Value data(Json::objectValue);

@@ -39,19 +39,19 @@ bool SceneManager::HasUnsavedChanges() const {
     if (_PlaySession) return _PlaySession->Unsaved;
     if (!GetActiveScene()) return false;
     if (Runtime()->IsExecuting()) return _Unsaved;
-    Json::Value document;std::string text,error;
-    _Unsaved=(_ActivePath.empty()&&!IsTemporaryDocumentContext()) || !Capture(document,text,error) || text!=_BaselineText;
+    std::string error;SynchronizeDirtyState(error);
+    _Unsaved=DirtyFromSnapshot();
     return _Unsaved;
 }
 void SceneManager::RefreshState(bool force) {
     _StatePending=false;
     if (IsPlaySessionActive()) return;
-    Json::Value document;std::string text,error;
-    const bool captured=Capture(document,text,error);
-    if (!captured) text="Invalid scene: "+error;
-    const bool dirty=GetActiveScene() && ((_ActivePath.empty()&&!IsTemporaryDocumentContext()) || !captured || text!=_BaselineText);
-    const bool changed=force || text!=_LastStateText || dirty!=_Unsaved;
-    _Unsaved=dirty;_LastStateText.swap(text);
+    std::string error;SynchronizeDirtyState(error);
+    // Annotation-only document transactions have no Runtime node event.
+    if(force&&GetActiveScene())RefreshDirtyRoot(error);
+    const bool dirty=DirtyFromSnapshot();
+    const bool changed=force||_DirtyState.Revision!=_DirtyState.NotifiedRevision||dirty!=_DirtyState.NotifiedDirty;
+    _Unsaved=dirty;_DirtyState.NotifiedRevision=_DirtyState.Revision;_DirtyState.NotifiedDirty=dirty;
     if (changed) NotifyStateChanged();
 }
 bool SceneManager::RunEdit(const Edit& edit,bool forward,std::string& error) {
@@ -75,8 +75,7 @@ bool SceneManager::RunEdit(const Edit& edit,bool forward,std::string& error) {
     catch (...) {error="属性操作抛出异常。";}
     object=resolve();
     if (accepted && object) {
-        Json::Value document;std::string text;
-        if (Capture(document,text,error)) return true;
+        if (SynchronizeDirtyState(error)) return true;
     }
     if (error.empty()) error=object?"属性操作失败。":"属性操作删除了编辑目标，不能记录撤销。";
     // 公共 setters 通常原子拒绝；也恢复误先写入再返回 false 的属性操作。
@@ -93,8 +92,7 @@ bool SceneManager::EditObject(uint64_t objectID,const std::string& label,const f
     if (!objectID || !apply || !revert) {error="编辑需要有效对象和正反操作。";return false;}
     auto* object=Runtime()->QueryGameObject(objectID);auto* scene=GetActiveScene();
     if(!object||object->GetScene()!=scene){error="编辑目标已经删除或不属于当前场景。";return false;}
-    Json::Value document;std::string text;
-    if(!Capture(document,text,error))return false;
+    if(!SynchronizeDirtyState(error))return false;
     Edit edit;
     try {
         edit.FileID=object==scene?0:_ObjectIDs.RuntimeToFile.at(objectID);edit.Label=label;edit.Apply=apply;edit.Revert=revert;edit.ReferencedTags[0]=object->GetTagID();

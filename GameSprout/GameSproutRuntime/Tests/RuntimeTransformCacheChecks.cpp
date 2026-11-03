@@ -55,6 +55,8 @@ void Transforms(Runtime& runtime) {
 
     auto* access=dynamic_cast<TransformComponent*>(leaf->GetTransform());Check(access,"Missing native Transform");
     const auto authored=access->GetLocalMatrix();
+    runtime.ProcessPendingEvents();
+    const auto authoredRevision=scene->GetAuthoringRevision();
     Check(access->SetEvaluatedPose(11,Translate(7),{}),"Cannot apply evaluated animation pose");
     Position(access->GetLocalMatrix(),7,"Animation retained authored local matrix");
     Matrix(access->GetWorldMatrix(),child->GetTransform()->GetWorldMatrix()*Translate(7),"Animation did not invalidate world cache");
@@ -73,8 +75,13 @@ void Transforms(Runtime& runtime) {
     access->ClearPhysicsPose();Position(access->GetLocalMatrix(),7,"Physics reset did not restore evaluated animation");
     access->ClearEvaluatedPose(999);Position(access->GetLocalMatrix(),7,"Wrong animator cleared another owner's pose");
     access->ClearEvaluatedPose(11);Matrix(access->GetLocalMatrix(),authored,"Animation reset did not restore authored local matrix");
+    Check(scene->GetAuthoringRevision()==authoredRevision,"Evaluated animation/physics poses changed authored document revision");
     Check(access->SetPhysicsPose(Translate(6),true),"Cannot reapply physics pose");access->GetWorldMatrix();
     access->SetLocalPosition({4,0,0});Position(access->GetLocalMatrix(),4,"Authoring after physics retained physics cache");
+    std::vector<SceneAuthoringChange> authoredChanges;
+    Check(scene->GetAuthoringRevision()>authoredRevision&&scene->GetAuthoringChanges(authoredRevision,authoredChanges)&&
+          authoredChanges.size()==1&&authoredChanges[0].ObjectID==leaf->GetInstanceID(),
+          "Authored changes were not journaled synchronously before queued listener dispatch");
     Check(access->SetLocalMatrix(Translate(8,2,3)),"Cannot set complete local matrix");
     Matrix(access->GetWorldMatrix(),child->GetTransform()->GetWorldMatrix()*Translate(8,2,3),"Complete matrix replacement retained world cache");
     Mat4 invalid;invalid(0,1)=.25f;
@@ -104,6 +111,33 @@ class Observer final:public IRuntimePropertyObserver {
 public: unsigned Calls=0;
     void OnRuntimeObjectPropertiesChanged(std::uint64_t,std::uint64_t)override{++Calls;}
 };
+class VisualEvents final:public IRuntimeListener {
+public:
+    unsigned Nodes=0,Visuals=0;
+    Runtime* Owner=nullptr;bool Unsubscribe=false;
+    void OnSceneNodeEvent(const SceneNodeEvent&)override{++Nodes;}
+    void OnSceneVisualChanged(std::uint64_t)override{++Visuals;if(Unsubscribe)Owner->UnregisterListener(this);}
+};
+void VisualAuthoringBoundary(Runtime& runtime) {
+    auto* scene=runtime.CreateScene("Visual/authored boundary");auto* object=scene->CreateGameObject("Posed node");
+    runtime.ProcessPendingEvents();
+    VisualEvents listener;listener.Owner=&runtime;Check(runtime.RegisterListener(&listener),"Cannot register visual fixture");
+    const auto revision=scene->GetAuthoringRevision();
+    auto* transform=dynamic_cast<TransformComponent*>(object->GetTransform());
+    Check(transform&&transform->SetEvaluatedPose(17,Translate(2),{})&&transform->SetEvaluatedPose(17,Translate(3),{}),"Cannot evaluate visual fixture");
+    Check(scene->GetAuthoringRevision()==revision,"Visual poses advanced authored revision");
+    runtime.ProcessPendingEvents();
+    Check(listener.Visuals==1&&listener.Nodes==0,"Evaluated poses were not coalesced to one visual-only scene event");
+    runtime.ProcessPendingEvents();Check(listener.Visuals==1,"Idle event dispatch repeated a visual event");
+    transform->SetLocalPosition({4,0,0});std::vector<SceneAuthoringChange> changes;
+    Check(scene->GetAuthoringRevision()>revision&&scene->GetAuthoringChanges(revision,changes)&&changes.size()==1,
+          "Direct setter authored revision waited for event dispatch");
+    listener.Unsubscribe=true;runtime.ProcessPendingEvents();
+    Check(listener.Nodes==1&&listener.Visuals==2,"Authored/visual delivery or visual self-unsubscribe failed");
+    transform->SetLocalPosition({5,0,0});runtime.ProcessPendingEvents();
+    Check(listener.Nodes==1&&listener.Visuals==2,"Visual self-unsubscribe retained the listener");
+    Check(runtime.DestroyScene(scene),"Cannot clean visual fixture");
+}
 void SuspendedScenes(Runtime& runtime) {
     Internal::RegisterScriptClass<TickScript>("tick-cache-fixture","TickScript",__FILE__,{"fixture",1},{});
     std::string error;Check(runtime.RegisterScriptType(Internal::ScriptModuleTypes().back(),error),error);
@@ -125,7 +159,7 @@ void SuspendedScenes(Runtime& runtime) {
 }
 }
 int main() {
-    try{Runtime runtime;Transforms(runtime);SuspendedScenes(runtime);
+    try{Runtime runtime;Transforms(runtime);VisualAuthoringBoundary(runtime);SuspendedScenes(runtime);
         std::cout<<"PASS transform cache: ancestors, reparent/deferred/detached/deep trees, authored/animation/physics precedence, suspension preserves initialization/events and resumes ticks\n";return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
 }
