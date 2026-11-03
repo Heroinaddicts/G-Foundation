@@ -51,7 +51,7 @@ bool SceneManager::CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& 
         for(std::size_t index=node->GetChildCount();index>0;--index)pending.push_back(node->GetChild(index-1));
     }
     Json::Value subtree(Json::objectValue);
-    subtree["Version"]=Json::UInt(1);subtree["Name"]="Deleted subtree";
+    subtree["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);subtree["Name"]="Deleted subtree";
     const auto camera=document["MainCameraID"].asUInt64();
     subtree["MainCameraID"]=Json::UInt64(files.count(camera)?camera:0);
     subtree["Objects"]=Json::Value(Json::arrayValue);

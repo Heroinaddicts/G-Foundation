@@ -13,7 +13,7 @@ Json::Value Values(std::initializer_list<float> values) {
 }
 Json::Value PrimitiveDocument(GameSproutRuntime::PrimitiveType type,const std::string& name) {
     Json::Value document(Json::objectValue),node(Json::objectValue),transform(Json::objectValue),mesh(Json::objectValue),renderer(Json::objectValue);
-    document["Version"]=Json::UInt(1);document["Name"]=name;document["NextObjectID"]=Json::UInt64(2);
+    document["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);document["Name"]=name;document["NextObjectID"]=Json::UInt64(2);
     document["MainCameraID"]=Json::UInt64(0);document["Objects"]=Json::Value(Json::arrayValue);
     node["ID"]=Json::UInt64(1);node["ParentID"]=Json::UInt64(0);node["Name"]=name;node["Active"]=true;
     node["Components"]=Json::Value(Json::arrayValue);

@@ -17,6 +17,12 @@ LightComponentEditor::LightComponentEditor(QWidget* parent,ILightingAuthoring* a
         QObject::connect(edit,&QLineEdit::editingFinished,this,[this,edit]{CommitValues(edit);});
     QObject::connect(_Ui->enabledCheck,&QCheckBox::clicked,this,[this]{CommitValues(_Ui->enabledCheck);});
     QObject::connect(_Ui->colorButton,&QPushButton::clicked,this,[this]{ChooseColor();});
+    for(auto* edit:{_Ui->shadowStrengthEdit,_Ui->shadowDistanceEdit,_Ui->shadowDepthBiasEdit,_Ui->shadowNormalBiasEdit})
+        QObject::connect(edit,&QLineEdit::editingFinished,this,[this,edit]{CommitValues(edit);});
+    QObject::connect(_Ui->shadowGroup,&QGroupBox::clicked,this,[this]{CommitValues(_Ui->shadowGroup);});
+    QObject::connect(_Ui->softShadowsCheck,&QCheckBox::clicked,this,[this]{CommitValues(_Ui->softShadowsCheck);});
+    for(auto* combo:{_Ui->shadowResolutionCombo,_Ui->shadowCascadesCombo})
+        QObject::connect(combo,qOverload<int>(&QComboBox::currentIndexChanged),this,[this,combo](int){CommitValues(combo);});
     _Ui->maskCombo->MaskChanged=[this](std::uint32_t){if(!_Loading)CommitValues(_Ui->maskCombo);};
 }
 LightComponentEditor::~LightComponentEditor(){delete _Ui;}
@@ -27,6 +33,13 @@ void LightComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) 
         {settings.Color.R,settings.Color.G,settings.Color.B,settings.Intensity});
     if(_Context.Runtime)_Ui->maskCombo->SetLayers(_Context.Runtime->GetProjectSettings().LayerNames);
     _Ui->maskCombo->SetMask(settings.CullingMask);UpdateColor();
+    _Ui->shadowGroup->setChecked(settings.Shadows.Enabled);_Ui->softShadowsCheck->setChecked(settings.Shadows.Soft);
+    ShowNumbers({_Ui->shadowStrengthEdit,_Ui->shadowDistanceEdit,_Ui->shadowDepthBiasEdit,_Ui->shadowNormalBiasEdit},
+        {settings.Shadows.Strength,settings.Shadows.Distance,settings.Shadows.DepthBias,settings.Shadows.NormalBias});
+    unsigned resolution=256;int resolutionIndex=0;
+    while(resolution<settings.Shadows.Resolution){resolution*=2;++resolutionIndex;}
+    _Ui->shadowResolutionCombo->setCurrentIndex(resolutionIndex);
+    _Ui->shadowCascadesCombo->setCurrentIndex(settings.Shadows.CascadeCount==4?2:settings.Shadows.CascadeCount==2?1:0);
 }
 void LightComponentEditor::UpdateColor() {
     float r=0,g=0,b=0;if(!ReadNumber(_Ui->redEdit,r)||!ReadNumber(_Ui->greenEdit,g)||!ReadNumber(_Ui->blueEdit,b))return;
@@ -43,6 +56,14 @@ void LightComponentEditor::CommitValues(QWidget* changed) {
         if((changed==edit||changed==_Ui->colorButton)&&!ReadNumber(edit,*number)){Fail("光照参数须为有限非负数值。");return;}
     if(changed==_Ui->enabledCheck)value.Enabled=_Ui->enabledCheck->isChecked();
     if(changed==_Ui->maskCombo)value.CullingMask=_Ui->maskCombo->GetMask();
+    for(const auto& [edit,number]:{std::pair<QLineEdit*,float*>{_Ui->shadowStrengthEdit,&value.Shadows.Strength},
+        {_Ui->shadowDistanceEdit,&value.Shadows.Distance},{_Ui->shadowDepthBiasEdit,&value.Shadows.DepthBias},
+        {_Ui->shadowNormalBiasEdit,&value.Shadows.NormalBias}})
+        if(changed==edit&&!ReadNumber(edit,*number)){Fail("阴影参数须为有限数值。");return;}
+    if(changed==_Ui->shadowGroup)value.Shadows.Enabled=_Ui->shadowGroup->isChecked();
+    if(changed==_Ui->softShadowsCheck)value.Shadows.Soft=_Ui->softShadowsCheck->isChecked();
+    if(changed==_Ui->shadowResolutionCombo)value.Shadows.Resolution=256u<<_Ui->shadowResolutionCombo->currentIndex();
+    if(changed==_Ui->shadowCascadesCombo)value.Shadows.CascadeCount=1u<<_Ui->shadowCascadesCombo->currentIndex();
     FinishInput();if(!_Authoring->SetLight(target,value,error)){Fail(error);return;}Reload();
 }
 void LightComponentEditor::ChooseColor() {

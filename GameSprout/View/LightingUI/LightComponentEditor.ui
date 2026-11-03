@@ -16,10 +16,34 @@
     <item><widget class="QPushButton" name="colorButton"><property name="text"><string/></property><property name="minimumSize"><size><width>36</width><height>0</height></size></property><property name="maximumSize"><size><width>36</width><height>16777215</height></size></property><property name="sizePolicy"><sizepolicy hsizetype="Fixed" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="accessibleName"><string>选择光源颜色</string></property><property name="toolTip"><string>选择颜色；拾色器按 sRGB 显示，保存为线性 RGB。</string></property></widget></item>
    </layout></item>
    <item row="3" column="0"><widget class="QLabel" name="intensityLabel"><property name="text"><string>强度</string></property></widget></item>
-   <item row="3" column="1"><widget class="QLineEdit" name="intensityEdit"><property name="toolTip"><string>线性光照强度，0 关闭照明；通过 Transform 旋转改变照射方向。</string></property></widget></item>
+   <item row="3" column="1"><widget class="QLineEdit" name="intensityEdit"><property name="toolTip"><string>与 URP 对齐的相对强度，0 关闭照明；通过 Transform 旋转改变照射方向。</string></property></widget></item>
    <item row="4" column="0"><widget class="QLabel" name="maskLabel"><property name="text"><string>影响层</string></property></widget></item>
    <item row="4" column="1"><widget class="LayerMaskCombo" name="maskCombo"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property></widget></item>
-   <item row="5" column="0" colspan="2"><widget class="QLabel" name="directionHint"><property name="text"><string>沿对象局部 -Z 方向照射；旋转对象调整方向。当前位置不影响方向光。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item row="5" column="0" colspan="2"><widget class="QLabel" name="directionHint"><property name="text"><string>沿对象局部 +Z 方向照射；旋转对象调整方向。当前位置不影响方向光。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item row="6" column="0" colspan="2"><widget class="QGroupBox" name="shadowGroup">
+    <property name="title"><string>实时阴影</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>false</bool></property>
+    <property name="toolTip"><string>开启方向光阴影。当前由最亮且开启阴影的方向光提供主阴影。</string></property>
+    <layout class="QFormLayout" name="shadowLayout">
+     <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+     <item row="0" column="0"><widget class="QLabel" name="shadowStrengthLabel"><property name="text"><string>强度</string></property></widget></item>
+     <item row="0" column="1"><widget class="QLineEdit" name="shadowStrengthEdit"><property name="toolTip"><string>阴影强度，范围 0 到 1。不会使环境漫反射完全变黑。</string></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="shadowDistanceLabel"><property name="text"><string>距离（米）</string></property></widget></item>
+     <item row="1" column="1"><widget class="QLineEdit" name="shadowDistanceEdit"><property name="toolTip"><string>从当前视口相机计算的最大阴影距离，必须大于 0。较短距离可提高局部阴影精度。</string></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="shadowResolutionLabel"><property name="text"><string>图集分辨率</string></property></widget></item>
+     <item row="2" column="1"><widget class="QComboBox" name="shadowResolutionCombo">
+      <item><property name="text"><string>256</string></property></item><item><property name="text"><string>512</string></property></item><item><property name="text"><string>1024</string></property></item><item><property name="text"><string>2048</string></property></item><item><property name="text"><string>4096</string></property></item>
+     </widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="shadowCascadesLabel"><property name="text"><string>级联数量</string></property></widget></item>
+     <item row="3" column="1"><widget class="QComboBox" name="shadowCascadesCombo"><property name="toolTip"><string>将相机可视范围拆成多级阴影。更多级联提高近处精度，也会增加绘制成本。</string></property>
+      <item><property name="text"><string>1</string></property></item><item><property name="text"><string>2</string></property></item><item><property name="text"><string>4</string></property></item>
+     </widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="shadowDepthBiasLabel"><property name="text"><string>深度偏移</string></property></widget></item>
+     <item row="4" column="1"><widget class="QLineEdit" name="shadowDepthBiasEdit"><property name="toolTip"><string>0 到 10 个阴影纹素，按每级联尺寸换算。减轻表面自阴影条纹；过大可能让阴影脱离物体。</string></property></widget></item>
+     <item row="5" column="0"><widget class="QLabel" name="shadowNormalBiasLabel"><property name="text"><string>法线偏移</string></property></widget></item>
+     <item row="5" column="1"><widget class="QLineEdit" name="shadowNormalBiasEdit"><property name="toolTip"><string>0 到 10 个阴影纹素，沿接收表面法线偏移阴影查询位置。过大可能造成漏光。</string></property></widget></item>
+     <item row="6" column="1"><widget class="QCheckBox" name="softShadowsCheck"><property name="text"><string>软阴影</string></property><property name="toolTip"><string>使用邻近深度样本平滑阴影边缘，会增加采样成本。</string></property></widget></item>
+    </layout>
+   </widget></item>
   </layout>
  </widget>
  <customwidgets><customwidget><class>LayerMaskCombo</class><extends>QComboBox</extends><header>LayerMaskCombo.h</header></customwidget></customwidgets>

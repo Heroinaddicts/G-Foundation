@@ -29,6 +29,13 @@ int main(){try{
             const auto normal=Vector(mesh,a,12)+Vector(mesh,b,12)+Vector(mesh,c,12);
             Check(cross.Dot(cross)>1e-12f&&cross.Dot(normal)>0,"Degenerate triangle or reversed outward winding");
         }
+        if(id==GameSproutRuntime::GetBuiltinMeshReference(GameSproutRuntime::PrimitiveType::Quad).LocalID) {
+            for(unsigned vertex=0;vertex<mesh.VertexCount;++vertex)
+                Check((Vector(mesh,vertex,mesh.NormalOffset)-GameSproutRuntime::Vector3{0,0,-1}).Length()<1e-5f,"Unity Quad must face local -Z");
+            const float firstU=std::bit_cast<float>(Word(mesh.Bytes.data()+mesh.UVOffset));
+            const float rightU=std::bit_cast<float>(Word(mesh.Bytes.data()+mesh.VertexStride+mesh.UVOffset));
+            Check(Vector(mesh,1,mesh.PositionOffset).X>Vector(mesh,0,mesh.PositionOffset).X&&rightU>firstU,"Unity Quad texture U must increase along local +X");
+        }
     }
     GameSproutRuntime::MeshRenderData empty;std::string error;
     Check(!GameSproutRuntime::BuiltinMeshes::Load({GameSproutRuntime::BuiltinMeshGuid,99},empty,error)&&empty.Bytes.empty(),"Unknown built-in ID accepted");

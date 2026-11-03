@@ -155,6 +155,8 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     if(info.Width&&info.Height) {
         std::string message=std::to_string(info.Width)+" × "+std::to_string(info.Height)+" px · "+std::to_string(info.DrawCalls)+" draws · "+std::to_string(info.Triangles)+" triangles · skipped "+std::to_string(info.SkippedObjects);
         if(info.InstancedDrawCalls)message+=" · instanced "+std::to_string(info.InstancedInstances)+" · saved "+std::to_string(info.SavedDrawCalls)+" draws";
+        if(info.ShadowCascadeCount)message+=" · shadow draws "+std::to_string(info.ShadowDrawCalls)+
+            " · cascades "+std::to_string(info.ShadowCascadeCount)+" · shadow updates "+std::to_string(info.ShadowMapUpdates);
         const std::string diagnostic=_Renderer->GetLastError();
         if(!diagnostic.empty())message+=" · "+diagnostic;
         if(!_EditingError.empty())message+=" · "+_EditingError;

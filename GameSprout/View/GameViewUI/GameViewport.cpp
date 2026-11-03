@@ -112,7 +112,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
     auto* camera=scene?scene->GetMainCamera():nullptr;
     if(!scene)diagnostic="尚无活动场景。";
     else if(!camera||!camera->GetGameObject()->IsActiveInHierarchy())diagnostic="场景中没有启用的 Main Camera。";
-    else if(!camera->GetViewMatrix(view.Camera.View))diagnostic="Main Camera 变换不可逆。";
+    else if(!camera->GetViewMatrix(view.Camera.View))diagnostic="Main Camera 姿态无法生成有效视图。";
     else {
         view.Camera.Projection=camera->GetSettings();
         const auto world=camera->GetGameObject()->GetTransform()->GetWorldMatrix();

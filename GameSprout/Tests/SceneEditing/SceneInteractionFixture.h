@@ -19,13 +19,13 @@ public:
     uint64_t GetRevision() const override{return 1;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference& reference,GameSproutRuntime::MeshRenderData& output,std::string& error) override {
         struct Vertex {float Position[3],Normal[3],Color[4],UV[2];};
-        Vertex vertices[]={{{-1.5f,-1,0},{0,0,1},{.38f,.42f,.48f,1},{0,0}},{{1.5f,-1,0},{0,0,1},{.38f,.42f,.48f,1},{1,0}},{{0,1.5f,0},{0,0,1},{.38f,.42f,.48f,1},{.5f,1}}};
+        Vertex vertices[]={{{-1.5f,-1,0},{0,0,-1},{.38f,.42f,.48f,1},{0,0}},{{1.5f,-1,0},{0,0,-1},{.38f,.42f,.48f,1},{1,0}},{{0,1.5f,0},{0,0,-1},{.38f,.42f,.48f,1},{.5f,1}}};
         if(reference.LocalID==2)for(auto& vertex:vertices)vertex.Position[0]+=1.25f;
         if(reference.LocalID==3) {
             const float points[3][2]={{-2,-2},{2,-2},{2,2}};
             for(int index=0;index<3;++index){vertices[index].Position[0]=points[index][0];vertices[index].Position[1]=points[index][1];}
         }
-        const uint32_t indices[]={0,1,2};output={};output.VertexCount=3;output.VertexStride=sizeof(Vertex);output.IndexCount=3;output.IndexOffset=sizeof(vertices);output.ColorOffset=24;output.UVOffset=40;
+        const uint32_t indices[]={0,2,1};output={};output.VertexCount=3;output.VertexStride=sizeof(Vertex);output.IndexCount=3;output.IndexOffset=sizeof(vertices);output.ColorOffset=24;output.UVOffset=40;
         output.Bytes.resize(sizeof(vertices)+sizeof(indices));std::memcpy(output.Bytes.data(),vertices,sizeof(vertices));std::memcpy(output.Bytes.data()+sizeof(vertices),indices,sizeof(indices));output.Sections.push_back({0,3,0});
         GameSproutRuntime::Vector3 minimum{vertices[0].Position[0],vertices[0].Position[1],0},maximum=minimum;
         for(const auto& vertex:vertices) {minimum.X=std::min(minimum.X,vertex.Position[0]);minimum.Y=std::min(minimum.Y,vertex.Position[1]);maximum.X=std::max(maximum.X,vertex.Position[0]);maximum.Y=std::max(maximum.Y,vertex.Position[1]);}
@@ -59,7 +59,7 @@ public:
         Check(IDE->QueryDocker("Hierarchy")->Split(IDE->QueryDocker("Scene"),Qt::Horizontal),"Cannot lay out interactive Scene");
         Check(IDE->ResizeDockers({IDE->QueryDocker("Hierarchy"),IDE->QueryDocker("Scene"),IDE->QueryDocker("Inspector")},{18,55,27},Qt::Horizontal),"Cannot size interactive Scene");
         IDE->QueryDocker("Scene")->Activate();Viewport->setFocus();
-        auto camera=SceneView->GetCameraState();camera.Position={0,0,8};camera.OrbitPivot={0,0,0};camera.YawDegrees=0;camera.PitchDegrees=0;camera.OrbitDistance=8;
+        auto camera=SceneView->GetCameraState();camera.Position={0,0,-8};camera.OrbitPivot={0,0,0};camera.YawDegrees=0;camera.PitchDegrees=0;camera.OrbitDistance=8;
         Check(SceneView->SetCameraState(camera),"Cannot initialize test Scene camera");
         if(auto* grid=SceneDock->findChild<QCheckBox*>("gridCheck"))grid->setChecked(false);
         Pump([&]{GameSproutRuntime::RenderedCamera frame;return SceneView->IsRenderingAvailable()&&Viewport->GetRenderedCamera(frame)&&frame.Width==qRound(Viewport->width()*Viewport->devicePixelRatioF());});

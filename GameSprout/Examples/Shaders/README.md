@@ -20,7 +20,7 @@
 
 当前必须恰好有一个 `LightMode` 为 `Forward` 的 Pass。支持 Cull、Opaque/Alpha/PremultipliedAlpha 混合、深度测试/写入及比较方式。透明物体按对象距离排序，不能保证相互穿插的透明三角形顺序正确。
 
-VS 的 `b0, space1` 保留给 `GameSproutDraw`，依次包含 `column_major float4x4 Model`、`ViewProjection`、`NormalMatrix`，总共 192 字节。矩阵遵守 Runtime 的列向量、右手、Y 向上、深度范围 0 到 1 的约定。
+VS 的 `b0, space1` 保留给 `GameSproutDraw`，依次包含 `column_major float4x4 Model`、`ViewProjection`、`NormalMatrix`，总共 192 字节。矩阵使用列向量，按 `ViewProjection * Model * position` 相乘。Model 的输入和输出都属于 Unity 风格世界约定（左手、Y 向上、+Z 向前）；View 将世界变换到 -Z 向前的右手相机空间，投影后的深度范围为 0 到 1。自定义 Shader 不得再次镜像世界 Z 或翻转相机角度。
 
 顶点位置、法线、颜色、UV 分别对应位置 0、1、2、3，类型为 float3、float3、float4、float2，HLSL 使用 TEXCOORD0 到 TEXCOORD3。Runtime 为缺少颜色或 UV 的静态网格填入白色或零 UV。
 

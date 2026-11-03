@@ -20,7 +20,7 @@ int main(int argc,char** argv){
         if(!viewport){delete runtime;std::cout<<"SKIP GPU unavailable: "<<error<<'\n';return 77;}
         auto* scene=runtime->CreateScene("Primitive render");auto* object=scene->CreateGameObject("Primitive");
         auto* mesh=object->AddComponent<GameSproutRuntime::IMeshComponent>();Check(object->AddComponent<GameSproutRuntime::IMeshRendererComponent>(),"No renderer");
-        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,3,4};
+        GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,3,-4};
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Invalid camera");
         for(unsigned id=1;id<=6;++id){
             mesh->SetMesh({GameSproutRuntime::BuiltinMeshGuid,id});Check(viewport->Render(view),viewport->GetLastError());

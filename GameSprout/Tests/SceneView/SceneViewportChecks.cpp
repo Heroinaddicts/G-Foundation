@@ -101,8 +101,8 @@ public:
     std::uint64_t GetRevision() const override{return 1;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MeshRenderData& data,std::string& error) override {
         struct Vertex{float Position[3];float Normal[3];float Color[4];float UV[2];};
-        const Vertex vertices[]={{{-1,-1,0},{0,0,1},{1,0.2f,0.1f,1},{0,0}},{{1,-1,0},{0,0,1},{0.1f,1,0.2f,1},{1,0}},{{0,1,0},{0,0,1},{0.2f,0.1f,1,1},{0.5f,1}}};
-        const std::uint32_t indices[]={0,1,2};
+        const Vertex vertices[]={{{-1,-1,0},{0,0,-1},{1,0.2f,0.1f,1},{0,0}},{{1,-1,0},{0,0,-1},{0.1f,1,0.2f,1},{1,0}},{{0,1,0},{0,0,-1},{0.2f,0.1f,1,1},{0.5f,1}}};
+        const std::uint32_t indices[]={0,2,1};
         data={};data.VertexCount=3;data.VertexStride=sizeof(Vertex);data.IndexCount=3;data.IndexOffset=sizeof(vertices);data.ColorOffset=24;data.UVOffset=40;
         data.Bytes.resize(sizeof(vertices)+sizeof(indices));std::memcpy(data.Bytes.data(),vertices,sizeof(vertices));std::memcpy(data.Bytes.data()+sizeof(vertices),indices,sizeof(indices));
         data.Sections.push_back({0,3,0});data.LocalBounds.Extents={1,1,0};error.clear();return true;
@@ -270,7 +270,7 @@ int main(int argc,char** argv) {
         if(headless) {
             tick();Check(!view->IsRenderingAvailable()&&spy.NativeCalls==0&&view->GetRenderError().find("离屏")!=std::string::npos,"Headless passed a fake window to Runtime");
         }else {
-            auto state=view->GetCameraState();state.Position={0,0,3};state.OrbitPivot={0,0,0};state.YawDegrees=0;state.PitchDegrees=0;state.OrbitDistance=3;
+            auto state=view->GetCameraState();state.Position={0,0,-3};state.OrbitPivot={0,0,0};state.YawDegrees=0;state.PitchDegrees=0;state.OrbitDistance=3;
             Check(view->SetCameraState(state),"Cannot set Scene camera override");
             pump([&]{return view->IsRenderingAvailable()&&viewport->GetStatistics().Triangles>=1;});
             auto stats=viewport->GetStatistics();Check(stats.DrawCalls>0&&stats.VisibleObjects>0,"Native test only cleared and did not draw triangle");
@@ -349,7 +349,7 @@ int main(int argc,char** argv) {
             auto* child=scene->CreateGameObject("Subtree Mesh",target);child->GetTransform()->SetLocalPosition({0,0,2});
             child->AddComponent<GameSproutRuntime::IMeshComponent>()->SetMesh({"11111111111111111111111111111111",1});child->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
             auto* empty=scene->CreateGameObject("Empty Outlier",target);empty->GetTransform()->SetLocalPosition({100,0,0});
-            auto state=view->GetCameraState();state.Position={13,5,14};state.OrbitPivot={13,5,-6};state.YawDegrees=0;state.PitchDegrees=0;state.OrbitDistance=20;
+            auto state=view->GetCameraState();state.Position={13,5,-26};state.OrbitPivot={13,5,-6};state.YawDegrees=0;state.PitchDegrees=0;state.OrbitDistance=20;
             Check(view->SetCameraState(state),"Cannot aim renderer at transformed meshes");
             pump([&]{return target->GetComponent<GameSproutRuntime::IMeshComponent>()->GetLocalBounds().Extents.X>0&&child->GetComponent<GameSproutRuntime::IMeshComponent>()->GetLocalBounds().Extents.X>0;});
             QTreeView* tree=nullptr;

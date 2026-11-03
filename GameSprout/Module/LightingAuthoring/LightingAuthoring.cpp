@@ -12,7 +12,7 @@ Json::Value Values(std::initializer_list<float> values) {
 }
 Json::Value LightDocument(const std::string& name) {
     Json::Value document(Json::objectValue),node(Json::objectValue),transform(Json::objectValue),light(Json::objectValue);
-    document["Version"]=Json::UInt(1);document["Name"]=name;document["NextObjectID"]=Json::UInt64(2);
+    document["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);document["Name"]=name;document["NextObjectID"]=Json::UInt64(2);
     document["MainCameraID"]=Json::UInt64(0);document["Objects"]=Json::Value(Json::arrayValue);
     node["ID"]=Json::UInt64(1);node["ParentID"]=Json::UInt64(0);node["Name"]=name;node["Active"]=true;
     node["Components"]=Json::Value(Json::arrayValue);
@@ -22,6 +22,11 @@ Json::Value LightDocument(const std::string& name) {
     light["Settings"]["Type"]="Directional";light["Settings"]["Enabled"]=true;
     light["Settings"]["Color"]=Values({1,1,1,1});light["Settings"]["Intensity"]=1.0;
     light["Settings"]["CullingMask"]=Json::UInt(0xffffffffu);
+    const GameSproutRuntime::LightShadowSettings shadows;
+    auto& shadowData=light["Settings"]["Shadows"];
+    shadowData["Enabled"]=shadows.Enabled;shadowData["Strength"]=shadows.Strength;shadowData["Distance"]=shadows.Distance;
+    shadowData["Resolution"]=Json::UInt(shadows.Resolution);shadowData["CascadeCount"]=Json::UInt(shadows.CascadeCount);
+    shadowData["DepthBias"]=shadows.DepthBias;shadowData["NormalBias"]=shadows.NormalBias;shadowData["Soft"]=shadows.Soft;
     node["Components"].append(std::move(transform));node["Components"].append(std::move(light));
     document["Objects"].append(std::move(node));return document;
 }
@@ -97,7 +102,7 @@ bool LightingAuthoring::SetLight(const ObjectEditTarget& target,const GameSprout
                 if(candidate&&candidate->GetComponentInstanceID()==instanceID){current=dynamic_cast<GameSproutRuntime::ILightComponent*>(candidate);break;}
             }
             if(current&&current->SetSettings(settings))return true;
-            failure="方向光参数无效或组件已移除；颜色和强度须为有限非负值。";return false;
+            failure="方向光参数无效或组件已移除；请检查颜色、强度及阴影参数范围。";return false;
         };
     };
     return _Objects->EditObject(target,"修改方向光",operation(value),operation(previous),error);

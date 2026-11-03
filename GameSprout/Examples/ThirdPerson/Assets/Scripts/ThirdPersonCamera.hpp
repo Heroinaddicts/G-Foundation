@@ -13,7 +13,7 @@ public:
     float Height = 1.5f;                // Aim above Target's world origin, meters.
     float FollowSharpness = 12.0f;      // Exponential follow rate; 0 snaps.
     float MouseSensitivity = 0.18f;     // Degrees per logical mouse pixel.
-    float Yaw = 0.0f;                   // 0 looks along Runtime forward (-Z).
+    float Yaw = 0.0f;                   // 0 looks along Unity-style world forward (+Z).
     float Pitch = 18.0f;                // Positive looks down towards Target.
     float MinPitch = -25.0f;
     float MaxPitch = 70.0f;
@@ -74,19 +74,22 @@ private:
             if (!GameSproutRuntime::RuntimeMath::TryInverseAffine(parent->GetTransform()->GetWorldMatrix(), parentInverse)) return false;
         }
         const auto localEye = Point(parentInverse, position);
-        const auto localForward = Direction(parentInverse, forward);
-        const auto localUp = Direction(parentInverse, {0.0f, 1.0f, 0.0f});
-        GameSproutRuntime::Mat4 localView, localCamera;
-        if (!GameSproutRuntime::TryMakeLookAt(localEye, localEye + localForward, localUp, localView) ||
-            !GameSproutRuntime::RuntimeMath::TryInverseAffine(localView, localCamera)) return false;
-        GameSproutRuntime::Vector3 localPosition, localScale;
+        // Camera orientation ignores authored scale, as Unity does. Position
+        // still uses the full parent matrix; direction uses rotation alone.
+        GameSproutRuntime::Mat4 parentRotation;
+        for (auto* parent = _GameObject->Parent(); parent; parent = parent->Parent())
+            parentRotation = GameSproutRuntime::RuntimeMath::ComposeTRS({}, parent->GetTransform()->GetLocalRotation(), {1,1,1}) * parentRotation;
+        GameSproutRuntime::Mat4 inverseParentRotation;
+        if (!GameSproutRuntime::RuntimeMath::TryInverseAffine(parentRotation, inverseParentRotation)) return false;
+        const auto localForward = Direction(inverseParentRotation, forward);
+        const auto localUp = Direction(inverseParentRotation, {0.0f, 1.0f, 0.0f});
         GameSproutRuntime::Quaternion localRotation;
-        if (!GameSproutRuntime::RuntimeMath::TryDecomposeTRS(localCamera, localPosition, localRotation, localScale)) return false;
+        if (!GameSproutRuntime::RuntimeMath::TryMakeLookRotation(localForward, localUp, localRotation)) return false;
         // Convert world position/aim into the actual parent's space. The sample
         // camera is a direct scene child, but reparenting never treats a world
         // position as local coordinates or applies the parent's rotation twice.
         if (!transform->SetLocalRotation(localRotation)) return false;
-        transform->SetLocalPosition(localPosition);
+        transform->SetLocalPosition(localEye);
         return true;
     }
     bool ClearDistance(GameSproutRuntime::IGameSproutRuntime* runtime,
@@ -108,8 +111,8 @@ private:
         }
         const float padding = std::max(std::max(0.0f, Finite(CollisionPadding, 0.25f)), camera->GetSettings().NearPlane);
         GameSproutRuntime::Vector3 right, up;
-        if (!(-back).Cross({0.0f, 1.0f, 0.0f}).TryNormalize(right)) right = {1.0f, 0.0f, 0.0f};
-        up = back.Cross(right);
+        if (!GameSproutRuntime::Vector3{0.0f, 1.0f, 0.0f}.Cross(-back).TryNormalize(right)) right = {1.0f, 0.0f, 0.0f};
+        up = (-back).Cross(right);
         // A centre ray plus a clearance ring protects against side/corner
         // clipping as well as a wall directly between the character and camera.
         const GameSproutRuntime::Vector3 offsets[] = {
@@ -137,7 +140,7 @@ private:
         Yaw = std::remainder(Finite(Yaw, 0.0f), 360.0f);
         Pitch = std::clamp(Finite(Pitch, 18.0f), low, high);
         const float yaw = GameSproutRuntime::DegreesToRadians(Yaw), pitch = GameSproutRuntime::DegreesToRadians(Pitch);
-        const GameSproutRuntime::Vector3 forward{std::sin(yaw) * std::cos(pitch), -std::sin(pitch), -std::cos(yaw) * std::cos(pitch)};
+        const GameSproutRuntime::Vector3 forward{std::sin(yaw) * std::cos(pitch), -std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
         const float minimum = std::max(0.05f, Finite(MinDistance, 0.45f));
         const float desiredDistance = std::max(minimum, Finite(Distance, 5.5f));
         const auto desired = focus - forward * desiredDistance;

@@ -115,8 +115,8 @@ def create(output):
         def comp(data,suffix):return next(c for c in data['Components'] if c['Type']=='GameSproutRuntime.'+suffix)
         def mesh(kind):return [{'Type':'GameSproutRuntime.Mesh','Mesh':ref('00000000000000000000000000000001',kind)}, {'Type':'GameSproutRuntime.MeshRenderer','Visible':True,'Materials':[]}]
         ground=node('Ground',position=[0,-.25,0],scale=[24,.5,24],components=mesh(1)+[{'Type':'GameSproutRuntime.BoxCollider'}])
-        node('Wall',position=[-4,1,-3],scale=[1,2,7],components=mesh(1)+[{'Type':'GameSproutRuntime.BoxCollider'}])
-        node('Obstacle',position=[2,.5,-3],scale=[2,1,2],components=mesh(1)+[{'Type':'GameSproutRuntime.BoxCollider'}])
+        node('Wall',position=[-4,1,3],scale=[1,2,7],components=mesh(1)+[{'Type':'GameSproutRuntime.BoxCollider'}])
+        node('Obstacle',position=[2,.5,3],scale=[2,1,2],components=mesh(1)+[{'Type':'GameSproutRuntime.BoxCollider'}])
         player=node('Player',position=[0,1.04,0],components=[{'Type':'GameSproutRuntime.Rigidbody','Settings':{'MotionType':'Dynamic','Constraints':56}}, {'Type':'GameSproutRuntime.CapsuleCollider','Settings':{'Material':ref(CHARACTER_MATERIAL_GUID,local_id(19))},'Shape':{'Radius':.4,'Height':2,'Axis':'Y'}}])
         visual=node('Visual',player['ID'])
         rig=node('Rig',visual['ID'],components=[{'Type':'GameSproutRuntime.Animator','Skeleton':ref(RIG_GUID,local_id(30,'skeleton')),'Speed':1,'PlayOnStart':False,'Loop':True,'RootMotionMode':'Disabled','Bindings':[]}])
@@ -127,13 +127,13 @@ def create(output):
             bone_ids[name]=bone['ID'];binding.append({'Path':paths[index+1],'ObjectFileID':bone['ID']})
             if name!='Root':node(name+' Mesh',bone['ID'],scale=sizes[name],components=mesh(1))
         comp(rig,'Animator')['Bindings']=binding
-        camera=node('Main Camera',position=[0,3,5.5],components=[{'Type':'GameSproutRuntime.Camera','Settings':{'Projection':'Perspective','VerticalFovRadians':1.0471975512,'OrthographicHeight':10,'NearPlane':.1,'FarPlane':200,'CullingMask':4294967295}}])
+        camera=node('Main Camera',position=[0,3,-5.5],components=[{'Type':'GameSproutRuntime.Camera','Settings':{'Projection':'Perspective','VerticalFovRadians':1.0471975512,'OrthographicHeight':10,'NearPlane':.1,'FarPlane':200,'CullingMask':4294967295}}])
         fields={key:value('Component',{'ComponentFileID':comp(data,kind)['ID']}) for key,data,kind in [('Body',player,'Rigidbody'),('Collider',player,'CapsuleCollider'),('Animator',rig,'Animator')]}
         fields.update({key:value('SceneObject',{'ObjectFileID':data['ID']}) for key,data in [('ViewCamera',camera),('Visual',visual)]})
         fields.update({name+'Clip':value('Resource',ref(guid,local_id(14))) for name,guid in CLIP_GUIDS.items()})
         for data,source,name,values in [(player,SCRIPT_GUID,'ThirdPersonCharacter',fields),(camera,CAMERA_GUID,'ThirdPersonCamera',{'Target':value('SceneObject',{'ObjectFileID':player['ID']}),'Height':value('Number',.5)})]:
             data['Components'].append({'ID':next_id,'Type':'GameSproutRuntime.ScriptComponent','InstanceID':1,'ScriptTypeID':source,'Source':ref(source,1),'Enabled':True,'Fields':{name+'::'+key:val for key,val in values.items()}});next_id+=1
-        scene={'Version':1,'Name':'Third Person Playground','MainCameraID':camera['ID'],'NextObjectID':next_id,'Objects':nodes}
+        scene={'Version':2,'Name':'Third Person Playground','MainCameraID':camera['ID'],'NextObjectID':next_id,'Objects':nodes}
         write(output,'Assets/Playground.scene',scene);meta(output,'Playground.scene','1349119f706a432ea716f963a18c2090','Scene')
         selected={player['ID']}
         for item in nodes:
@@ -144,7 +144,7 @@ def create(output):
             if component['Type']=='GameSproutRuntime.ScriptComponent':
                 component['Fields']['ThirdPersonCharacter::ViewCamera']=value('SceneObject',None)
         prefab={'Version':1,'Format':'GameSproutPrefab','Base':None,'NestedInstances':[],
-                'Data':{'Version':1,'Name':'Player','MainCameraID':0,'NextObjectID':next_id,'Objects':prefab_nodes}}
+                'Data':{'Version':2,'Name':'Player','MainCameraID':0,'NextObjectID':next_id,'Objects':prefab_nodes}}
         write(output,'Assets/Player.prefab',prefab);meta(output,'Player.prefab','1349119f706a432ea716f963a18c2091','Prefab')
         write(output,'UserSettings/EditorState.json',{'LastScenePath':'Playground.scene'})
         write(output,'.gitignore','Library/\nUserSettings/\n')

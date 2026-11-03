@@ -18,7 +18,8 @@ inline constexpr std::string_view Unlit=R"hlsl(/* GameSproutShader {
     ]
 } */
 
-// GameSprout: 右手系，Y向上，相机朝-Z；矩阵为column-major，按P*V*M*position相乘。
+// GameSprout世界：Unity左手系，+Y向上、+Z向前；View转换到-Z向前的相机空间。
+// 矩阵为column-major，按P*V*M*position相乘；Shader不再额外翻转坐标。
 // 引擎绘制数据由Runtime上传，不属于材质参数，不能改变字段顺序。
 cbuffer GameSproutDraw : register(b0, space1)
 {

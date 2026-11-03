@@ -9,8 +9,8 @@ SceneViewCamera::SceneViewCamera(){Reset();}
 void SceneViewCamera::Reset() {
     _State={};
     _State.OrbitDistance=_State.Position.Length();
-    _State.YawDegrees=GameSproutRuntime::RadiansToDegrees(std::atan2(-_State.Position.X,_State.Position.Z));
-    _State.PitchDegrees=GameSproutRuntime::RadiansToDegrees(std::asin(-_State.Position.Y/_State.OrbitDistance));
+    _State.YawDegrees=GameSproutRuntime::RadiansToDegrees(std::atan2(-_State.Position.X,-_State.Position.Z));
+    _State.PitchDegrees=GameSproutRuntime::RadiansToDegrees(std::asin(_State.Position.Y/_State.OrbitDistance));
 }
 bool SceneViewCamera::SetState(const SceneViewCameraState& value) {
     if(!Finite(value.Position)||!Finite(value.OrbitPivot)||!std::isfinite(value.YawDegrees)||!std::isfinite(value.PitchDegrees)||
@@ -24,19 +24,20 @@ bool SceneViewCamera::SetState(const SceneViewCameraState& value) {
 }
 GameSproutRuntime::Vector3 SceneViewCamera::Forward() const {
     const float yaw=GameSproutRuntime::DegreesToRadians(_State.YawDegrees),pitch=GameSproutRuntime::DegreesToRadians(_State.PitchDegrees);
-    return {std::sin(yaw)*std::cos(pitch),std::sin(pitch),-std::cos(yaw)*std::cos(pitch)};
+    // Unity world axes: an unrotated camera faces +Z; positive X pitch looks down.
+    return {std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)};
 }
 void SceneViewCamera::UpdatePivot(){_State.OrbitPivot=_State.Position+Forward()*_State.OrbitDistance;}
 void SceneViewCamera::Look(float x,float y,bool orbit) {
     if(!std::isfinite(x)||!std::isfinite(y))return;
     _State.YawDegrees=std::remainder(_State.YawDegrees+std::clamp(x,-500.0f,500.0f)*0.2f,360.0f);
-    _State.PitchDegrees=std::clamp(_State.PitchDegrees-std::clamp(y,-500.0f,500.0f)*0.2f,-89.0f,89.0f);
+    _State.PitchDegrees=std::clamp(_State.PitchDegrees+std::clamp(y,-500.0f,500.0f)*0.2f,-89.0f,89.0f);
     if(orbit)_State.Position=_State.OrbitPivot-Forward()*_State.OrbitDistance;else UpdatePivot();
 }
 void SceneViewCamera::Pan(float x,float y,float height) {
     if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(height)||height<=0)return;
-    GameSproutRuntime::Vector3 right;Forward().Cross({0,1,0}).TryNormalize(right);
-    const auto up=right.Cross(Forward());
+    GameSproutRuntime::Vector3 right;GameSproutRuntime::Vector3{0,1,0}.Cross(Forward()).TryNormalize(right);
+    const auto up=Forward().Cross(right);
     const float factor=2*_State.OrbitDistance*std::tan(GameSproutRuntime::DegreesToRadians(_State.VerticalFovDegrees)*0.5f)/height;
     const auto delta=right*(-x*factor)+up*(y*factor);
     if(Finite(_State.Position+delta)&&Finite(_State.OrbitPivot+delta)){_State.Position=_State.Position+delta;_State.OrbitPivot=_State.OrbitPivot+delta;}
@@ -48,7 +49,7 @@ void SceneViewCamera::Dolly(float steps) {
 }
 void SceneViewCamera::Move(float forward,float side,float up,bool accelerated,float dt) {
     if(!std::isfinite(dt)||dt<=0)return;
-    GameSproutRuntime::Vector3 right;Forward().Cross({0,1,0}).TryNormalize(right);
+    GameSproutRuntime::Vector3 right;GameSproutRuntime::Vector3{0,1,0}.Cross(Forward()).TryNormalize(right);
     GameSproutRuntime::Vector3 direction;
     if(!(Forward()*forward+right*side+GameSproutRuntime::Vector3{0,up,0}).TryNormalize(direction))return;
     const auto next=_State.Position+direction*(_State.MoveSpeed*(accelerated?5:1)*std::min(dt,0.05f));

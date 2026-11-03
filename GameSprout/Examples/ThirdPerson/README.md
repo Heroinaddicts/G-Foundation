@@ -26,6 +26,8 @@ open -n Bin/GameSproutEditor.app --args --ProjectRoot=/Users/max/Documents/GameS
 
 `ThirdPersonCamera.hpp` 通过 Runtime 输入读取右键旋转，夹紧俯仰角并平滑跟随。遮挡使用五条射线，立即回拉、平滑恢复，不能等同于完整球形 Sweep。父级变换通过公开数学接口转换；它不控制 Scene 的编辑相机。
 
+示例采用 Unity 世界坐标：X 向右、Y 向上、+Z 向前，零旋转时按 W 沿 +Z 移动。相机初始位于角色的 -Z 一侧，Yaw 为零时朝 +Z，正 Pitch 向下俯视。脚本通过 `RuntimeMath::TryMakeLookRotation` 生成对象旋转；相机 View 的 -Z 前方属于渲染空间，不作为对象的世界前向。生成的 Scene 和 Prefab 内部节点文档使用当前版本 2。
+
 角色结构为 Player（物理）→ Visual（游戏朝向）→ Rig（Animator）→ 骨骼及几何子节点，防止动画覆盖角色朝向和刚体位置。Idle/Walk/Run/Jump 经过现有 AssetsPipeline 预处理，以实际 Animator Clip 切换播放。可在 Inspector 更换为其他角色及对应骨架/动画。
 
 场景预设了相机、刚体、碰撞体和 Animator 的脚本引用；Player.prefab 保留内部组件引用，外部场景相机引用为空。手动将 Prefab 拖入其他场景后，可为 ViewCamera 配置该场景的相机。

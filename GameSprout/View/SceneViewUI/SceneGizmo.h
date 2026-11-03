@@ -67,7 +67,7 @@ private:
     SceneGizmoSettings _Settings;
     GameSproutRuntime::Mat4 _World,_InverseParent;
     GameSproutRuntime::Vector3 _Axes[3]={{1,0,0},{0,1,0},{0,0,1}};
-    GameSproutRuntime::Vector3 _CameraRight{1,0,0},_CameraUp{0,1,0},_CameraForward{0,0,-1};
+    GameSproutRuntime::Vector3 _CameraRight{1,0,0},_CameraUp{0,1,0},_CameraForward{0,0,1};
     GameSproutRuntime::Vector3 _Pivot,_DrawPivot,_LocalPivot,_PlaneNormal,_StartPlanePoint,_RotationStart,_RotationAxis,_LinearRotationDirection;
     GameSproutRuntime::Vector2 _StartPixel;
     float _Length=1;

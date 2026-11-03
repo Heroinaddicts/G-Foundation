@@ -1,7 +1,7 @@
 #pragma once
 
 static SceneDocumentSessionRequest TemporaryDocument() {
-    Json::Value document;document["Version"]=1;document["Name"]="Temporary content";
+    Json::Value document;document["Version"]=GameSproutRuntime::SceneDocumentVersion;document["Name"]="Temporary content";
     document["NextObjectID"]=Json::UInt64(105);document["Objects"]=Json::Value(Json::arrayValue);
     for(const uint64_t id:{101,103}) {
         Json::Value node;node["ID"]=Json::UInt64(id);node["Name"]=id==101?"Content root":"Content child";

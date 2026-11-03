@@ -8,6 +8,8 @@
 #include <QApplication>
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QGroupBox>
+#include <QComboBox>
 #include <QTest>
 #include "ObjectEditing.h"
 #include "SceneManager.h"
@@ -197,6 +199,19 @@ int main(int argc,char** argv) {
         auto* intensity=panel->findChild<QLineEdit*>("intensityEdit");auto* enabled=panel->findChild<QCheckBox*>("enabledCheck");
         Check(intensity&&enabled,"Designer light controls missing");intensity->setText("2.5");QMetaObject::invokeMethod(intensity,"editingFinished");
         Check(light->GetSettings().Intensity==2.5f,"Inspector value did not reach authoring transaction: "+error);
+        auto* shadows=panel->findChild<QGroupBox*>("shadowGroup");auto* shadowDistance=panel->findChild<QLineEdit*>("shadowDistanceEdit");
+        auto* shadowResolution=panel->findChild<QComboBox*>("shadowResolutionCombo");auto* shadowCascades=panel->findChild<QComboBox*>("shadowCascadesCombo");
+        auto* shadowSoft=panel->findChild<QCheckBox*>("softShadowsCheck");
+        Check(shadows&&shadowDistance&&shadowResolution&&shadowCascades&&shadowSoft,"Designer shadow controls missing");
+        QTest::mouseClick(shadows,Qt::LeftButton,Qt::NoModifier,QPoint(8,12));
+        Check(light->GetShadows().Enabled,"Shadow enable did not reach authoring transaction");
+        shadowDistance->setText("75");QMetaObject::invokeMethod(shadowDistance,"editingFinished");
+        shadowResolution->setCurrentIndex(2);shadowCascades->setCurrentIndex(1);
+        QTest::mouseClick(shadowSoft,Qt::LeftButton,Qt::NoModifier,QPoint(8,shadowSoft->height()/2));
+        Check(light->GetShadows().Distance==75&&light->GetShadows().Resolution==1024&&light->GetShadows().CascadeCount==2&&
+            !light->GetShadows().Soft,"Inspector shadow values did not reach authoring transaction");
+        Check(scenes.Undo(error)&&light->GetShadows().Soft,"Shadow edit Undo failed: "+error);
+        Check(scenes.Redo(error)&&!light->GetShadows().Soft,"Shadow edit Redo failed: "+error);
         QTest::mouseClick(enabled,Qt::LeftButton,Qt::NoModifier,QPoint(8,enabled->height()/2));Check(!light->GetSettings().Enabled,"Inspector enabled toggle failed");
         delete panel;Check(scenes.SaveScene(error),error);const auto source=Read(temporary.path()+"/Assets/Light.scene");
         const auto objectFile=scenes.GetObjectFileID(object->GetInstanceID()),componentFile=scenes.GetComponentFileID(object->GetInstanceID(),light->GetComponentInstanceID());
@@ -216,6 +231,9 @@ int main(int argc,char** argv) {
         Check(scenes.OpenScene("Light.scene",error),error);object=scenes.GetActiveScene()->FindChild("Directional Light");
         Check(lighting.ReadEnvironment(environment,error)&&environment.Settings.Mode==GameSproutRuntime::AmbientLightMode::Gradient&&environment.Settings.SkyColor.R==2,"Saved scene lost environment");
         Check(object&&object->GetComponent<GameSproutRuntime::ILightComponent>()->GetSettings().Color.B==.8f,"Saved light round-trip failed");
+        const auto savedShadows=object->GetComponent<GameSproutRuntime::ILightComponent>()->GetShadows();
+        Check(savedShadows.Enabled&&savedShadows.Distance==75&&savedShadows.Resolution==1024&&savedShadows.CascadeCount==2&&!savedShadows.Soft,
+            "Saved light lost Inspector shadow settings");
         Json::StreamWriterBuilder environmentWriter;SceneDocumentSessionRequest prefabSession;
         prefabSession.DocumentJson=Json::writeString(environmentWriter,SceneDocument::CreateDefault("Environment Prefab Stage"));prefabSession.ContentRootFileID=1;
         Check(scenes.BeginDocumentSession(prefabSession,error),error);

@@ -90,12 +90,12 @@ int main(int argc,char** argv){
             delete viewport;
         }
         auto idle=animator->GetClipPlaybackState().Clip;Check(!idle.Guid.empty(),"Idle animation never started");
-        key(GameSproutRuntime::InputKey::W,true);tick(20);const auto walk=body->GetLinearVelocity();Check(std::sqrt(walk.X*walk.X+walk.Z*walk.Z)>2.8f,"W did not move character");Check(animator->GetClipPlaybackState().Clip!=idle,"Animation stayed idle while moving");
+        key(GameSproutRuntime::InputKey::W,true);tick(20);const auto walk=body->GetLinearVelocity();Check(walk.Z>2.8f&&std::fabs(walk.X)<.01f,"W did not move character");Check(animator->GetClipPlaybackState().Clip!=idle,"Animation stayed idle while moving");
         key(GameSproutRuntime::InputKey::D,true);tick(3);const auto diagonal=body->GetLinearVelocity();Check(std::sqrt(diagonal.X*diagonal.X+diagonal.Z*diagonal.Z)<3.1f,"Diagonal movement is faster");key(GameSproutRuntime::InputKey::D,false);
         key(GameSproutRuntime::InputKey::Shift,true);tick(3);const auto run=body->GetLinearVelocity();Check(std::sqrt(run.X*run.X+run.Z*run.Z)>5.7f,"Shift did not run");key(GameSproutRuntime::InputKey::Shift,false);key(GameSproutRuntime::InputKey::W,false);tick(5);
         key(GameSproutRuntime::InputKey::Space,true);runtime->Update(dt);runtime->FixedUpdate(dt);Check(body->GetLinearVelocity().Y>4,"Space did not jump");const float firstJump=body->GetLinearVelocity().Y;runtime->FixedUpdate(dt);Check(body->GetLinearVelocity().Y<firstJump,"Pressed repeated across fixed steps");key(GameSproutRuntime::InputKey::Space,false);runtime->CompleteInputFrame();tick(100);Check(std::fabs(player->GetTransform()->GetLocalPosition().Y-1)<.15f,"Player did not land");
         Check(animator->GetLastError().empty(),animator->GetLastError());Check(animator->GetClipPlaybackState().Clip==idle,"Landing did not return to idle");
-        Check(camera->GetTransform()->GetLocalPosition().Z>player->GetTransform()->GetLocalPosition().Z+1,"Camera did not follow");
+        Check(camera->GetTransform()->GetLocalPosition().Z<player->GetTransform()->GetLocalPosition().Z-1,"Camera did not follow");
         GameSproutRuntime::IScriptComponent* cameraScript=nullptr;
         for(size_t i=0;i<camera->GetComponentCount();++i)if(auto* item=dynamic_cast<GameSproutRuntime::IScriptComponent*>(camera->GetComponentAt(i)))cameraScript=item;
         Check(cameraScript,"Camera script missing");
@@ -106,9 +106,18 @@ int main(int argc,char** argv){
         const auto yaw=cameraFields.at("ThirdPersonCamera::Yaw").Number;Check(yaw>1,"Right mouse did not orbit");
         focus.Type=GameSproutRuntime::InputEventType::FocusLost;Check(runtime->SubmitInputEvent(focus),"Focus lost");mouse.X=500;Check(!runtime->SubmitInputEvent(mouse),"Unfocused mouse input accepted");tick(1);Check(cameraScript->ReadFields(cameraFields,error)&&cameraFields.at("ThirdPersonCamera::Yaw").Number==yaw,"Orbit moved after focus loss");
         const auto playerPosition=player->GetTransform()->GetLocalPosition();
-        auto* wall=scene->CreateGameObject("Camera Test Wall");wall->GetTransform()->SetLocalPosition({playerPosition.X,playerPosition.Y+1,playerPosition.Z+2});
+        auto* wall=scene->CreateGameObject("Camera Test Wall");wall->GetTransform()->SetLocalPosition({playerPosition.X,playerPosition.Y+1,playerPosition.Z-2});
         auto* wallCollider=wall->AddComponent<GameSproutRuntime::IBoxColliderComponent>();Check(wallCollider&&wallCollider->SetShape({{10,10,.25f}}),"Camera wall");tick(1);
-        Check(camera->GetTransform()->GetLocalPosition().Z<playerPosition.Z+2,"Camera did not pull in before obstruction");
+        Check(camera->GetTransform()->GetLocalPosition().Z>playerPosition.Z-2,"Camera did not pull in before obstruction");
+        auto* cameraParent=scene->CreateGameObject("Scaled Camera Parent");
+        cameraParent->GetTransform()->SetLocalPosition({1,0,-1});cameraParent->GetTransform()->SetLocalScale({-2,.5f,3});
+        Check(cameraParent->GetTransform()->SetLocalRotation({0,std::sin(.3f),0,std::cos(.3f)})&&camera->SetParent(cameraParent,false),"Cannot reparent camera under scaled/rotated parent");
+        camera->GetTransform()->SetLocalScale({-1,2,-.5f});tick(2);
+        GameSproutRuntime::Mat4 scaledView;
+        Check(camera->GetComponent<GameSproutRuntime::ICameraComponent>()->GetViewMatrix(scaledView),"Scaled camera view failed");
+        const auto playerWorld=player->GetTransform()->GetWorldMatrix();
+        const auto focusPoint=scaledView*GameSproutRuntime::Vector4{playerWorld(0,3),playerWorld(1,3)+.5f,playerWorld(2,3),1};
+        Check(std::fabs(focusPoint.X)<.002f&&std::fabs(focusPoint.Y)<.002f&&focusPoint.Z<0,"Camera parent scale changed its world look direction");
         Check(runtime->EndExecution(error),error);Check(Read(project+"/Assets/Playground.scene")==source,"Gameplay changed author source");
         Check(runtime->DestroyScene(scene),"Destroy played world");Check(SceneDocument::Instantiate(baseline,*runtime,scene,ids,error),error);player=Named(scene,"Player");Check(std::fabs(player->GetTransform()->GetLocalPosition().Z)<.001f,"Author snapshot retained Play position");
         const auto prefab=Parse(Read(project+"/Assets/Player.prefab"));Check(PrefabDocument::Validate(prefab["Data"],error),error);
@@ -158,7 +167,7 @@ int main(int argc,char** argv){
                 Check(held.Y>1.7f,"Ordinary friction no longer reproduces the reported wall hold");
             } else {
                 Check(std::fabs(held.Y-1)<.15f,"Character remained suspended while pushing into the wall");
-                if(sliding)Check(held.Z<-1.5f,"Character could not slide along the wall");
+                if(sliding)Check(held.Z>1.5f,"Character could not slide along the wall");
             }
             key(GameSproutRuntime::InputKey::D,false);
             if(running)key(GameSproutRuntime::InputKey::Shift,false);

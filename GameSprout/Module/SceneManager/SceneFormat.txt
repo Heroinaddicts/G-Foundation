@@ -1,9 +1,13 @@
-场景源文件 V1
+场景源文件 V2
 
-.scene 是 Assets 内可编辑的 JSON 源文件。AssetsManager 管理其 .meta 和 GUID，
+.scene 是 Assets 内可编辑的 JSON 源文件。
+Version=2 使用 Unity 世界坐标：X 向右、Y 向上、+Z 向前、1 单位为 1 米；对象旋转与 Unity Transform 同义。
+相机渲染 View 转换到 -Z 向前的相机空间，这不会改变场景中保存的位置、旋转或模型坐标。
+只读取当前格式，不猜测或迁移旧右手坐标文档。
+AssetsManager 管理其 .meta 和 GUID，
 AssetsPipeline 导入为 Library/Artifact 内的二进制产物；SceneManager 不生成 Meta。
 
-顶层字段：Version=1、Name、Objects，以及可选 MainCameraID（0 表示未指定）。
+顶层字段：Version=2、Name、Objects，以及可选 MainCameraID（0 表示未指定）。
 RootActive 默认 true，RootComponents 可记录场景根自身的组件，根 Transform 必须为单位变换。
 RootMainCamera=true 表示根上的 Camera 是主相机，此时 MainCameraID 必须为 0。
 NextObjectID 保存节点和组件共用的文件 ID 分配高水位，新增身份单调分配，删除后重开也不复用。
@@ -41,7 +45,7 @@ GameSproutRuntime.ScriptComponent
 MainCameraID 指向包含 Camera 组件的节点。
 Light 使用 Settings={Type:"Directional",Enabled:true,Color:[1,1,1,1],Intensity:1,CullingMask:4294967295}。
 Color 是线性 RGB（允许 HDR）与 0..1 Alpha，Intensity 为非负有限数，CullingMask 按目标对象 Layer 过滤。
-方向光沿节点局部 -Z 发射；位置和缩放不影响光照方向或强度。当前只支持 Directional 类型，未知字段/类型直接报错。
+方向光沿节点局部 +Z 发射；位置和缩放不影响光照方向或强度。当前只支持 Directional 类型，未知字段/类型直接报错。
 Light 属于普通节点，不能挂到 Scene 根；Scene 与 Prefab 使用同一组件值格式，支持事务快照、实例 Override 和独立实例化。
 
 启动尝试恢复本项目 UserSettings/EditorState.json 中的 LastScenePath（相对 Assets）。

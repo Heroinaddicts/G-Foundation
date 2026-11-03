@@ -9,8 +9,9 @@
 struct SceneViewCameraState {
     GameSproutRuntime::Vector3 Position{6,4,8};
     GameSproutRuntime::Vector3 OrbitPivot;
-    float YawDegrees=-36.8699f;
-    float PitchDegrees=-21.8014f;
+    // Unity-style Euler yaw/pitch: zero faces +Z and positive pitch looks down.
+    float YawDegrees=-143.1301f;
+    float PitchDegrees=21.8014f;
     float OrbitDistance=10.77033f;
     float VerticalFovDegrees=60;
     float NearPlane=0.05f;

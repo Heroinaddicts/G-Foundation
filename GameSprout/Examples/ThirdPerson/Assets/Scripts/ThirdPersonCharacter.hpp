@@ -86,7 +86,7 @@ protected:
         _JumpRequested = false; // Airborne presses cannot become delayed auto-jumps.
         Body->SetLinearVelocity(velocity);
         if (direction.Dot(direction) > 0.0f) {
-            _TargetHeading = std::atan2(-direction.X, -direction.Z);
+            _TargetHeading = std::atan2(direction.X, direction.Z);
             if (!_HasHeading) {_Heading=_TargetHeading;_HasHeading=true;}
         }
     }
@@ -103,13 +103,17 @@ private:
         return {transformed.X,transformed.Y,transformed.Z};
     }
     GameSproutRuntime::Vector3 MovementDirection() const {
-        GameSproutRuntime::Vector3 forward{0.0f,0.0f,-1.0f};
+        GameSproutRuntime::Vector3 forward{0.0f,0.0f,1.0f};
         if (ViewCamera && ViewCamera->GetScene()==_GameObject->GetScene()) {
-            const auto matrix=ViewCamera->GetTransform()->GetWorldMatrix();
-            const GameSproutRuntime::Vector3 projected{-matrix(0,2),0.0f,-matrix(2,2)};
-            projected.TryNormalize(forward);
+            auto* camera=ViewCamera->GetComponent<GameSproutRuntime::ICameraComponent>();
+            GameSproutRuntime::Mat4 view,inverseView;
+            if(camera&&camera->GetViewMatrix(view)&&GameSproutRuntime::RuntimeMath::TryInverseAffine(view,inverseView)) {
+                // -Z belongs to camera view space; world gameplay still uses +Z.
+                const GameSproutRuntime::Vector3 projected{-inverseView(0,2),0.0f,-inverseView(2,2)};
+                projected.TryNormalize(forward);
+            }
         }
-        const auto right=forward.Cross({0.0f,1.0f,0.0f});
+        const auto right=GameSproutRuntime::Vector3{0.0f,1.0f,0.0f}.Cross(forward);
         auto direction=right*_Move.X+forward*_Move.Y;
         GameSproutRuntime::Vector3 normalized;
         return direction.TryNormalize(normalized)?normalized:GameSproutRuntime::Vector3{};
@@ -140,17 +144,17 @@ private:
         if (!Visual || Visual==_GameObject || !_HasHeading || Visual->GetScene()!=_GameObject->GetScene()) return;
         const float blend=1.0f-std::exp(-std::max(0.0f,Finite(TurnSharpness,14.0f))*deltaSeconds);
         _Heading+=std::remainder(_TargetHeading-_Heading,2.0f*GameSproutRuntime::Pi)*blend;
+        GameSproutRuntime::Mat4 parentRotation;
+        for(auto* parent=Visual->Parent();parent;parent=parent->Parent())
+            parentRotation=GameSproutRuntime::RuntimeMath::ComposeTRS({},parent->GetTransform()->GetLocalRotation(),{1,1,1})*parentRotation;
         GameSproutRuntime::Mat4 parentInverse;
-        if (auto* parent=Visual->Parent())
-            if (!GameSproutRuntime::RuntimeMath::TryInverseAffine(parent->GetTransform()->GetWorldMatrix(),parentInverse))return;
-        const GameSproutRuntime::Vector3 worldForward{-std::sin(_Heading),0.0f,-std::cos(_Heading)};
+        if(!GameSproutRuntime::RuntimeMath::TryInverseAffine(parentRotation,parentInverse))return;
+        const GameSproutRuntime::Vector3 worldForward{std::sin(_Heading),0.0f,std::cos(_Heading)};
         const auto transformed=parentInverse*GameSproutRuntime::Vector4(worldForward.X,worldForward.Y,worldForward.Z,0.0f);
         const auto up=parentInverse*GameSproutRuntime::Vector4(0.0f,1.0f,0.0f,0.0f);
-        GameSproutRuntime::Mat4 view,pose;
-        if (!GameSproutRuntime::TryMakeLookAt({}, {transformed.X,transformed.Y,transformed.Z},{up.X,up.Y,up.Z},view) ||
-            !GameSproutRuntime::RuntimeMath::TryInverseAffine(view,pose))return;
-        GameSproutRuntime::Vector3 position,scale;GameSproutRuntime::Quaternion rotation;
-        if(GameSproutRuntime::RuntimeMath::TryDecomposeTRS(pose,position,rotation,scale))Visual->GetTransform()->SetLocalRotation(rotation);
+        GameSproutRuntime::Quaternion rotation;
+        if(GameSproutRuntime::RuntimeMath::TryMakeLookRotation({transformed.X,transformed.Y,transformed.Z},{up.X,up.Y,up.Z},rotation))
+            Visual->GetTransform()->SetLocalRotation(rotation);
     }
     void Animate() {
         if (!Animator) return;

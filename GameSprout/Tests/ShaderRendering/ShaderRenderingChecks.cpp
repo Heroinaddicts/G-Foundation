@@ -128,7 +128,7 @@ int main(int argc,char** argv) {
         };
         GameSproutEditor::GameSproutEditorFinal::Finished(assets,api);pump(idle);
         const auto shader=FindResource(*library,*assets,"Surface.shader",eAssetType::Shader);
-        Json::Value document;document["Version"]=1;document["Name"]="Actual user shader";
+        Json::Value document;document["Version"]=GameSproutRuntime::SceneDocumentVersion;document["Name"]="Actual user shader";
         document["Shader"]["Guid"]=shader.Guid;document["Shader"]["LocalID"]=Json::UInt64(shader.LocalID);
         write("Surface.mat",QByteArray::fromStdString(AssetArtifactIO::JsonText(document)));
         pump([&]{return assets->GetAssetMetas().size()>=4&&idle();});

@@ -47,7 +47,7 @@ int main(int argc,char** argv) {
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create isolated Lit project");
         QDir root(temporary.path());Check(root.mkpath("Assets"),"Cannot create Assets");
         std::string error;
-        Json::Value document;document["Version"]=1;document["Name"]="Lit integration";
+        Json::Value document;document["Version"]=GameSproutRuntime::SceneDocumentVersion;document["Name"]="Lit integration";
         document["Shader"]="GameSprout/Lit";document["BaseColor"]=Vector(.5f,.25f,.125f,1);
         document["Metallic"]=0;document["Roughness"]=1;document["Emission"]=Vector(0,0,0,1);
         const auto write=[&](const QString& path,const QByteArray& bytes) {

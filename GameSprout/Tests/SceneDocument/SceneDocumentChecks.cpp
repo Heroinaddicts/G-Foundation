@@ -91,7 +91,7 @@ int main() {
         const bool created=SceneDocument::Instantiate(initial,*runtime,output,error);
         Check(created,error);
         Check(output->GetChildCount()==1 && output->GetMainCamera() &&
-            output->GetMainCamera()->GetGameObject()->GetTransform()->GetLocalPosition().Z==3,
+            output->GetMainCamera()->GetGameObject()->GetTransform()->GetLocalPosition().Z==-3,
             "Default camera mismatch");
 
         const auto source=AllComponents(initial);
@@ -123,7 +123,7 @@ int main() {
             Check(!error.empty(),"Invalid document has no diagnostic");
             Check(output==saved && runtime->GetSceneCount()==count,"Failure changed output or leaked candidate scene");
         };
-        auto bad=source; bad["Version"]=2; reject(bad);
+        auto bad=source; bad["Version"]=1; reject(bad);
         bad=source; bad["Name"]=""; reject(bad);
         bad=source; bad["Unknown"]=true; reject(bad);
         bad=source; bad["Objects"][1]["ParentID"]=Json::UInt64(30); reject(bad); // Cycle.
