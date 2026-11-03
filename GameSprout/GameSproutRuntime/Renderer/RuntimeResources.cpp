@@ -103,6 +103,7 @@ void Renderer::ClearResources() {
     _PreparedDraws.clear();_SceneObjects.clear();_SceneLights.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;
     _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;
+    _PreparedKnown=false;_SnapshotHasSkin=false;_PreparedDiagnostic.clear();
     _ExtractionDiagnostic.clear();_LightDiagnostic.clear();
     ClearInstanceBuffers();
     _ColliderMeshes.clear();
@@ -129,6 +130,7 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
     auto [position,inserted]=_Meshes.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
+            entry.ResourceRevision=IsBuiltinResource(reference)?0:_Resources.GetResourceRevision(reference);
             const bool loaded=IsBuiltinResource(reference)?BuiltinMeshes::Load(reference,entry.Data,entry.Error):
                 _Resources.LoadMesh(reference,entry.Data,entry.Error);
             if(loaded && ValidateMesh(entry.Data,entry.Error)) {
@@ -168,6 +170,7 @@ Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference) {
     auto [position,inserted]=_Textures.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
+            entry.ResourceRevision=_Resources.GetResourceRevision(reference);
             TextureRenderData data;
             if(_Resources.LoadTexture(reference,data,entry.Error)) {
                 if(!data.Width || !data.Height || std::uint64_t(data.Width)*data.Height>128u*1024u*1024u ||
@@ -194,6 +197,7 @@ Renderer::Material* Renderer::MaterialData(const ResourceReference& reference) {
     auto [position,inserted]=_Materials.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
+            entry.ResourceRevision=_Resources.GetResourceRevision(reference);
             entry.Loaded=_Resources.LoadMaterial(reference,entry.Data,entry.Error);
             if(entry.Loaded && (!RuntimeMath::IsFinite(entry.Data.BaseColor) ||
                 entry.Data.BaseColor.R<0 || entry.Data.BaseColor.G<0 || entry.Data.BaseColor.B<0 ||
@@ -221,5 +225,18 @@ Renderer::Material* Renderer::MaterialData(const ResourceReference& reference) {
     }
     if(!entry.Loaded) {Diagnostic("Material "+reference.Guid+"_"+std::to_string(reference.LocalID)+": "+entry.Error);return nullptr;}
     return &entry;
+}
+Renderer::TextureGPU* Renderer::MaterialTexture(Material& material,bool normal) {
+    auto*& texture=normal?material.NormalTexture:material.BaseColorTexture;
+    bool& attempted=normal?material.NormalAttempted:material.BaseColorAttempted;
+    auto& error=normal?material.NormalError:material.BaseColorError;
+    if(!attempted) {
+        attempted=true;
+        const auto diagnosticBefore=_Error.size();
+        texture=Texture(normal?material.Data.NormalTexture:material.Data.BaseColorTexture);
+        error=_Error.substr(diagnosticBefore);
+        if(!error.empty()&&error.front()=='\n')error.erase(0,1);
+    }else if(!texture)Diagnostic(error);
+    return texture;
 }
 }

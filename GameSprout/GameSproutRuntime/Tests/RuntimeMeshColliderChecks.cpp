@@ -9,7 +9,7 @@ namespace {
 void Check(bool value,const std::string &error){if(!value)throw std::runtime_error(error);}
 class Meshes final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
-    uint64_t Revision=1;unsigned Reads=0;
+    uint64_t Revision=1,MeshRevision=1;unsigned Reads=0;
     GameSproutRuntime::MeshRenderData Mesh;
     Meshes() {
         const float points[]={-1,0,-1,1,0,-1,0,0,1,0,2,0};
@@ -18,6 +18,7 @@ public:
         Mesh.Bytes.resize(sizeof(points)+sizeof(indices));std::memcpy(Mesh.Bytes.data(),points,sizeof(points));std::memcpy(Mesh.Bytes.data()+sizeof(points),indices,sizeof(indices));
     }
     uint64_t GetRevision()const override{return Revision;}
+    uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference &)const override{return MeshRevision;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MeshRenderData &output,std::string &error)override{++Reads;output=Mesh;error.clear();return true;}
     bool LoadTexture(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::TextureRenderData &,std::string&)override{return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MaterialRenderData &,std::string&)override{return false;}
@@ -65,17 +66,37 @@ int main(int argc,char **argv) {
         Check(runtime->Raycast(scene,{{20,4,0},{0,-1,0}},10,hit,query,error),"Static mesh affine baking failed: "+error);
         Check(scene->DestroyGameObject(parent),"Destroy shear fixture");
         Meshes resources;runtime->SetResourceProvider(&resources);
+        const GameSproutRuntime::ResourceReference reference{"11111111111111111111111111111111",1};
+        auto* staticScene=runtime->CreateScene("Static mesh revision");
+        auto* staticMesh=staticScene->CreateGameObject("Prepared static mesh")->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(staticMesh->SetShape({reference,false}),"Cannot assign static revision fixture");
+        Check(runtime->Raycast(staticScene,{{0,8,0},{0,-1,0}},20,hit,query,error),error);
+        const float oldHeight=hit.Position.Y;
+        ++resources.Revision;
+        Check(runtime->Raycast(staticScene,{{0,8,0},{0,-1,0}},20,hit,query,error)&&resources.Reads==1,
+              "Unrelated import invalidated a stable static mesh snapshot");
+        const auto originalBytes=resources.Mesh.Bytes;
+        for(unsigned vertex=0;vertex<resources.Mesh.VertexCount;++vertex) {
+            float height=0;auto* bytes=resources.Mesh.Bytes.data()+vertex*resources.Mesh.VertexStride+4;
+            std::memcpy(&height,bytes,sizeof(height));height+=3;std::memcpy(bytes,&height,sizeof(height));
+        }
+        ++resources.MeshRevision;++resources.Revision;
+        Check(runtime->Raycast(staticScene,{{0,8,0},{0,-1,0}},20,hit,query,error)&&resources.Reads==2&&std::fabs(hit.Position.Y-oldHeight-3)<.001f,
+              "Relevant mesh revision did not invalidate the static world and collision geometry");
+        Check(runtime->DestroyScene(staticScene),"Cannot destroy static revision fixture");
+        resources.Mesh.Bytes=originalBytes;++resources.MeshRevision;++resources.Revision;resources.Reads=0;
         auto *actor=scene->CreateGameObject("Convex mesh");actor->GetTransform()->SetLocalPosition({0,4,0});
         auto *body=actor->AddComponent<GameSproutRuntime::IRigidbodyComponent>();body->SetConstraints(GameSproutRuntime::PhysicsConstraint::FreezeRotation);
         auto *actorCollider=actor->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
         Check(actorCollider->GetShape().Convex,"Dynamic MeshCollider default must be convex");
-        const GameSproutRuntime::ResourceReference reference{"11111111111111111111111111111111",1};
         Check(actorCollider->SetShape({reference,true}),"Assign prepared mesh");
         unsigned collisions=0;actorCollider->RegisterCollisionEnter([&](const auto &event){if(event.Other.ComponentID==collider->GetComponentInstanceID())++collisions;});
         Check(runtime->BeginExecution(error),error);
         for(unsigned i=0;i<150;++i)runtime->FixedUpdate(1.f/60);
         Check(actor->GetTransform()->GetLocalPosition().Y>-.1f&&actor->GetTransform()->GetLocalPosition().Y<.1f&&collisions==1,"Convex mesh did not collide with triangle floor");
         Check(resources.Reads==1,"Mesh provider was re-read on each fixed step");
+        ++resources.Revision;for(unsigned i=0;i<10;++i)runtime->FixedUpdate(1.f/60);
+        Check(resources.Reads==1&&collisions==1,"Unrelated resource import reloaded collision geometry or recreated a contacting body");
         body->Teleport({1,3,1},{},true);runtime->FixedUpdate(1.f/60);Check(resources.Reads==1,"Rigid body move re-read mesh bytes");
         Check(runtime->EndExecution(error),error);
         auto shape=actorCollider->GetShape();shape.Convex=false;Check(actorCollider->SetShape(shape),"Set nonconvex mesh");
@@ -86,7 +107,7 @@ int main(int argc,char **argv) {
         Check(!runtime->BeginExecution(error)&&!error.empty(),"Nonconvex trigger should be rejected");
         settings.IsTrigger=false;actorCollider->SetColliderSettings(settings);shape.Convex=true;actorCollider->SetShape(shape);
         resources.Mesh.Bytes[0]=0; // Explicit invalid source revision must invalidate the decode cache.
-        const uint32_t invalid=1000;std::memcpy(resources.Mesh.Bytes.data()+resources.Mesh.IndexOffset,&invalid,4);++resources.Revision;
+        const uint32_t invalid=1000;std::memcpy(resources.Mesh.Bytes.data()+resources.Mesh.IndexOffset,&invalid,4);++resources.MeshRevision;++resources.Revision;
         Check(!runtime->BeginExecution(error)&&error.find("index")!=std::string::npos,"Invalid provider revision reused stale collision geometry");
         delete runtime;runtime=nullptr;std::cout<<"PASS MeshCollider builtin/provider, affine/mirror, convex dynamics, restrictions, revision cache and callbacks\n";return 0;
     }catch(const std::exception &error){delete runtime;std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}

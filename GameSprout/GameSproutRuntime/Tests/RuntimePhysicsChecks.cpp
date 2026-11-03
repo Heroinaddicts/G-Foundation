@@ -19,8 +19,13 @@ void Steps(GameSproutRuntime::IGameSproutRuntime &runtime, unsigned count) {
 class Materials final : public GameSproutRuntime::IRuntimeResourceProvider {
   public:
     unsigned Reads = 0;
+    uint64_t Revision=1,FirstRevision=1;
+    unsigned FirstReads=0,SecondReads=0;
     uint64_t GetRevision() const override {
-        return 1;
+        return Revision;
+    }
+    uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference& reference) const override {
+        return reference.LocalID==1?FirstRevision:1;
     }
     bool LoadMesh(const GameSproutRuntime::ResourceReference &, GameSproutRuntime::MeshRenderData &,
                   std::string &) override {
@@ -37,6 +42,7 @@ class Materials final : public GameSproutRuntime::IRuntimeResourceProvider {
     bool LoadPhysicsMaterial(const GameSproutRuntime::ResourceReference &reference,
                              GameSproutRuntime::PhysicsMaterialData &value, std::string &error) override {
         ++Reads;
+        if(reference.LocalID==1)++FirstReads;else ++SecondReads;
         error.clear();
         value = {};
         value.Friction = reference.LocalID == 1 ? 0.1f : 0.9f;
@@ -301,6 +307,13 @@ void CheckCompoundAndWorldIsolation(GameSproutRuntime::IGameSproutRuntime &runti
     Check(enters[0] > 0 && enters[1] > 0,
           "Compound child Collider events were merged into one shape identity");
     Check(materials.Reads == 2, "Material resources were reloaded every fixed tick");
+    const auto firstEnters=enters[0],secondEnters=enters[1];
+    ++materials.Revision;Steps(runtime,10);
+    Check(materials.Reads==2&&enters[0]==firstEnters&&enters[1]==secondEnters,
+          "Unrelated import reloaded physics materials or restarted compound contacts");
+    ++materials.FirstRevision;++materials.Revision;Steps(runtime,1);
+    Check(materials.Reads==3&&materials.FirstReads==2&&materials.SecondReads==1,
+          "Changed physics material failed to reload locally or invalidated another material");
     Check(frozenObject->GetTransform()->GetLocalPosition().Y == 3, "Frozen scene physics advanced");
     Check(runtime.EndExecution(error), error);
     // A disabled nearest body is a static boundary, not an invitation to bind

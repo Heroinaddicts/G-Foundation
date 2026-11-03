@@ -2,6 +2,7 @@
 #include "RuntimeResourceApi.h"
 #include <cmath>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 
 static void Check(bool value,const std::string& message){if(!value)throw std::runtime_error(message);}
@@ -10,9 +11,14 @@ static const std::string Guid="0123456789abcdef0123456789abcdef";
 class Resources final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
     std::uint64_t Revision=1;
+    std::map<std::uint64_t,std::uint64_t> ResourceRevisions{{1,1},{10,1},{11,1}};
     int SkeletonLoads=0,ClipLoads=0,ControllerLoads=0;
     bool InvalidClip=false,InvalidController=false,InvalidModel=false;
     std::uint64_t GetRevision()const override{return Revision;}
+    std::uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference& reference)const override {
+        const auto found=ResourceRevisions.find(reference.LocalID);
+        return found==ResourceRevisions.end()?1:found->second;
+    }
     bool LoadTexture(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::TextureRenderData&,std::string&)override{return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MaterialRenderData&,std::string&)override{return false;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MeshRenderData& data,std::string&)override{data={};data.Bones.push_back({"/Root#0/Bone#0",{}});return true;}
@@ -78,6 +84,15 @@ int main(int argc,char** argv){
         Check(observer.Changes==0,"Unchanged paused bone emitted live property changes");
         Check(!first.Animator->SetBool("Speed",true),"Parameter type mismatch was accepted");
         Check(first.Animator->SetInt("Index",2)&&first.Animator->SetBool("Flag",true),"Typed parameters failed");
+        const auto beforeImport=first.Animator->GetPlaybackState();
+        const int skeletonLoads=resources.SkeletonLoads,clipLoads=resources.ClipLoads,controllerLoads=resources.ControllerLoads;
+        ++resources.Revision;runtime->Update(0);
+        double retainedFlag=0;
+        Check(resources.SkeletonLoads==skeletonLoads&&resources.ClipLoads==clipLoads&&resources.ControllerLoads==controllerLoads&&
+              first.Animator->GetParameter("Flag",retainedFlag)&&retainedFlag==1&&
+              first.Animator->GetPlaybackState().Playing==beforeImport.Playing&&
+              Near(first.Animator->GetPlaybackState().Time,beforeImport.Time),
+              "Unrelated resource import reloaded animations or reset playback/parameters");
         Check(first.Animator->CrossFade("Run",.2f),first.Animator->GetLastError());runtime->Update(.1f);
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),8.5f),"CrossFade did not sample both advancing clips");
         Check(observer.Changes==1,"CrossFade pose change did not notify the selected bone");
@@ -91,7 +106,7 @@ int main(int argc,char** argv){
         Check(first.Animator->SetFloat("Speed",.5f)&&first.Animator->Play("Blend",.5f),"Cannot play 1D BlendTree");
         Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),10),"1D BlendTree pose blend failed");
         first.Bone->GetTransform()->SetLocalPosition({7,0,0});first.Animator->Stop();Check(Near(first.Bone->GetTransform()->GetWorldMatrix()(0,3),7),"Stop did not restore authoring pose");
-        first.Animator->Pause();Check(first.Animator->Play("Idle"),"Cannot play before hot reload");++resources.Revision;runtime->Update(.1f);Check(resources.SkeletonLoads==2,"Hot reload did not invalidate animation resources");
+        first.Animator->Pause();Check(first.Animator->Play("Idle"),"Cannot play before hot reload");++resources.ResourceRevisions[10];++resources.Revision;runtime->Update(.1f);Check(resources.SkeletonLoads==2&&resources.ControllerLoads==1,"Skeleton hot reload invalidated unrelated Controller data or reused the old Skeleton");
         Check(scene->DestroyGameObject(first.Bone),"Cannot remove a bound bone");runtime->Update(.1f);Check(!first.Animator->GetPlaybackState().Playing&&!first.Animator->GetLastError().empty(),"Deleted bone did not stop safely");
         std::string error;auto* instance=runtime->InstantiateModel(scene,{Guid,40},nullptr,error);Check(instance,error);
         auto* animator=instance->GetComponent<GameSproutRuntime::IAnimatorComponent>();Check(animator&&animator->GetNodeBindings().size()==2,"Model did not create a bound Animator");
@@ -100,7 +115,7 @@ int main(int argc,char** argv){
         std::vector<GameSproutRuntime::Mat4> matrices;Check(geometry->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>()->GetSkinMatrices({{"/Root#0/Bone#0",{}}},matrices,error),error);
         Check(Near(matrices[0](0,3),0),"Mesh-local bone palette contains object transform twice");
         const auto count=scene->GetChildCount();resources.InvalidModel=true;Check(!runtime->InstantiateModel(scene,{Guid,40},nullptr,error)&&scene->GetChildCount()==count,"Invalid model partially mutated the scene");
-        resources.InvalidClip=true;++resources.Revision;Check(!second.Animator->Play("Idle")&&!second.Animator->GetLastError().empty(),"Malformed Clip was accepted");
+        resources.InvalidClip=true;++resources.ResourceRevisions[1];++resources.Revision;Check(!second.Animator->Play("Idle")&&!second.Animator->GetLastError().empty(),"Malformed changed Clip was accepted");
         runtime->UnregisterListener(&events);runtime->SetResourceProvider(nullptr);delete runtime;runtime=nullptr;
         std::cout<<"Runtime animation, model instantiation and isolation checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';delete runtime;return 1;}

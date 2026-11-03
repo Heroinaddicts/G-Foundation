@@ -24,19 +24,26 @@ bool LibraryRuntimeResources::LoadPrefab(const GameSproutRuntime::ResourceRefere
 bool LibraryRuntimeResources::Read(const GameSproutRuntime::ResourceReference& reference, eAssetType type,
     Json::Value& descriptor, QByteArray& bytes, std::string& error) {
     error.clear(); bytes.clear(); descriptor = Json::Value();
+    auto* observed=ObserveResource(reference);
+    const auto fail=[&](std::string message) {
+        error=std::move(message);
+        if(observed)observed->ReadFailed=true;
+        return false;
+    };
     const Guid guid(reference.Guid);
-    if (!_Library || !guid.IsValid() || reference.LocalID == 0) { error = "Invalid resource reference or unavailable LibraryManager"; return false; }
+    if (!_Library || !guid.IsValid() || reference.LocalID == 0) return fail("Invalid resource reference or unavailable LibraryManager");
     IAsset* asset = _Library->QueryAsset(guid, reference.LocalID);
-    if (!asset || asset->GetAssetType() != type) { error = "Prepared resource is missing or has the wrong type: " + reference.Guid + "_" + std::to_string(reference.LocalID); return false; }
-    if (asset->GetDataVersion() != AssetArtifactIO::CurrentDataVersion(type) || !Parse(asset->GetDataDescriptorJson(), descriptor)) { error = "Invalid ArtifactDB resource descriptor"; return false; }
+    if (!asset || asset->GetAssetType() != type) return fail("Prepared resource is missing or has the wrong type: " + reference.Guid + "_" + std::to_string(reference.LocalID));
+    if (asset->GetDataVersion() != AssetArtifactIO::CurrentDataVersion(type) || !Parse(asset->GetDataDescriptorJson(), descriptor)) return fail("Invalid ArtifactDB resource descriptor");
     QFile file(QString::fromStdString(asset->GetArtifactPath()));
     // 单次预览分配上限，错误文件不能触发无限分配。
     if (!QFileInfo(file).isAbsolute() || !file.open(QIODevice::ReadOnly)
         || file.size() < 0 || static_cast<std::uint64_t>(file.size()) != asset->GetDataSize()
-        || file.size() > 512 * 1024 * 1024) { error = "Cannot read prepared artifact: " + file.fileName().toStdString(); return false; }
+        || file.size() > 512 * 1024 * 1024) return fail("Cannot read prepared artifact: " + file.fileName().toStdString());
     bytes = file.readAll();
     if (file.error() != QFileDevice::NoError || static_cast<std::uint64_t>(bytes.size()) != asset->GetDataSize()) {
-        bytes.clear(); error = "Incomplete prepared artifact"; return false;
+        bytes.clear(); return fail("Incomplete prepared artifact");
     }
+    if(observed)observed->ReadFailed=false;
     return true;
 }

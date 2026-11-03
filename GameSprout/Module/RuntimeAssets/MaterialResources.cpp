@@ -8,6 +8,7 @@ using LibraryResourceDecode::ReferenceValue;
 bool LibraryRuntimeResources::LoadMaterial(const GameSproutRuntime::ResourceReference& reference,
     GameSproutRuntime::MaterialRenderData& output, std::string& error) {
     output = {};
+    ResetDependencies(reference);
     const auto fail = [&error]() { error = "Invalid prepared material data"; return false; };
     Json::Value body;
     GameSproutRuntime::ResourceReference current = reference;
@@ -20,6 +21,7 @@ bool LibraryRuntimeResources::LoadMaterial(const GameSproutRuntime::ResourceRefe
             return false;
         }
         visited.push_back(current);
+        AddDependency(reference,current);
         Json::Value descriptor;
         QByteArray bytes;
         if (!Read(current,eAssetType::Material,descriptor,bytes,error)) return false;
@@ -58,6 +60,7 @@ bool LibraryRuntimeResources::LoadMaterial(const GameSproutRuntime::ResourceRefe
         && !ReferenceValue(body["BaseColorTexture"],data.BaseColorTexture)) return fail();
     if(body.isMember("Shader")&&body["Shader"].isObject()) {
         if(!ReferenceValue(body["Shader"],data.Shader))return fail();
+        AddDependency(reference,data.Shader);
         auto* shader=_Library?_Library->QueryAsset(Guid(data.Shader.Guid),data.Shader.LocalID):nullptr;
         Json::Value descriptor;
         if(!shader||shader->GetAssetType()!=eAssetType::Shader||!AssetArtifactIO::Parse(shader->GetDataDescriptorJson(),descriptor)

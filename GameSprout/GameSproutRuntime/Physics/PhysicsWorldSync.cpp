@@ -9,6 +9,30 @@
 #include <set>
 
 namespace GameSproutRuntime {
+void RuntimePhysicsSystem::SyncResources() {
+    auto* provider=_Runtime.GetResourceProvider();
+    const auto revision=provider?provider->GetRevision():0;
+    if(provider!=_Provider) {
+        _Provider=provider;_ProviderRevision=revision;
+        _Materials.clear();_MeshSources.clear();_MeshShapes.clear();_ResourceRevisions.clear();
+        ++_ResourceGeneration;
+        return;
+    }
+    if(revision==_ProviderRevision)return;
+    _ProviderRevision=revision;
+    bool changed=false;
+    for(auto found=_ResourceRevisions.begin();found!=_ResourceRevisions.end();) {
+        const ResourceReference reference{found->first.first,found->first.second};
+        if((provider?provider->GetResourceRevision(reference):0)==found->second) {++found;continue;}
+        _Materials.erase(found->first);
+        _MeshSources.erase(found->first);
+        for(auto shape=_MeshShapes.begin();shape!=_MeshShapes.end();) {
+            if(shape->second.Reference==reference)shape=_MeshShapes.erase(shape);else ++shape;
+        }
+        found=_ResourceRevisions.erase(found);changed=true;
+    }
+    if(changed)++_ResourceGeneration;
+}
 IComponent *RuntimePhysicsSystem::ResolveComponent(uint64_t objectID, uint64_t componentID) const {
     auto *state = _Runtime.Find(objectID);
     if (!_Runtime.IsInScene(state) || !state->IsActiveInHierarchy())
@@ -55,6 +79,7 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
                 return false;
             }
             material = _Materials.emplace(materialKey, data).first;
+            _ResourceRevisions[materialKey]=_Provider->GetResourceRevision(state.Settings.Material);
         }
         shape.Surface = {material->second.Friction, material->second.Restitution,
                          static_cast<GPhysics::CombineMode>(material->second.FrictionCombine),
@@ -116,15 +141,6 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
 }
 bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyRequest> &requests,
                                          std::string &error) {
-    auto *provider = _Runtime.GetResourceProvider();
-    const auto revision = provider ? provider->GetRevision() : 0;
-    if (provider != _Provider || revision != _ProviderRevision) {
-        _Provider = provider;
-        _ProviderRevision = revision;
-        _Materials.clear();
-        _MeshSources.clear();
-        _MeshShapes.clear();
-    }
     std::vector<IGameObject *> objects;
     for (std::size_t i = 0; i < scene->GetChildCount(); ++i)
         objects.push_back(scene->GetChild(i));
@@ -211,12 +227,11 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
     return true;
 }
 bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float delta, std::string &error) {
+    SyncResources();
     const auto revision=static_cast<Scene*>(scene)->GetRenderRevision();
-    auto* provider=_Runtime.GetResourceProvider();
-    const auto providerRevision=provider?provider->GetRevision():0;
     const auto& matrix=_Runtime.GetProjectSettings().CollisionMatrix;
     world.UnchangedStatic=world.SnapshotKnown&&world.StaticOnly&&world.SceneRevision==revision&&
-        world.Provider==provider&&world.ProviderRevision==providerRevision&&world.CollisionMatrix==matrix;
+        world.Provider==_Provider&&world.ResourceGeneration==_ResourceGeneration&&world.CollisionMatrix==matrix;
     if(world.UnchangedStatic)return true;
     world.SnapshotKnown=false;
     std::map<uint64_t, BodyRequest> requests;
@@ -312,7 +327,7 @@ bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float d
     world.StaticOnly=std::none_of(world.Bodies.begin(),world.Bodies.end(),
         [](const auto& entry){return entry.second.ComponentID!=0;});
     world.SceneRevision=static_cast<Scene*>(scene)->GetRenderRevision();
-    world.Provider=provider;world.ProviderRevision=providerRevision;world.CollisionMatrix=matrix;
+    world.Provider=_Provider;world.ResourceGeneration=_ResourceGeneration;world.CollisionMatrix=matrix;
     world.SnapshotKnown=true;
     return true;
 }

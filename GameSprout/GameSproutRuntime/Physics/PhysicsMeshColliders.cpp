@@ -22,6 +22,8 @@ bool RuntimePhysicsSystem::AppendMeshCollider(BodyRequest &request,MeshColliderC
         GPhysics::MeshGeometry decoded;
         if(!DecodeMeshColliderGeometry(data,decoded,error))return false;
         source=_MeshSources.emplace(sourceKey,std::move(decoded)).first;
+        if(!IsBuiltinResource(settings.Mesh))
+            _ResourceRevisions[sourceKey]=_Provider->GetResourceRevision(settings.Mesh);
     }
     if(source->second.Vertices.empty())return true; // Missing identity retains its reference.
     if(!settings.Convex && (request.Description.Motion==GPhysics::MotionType::Dynamic||shape.Trigger)) {

@@ -2,6 +2,7 @@
 #include "Math/Projection.h"
 #include "Math/TransformMath.h"
 #include <iostream>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 
@@ -10,6 +11,37 @@ namespace {
 void Check(bool condition,const char* message){if(!condition)throw std::runtime_error(message);}
 bool Visible(const Mat4& projection,Vector3 position,Vector3 extent={.1f,.1f,.1f}){
     return RenderFrustum::Frustum(projection).Intersects(-extent,extent,RuntimeMath::ComposeTRS(position,{}, {1,1,1}));
+}
+// Previous scalar support/guard calculation is the numerical reference. The
+// cached path must retain its rejection decisions, including mirrored/sheared
+// transforms and large cancellation, rather than silently switch to a center
+// test or to a world AABB with different edge behavior.
+bool ReferenceIntersects(const Mat4& viewProjection,Vector3 minimum,Vector3 maximum,const Mat4& model) {
+    for(float value:viewProjection.Data)if(!std::isfinite(value))return true;
+    for(float value:model.Data)if(!std::isfinite(value))return true;
+    const double low[]={minimum.X,minimum.Y,minimum.Z},high[]={maximum.X,maximum.Y,maximum.Z};
+    double center[3],extent[3];
+    for(unsigned axis=0;axis<3;++axis) {
+        if(!std::isfinite(low[axis])||!std::isfinite(high[axis])||low[axis]>high[axis])return true;
+        center[axis]=(low[axis]+high[axis])*.5;extent[axis]=(high[axis]-low[axis])*.5;
+    }
+    for(unsigned index=0;index<6;++index) {
+        double plane[4];
+        for(unsigned column=0;column<4;++column) {
+            if(index==4)plane[column]=viewProjection(2,column);
+            else plane[column]=double(viewProjection(3,column))+(index==5||index%2?-1.0:1.0)*viewProjection(index==5?2:index/2,column);
+        }
+        double local[4]{},magnitude=0;
+        for(unsigned column=0;column<4;++column)for(unsigned row=0;row<4;++row) {
+            const double product=plane[row]*model(row,column);local[column]+=product;
+            magnitude+=std::fabs(product)*(column<3?std::fabs(center[column])+extent[column]:1.0);
+        }
+        double distance=local[3],radius=0;
+        for(unsigned axis=0;axis<3;++axis){distance+=local[axis]*center[axis];radius+=std::fabs(local[axis])*extent[axis];}
+        if(!std::isfinite(distance)||!std::isfinite(radius)||!std::isfinite(magnitude))return true;
+        if(distance+radius < -32.0*std::numeric_limits<float>::epsilon()*(magnitude+radius+1.0))return false;
+    }
+    return true;
 }
 }
 int main(){
@@ -50,6 +82,17 @@ int main(){
         Mat4 invalid=ortho;invalid(2,2)=std::numeric_limits<float>::quiet_NaN();
         Check(RenderFrustum::Frustum(invalid).Intersects({100,100,100},{101,101,101},{}),"Invalid/uncertain planes must remain conservative");
         Check(frustum.Intersects({1,1,1},{-1,-1,-1},{}),"Invalid bounds must remain conservative");
+        std::uint32_t seed=0x68fa3159u;
+        const auto number=[&](){seed=seed*1664525u+1013904223u;return float(int((seed>>8)%20001u)-10000)/1000;};
+        for(unsigned index=0;index<2048;++index) {
+            Mat4 model;for(unsigned column=0;column<3;++column)for(unsigned row=0;row<3;++row)model(row,column)=number();
+            model(0,3)=number()*2;model(1,3)=number()*2;model(2,3)=number()*2;
+            const Vector3 center{number(),number(),number()},extent{std::fabs(number()),std::fabs(number()),std::fabs(number())};
+            const RenderFrustum::Box box(center-extent,center+extent,model);
+            for(const auto& projection:{ortho,perspective,perspective*camera})
+                Check(RenderFrustum::Frustum(projection).Intersects(box)==ReferenceIntersects(projection,center-extent,center+extent,model),
+                    "Cached affine support changed a scalar reference rejection/guard decision");
+        }
         std::cout<<"PASS conservative canonical frustum: six planes, perspective/ortho, tangent/crossing/enclosing boxes, aspect/camera, mirrored/nonuniform/sheared transforms\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';return 1;}
 }

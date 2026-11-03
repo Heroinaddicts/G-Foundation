@@ -32,7 +32,7 @@ class RuntimePhysicsSystem {
         // Reuse its synchronized bodies until an authoring/pose/resource or
         // collision-matrix change. Dynamic worlds retain the full update path.
         bool SnapshotKnown=false,StaticOnly=false,UnchangedStatic=false;
-        uint64_t SceneRevision=0,ProviderRevision=0;
+        uint64_t SceneRevision=0,ResourceGeneration=0;
         IRuntimeResourceProvider* Provider=nullptr;
         std::array<std::uint32_t,32> CollisionMatrix{};
     };
@@ -60,7 +60,10 @@ class RuntimePhysicsSystem {
     uint64_t _NextColliderKey = 0;
     IRuntimeResourceProvider *_Provider = nullptr;
     uint64_t _ProviderRevision = 0;
+    uint64_t _ResourceGeneration = 1;
+    std::map<std::pair<std::string,uint64_t>,uint64_t> _ResourceRevisions;
     std::map<std::pair<std::string, uint64_t>, PhysicsMaterialData> _Materials;
+    void SyncResources();
     IComponent *ResolveComponent(uint64_t object, uint64_t component) const;
     PhysicsColliderState *ResolveCollider(const ColliderIdentity &) const;
     bool BuildRequests(IScene *, std::map<uint64_t, BodyRequest> &, std::string &);

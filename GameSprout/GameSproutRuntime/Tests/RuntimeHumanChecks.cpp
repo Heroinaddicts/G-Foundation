@@ -16,6 +16,8 @@ public:
     GameSproutRuntime::AnimatorControllerData Controller;
     std::map<GameSproutRuntime::HumanBone,int> Roles;
     std::uint64_t Revision=1;bool HumanClip=true;
+    std::uint64_t TargetSkeletonRevision=0;
+    std::map<std::uint64_t,unsigned> SkeletonReads,AvatarReads;
     GameSproutRuntime::AvatarMaskData Mask;
     HumanResources(){
         const auto add=[&](GameSproutRuntime::HumanBone role,int parent,GameSproutRuntime::Vector3 position){
@@ -46,11 +48,14 @@ public:
         GameSproutRuntime::AnimatorLayer layer;layer.Name="Base";layer.IKPass=true;layer.States={{"Move",{Guid,10}},{"Still",{Guid,11}}};Controller.Layers={layer};
     }
     std::uint64_t GetRevision()const override{return Revision;}
+    std::uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference& reference)const override {
+        return TargetSkeletonRevision?(reference.LocalID==2?TargetSkeletonRevision:1):Revision;
+    }
     bool LoadTexture(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::TextureRenderData&,std::string&)override{return false;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MeshRenderData&,std::string&)override{return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MaterialRenderData&,std::string&)override{return false;}
-    bool LoadSkeleton(const GameSproutRuntime::ResourceReference& ref,GameSproutRuntime::SkeletonData& data,std::string&)override{data=ref.LocalID==1?Source:Target;return true;}
-    bool LoadHumanoidAvatar(const GameSproutRuntime::ResourceReference& ref,GameSproutRuntime::HumanoidAvatarData& data,std::string&)override{data=ref.LocalID==3?SourceAvatar:TargetAvatar;return true;}
+    bool LoadSkeleton(const GameSproutRuntime::ResourceReference& ref,GameSproutRuntime::SkeletonData& data,std::string&)override{++SkeletonReads[ref.LocalID];data=ref.LocalID==1?Source:Target;return true;}
+    bool LoadHumanoidAvatar(const GameSproutRuntime::ResourceReference& ref,GameSproutRuntime::HumanoidAvatarData& data,std::string&)override{++AvatarReads[ref.LocalID];data=ref.LocalID==3?SourceAvatar:TargetAvatar;return true;}
     bool LoadAnimatorController(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::AnimatorControllerData& data,std::string&)override{data=Controller;return true;}
     bool LoadAvatarMask(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::AvatarMaskData& data,std::string&)override{data=Mask;return true;}
     bool LoadAnimationClip(const GameSproutRuntime::ResourceReference& ref,GameSproutRuntime::AnimationClipData& data,std::string&)override{
@@ -171,6 +176,17 @@ int main(int argc,char** argv){if(argc!=2)return 2;auto* runtime=Export(argv[1])
         Check(!generic.Animator->SetIKGoal(GameSproutRuntime::AvatarIKGoal::LeftHand,unsupported),"Generic Animator accepted active humanoid IK");
         GameSproutRuntime::AnimatorLookAt unsupportedLook;unsupportedLook.Weight=1;Check(!generic.Animator->SetLookAt(unsupportedLook),"Generic Animator accepted active LookAt");
         Check(generic.Animator->SetIKGoal(GameSproutRuntime::AvatarIKGoal::LeftHand,{}),"Generic zero IK goal must remain clearable");generic.Animator->ClearIKGoals();
+        HumanResources dependencies;dependencies.TargetSkeletonRevision=1;runtime->SetResourceProvider(&dependencies);
+        auto* dependencyScene=runtime->CreateScene("Avatar dependency revision");auto dependent=Make(*dependencyScene,dependencies);
+        Check(dependent.Animator->Play("Move",.5f),dependent.Animator->GetLastError());
+        const auto footIndex=dependencies.Roles.at(GameSproutRuntime::HumanBone::RightFoot);
+        const auto originalPath=dependencies.Target.Nodes[footIndex].Path;
+        dependencies.Target.Nodes[footIndex].Path+="_changed";++dependencies.TargetSkeletonRevision;++dependencies.Revision;
+        Check(!dependent.Animator->Play("Move")&&!dependent.Animator->GetLastError().empty()&&dependencies.AvatarReads[4]==2,
+              "Skeleton-only revision reused Avatar validation against the old Skeleton");
+        dependencies.Target.Nodes[footIndex].Path=originalPath;++dependencies.TargetSkeletonRevision;++dependencies.Revision;
+        Check(dependent.Animator->Play("Move",.5f)&&dependencies.AvatarReads[4]==3&&dependencies.SkeletonReads[1]==1&&dependencies.AvatarReads[3]==1,
+              "Avatar recovery failed or a target Skeleton change reloaded unrelated source retarget data");
         runtime->SetResourceProvider(nullptr);delete runtime;std::cout<<"Human retarget, rest axes/proportion preservation, IK/callback safety and synchronized timing passed\n";return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';delete runtime;return 1;}
 }

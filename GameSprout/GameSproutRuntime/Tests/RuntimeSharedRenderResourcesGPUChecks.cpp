@@ -1,9 +1,11 @@
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeRenderApi.h"
+#include "RuntimeBuiltinResources.h"
 #include "../Renderer/Shaders/GeneratedShaders.h"
 #include <array>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <new>
 #include <stdexcept>
 
@@ -18,11 +20,22 @@ class Provider final:public IRuntimeResourceProvider {
 public:
     std::uint64_t Revision=1;
     unsigned MeshLoads=0,TextureLoads=0,MaterialLoads=0,ShaderLoads=0;
-    bool Custom=false,MissingMesh=false;
+    bool Custom=false,MissingMesh=false,MissingTexture=false,MissingMaterial=false,MissingShader=false;
+    bool FineGrained=false,ShaderDepthNever=false;
+    mutable unsigned BuiltinRevisionQueries=0;
+    std::map<std::uint64_t,std::uint64_t> ResourceRevisions{{1,1},{2,1},{3,1},{4,1},{5,1}};
+    std::map<std::uint64_t,unsigned> MeshLoadsByID;
     std::array<std::uint8_t,4> Pixel{255,0,0,255};
     std::uint64_t GetRevision()const override{return Revision;}
-    bool LoadMesh(const ResourceReference&,MeshRenderData& data,std::string& error)override {
-        ++MeshLoads;data={};error.clear();if(MissingMesh){error="Missing mesh fixture";return false;}
+    std::uint64_t GetResourceRevision(const ResourceReference& reference)const override {
+        if(IsBuiltinResource(reference)){++BuiltinRevisionQueries;return Revision;}
+        if(!FineGrained)return Revision;
+        const auto found=ResourceRevisions.find(reference.LocalID);
+        return found==ResourceRevisions.end()?0:found->second;
+    }
+    bool LoadMesh(const ResourceReference& reference,MeshRenderData& data,std::string& error)override {
+        ++MeshLoads;++MeshLoadsByID[reference.LocalID];data={};error.clear();
+        if(MissingMesh&&reference==MeshRef){error="Missing mesh fixture";return false;}
         data.VertexCount=3;data.VertexStride=32;data.IndexCount=3;data.IndexOffset=96;data.UVOffset=24;
         const float vertices[]={-.8f,-.8f,0,0,0,1,0,0, .8f,-.8f,0,0,0,1,1,0, 0,.8f,0,0,0,1,.5f,1};
         const std::uint32_t indices[]={0,1,2};data.Bytes.resize(sizeof(vertices)+sizeof(indices));
@@ -30,11 +43,13 @@ public:
         data.LocalBounds={{},{.8f,.8f,0}};return true;
     }
     bool LoadTexture(const ResourceReference&,TextureRenderData& data,std::string& error)override {
-        ++TextureLoads;data={};data.Width=data.Height=1;data.SRGB=false;
+        ++TextureLoads;data={};if(MissingTexture){error="Missing texture fixture";return false;}
+        data.Width=data.Height=1;data.SRGB=false;
         data.Pixels.assign(Pixel.begin(),Pixel.end());error.clear();return true;
     }
     bool LoadMaterial(const ResourceReference&,MaterialRenderData& data,std::string& error)override {
         ++MaterialLoads;data={};error.clear();
+        if(MissingMaterial){error="Missing material fixture";return false;}
         if(!Custom){data.BaseColorTexture=TextureRef;return true;}
         data.Shader=ShaderRef;data.Textures.push_back({"Base",TextureRef});
         // Fixed model/normal and orthographic view-projection matrices reuse the
@@ -54,7 +69,9 @@ public:
         code.Bytes.assign(bytes,bytes+N);program.Codes.push_back(std::move(code));
     }
     bool LoadShader(const ResourceReference&,ShaderRenderData& data,std::string& error)override {
-        ++ShaderLoads;data={};error.clear();data.Name="Shared shader fixture";ShaderPassData pass;
+        ++ShaderLoads;data={};error.clear();if(MissingShader){error="Missing Shader fixture";return false;}
+        data.Name="Shared shader fixture";ShaderPassData pass;
+        if(ShaderDepthNever)pass.DepthCompare=ShaderDepthCompare::Never;
         ShaderUniformBlock block;block.Size=224;
         for(unsigned index=0;index<14;++index)block.Members.push_back({"Vector"+std::to_string(index),ShaderValueType::Float4,index*16});
         pass.Vertex.Uniforms.push_back(std::move(block));pass.Fragment.Textures.push_back({"Base",0});
@@ -76,10 +93,12 @@ std::array<unsigned,4> Pixel(IRuntimeViewport& viewport,const RenderView& view) 
 }
 void Red(const std::array<unsigned,4>& value){Check(value[0]>100&&value[1]==0&&value[2]==0,"Expected red shared texture");}
 void Blue(const std::array<unsigned,4>& value){Check(value[2]>100&&value[0]==0&&value[1]==0,"Expected blue shared texture");}
+void Green(const std::array<unsigned,4>& value){Check(value[1]>100&&value[0]==0&&value[2]==0,"Expected green shared texture");}
+void Black(const std::array<unsigned,4>& value){Check(value[0]==0&&value[1]==0&&value[2]==0,"Missing/hidden resource rendered stale cached pixels");}
 }
 int main(int argc,char** argv) {
     IGameSproutRuntime* runtime=nullptr;IRuntimeViewport *first=nullptr,*second=nullptr,*other=nullptr,*later=nullptr;
-    Provider provider,separate;
+    Provider provider,separate,targeted;
     try {
         Check(argc==2,"Pass Runtime binary directory");runtime=Export(argv[1]);Check(runtime,"Cannot load Runtime");
         std::string error;first=runtime->CreateOffscreenRenderer(64,64,&provider,error);
@@ -131,7 +150,82 @@ int main(int argc,char** argv) {
         Check(!runtime->CreateOffscreenRenderer(0xffffffffu,0xffffffffu,&provider,error),"Invalid viewport size unexpectedly succeeded");
         first=runtime->CreateOffscreenRenderer(64,64,&provider,error);Check(first,error);Blue(Pixel(*first,view));
         delete first;first=nullptr;
+
+        // Fine-grained providers keep unrelated resident GPU objects alive even
+        // when many project assets are published while both viewports are open.
+        targeted.FineGrained=true;
+        first=runtime->CreateOffscreenRenderer(64,64,&targeted,error);Check(first,error);
+        second=runtime->CreateOffscreenRenderer(64,64,&targeted,error);Check(second,error);
+        auto* sibling=scene->CreateGameObject("Same GUID, different mesh LocalID");
+        sibling->GetTransform()->SetLocalPosition({10,0,0});
+        sibling->AddComponent<IMeshComponent>()->SetMesh({MeshRef.Guid,5});
+        Check(sibling->AddComponent<IMeshRendererComponent>()->SetMaterials({MaterialRef}),"Cannot bind sibling material");
+        auto* primitive=scene->CreateGameObject("Builtin mesh outside view");
+        primitive->GetTransform()->SetLocalPosition({100,0,0});
+        primitive->AddComponent<IMeshComponent>()->SetMesh(GetBuiltinMeshReference(PrimitiveType::Cube));
+        primitive->AddComponent<IMeshRendererComponent>();
+        Red(Pixel(*first,view));Red(Pixel(*second,view));
+        auto before=targeted.Loads();
+        Check(before==std::array<unsigned,4>{2,1,1,0},"Fine-grained fixtures were not shared between viewports");
+        ++targeted.ResourceRevisions[99];++targeted.Revision;
+        Red(Pixel(*second,view));Red(Pixel(*first,view));
+        Check(targeted.Loads()==before&&first->GetStatistics().SceneSnapshotRebuilds==0&&second->GetStatistics().SceneSnapshotRebuilds==0,
+            "An unrelated asset invalidated resident resources or viewport snapshots");
+        ++targeted.Revision; // Reimported contents and every resource token are identical.
+        Red(Pixel(*first,view));Red(Pixel(*second,view));
+        Check(targeted.Loads()==before&&targeted.BuiltinRevisionQueries==0,"An unchanged token/builtin was queried or reloaded");
+
+        targeted.Pixel={0,0,255,255};++targeted.ResourceRevisions[3];++targeted.Revision;
+        Blue(Pixel(*second,view));Blue(Pixel(*first,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1]+1,before[2],before[3]},
+            "Changing only a texture reloaded mesh/material data or uploaded the texture twice");
+
+        before=targeted.Loads();targeted.MissingMesh=true;targeted.ResourceRevisions[1]=0;++targeted.Revision;
+        Black(Pixel(*first,view));Black(Pixel(*second,view));
+        Check(targeted.MeshLoads==before[0]+1&&targeted.MeshLoadsByID[5]==1,"Mesh deletion invalidated another LocalID or retried per viewport");
+        Black(Pixel(*first,view));Check(targeted.MeshLoads==before[0]+1,"Missing mesh was polled every frame");
+        targeted.MissingMesh=false;targeted.ResourceRevisions[1]=2;++targeted.Revision;
+        Blue(Pixel(*second,view));Blue(Pixel(*first,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0]+2,before[1],before[2],before[3]}&&targeted.MeshLoadsByID[5]==1,
+            "Mesh recovery failed or reloaded unaffected subresources");
+
+        before=targeted.Loads();targeted.MissingMaterial=true;targeted.ResourceRevisions[2]=0;++targeted.Revision;
+        Black(Pixel(*second,view));Black(Pixel(*first,view));
+        targeted.MissingMaterial=false;targeted.ResourceRevisions[2]=2;++targeted.Revision;
+        Blue(Pixel(*first,view));Blue(Pixel(*second,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1],before[2]+2,before[3]},"Material deletion/recovery invalidated mesh or texture");
+
+        // A custom Shader intentionally uses a fixed transform in this fixture;
+        // remove offscreen fixtures before switching the primary material.
+        Check(scene->DestroyGameObject(sibling)&&scene->DestroyGameObject(primitive),"Cannot remove isolation fixtures");
+        targeted.Custom=true;++targeted.ResourceRevisions[2];++targeted.Revision;
+        Blue(Pixel(*first,view));Blue(Pixel(*second,view));before=targeted.Loads();
+        Check(before[3]==1,"Fine-grained custom Shader did not load");
+        targeted.ShaderDepthNever=true;++targeted.ResourceRevisions[4];++targeted.Revision;
+        Black(Pixel(*second,view));Black(Pixel(*first,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1],before[2],before[3]+1}&&first->GetStatistics().DrawCalls==1,
+            "Shader-only change did not rebuild its pipeline/bindings while retaining geometry/materials");
+        targeted.ShaderDepthNever=false;++targeted.ResourceRevisions[4];++targeted.Revision;
+        Blue(Pixel(*first,view));Blue(Pixel(*second,view));
+
+        before=targeted.Loads();targeted.Pixel={0,255,0,255};++targeted.ResourceRevisions[3];++targeted.Revision;
+        Green(Pixel(*second,view));Green(Pixel(*first,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1]+1,before[2],before[3]},
+            "Custom material retained a stale texture pointer or reread unchanged material/Shader");
+        before=targeted.Loads();targeted.MissingTexture=true;targeted.ResourceRevisions[3]=0;++targeted.Revision;
+        Black(Pixel(*first,view));Black(Pixel(*second,view));
+        targeted.MissingTexture=false;targeted.ResourceRevisions[3]=4;++targeted.Revision;
+        Green(Pixel(*second,view));Green(Pixel(*first,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1]+2,before[2],before[3]},
+            "Custom material's failed texture binding did not recover independently");
+        before=targeted.Loads();targeted.MissingShader=true;targeted.ResourceRevisions[4]=0;++targeted.Revision;
+        Black(Pixel(*second,view));Black(Pixel(*first,view));
+        targeted.MissingShader=false;targeted.ResourceRevisions[4]=5;++targeted.Revision;
+        Green(Pixel(*first,view));Green(Pixel(*second,view));
+        Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1],before[2],before[3]+2},
+            "Missing Shader recovery reread unrelated resources or retained stale program bindings");
+        delete first;first=nullptr;Green(Pixel(*second,view));delete second;second=nullptr;
         delete runtime;runtime=nullptr;
-        std::cout<<"PASS shared GPU resources: same-provider reuse, separate providers, revision generations, resize/clear isolation, Shader bindings and viewport/failed-construction lifetimes\n";return 0;
+        std::cout<<"PASS shared GPU resources: provider/viewport isolation, targeted artifact revisions, unchanged tokens, LocalID isolation, builtin retention, Shader/texture binding updates and deletion/recovery\n";return 0;
     }catch(const std::exception& failure){delete later;delete other;delete second;delete first;delete runtime;std::cerr<<"FAIL "<<failure.what()<<'\n';return 1;}
 }

@@ -16,8 +16,14 @@ public:
     const AnimatorControllerData* Controller(const ResourceReference&,std::string&);
 private:
     void Sync();
+    void Remember(const ResourceReference&);
+    struct CachedRevision {
+        ResourceReference Reference;
+        std::uint64_t Revision=0;
+    };
     IRuntimeResourceProvider* _Provider=nullptr;
     std::uint64_t _Revision=0,_Generation=1;
+    std::map<std::string,CachedRevision> _CachedRevisions;
     std::map<std::string,HumanoidAvatarData> _Avatars;
     std::map<std::string,SkeletonData> _Skeletons;
     std::map<std::string,AnimationClipData> _Clips;

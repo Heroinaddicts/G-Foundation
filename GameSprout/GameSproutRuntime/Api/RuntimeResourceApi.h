@@ -80,8 +80,11 @@ struct MaterialRenderData {
 class IRuntimeResourceProvider {
 public:
     virtual ~IRuntimeResourceProvider() = default;
-    // 返回递增修订号，产物替换/删除时令 Renderer 释放并重新查询缓存。
+    // Provider 的变化序号；用于判断是否需要核对已缓存资源，不表示全部资源失效。
     virtual std::uint64_t GetRevision() const = 0;
+    // 同一 Guid + LocalID 的有效数据或加载依赖变化时递增；Missing 的删除/恢复也须可区分。
+    // 精确版本 Provider 的已登记资源查询只读内存。仅提供整体版本的 Provider 可沿用默认粒度。
+    virtual std::uint64_t GetResourceRevision(const ResourceReference&) const { return GetRevision(); }
     // 同步读取已预处理数据；失败清空输出并给出原因。不得返回源 FBX/PNG。
     virtual bool LoadMesh(const ResourceReference& reference, MeshRenderData& data, std::string& error) = 0;
     virtual bool LoadTexture(const ResourceReference& reference, TextureRenderData& data, std::string& error) = 0;

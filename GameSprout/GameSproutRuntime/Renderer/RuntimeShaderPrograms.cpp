@@ -105,6 +105,7 @@ Renderer::ShaderGPU* Renderer::Shader(const ResourceReference& reference) {
     auto [position,inserted]=_UserShaders.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
+            entry.ResourceRevision=_Resources.GetResourceRevision(reference);
             if(_Resources.LoadShader(reference,entry.Data,entry.Error)) {
                 if(entry.Data.Passes.size()!=1||entry.Data.Passes[0].Name.empty()||entry.Data.Passes[0].LightMode!="Forward")
                     entry.Error="Runtime currently requires exactly one Forward Shader pass";

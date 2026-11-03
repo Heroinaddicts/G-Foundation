@@ -21,3 +21,14 @@ set(RUNTIME_ASSETS_TEST_RUNTIME_DIRECTORY "${gamesprout_root}/../Bin" CACHE PATH
 enable_testing()
 add_test(NAME RuntimeAssets.MissingPhysicsMaterial COMMAND PhysicsMaterialMissingChecks "${RUNTIME_ASSETS_TEST_RUNTIME_DIRECTORY}")
 set_tests_properties(RuntimeAssets.MissingPhysicsMaterial PROPERTIES TIMEOUT 30)
+add_executable(ResourceRevisionChecks ResourceRevisionChecks.cpp)
+target_compile_features(ResourceRevisionChecks PRIVATE cxx_std_20)
+target_include_directories(ResourceRevisionChecks PRIVATE
+    "${gamesprout_root}/Module/RuntimeAssets"
+    "${gamesprout_root}/Module/Shared"
+    "${gamesprout_root}/Module/Interface"
+    "${gamesprout_root}/GameSproutEditor/Api")
+target_link_libraries(ResourceRevisionChecks PRIVATE RuntimeAssets
+    Foundation::FoundationApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core)
+add_test(NAME RuntimeAssets.ResourceRevisions COMMAND ResourceRevisionChecks)
+set_tests_properties(RuntimeAssets.ResourceRevisions PROPERTIES TIMEOUT 30)

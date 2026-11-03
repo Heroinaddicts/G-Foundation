@@ -1,6 +1,7 @@
 #include "LibraryRuntimeResources.h"
 #include "ILibraryManager.h"
 #include "PhysicsMaterialDefinition.h"
+#include "AssetArtifactIO.h"
 #include "GameSproutRuntimeExport.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -21,7 +22,7 @@ class Asset final:public IAsset {
 public:
     Guid ID{"1234567890abcdef1234567890abcdef"};
     eAssetType Type=eAssetType::PhysicsMaterial;
-    std::string Path,Name="Surface";
+    std::string Path,Name="Surface",Hash;
     std::string Descriptor=R"({"Encoding":"RawBytes","Format":"PhysicsMaterial1","Layout":"F32F32U32U32LE"})";
     std::uint32_t Version=2;
     std::uint64_t Size=16;
@@ -40,7 +41,14 @@ public:
     ILDBSession* GetLDBSession() const override{return nullptr;}
     const std::string& GetLibraryRoot() const override{return Root;}
     std::vector<std::string> GetManifestGuids() const override{return {};}
-    bool GetManifest(const Guid&,AssetImportManifest&) const override{return false;}
+    bool GetManifest(const Guid& guid,AssetImportManifest& manifest) const override {
+        if(!Present||guid!=Prepared.ID)return false;
+        manifest={};manifest.GuidString=guid.GetGuidString();
+        AssetArtifact artifact;artifact.LocalID=17;artifact.Type=Prepared.Type;
+        artifact.DataVersion=Prepared.Version;artifact.DataSize=Prepared.Size;
+        artifact.DescriptorJson=Prepared.Descriptor;artifact.Hash=Prepared.Hash;
+        manifest.Assets.push_back(std::move(artifact));return true;
+    }
     bool CommitImport(const std::string&,AssetImportManifest&,std::string&) override{return false;}
     bool RemoveAsset(const Guid&,std::string&,const std::vector<LDBWriteOperation>&) override{return false;}
     std::vector<std::string> FindDependents(const std::string&) const override{return {};}
@@ -80,6 +88,7 @@ public:
     explicit ObservedProvider(LibraryRuntimeResources& resources):Resources(resources){}
     LibraryRuntimeResources& Resources;unsigned Reads=0;float Friction=-1;
     std::uint64_t GetRevision() const override{return Resources.GetRevision();}
+    std::uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference& reference) const override{return Resources.GetResourceRevision(reference);}
     bool LoadMesh(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MeshRenderData&,std::string&) override{return false;}
     bool LoadTexture(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::TextureRenderData&,std::string&) override{return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::MaterialRenderData&,std::string&) override{return false;}
@@ -96,6 +105,7 @@ void Surface(Library& library,float friction) {
     GameSproutRuntime::PhysicsMaterialData data;data.Friction=friction;
     std::vector<std::uint8_t> bytes;std::string error;
     Check(PhysicsMaterialDefinition::Encode(data,bytes,error),error);
+    library.Prepared.Hash=AssetArtifactIO::Hash(QByteArray(reinterpret_cast<const char*>(bytes.data()),static_cast<qsizetype>(bytes.size())));
     Write(QString::fromStdString(library.Prepared.Path),QByteArray(reinterpret_cast<const char*>(bytes.data()),static_cast<qsizetype>(bytes.size())));
 }
 void Steps(GameSproutRuntime::IGameSproutRuntime& runtime,unsigned count){for(unsigned i=0;i<count;++i)runtime.FixedUpdate(1.f/60);}

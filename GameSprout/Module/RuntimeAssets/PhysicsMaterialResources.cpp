@@ -6,6 +6,7 @@
 bool LibraryRuntimeResources::LoadPhysicsMaterial(const GameSproutRuntime::ResourceReference& reference,
     GameSproutRuntime::PhysicsMaterialData& output,std::string& error) {
     output={};error.clear();
+    ObserveResource(reference);
     const Guid guid(reference.Guid);
     // A deleted source/subasset retains its reference in Scene/Prefab data.
     // Missing identity uses the default surface; a present but corrupt artifact

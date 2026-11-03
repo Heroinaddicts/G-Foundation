@@ -78,6 +78,16 @@ int main(int argc,char** argv){
         stats=Render(*viewport,view);
         Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&provider.MeshLoads==meshLoads&&provider.MaterialLoads==materialLoads,
             "Idle rendering rebuilt source snapshots or reloaded shared resources");
+        Check(stats.VisibleObjects==1&&stats.DrawCalls==1&&Pixel(*viewport)[0]>100,"Reusing prepared draws lost statistics or source pixels");
+        auto clearOnly=view;clearOnly.DrawScene=false;clearOnly.ClearColor={0,0,1,1};
+        stats=Render(*viewport,clearOnly);Check(stats.DrawCalls==0&&Pixel(*viewport)[2]>100,"Clear-only render reused stale prepared geometry");
+        stats=Render(*viewport,view);Check(stats.DrawCalls==1&&Pixel(*viewport)[0]>100,"Clear-only frame damaged the retained scene preparation");
+        auto* initialRenderer=object->GetComponent<IMeshRendererComponent>();
+        Check(initialRenderer->SetMaterials({}),"Cannot select default material");
+        Render(*viewport,view);stats=Render(*viewport,view);
+        const auto white=Pixel(*viewport);
+        Check(stats.DrawCalls==1&&white[0]>100&&white[1]>100&&white[2]>100,"Retained default-material draw borrowed a previous call's stack storage");
+        Check(initialRenderer->SetMaterials({{Guid,11}}),"Cannot restore source material");Render(*viewport,view);
 
         // Camera movement and target extent change the frustum, not the scene.
         view.Camera.Position={3,0,3};Check(TryMakeLookAt(view.Camera.Position,{3,0,0},{0,1,0},view.Camera.View),"Cannot move snapshot camera");

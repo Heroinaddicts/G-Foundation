@@ -2,6 +2,7 @@
 #include "Api/RuntimeRenderApi.h"
 #include "RuntimeShaders.h"
 #include "RuntimeRenderResourceLease.h"
+#include "RuntimeFrustum.h"
 #include "GRHIApi.h"
 #include <map>
 #include <tuple>
@@ -36,6 +37,7 @@ private:
         bool operator<(const ResourceKey& other) const {return std::tie(Guid,LocalID)<std::tie(other.Guid,other.LocalID);}
     };
     struct MeshGPU {
+        std::uint64_t ResourceRevision=0;
         std::uint64_t SortRank=0;
         struct SkinVertex { std::uint32_t Bones[4]{}; float Weights[4]{}; };
         MeshRenderData Data;
@@ -50,7 +52,7 @@ private:
         bool CullBoundsKnown=false;
         std::string Error;
     };
-    struct TextureGPU {GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;bool SRGB=false;std::string Error;};
+    struct TextureGPU {std::uint64_t ResourceRevision=0;GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;bool SRGB=false;std::string Error;};
     struct ColliderMeshWire {
         ResourceReference Reference;
         bool Convex=false;
@@ -60,13 +62,19 @@ private:
     };
     struct BoundUniform {std::uint32_t Slot=0;std::vector<std::uint8_t> Bytes;};
     struct Material {
+        std::uint64_t ResourceRevision=0;
         std::uint64_t SortRank=0;
         MaterialRenderData Data;bool Loaded=false;std::string Error;
         bool ShaderAttempted=false,ShaderReady=false;
         std::vector<BoundUniform> VertexUniforms,FragmentUniforms;
         std::vector<TextureGPU*> ShaderTextures;
+        TextureGPU* BaseColorTexture=nullptr;
+        TextureGPU* NormalTexture=nullptr;
+        bool BaseColorAttempted=false,NormalAttempted=false;
+        std::string BaseColorError,NormalError;
     };
     struct ShaderGPU {
+        std::uint64_t ResourceRevision=0;
         ShaderRenderData Data;
         GRHI::IShader* Vertex=nullptr;
         GRHI::IShader* Fragment=nullptr;
@@ -98,10 +106,12 @@ private:
         ResourceReference Mesh;
         std::vector<ResourceReference> Materials;
         // Renderer-owned resource pointers, invalidated with the resource
-        // provider revision. No Runtime node pointers survive between frames.
+        // cached resource generation. No Runtime node pointers survive between frames.
         MeshGPU* Geometry=nullptr;
         std::vector<Material*> MaterialCache;
         bool BoundsInitialized=false;
+        bool CullBoxKnown=false;
+        RenderFrustum::Box CullBox;
         std::string Name;
         std::vector<Mat4> SkinMatrices;
         bool Skinned=false;
@@ -182,9 +192,11 @@ private:
     struct DebugBatch {std::vector<DebugVertex> Vertices;bool Triangles=false,DepthTest=false;};
     bool Initialize();
     bool Extract(const RenderView& view,std::vector<DrawObject>& objects);
+    void PrepareDraws(const RenderView&,const Mat4& viewProjection);
     MeshGPU* Mesh(const ResourceReference& reference);
     ColliderMeshWire* ColliderMesh(IColliderComponent& collider,const ResourceReference& reference,bool convex,const Mat4& relative);
     TextureGPU* Texture(const ResourceReference& reference);
+    TextureGPU* MaterialTexture(Material&,bool normal);
     Material* MaterialData(const ResourceReference& reference);
     ShaderGPU* Shader(const ResourceReference& reference);
     bool PrepareShaderMaterial(Material& material,ShaderGPU& shader);
@@ -224,6 +236,12 @@ private:
     std::vector<DrawObject> _SceneObjects;
     std::vector<DirectionalLight> _SceneLights;
     std::vector<PreparedDraw> _PreparedDraws;
+    Mat4 _PreparedViewProjection;
+    RenderCamera _PreparedCamera;
+    MaterialRenderData _DefaultMaterial;
+    bool _PreparedKnown=false,_SnapshotHasSkin=false;
+    std::uint32_t _PreparedVisible=0,_PreparedSkipped=0;
+    std::string _PreparedDiagnostic;
     std::size_t _SortedMeshCount=0,_SortedMaterialCount=0;
     std::uint64_t _ObjectSceneID=0,_ObjectSceneRevision=0,_LightSceneID=0,_LightSceneRevision=0;
     std::uint32_t _ObjectCullingMask=0,_ExtractionSkipped=0;

@@ -100,6 +100,7 @@ void RuntimePhysicsSystem::Reset() {
     _Materials.clear();
     _MeshSources.clear();
     _MeshShapes.clear();
+    _ResourceRevisions.clear();
     _Provider = nullptr;
     _ProviderRevision = 0;
 }
