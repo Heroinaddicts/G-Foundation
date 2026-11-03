@@ -39,6 +39,13 @@ public:
             {{"OutOfBounds",GameSproutRuntime::ShaderValueType::Float4,4}}});
         if(Mode==4)pass.Fragment.Uniforms.push_back({0,16,GameSproutRuntime::ShaderUniformSource::Material,
             {{"A",GameSproutRuntime::ShaderValueType::Float4,0},{"B",GameSproutRuntime::ShaderValueType::Float,4}}});
+        if(Mode==5)pass.Fragment.Uniforms.push_back({0,48,GameSproutRuntime::ShaderUniformSource::Frame,{}});
+        if(Mode==6)pass.Fragment.Uniforms.push_back({0,64,GameSproutRuntime::ShaderUniformSource::Frame,
+            {{"Time",GameSproutRuntime::ShaderValueType::Float4,0}}});
+        if(Mode==7){
+            pass.Fragment.Uniforms.push_back({0,64,GameSproutRuntime::ShaderUniformSource::Frame,{}});
+            pass.Fragment.Uniforms.push_back({1,64,GameSproutRuntime::ShaderUniformSource::Frame,{}});
+        }
         data.Passes.push_back(std::move(pass));return true;
     }
 };
@@ -54,7 +61,7 @@ int main(int argc,char** argv) {
         Check(object->AddComponent<GameSproutRuntime::IMeshRendererComponent>()->SetMaterials({MaterialRef}),"Cannot set material");
         GameSproutRuntime::RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,0,3};
         Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Cannot aim camera");
-        for(unsigned mode=0;mode<5;++mode) {
+        for(unsigned mode=0;mode<8;++mode) {
             provider.Mode=mode;++provider.Revision;const auto before=provider.Loads;
             Check(viewport->Render(view),viewport->GetLastError());
             Check(viewport->GetStatistics().DrawCalls==0&&viewport->GetStatistics().SkippedObjects==1,"Invalid Shader silently used preview draw");

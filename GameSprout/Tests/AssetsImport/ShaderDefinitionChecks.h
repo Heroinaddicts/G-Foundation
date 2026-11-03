@@ -27,6 +27,27 @@ inline void CheckShaderDefinitions(IShaderCompiler& compiler,ShaderCompileReques
         &&layout["Textures"][0]["Name"]=="Map","Reflected uniform padding/member offsets or texture name lost");
     auto undeclared=schema;undeclared["Properties"][1]["Name"]="Other";
     Check(!ShaderDefinition::ProgramLayout(description["Reflection"],undeclared,false,layout,error),"Undeclared GPU material member accepted");
+    const std::string frameBlock="cbuffer GameSproutFrame:register(b1,space3){float4 Time;float4 CameraPosition;float4 MainLightDirection;float4 MainLightColor;}";
+    request.Source="cbuffer Material:register(b0,space3){float4 Tint;}"+frameBlock+
+        "float4 PSMain():SV_Target0{return Tint+Time+CameraPosition+MainLightDirection+MainLightColor;}";
+    Check(compiler.Compile(request,result)&&AssetArtifactIO::Parse(result.ReflectionJson,description),"Frame layout compile failed: "+result.Error);
+    Check(ShaderDefinition::ProgramLayout(description["Reflection"],schema,false,layout,error)&&layout["Uniforms"].size()==2
+        &&layout["Uniforms"][0]["Source"]=="Material"&&layout["Uniforms"][1]["Source"]=="Frame"
+        &&layout["Uniforms"][1]["Size"].asUInt()==64&&layout["Uniforms"][1]["Members"].empty(),"Frame block changed fragment b0 material semantics: "+error);
+    const auto reflectedFrame=description["Reflection"];
+    Json::ArrayIndex frameIndex=0;
+    for(Json::ArrayIndex i=0;i<reflectedFrame["ubos"].size();++i)if(reflectedFrame["ubos"][i]["binding"].asUInt()==1)frameIndex=i;
+    const auto frameType=reflectedFrame["ubos"][frameIndex]["type"].asString();
+    auto invalidFrame=reflectedFrame;invalidFrame["types"][frameType]["members"][1]["offset"]=32;
+    Check(!ShaderDefinition::ProgramLayout(invalidFrame,schema,false,layout,error),"Invalid Frame offset accepted");
+    invalidFrame=reflectedFrame;invalidFrame["types"][frameType]["members"][0]["type"]="vec3";
+    Check(!ShaderDefinition::ProgramLayout(invalidFrame,schema,false,layout,error),"Invalid Frame member type accepted");
+    invalidFrame=reflectedFrame;invalidFrame["ubos"][frameIndex]["block_size"]=48;
+    Check(!ShaderDefinition::ProgramLayout(invalidFrame,schema,false,layout,error),"Truncated Frame block accepted");
+    invalidFrame=reflectedFrame;invalidFrame["ubos"][frameIndex]["name"]="UserFrame";
+    Check(!ShaderDefinition::ProgramLayout(invalidFrame,schema,false,layout,error),"Arbitrary block name was treated as engine Frame");
+    invalidFrame=reflectedFrame;auto duplicate=invalidFrame["ubos"][frameIndex];duplicate["binding"]=2;invalidFrame["ubos"].append(duplicate);
+    Check(!ShaderDefinition::ProgramLayout(invalidFrame,schema,false,layout,error),"Duplicate Frame block accepted");
     request.Stage=eShaderStage::Vertex;request.EntryPoint="VSMain";
     request.Source="cbuffer GameSproutDraw:register(b0,space1){column_major float4x4 Model;column_major float4x4 ViewProjection;column_major float4x4 NormalMatrix;}"
         "struct O{float4 Position:SV_Position;float3 Normal:TEXCOORD0;};"
@@ -35,5 +56,11 @@ inline void CheckShaderDefinitions(IShaderCompiler& compiler,ShaderCompileReques
     Check(ShaderDefinition::ProgramLayout(description["Reflection"],schema,true,layout,error)&&layout["Uniforms"][0]["Source"]=="Draw",error);
     auto incorrect=description["Reflection"];const auto type=incorrect["ubos"][0]["type"].asString();incorrect["types"][type]["members"][1]["offset"]=32;
     Check(!ShaderDefinition::ProgramLayout(incorrect,schema,true,layout,error),"Invalid Draw matrix offset accepted");
-    std::cout<<"PASS Shader author declaration, reflected material padding, typed bindings and engine Draw ABI\n";
+    request.Source+="cbuffer GameSproutFrame:register(b1,space1){float4 Time;float4 CameraPosition;float4 MainLightDirection;float4 MainLightColor;}"
+        "float4 VSFrame(float3 p:TEXCOORD0):SV_Position{return mul(ViewProjection,mul(Model,float4(p,1)))+Time+CameraPosition+MainLightDirection+MainLightColor;}";
+    request.EntryPoint="VSFrame";
+    Check(compiler.Compile(request,result)&&AssetArtifactIO::Parse(result.ReflectionJson,description),"Vertex Frame compile failed: "+result.Error);
+    Check(ShaderDefinition::ProgramLayout(description["Reflection"],schema,true,layout,error)
+        &&layout["Uniforms"][0]["Source"]=="Draw"&&layout["Uniforms"][1]["Source"]=="Frame",error);
+    std::cout<<"PASS Shader author declaration, reflected material padding, typed bindings and engine Draw/Frame ABI\n";
 }

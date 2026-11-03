@@ -16,7 +16,7 @@ enum class ShaderProgramStage : std::uint8_t { Vertex, Fragment };
 enum class ShaderProgramFormat : std::uint8_t { SPIRV, MSL, DXIL, Metallib };
 enum class ShaderProgramPlatform : std::uint8_t { Vulkan, Direct3D12, Apple, MacOS, IOS, IOSSimulator };
 enum class ShaderValueType : std::uint8_t { Float, Int, UInt, Float2, Float3, Float4 };
-enum class ShaderUniformSource : std::uint8_t { Draw, Material };
+enum class ShaderUniformSource : std::uint8_t { Draw, Material, Frame };
 enum class ShaderCullMode : std::uint8_t { Off, Front, Back };
 enum class ShaderBlendMode : std::uint8_t { Opaque, Alpha, PremultipliedAlpha };
 enum class ShaderDepthCompare : std::uint8_t { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always };
@@ -31,6 +31,9 @@ struct ShaderUniformBlock {
     // Draw is vertex b0/space1: column-major Model, ViewProjection, NormalMatrix
     // (offsets 0/64/128, total 192 bytes). Material blocks use reflected members;
     // Size is padded to 16 bytes, retaining the compiler's member offsets.
+    // Frame is the named GameSproutFrame block in either stage: Time,
+    // CameraPosition, MainLightDirection, MainLightColor (four float4 values,
+    // offsets 0/16/32/48, 64 bytes). Engine blocks retain no material Members.
     ShaderUniformSource Source=ShaderUniformSource::Material;
     std::vector<ShaderUniformMember> Members;
 };

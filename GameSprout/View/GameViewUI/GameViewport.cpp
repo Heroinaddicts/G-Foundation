@@ -28,6 +28,7 @@ void GameViewport::Status(const std::string& text) {
 }
 void GameViewport::DestroyGPU() {
     auto* renderer=_Renderer;_Renderer=nullptr;
+    _AnimatedMaterials=false;
     _Attempted=false;
     RequestRender();
     delete renderer;
@@ -119,10 +120,10 @@ bool GameViewport::EnsureRendering() {
     if(!_Renderer){DestroyGPU();_Attempted=true;Status(error);return false;}
     return true;
 }
-void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous) {
+void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
     if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
-    if(!_NeedsRender&&!continuous)return;
+    if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if (!_Initialized||!isVisible()||width()<=0||height()<=0||_Rendering) return;
     if(!Headless()&&(!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()))return;
     _NeedsRender=false;
@@ -144,7 +145,8 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous) 
     if (!EnsureRendering()) return;
     _Rendering=true;
     struct Scope{bool& Flag;~Scope(){Flag=false;}} scope{_Rendering};
-    if (!_Renderer->Render(view)) {Status(_Renderer->GetLastError());return;}
+    if (!_Renderer->Render(view)) {_AnimatedMaterials=false;Status(_Renderer->GetLastError());return;}
+    _AnimatedMaterials=_Renderer->GetStatistics().RequiresContinuousRendering;
     if(!diagnostic.empty()){Status(diagnostic);return;}
     const auto& statistics=_Renderer->GetStatistics();
     std::string status=std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+

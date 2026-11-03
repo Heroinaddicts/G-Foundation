@@ -65,7 +65,8 @@ void GameViewUI::Hide(){if(_Window)_Window->hide();}
 void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene,continuous);
+    const bool animateMaterials=!event.GameplayActive||!event.GameplayPaused||event.DeltaSeconds>0;
+    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene,continuous,animateMaterials);
 }
 void GameViewUI::OnActiveSceneChanged() {
     _ActiveScene=_Scenes?_Scenes->GetMainScene():nullptr;

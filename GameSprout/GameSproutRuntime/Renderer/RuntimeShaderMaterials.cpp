@@ -55,7 +55,7 @@ bool Renderer::PrepareShaderMaterial(Material& material,ShaderGPU& shader) {
         (value.Texture.Guid.empty()!=(value.Texture.LocalID==0)))return fail("Prepared material has invalid texture identities");
     const auto pack=[&](const ShaderProgramData& program,std::vector<BoundUniform>& output) {
         for(const auto& block:program.Uniforms) {
-            if(block.Source==ShaderUniformSource::Draw)continue;
+            if(block.Source!=ShaderUniformSource::Material)continue;
             BoundUniform uniform;uniform.Slot=block.Slot;
             if(!PackBlock(block,material.Data,uniform.Bytes,material.Error))return false;
             output.push_back(std::move(uniform));
@@ -120,14 +120,29 @@ bool Renderer::DrawShaderMaterial(GRHI::IRenderPass& target,Material& material,S
     target.SetPipeline(pipeline);target.SetVertexBuffer(0,mesh.ShaderVertexBuffer);
     target.SetIndexBuffer(mesh.Buffer,GRHI::IndexFormat::UInt32,static_cast<std::size_t>(mesh.Data.IndexOffset));
     DrawUniform draw;draw.Model=object.Model;draw.ViewProjection=viewProjection;draw.Normal=object.Normal;
+    auto frame=_ShaderFrame;
+    for(const auto& light:_SceneLights)if(light.CullingMask&(std::uint32_t{1}<<object.Layer)) {
+        frame.MainLightDirection={light.TowardsLight.X,light.TowardsLight.Y,light.TowardsLight.Z,1};
+        frame.MainLightColor={light.Radiance.R,light.Radiance.G,light.Radiance.B,1};
+        break;
+    }
+    bool animated=false;
     for(const auto& block:shader.Data.Passes[0].Vertex.Uniforms)if(block.Source==ShaderUniformSource::Draw)
         target.SetVertexUniform(block.Slot,&draw,block.Size);
+    for(const auto& block:shader.Data.Passes[0].Vertex.Uniforms)if(block.Source==ShaderUniformSource::Frame) {
+        target.SetVertexUniform(block.Slot,&frame,sizeof(frame));animated=true;
+    }
+    for(const auto& block:shader.Data.Passes[0].Fragment.Uniforms)if(block.Source==ShaderUniformSource::Frame) {
+        target.SetFragmentUniform(block.Slot,&frame,sizeof(frame));animated=true;
+    }
     for(const auto& uniform:material.VertexUniforms)target.SetVertexUniform(uniform.Slot,uniform.Bytes.data(),uniform.Bytes.size());
     for(const auto& uniform:material.FragmentUniforms)target.SetFragmentUniform(uniform.Slot,uniform.Bytes.data(),uniform.Bytes.size());
     for(std::size_t slot=0;slot<material.ShaderTextures.size();++slot) {
         auto* texture=material.ShaderTextures[slot];
         target.SetFragmentTextureSampler(static_cast<std::uint32_t>(slot),texture?texture->Texture:_White,texture?texture->Sampler:_DefaultSampler);
     }
-    target.DrawIndexed(section.IndexCount,1,section.FirstIndex);return true;
+    target.DrawIndexed(section.IndexCount,1,section.FirstIndex);
+    _Statistics.RequiresContinuousRendering=_Statistics.RequiresContinuousRendering||animated;
+    return true;
 }
 }

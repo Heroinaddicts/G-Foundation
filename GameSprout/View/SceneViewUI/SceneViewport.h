@@ -18,7 +18,7 @@ public:
     ~SceneViewport() override;
     // 也可借用宿主资源提供者；其生命周期须覆盖本 viewport 的渲染生命周期。
     void Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
-    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false);
+    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false,bool animateMaterials=true);
     void RequestRender(){_NeedsRender=true;}
     bool NeedsRender() const{return _NeedsRender;}
     void OnSceneVisualChanged(std::uint64_t sceneID) override;
@@ -83,6 +83,7 @@ private:
     bool _Rendering=false;
     bool _ViewportChanged=true;
     bool _NeedsRender=true,_RuntimeSubscribed=false;
+    bool _AnimatedMaterials=false;
     std::uint64_t _SceneID=0;
     std::string _EditingError;
     std::string _ColliderDebugError;

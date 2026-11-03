@@ -87,13 +87,26 @@ inline bool ProgramLayout(const Json::Value& reflection,const Json::Value& schem
         if(!property||(*property)["Type"]!="Texture"||texture["type"]!="texture2D"||!texture["array"].empty()){error="Shader texture must be a scalar Texture2D material property: "+name;return false;}
         Json::Value item;item["Name"]=name;item["Slot"]=texture["binding"];output["Textures"].append(item);
     }
+    bool hasFrame=false;
     for(const auto& block:reflection["ubos"]) {
         const auto type=reflection["types"][block["type"].asString()];const auto& members=type["members"];
         if(!block["block_size"].isUInt()||!block["binding"].isUInt()||!members.isArray()){error="Invalid Shader uniform reflection";return false;}
         const auto rawSize=block["block_size"].asUInt(),slot=block["binding"].asUInt();
         if(rawSize==0||rawSize>16384||slot>=4){error="Shader uniform exceeds supported limits";return false;}
         Json::Value item;item["Slot"]=slot;item["Size"]=(rawSize+15u)&~15u;item["Members"]=Json::Value(Json::arrayValue);
-        if(vertex&&slot==0) {
+        // DXC prefixes cbuffer names with "type." in SPIR-V reflection.
+        // Identify the engine block by its exact name, never by register b0:
+        // existing fragment b0 material blocks keep their authoring meaning.
+        const auto blockName=block["name"].asString();
+        if(blockName=="GameSproutFrame"||blockName=="type.GameSproutFrame") {
+            if(hasFrame||rawSize!=64||members.size()!=4){error="GameSproutFrame must contain exactly four float4 values (64 bytes) once per stage";return false;}
+            const char* names[]={"Time","CameraPosition","MainLightDirection","MainLightColor"};
+            for(unsigned i=0;i<4;++i)if(members[i]["name"]!=names[i]||members[i]["type"]!="vec4"||
+                !members[i]["offset"].isUInt()||members[i]["offset"].asUInt()!=i*16u||!members[i]["array"].empty()) {
+                error="GameSproutFrame must declare float4 Time, CameraPosition, MainLightDirection, MainLightColor in this order";return false;
+            }
+            hasFrame=true;item["Source"]="Frame";
+        }else if(vertex&&slot==0) {
             if(rawSize!=192||members.size()!=3){error="Vertex b0 must be GameSproutDraw with three column_major matrices (192 bytes)";return false;}
             const char* names[]={"Model","ViewProjection","NormalMatrix"};
             for(unsigned i=0;i<3;++i)if(members[i]["name"]!=names[i]||members[i]["type"]!="mat4"||(!members[i]["offset"].isUInt()||members[i]["offset"].asUInt()!=i*64u)||members[i]["matrix_stride"]!=16||!members[i].get("row_major",false).asBool()) {

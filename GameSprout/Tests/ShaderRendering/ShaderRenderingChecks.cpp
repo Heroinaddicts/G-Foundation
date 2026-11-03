@@ -128,7 +128,7 @@ int main(int argc,char** argv) {
         };
         GameSproutEditor::GameSproutEditorFinal::Finished(assets,api);pump(idle);
         const auto shader=FindResource(*library,*assets,"Surface.shader",eAssetType::Shader);
-        Json::Value document;document["Version"]=GameSproutRuntime::SceneDocumentVersion;document["Name"]="Actual user shader";
+        Json::Value document;document["Version"]=1;document["Name"]="Actual user shader";
         document["Shader"]["Guid"]=shader.Guid;document["Shader"]["LocalID"]=Json::UInt64(shader.LocalID);
         write("Surface.mat",QByteArray::fromStdString(AssetArtifactIO::JsonText(document)));
         pump([&]{return assets->GetAssetMetas().size()>=4&&idle();});
@@ -189,9 +189,79 @@ int main(int argc,char** argv) {
         const auto generatedMaterial=FindResource(*library,*assets,created,eAssetType::Material);
         Check(object->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->SetMaterials({generatedMaterial}),"Cannot assign generated Material");
         pixel=draw();Check(pixel[0]>240&&pixel[1]>240&&pixel[2]>240,"Editor-generated Unlit template did not render its defaults");
+        Check(!viewport->GetStatistics().RequiresContinuousRendering,"Static Shader incorrectly requested continuous rendering");
+        // Compile the real project water example through the same asset pipeline,
+        // then verify both VS and FS frame constants with actual GPU readback.
+        QFile waterSource(TEST_WATER_SHADER_SOURCE);
+        Check(waterSource.open(QIODevice::ReadOnly),"Cannot open example water Shader");
+        write("Water.shader",waterSource.readAll());
+        pump([&]{return assets->GetAssetMetas().size()>=8&&idle();});
+        const auto waterShader=FindResource(*library,*assets,"Water.shader",eAssetType::Shader);
+        Check(authoring->CreateMaterial("","WaterSurface",waterShader,created,error),error);
+        pump([&]{return assets->GetAssetMetas().size()>=9&&idle();});
+        const auto waterMaterial=FindResource(*library,*assets,"WaterSurface.mat",eAssetType::Material);
+        object->GetComponent<GameSproutRuntime::IMeshComponent>()->SetMesh(
+            GameSproutRuntime::GetBuiltinMeshReference(GameSproutRuntime::PrimitiveType::Plane));
+        Check(object->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->SetMaterials({waterMaterial}),"Cannot assign water material");
+        view.Camera.Position={0,4,5};
+        Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Invalid water camera");
+        Check(runtime->BeginExecution(error),error);
+        runtime->AdvanceFrame(.1f,0,0);
+        draw();Check(viewport->GetStatistics().RequiresContinuousRendering,"Water frame constants did not request animated rendering");
+        std::vector<std::uint8_t> firstWater,sameFrameWater,nextWater;
+        Check(viewport->ReadPixels(firstWater,error),error);
+        auto* secondView=runtime->CreateOffscreenRenderer(128,128,resources,error);Check(secondView,error);
+        const bool secondRendered=secondView->Render(view);
+        const bool secondRead=secondRendered&&secondView->ReadPixels(sameFrameWater,error);
+        delete secondView;
+        Check(secondRendered&&secondRead,"Second water viewport failed");
+        Check(firstWater==sameFrameWater,"Two views advanced or disagreed on the shared Shader frame time");
+        runtime->AdvanceFrame(.8f,0,0);draw();Check(viewport->ReadPixels(nextWater,error),error);
+        Check(firstWater.size()==nextWater.size(),"Water readback size changed");
+        std::size_t changedPixels=0;
+        for(std::size_t index=0;index+3<firstWater.size();index+=4)
+            if(firstWater[index]!=nextWater[index]||firstWater[index+1]!=nextWater[index+1]||firstWater[index+2]!=nextWater[index+2])++changedPixels;
+        Check(changedPixels>64,"Water Shader did not animate on the GPU when Runtime time advanced");
+        Check(runtime->EndExecution(error),error);
+        // Isolate foam from lighting/reflectance, so distant filtering cannot
+        // turn subpixel crests into the broad bright patches seen in the city.
+        std::string waterText;
+        Check(assets->LoadMaterialSource(Guid(waterMaterial.Guid),waterText,error),error);
+        Json::Value foamDocument;Check(AssetArtifactIO::Parse(waterText,foamDocument),"Cannot parse water material fixture");
+        for(const char* name:{"DeepColor","ShallowColor","SkyColor"}) {
+            foamDocument[name]=Json::Value(Json::arrayValue);
+            for(float value:{0,0,0,1})foamDocument[name].append(value);
+        }
+        foamDocument["FoamColor"]=Json::Value(Json::arrayValue);
+        for(float value:{1,1,1,1})foamDocument["FoamColor"].append(value);
+        for(const char* name:{"WaveHeight","NormalStrength","FlowSpeed","FresnelStrength","SunStrength"})foamDocument[name]=0;
+        foamDocument["Opacity"]=1;foamDocument["FoamAmount"]=1;
+        const auto saveFoam=[&] {
+            std::string previous;Check(assets->LoadMaterialSource(Guid(waterMaterial.Guid),previous,error),error);
+            Check(assets->SaveMaterialSource(Guid(waterMaterial.Guid),AssetArtifactIO::JsonText(foamDocument),previous,error),error);
+            pump(idle);
+        };
+        saveFoam();
+        object->GetTransform()->SetLocalScale({4096,1,4096});
+        view.Camera.Position={0,100,0};
+        Check(GameSproutRuntime::TryMakeLookAt(view.Camera.Position,{0,0,0},{0,0,1},view.Camera.View),"Invalid foam filtering camera");
+        view.Camera.Projection.Projection=GameSproutRuntime::CameraProjection::Orthographic;
+        const auto foamEnergy=[&](float span) {
+            view.Camera.Projection.OrthographicHeight=span;draw();
+            std::vector<std::uint8_t> pixels;Check(viewport->ReadPixels(pixels,error),error);
+            std::uint64_t sum=0;
+            for(std::size_t index=0;index+3<pixels.size();index+=4)sum+=pixels[index]+pixels[index+1]+pixels[index+2];
+            return double(sum)/(pixels.size()/4*3);
+        };
+        const double nearFoam=foamEnergy(64),farFoam=foamEnergy(2048);
+        Check(nearFoam>0,"Foam isolation fixture did not render visible crests");
+        Check(farFoam<nearFoam,"Subpixel foam expanded into a brighter distant surface");
+        foamDocument["FoamAmount"]=0;saveFoam();
+        Check(foamEnergy(64)==0,"FoamAmount=0 left bright blocks in an otherwise black water material");
+        std::cout<<"Water isolated foam mean RGB: near="<<nearFoam<<", far="<<farFoam<<'\n';
         Check(!resources->LoadShader(texture,compiled,error)&&compiled.Passes.empty()&&!error.empty(),"Wrong resource type accepted as Shader");
         Check(ide.Count==0&&ide.Loads==ide.Unloads,"Shader import left unbalanced Loading/Unloading");
-        std::cout<<"PASS actual .shader VS/FS compile -> Artifact -> Material -> Runtime/GRHI GPU; arbitrary color/scalar, texture/ST, include rebuild, fresh renderer and Editor-generated template\n";
+        std::cout<<"PASS actual .shader VS/FS compile -> Artifact -> Material -> Runtime/GRHI GPU; material parameters, include rebuild, water animation, shared frame constants and distant foam filtering\n";
         cleanup();return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';cleanup();return 1;}
 }

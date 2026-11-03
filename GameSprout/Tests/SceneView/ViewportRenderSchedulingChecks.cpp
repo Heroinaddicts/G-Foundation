@@ -68,8 +68,10 @@ int main(int argc,char** argv) {
         Check(animator->SetNodeBindings({{"/bone",bone->GetInstanceID()}}),"Cannot bind fixture animation");
         ViewportRuntimeSpy spy;spy.Real=runtime;std::map<std::uintptr_t,std::uint64_t> counts;
         std::vector<std::uintptr_t> handles;
+        std::vector<CountingViewport*> renderers;
         spy.ViewportFactory=[&](const auto& window,auto*,std::string&)->GameSproutRuntime::IRuntimeViewport* {
-            handles.push_back(window.Handle);return new CountingViewport(counts[window.Handle]);
+            handles.push_back(window.Handle);auto* renderer=new CountingViewport(counts[window.Handle]);
+            renderers.push_back(renderer);return renderer;
         };
         {
             SceneViewport scene;GameViewport game;
@@ -77,7 +79,7 @@ int main(int argc,char** argv) {
             scene.resize(640,360);game.resize(640,360);
             scene.Initialize(&spy,&resources);game.Initialize(&spy,&resources);
             scene.show();game.show();QCoreApplication::processEvents();
-            const auto tick=[&](bool continuous=false){QCoreApplication::processEvents();runtime->Update(0);scene.RenderScene(world,true,1.f/60,continuous);game.RenderGame(world,continuous);};
+            const auto tick=[&](bool continuous=false,bool animateMaterials=true){QCoreApplication::processEvents();runtime->Update(0);scene.RenderScene(world,true,1.f/60,continuous,animateMaterials);game.RenderGame(world,continuous,animateMaterials);};
             for(unsigned index=0;index<24;++index)tick();
             Check(scene.IsRenderingAvailable()&&game.IsRenderingAvailable()&&handles.size()>=2,"Native counting viewports did not initialize");
             auto* sceneRenderer=dynamic_cast<CountingViewport*>(scene.Renderer());Check(sceneRenderer,"Scene did not use Runtime viewport factory");
@@ -85,6 +87,18 @@ int main(int argc,char** argv) {
             const auto idleScene=counts[sceneHandle],idleGame=counts[gameHandle];
             for(unsigned index=0;index<120;++index)tick();
             Check(counts[sceneHandle]==idleScene&&counts[gameHandle]==idleGame,"Static edit frames continued submitting draws");
+            for(auto* renderer:renderers)renderer->Statistics.RequiresContinuousRendering=true;
+            scene.RequestRender();game.RequestRender();tick();
+            auto animatedScene=counts[sceneHandle],animatedGame=counts[gameHandle];
+            for(unsigned index=0;index<4;++index)tick();
+            Check(counts[sceneHandle]==animatedScene+4&&counts[gameHandle]==animatedGame+4,"Visible time-dependent materials did not redraw in Edit");
+            animatedScene=counts[sceneHandle];animatedGame=counts[gameHandle];
+            for(unsigned index=0;index<4;++index)tick(false,false);
+            Check(counts[sceneHandle]==animatedScene&&counts[gameHandle]==animatedGame,"Paused gameplay kept drawing frozen material time");
+            for(auto* renderer:renderers)renderer->Statistics.RequiresContinuousRendering=false;
+            tick();animatedScene=counts[sceneHandle];animatedGame=counts[gameHandle];
+            for(unsigned index=0;index<4;++index)tick();
+            Check(counts[sceneHandle]==animatedScene&&counts[gameHandle]==animatedGame,"Removing the last animated material did not return viewports to idle");
             cameraObject->GetTransform()->SetLocalPosition({1,2,3});tick();
             Check(counts[sceneHandle]>idleScene&&counts[gameHandle]>idleGame,"Runtime visual change did not redraw both viewports");
             auto previousScene=counts[sceneHandle],previousGame=counts[gameHandle];

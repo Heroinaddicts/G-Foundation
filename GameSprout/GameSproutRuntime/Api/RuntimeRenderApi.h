@@ -95,6 +95,9 @@ struct RenderStatistics {
     std::uint32_t ShadowDrawCalls = 0;
     std::uint32_t ShadowMapUpdates = 0;
     std::uint32_t ShadowCascadeCount = 0;
+    // A successfully drawn visible user Shader consumes GameSproutFrame.
+    // Hosts cache this result to animate editor water without polling modules.
+    bool RequiresContinuousRendering = false;
 };
 
 class IRuntimeRenderer {

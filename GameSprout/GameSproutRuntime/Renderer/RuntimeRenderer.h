@@ -119,6 +119,8 @@ private:
         std::uint8_t Layer=0;
     };
     struct DrawUniform {Mat4 Model,ViewProjection,Normal;Color BaseColor;Vector4 TextureST{1,1,0,0};};
+    struct FrameUniform {Vector4 Time,CameraPosition,MainLightDirection,MainLightColor;};
+    static_assert(sizeof(FrameUniform)==64);
     static constexpr std::size_t MaxDirectionalLights=4;
     struct DirectionalLight {Vector3 TowardsLight;Color Radiance;std::uint32_t CullingMask=0;LightShadowSettings Shadows;};
     struct LitUniform {
@@ -235,6 +237,7 @@ private:
     std::map<PipelineKey,GRHI::IGraphicsPipeline*>& _Pipelines;
     std::vector<DrawObject> _SceneObjects;
     std::vector<DirectionalLight> _SceneLights;
+    FrameUniform _ShaderFrame;
     std::vector<PreparedDraw> _PreparedDraws;
     Mat4 _PreparedViewProjection;
     RenderCamera _PreparedCamera;

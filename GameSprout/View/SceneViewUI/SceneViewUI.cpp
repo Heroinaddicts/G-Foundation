@@ -88,7 +88,8 @@ void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     // Editor camera navigation continues while simulation is paused.
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous);
+    const bool animateMaterials=!event.GameplayActive||!event.GameplayPaused||event.DeltaSeconds>0;
+    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous,animateMaterials);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if(_ResourcesSubscribed&&_RuntimeAssets)_RuntimeAssets->UnregisterResourceListener(this);

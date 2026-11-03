@@ -29,6 +29,7 @@ bool ProgramValid(const ShaderProgramData& data,ShaderProgramStage stage,std::st
         if(binding.Slot!=index||binding.Name.empty()||!names.insert(binding.Name).second)
             return fail("Shader texture slots must be dense and property names unique");
     }
+    bool hasFrame=false;
     for(std::size_t index=0;index<data.Uniforms.size();++index) {
         const auto& block=data.Uniforms[index];
         if(block.Slot!=index||!block.Size||block.Size%16||block.Size>16384||block.Members.size()>512)
@@ -36,6 +37,12 @@ bool ProgramValid(const ShaderProgramData& data,ShaderProgramStage stage,std::st
         if(block.Source==ShaderUniformSource::Draw) {
             if(stage!=ShaderProgramStage::Vertex||index!=0||block.Size!=192||!block.Members.empty())
                 return fail("GameSproutDraw must be vertex b0 with three matrices (192 bytes)");
+            continue;
+        }
+        if(block.Source==ShaderUniformSource::Frame) {
+            if(hasFrame||block.Size!=64||!block.Members.empty())
+                return fail("GameSproutFrame must contain four float4 values (64 bytes)");
+            hasFrame=true;
             continue;
         }
         if(block.Source!=ShaderUniformSource::Material)return fail("Unknown Shader uniform source");

@@ -33,6 +33,22 @@ column_major float4x4 NormalMatrix;
 总大小192字节，偏移0/64/128。使用列向量 P*V*M*position；CPU矩阵为列主序。
 注意 DXC 的 SPIR-V 反射将 HLSL column_major 表示为 row_major 装饰，导入器校验实际编译布局。
 
+Vertex 和 Fragment 可选用名为 GameSproutFrame 的引擎常量块，每个阶段最多一个：
+float4 Time;
+float4 CameraPosition;
+float4 MainLightDirection;
+float4 MainLightColor;
+总大小64字节，偏移0/16/32/48，不能改变字段顺序、类型或添加数组。
+按常量块名称识别，不按b0推断；DXC反射中的type.GameSproutFrame是该名称的工具链表示。
+Frame 可使用任意合法的连续槽位。例如 VS Draw=b0、Frame=b1、Material=b2；FS Material=b0、Frame=b1。
+所有实际保留的常量块仍必须从b0连续编号；优化后删除的未使用块不会占据槽位。
+Time为(累计秒数, 本帧秒数, sin(累计秒数), cos(累计秒数))。
+CameraPosition.xyz为当前视口世界坐标，不是场景MainCamera的固定坐标。
+MainLightDirection.xyz指向影响当前对象的主平行光，MainLightColor.rgb已包含光照强度；无可用光源时为零。
+Frame 由Runtime每帧上传，不属于材质属性，不写入.mat，不由Editor直接调用GRHI。
+使用Frame的可见材质会请求连续绘制，使编辑状态下的时间效果也能更新。
+当前Frame不提供场景深度或场景颜色纹理；不能据此实现屏幕空间折射、真实岸边深度泡沫。
+
 VS b1,space1 起、FS b0,space3 起是材质常量块，槽位须满足SDL连续编号规则。
 支持 float、int、uint、float4，成员与 GameSproutMaterial 属性名/类型匹配。
 Float/Range 对应 float；Int 对应 int；Toggle/Enum 对应 int 或 uint；Color/Vector 对应 float4。

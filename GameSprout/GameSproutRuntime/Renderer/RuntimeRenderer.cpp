@@ -97,6 +97,9 @@ bool Renderer::Render(const RenderView& view) {
         if(view.DrawScene && !Extract(view,_SceneObjects)) return false;
         auto& lights=_SceneLights;
         if(view.DrawScene&&!ExtractLights(view.Scene,lights))return false;
+        _ShaderFrame={};
+        _ShaderFrame.Time=_Runtime.GetShaderTime();
+        _ShaderFrame.CameraPosition={view.Camera.Position.X,view.Camera.Position.Y,view.Camera.Position.Z,1};
         RenderEnvironment::Uniform environment{};
         if(view.DrawScene&&!RenderEnvironment::Prepare(view.Scene->GetEnvironmentLighting(),environment))
             Diagnostic("Scene environment radiance is invalid or exceeds finite shader precision; diffuse environment disabled for this frame");

@@ -17,7 +17,7 @@ bool Program(const Json::Value& value,const Json::Value& schema,const QByteArray
     ShaderProgramData program;program.Stage=vertex?ShaderProgramStage::Vertex:ShaderProgramStage::Fragment;
     for(const auto& block:layout["Uniforms"]) {
         ShaderUniformBlock uniform;uniform.Slot=block["Slot"].asUInt();uniform.Size=block["Size"].asUInt();
-        uniform.Source=block["Source"]=="Draw"?ShaderUniformSource::Draw:ShaderUniformSource::Material;
+        if(!EnumValue(block["Source"],{"Draw","Material","Frame"},uniform.Source)){error="Invalid prepared uniform source";return false;}
         for(const auto& member:block["Members"]) {
             ShaderUniformMember field;field.Name=member["Name"].asString();field.Offset=member["Offset"].asUInt();
             if(!EnumValue(member["Type"],{"Float","Int","UInt","Float2","Float3","Float4"},field.Type)){error="Invalid prepared uniform type";return false;}

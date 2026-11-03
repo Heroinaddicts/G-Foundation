@@ -48,6 +48,7 @@ void SceneViewport::DestroyGpu() {
     // Renderer 缓存先释放；Surface 必须在 NSView/HWND/X11 Window 仍有效时解除绑定。
     // 先摘空成员，SDL 释放外来窗口时若同步触发原生 Qt 事件，重复清理仍然安全。
     auto* renderer=_Renderer;_Renderer=nullptr;
+    _AnimatedMaterials=false;
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
     RequestRender();
@@ -145,11 +146,11 @@ bool SceneViewport::EnsureRendering() {
     _NativeID=id;
     return true;
 }
-void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous) {
+void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
     if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
     if(_Drag!=DragMode::None)AdvanceInput(dt);
-    if(!_NeedsRender&&!continuous&&_Drag==DragMode::None)return;
+    if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials)&&_Drag==DragMode::None)return;
     if(_Rendering||!CanRender())return;
     _NeedsRender=false;
     if(!EnsureRendering())return;
@@ -168,13 +169,14 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     if(!_ViewportChanged)_Tools->Draw(scene,debug);
     view.DebugDraw=&debug;
     // Runtime Renderer 从 SurfaceFrame 实际像素尺寸算投影，包含 resize / Retina DPI。
-    if(!_Renderer->Render(view)){SetStatus(_Renderer->GetLastError(),true);return;}
+    if(!_Renderer->Render(view)){_AnimatedMaterials=false;SetStatus(_Renderer->GetLastError(),true);return;}
     const bool refreshOverlays=_ViewportChanged;
     _ViewportChanged=false;
     // Initial/changed pixel dimensions need one follow-up to build gizmos from
     // the first successfully presented camera. Later idle frames do no work.
     if(refreshOverlays)RequestRender();
     const auto& info=_Renderer->GetStatistics();
+    _AnimatedMaterials=info.RequiresContinuousRendering;
     if(info.Width&&info.Height) {
         std::string message=std::to_string(info.Width)+" × "+std::to_string(info.Height)+" px · "+std::to_string(info.DrawCalls)+" draws · "+std::to_string(info.Triangles)+" triangles · skipped "+std::to_string(info.SkippedObjects);
         if(info.InstancedDrawCalls)message+=" · instanced "+std::to_string(info.InstancedInstances)+" · saved "+std::to_string(info.SavedDrawCalls)+" draws";

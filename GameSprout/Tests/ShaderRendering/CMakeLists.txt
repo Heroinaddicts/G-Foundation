@@ -24,7 +24,9 @@ target_compile_features(ShaderRenderingChecks PRIVATE cxx_std_20)
 target_include_directories(ShaderRenderingChecks PRIVATE
     "${gamesprout_root}/Module/Interface" "${gamesprout_root}/View/Interface"
     "${gamesprout_root}/GameSproutEditor/Api")
-target_compile_definitions(ShaderRenderingChecks PRIVATE TEST_BINARY_ROOT="${SHADER_TEST_BINARY_ROOT}")
+target_compile_definitions(ShaderRenderingChecks PRIVATE
+    TEST_BINARY_ROOT="${SHADER_TEST_BINARY_ROOT}"
+    TEST_WATER_SHADER_SOURCE="${gamesprout_root}/Examples/Shaders/Water.shader")
 target_link_libraries(ShaderRenderingChecks PRIVATE ShaderRuntimeAssets Foundation::FoundationApi
     GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Core Qt6::Gui)
 set_target_properties(ShaderRenderingChecks PROPERTIES BUILD_RPATH "${SHADER_TEST_BINARY_ROOT}/Logic/Module")

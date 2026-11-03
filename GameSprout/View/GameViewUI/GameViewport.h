@@ -11,7 +11,7 @@ public:
     explicit GameViewport(QWidget* parent=nullptr);
     ~GameViewport() override;
     void Initialize(GameSproutRuntime::IGameSproutRuntime*,GameSproutRuntime::IRuntimeResourceProvider*);
-    void RenderGame(GameSproutRuntime::IScene*,bool continuous=false);
+    void RenderGame(GameSproutRuntime::IScene*,bool continuous=false,bool animateMaterials=true);
     void RequestRender(){_NeedsRender=true;}
     bool NeedsRender() const{return _NeedsRender;}
     void OnSceneVisualChanged(std::uint64_t sceneID) override;
@@ -53,6 +53,7 @@ private:
     bool _Attempted=false;
     bool _Rendering=false;
     bool _NeedsRender=true,_RuntimeSubscribed=false;
+    bool _AnimatedMaterials=false;
     std::uint64_t _SceneID=0;
     std::string _Status;
 };
