@@ -35,7 +35,7 @@ bool ImportNativeMesh(AssetImportJob& job) {
     if(source.size()<static_cast<qsizetype>(NativeMeshDefinition::HeaderBytes)||
        std::uint64_t(source.size())>NativeMeshDefinition::MaximumSourceBytes||
        std::memcmp(source.constData(),NativeMeshDefinition::Magic.data(),8)!=0)
-        return fail("invalid GSMESH01 header or source size");
+        return fail("invalid GSMESH02 header or source size");
     const auto version=Read32(source,8),flags=Read32(source,12),vertexCount=Read32(source,16),
         indexCount=Read32(source,20),sectionCount=Read32(source,24),nameBytes=Read32(source,28);
     if(version!=NativeMeshDefinition::Version||(flags&~NativeMeshDefinition::ValidFlags)||vertexCount<3||
@@ -110,7 +110,7 @@ bool ImportNativeMesh(AssetImportJob& job) {
     if(indices.empty())return fail("mesh contains no nondegenerate triangles");
     if(degenerate)job.Result.Diagnostics+="Native mesh removed "+std::to_string(degenerate)+" degenerate triangles\n";
 
-    Json::Value metadata;metadata["SourceFormat"]="GSMESH01";metadata["VertexCount"]=vertexCount;
+    Json::Value metadata;metadata["SourceFormat"]="GSMESH02";metadata["VertexCount"]=vertexCount;
     metadata["VertexAttributes"]=Json::Value(Json::arrayValue);
     std::uint32_t stride=24;
     const auto attribute=[&](const char* semantic,const char* format,std::uint32_t at) {

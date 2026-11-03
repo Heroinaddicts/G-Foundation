@@ -4,11 +4,11 @@
 #include <cstdint>
 
 // Current .mesh authoring format. All integers and IEEE754 float32 values are
-// little endian; geometry is already right handed, Y up, in metres. The source
+// little endian; geometry is already Unity left handed, Y up, +Z forward, in metres. The source
 // header is removed during import; Runtime receives only interleaved GPU bytes.
 namespace NativeMeshDefinition {
-inline constexpr std::array<char,8> Magic{'G','S','M','E','S','H','0','1'};
-inline constexpr std::uint32_t Version=1;
+inline constexpr std::array<char,8> Magic{'G','S','M','E','S','H','0','2'};
+inline constexpr std::uint32_t Version=2;
 inline constexpr std::size_t HeaderBytes=32;
 inline constexpr std::size_t MaximumNameBytes=1024;
 inline constexpr std::uint64_t MaximumSourceBytes=512ull*1024*1024;

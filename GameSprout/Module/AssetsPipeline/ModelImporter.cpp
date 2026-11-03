@@ -369,7 +369,7 @@ bool Scene(AssetImportJob & job, ufbx_scene * scene) {
         if (!job.Emit(eAssetType::Material,key,Name(material->name),data)) return false;
     }
     Json::Value model;
-    model["CoordinateSystem"] = "RightHandedYUp";
+    model["CoordinateSystem"] = "LeftHandedYUp";
     model["UnitMeters"] = 1.0;
     model["Nodes"] = Json::Value(Json::arrayValue);
     for (ufbx_node * node : scene->nodes) {
@@ -513,7 +513,17 @@ bool ImportModel(AssetImportJob & job) {
     options.generate_missing_normals = true;
     // Convert FBX scale-inheritance rules to ordinary runtime TRS helper nodes.
     options.inherit_mode_handling = UFBX_INHERIT_MODE_HANDLING_HELPER_NODES;
-    options.target_axes = ufbx_axes_right_handed_y_up;
+    // Convert the complete FBX/OBJ scene once: geometry, node poses, bind poses,
+    // blend shapes and evaluated animation all use Unity world coordinates.
+    // ufbx front is the opposite of forward; its LH/Y-up preset is +Z-forward.
+    options.target_axes = ufbx_axes_left_handed_y_up;
+    // The default NONE can leave a reflected root scale. Match Unity's explicit
+    // FBX handedness-remap axis and let ufbx update every dependent pose/buffer.
+    options.handedness_conversion_axis = UFBX_MIRROR_AXIS_X;
+    // OBJ has no axis/unit metadata; make the existing RH/Y-up/metre source
+    // assumption explicit so the target conversion is not silently skipped.
+    options.obj_axes = ufbx_axes_right_handed_y_up;
+    options.obj_unit_meters = 1.0;
     options.target_unit_meters = job.Settings.get("UseFileScale",true).asBool() ? 1.0 : 0.0;
     options.space_conversion = UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY;
     options.progress_cb.fn = [](void * user,const ufbx_progress *) {return static_cast<AssetImportJob *>(user)->Cancelled() ? UFBX_PROGRESS_CANCEL : UFBX_PROGRESS_CONTINUE;};

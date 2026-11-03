@@ -3,6 +3,7 @@
 #include <QUuid>
 #include <algorithm>
 #include <set>
+#include <cstring>
 
 namespace {
 class ImportedAsset final : public IAsset {
@@ -71,6 +72,7 @@ void LibraryManager::LaunchFinished(GameSproutModuleApi *) { StartGarbageCollect
 void LibraryManager::Update(GameSproutModuleApi *) {}
 
 void LibraryManager::ClearLoaded(const std::string & guid) {
+    _DecodedManifests.erase(guid);
     const auto found = _Loaded.find(guid);
     if (found == _Loaded.end()) return;
     for (IAsset * asset : found->second) delete asset;
@@ -83,6 +85,7 @@ void LibraryManager::Release(GameSproutModuleApi *) {
     while (_CleanupTasks > 0) { --_CleanupTasks; if (_IDE) _IDE->Unloading(); }
     while (!_Loaded.empty()) ClearLoaded(_Loaded.begin()->first);
     _ImportValidations.clear();
+    _DecodedManifests.clear();
     _ImportValidationReady = false;
     delete _LDBSession;
     _LDBSession = nullptr;
@@ -90,14 +93,40 @@ void LibraryManager::Release(GameSproutModuleApi *) {
     _LibraryRoot.clear();
 }
 
+bool LibraryManager::DecodeManifest(const std::string & key, const void * data,
+    std::size_t length, AssetImportManifest & manifest) const {
+    const auto cached = _DecodedManifests.find(key);
+    if (data && length && cached != _DecodedManifests.end() && cached->second.Bytes.size() == length
+        && !std::memcmp(cached->second.Bytes.data(), data, length)) {
+        manifest = cached->second.Value;
+        return true;
+    }
+    Json::Value value;
+    AssetImportManifest decoded;
+    if (!data || !length || !AssetArtifactIO::Parse(std::string(static_cast<const char *>(data), length), value)
+        || !AssetArtifactIO::FromJson(value, decoded) || decoded.GuidString != key) {
+        _DecodedManifests.erase(key);
+        return false;
+    }
+    DecodedManifest candidate;
+    const auto * bytes = static_cast<const std::uint8_t *>(data);
+    candidate.Bytes.assign(bytes, bytes + length);
+    candidate.Value = std::move(decoded);
+    const auto entry = _DecodedManifests.insert_or_assign(key, std::move(candidate)).first;
+    manifest = entry->second.Value;
+    return true;
+}
+
 bool LibraryManager::GetManifest(const Guid & guid, AssetImportManifest & manifest) const {
     if (!_LDBSession || !guid.IsValid()) return false;
+    const std::string key = guid.GetGuidString();
     ILDBTable * table = _LDBSession->GetTable("Manifests");
     std::vector<uint8_t> bytes;
-    Json::Value value;
-    return table && table->Get(guid.GetGuidString(), bytes)
-        && AssetArtifactIO::Parse(std::string(bytes.begin(), bytes.end()), value)
-        && AssetArtifactIO::FromJson(value, manifest) && manifest.GuidString == guid.GetGuidString();
+    if (!table || !table->Get(key, bytes)) {
+        _DecodedManifests.erase(key);
+        return false;
+    }
+    return DecodeManifest(key, bytes.data(), bytes.size(), manifest);
 }
 
 bool LibraryManager::BuildIndexOperations(const AssetImportManifest * oldManifest,
@@ -150,7 +179,7 @@ bool LibraryManager::CommitImport(const std::string & stage, AssetImportManifest
     for (const AssetArtifact & asset : manifest.Assets) {
         const QFileInfo file(QDir(stagePath).filePath(QString::fromStdString(asset.Path)));
         Json::Value descriptor;
-        if (asset.DataVersion != 2 || !AssetArtifactIO::Parse(asset.DescriptorJson, descriptor) || !descriptor.isObject()
+        if (asset.DataVersion != AssetArtifactIO::CurrentDataVersion(asset.Type) || !AssetArtifactIO::Parse(asset.DescriptorJson, descriptor) || !descriptor.isObject()
             || (descriptor["Encoding"] != "RawBytes" && descriptor["Encoding"] != "BinaryValueLE1")
             || asset.DataSize != static_cast<uint64_t>(file.size())
             || asset.LocalID == 0 || !ids.insert(asset.LocalID).second || !AssetArtifactIO::RelativePath(asset.Path)

@@ -28,7 +28,7 @@ bool LibraryRuntimeResources::Read(const GameSproutRuntime::ResourceReference& r
     if (!_Library || !guid.IsValid() || reference.LocalID == 0) { error = "Invalid resource reference or unavailable LibraryManager"; return false; }
     IAsset* asset = _Library->QueryAsset(guid, reference.LocalID);
     if (!asset || asset->GetAssetType() != type) { error = "Prepared resource is missing or has the wrong type: " + reference.Guid + "_" + std::to_string(reference.LocalID); return false; }
-    if (asset->GetDataVersion() != 2 || !Parse(asset->GetDataDescriptorJson(), descriptor)) { error = "Invalid ArtifactDB resource descriptor"; return false; }
+    if (asset->GetDataVersion() != AssetArtifactIO::CurrentDataVersion(type) || !Parse(asset->GetDataDescriptorJson(), descriptor)) { error = "Invalid ArtifactDB resource descriptor"; return false; }
     QFile file(QString::fromStdString(asset->GetArtifactPath()));
     // 单次预览分配上限，错误文件不能触发无限分配。
     if (!QFileInfo(file).isAbsolute() || !file.open(QIODevice::ReadOnly)

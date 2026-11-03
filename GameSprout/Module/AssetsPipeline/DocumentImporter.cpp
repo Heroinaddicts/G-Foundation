@@ -199,7 +199,9 @@ bool ImportDocument(AssetImportJob & job) {
         return job.Fail("Material source exceeds the 16 MiB authoring limit");
     Json::Value document;
     if (!AssetArtifactIO::Parse(job.SourceBytes.toStdString(),document) || !document.isObject()) return job.Fail("Native resource must be a JSON object in GameSprout format");
-    if (!document.isMember("Version") || document["Version"]!=1) return job.Fail("Native resource Version must be 1");
+    const unsigned sourceVersion=type==eAssetType::Scene?GameSproutRuntime::SceneDocumentVersion:1u;
+    if (!document["Version"].isUInt() || document["Version"].asUInt()!=sourceVersion)
+        return job.Fail("Native resource Version must be "+std::to_string(sourceVersion));
     // Recompose from current source snapshots before removing authoring records.
     if(type==eAssetType::Scene&&!ResolveScenePrefabInstances(job,document))return false;
     if (type==eAssetType::Material && !MaterialValues(job,document)) return false;

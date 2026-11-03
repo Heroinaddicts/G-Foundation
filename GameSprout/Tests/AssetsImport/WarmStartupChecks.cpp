@@ -155,6 +155,28 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv, in
     if (phase == 3 && expectedSources < 0) {
         const std::string guid = state["Paths"]["Main.png"].asString();
         const std::string generation = state["Manifests"][guid]["Generation"].asString();
+        // Repeated readers must not reparse unchanged rows, but the value cache
+        // must remain isolated from callers and observe synchronous DB changes.
+        AssetImportManifest firstRead, secondRead;
+        Check(library->GetManifest(Guid(guid), firstRead), "Cannot populate manifest read cache");
+        firstRead.SourcePath = "caller-only-change.png";
+        Check(library->GetManifest(Guid(guid), secondRead) && secondRead.SourcePath == "Main.png",
+            "Caller mutated Library's cached manifest");
+        auto * manifestTable = library->GetLDBSession()->GetTable("Manifests");
+        const auto writeManifest = [&](const std::string & content) {
+            Check(manifestTable->Set(guid, const_cast<char *>(content.data()), int(content.size())), "Cannot update manifest cache fixture");
+        };
+        Json::Value externallyChanged = state["Manifests"][guid];
+        externallyChanged["ImporterVersion"] = Json::UInt(externallyChanged["ImporterVersion"].asUInt() + 1);
+        writeManifest(AssetArtifactIO::JsonText(externallyChanged));
+        Check(library->GetManifest(Guid(guid), secondRead)
+            && secondRead.ImporterVersion == externallyChanged["ImporterVersion"].asUInt(),
+            "Decoded manifest cache hid a changed database row");
+        writeManifest("{invalid");
+        Check(!library->GetManifest(Guid(guid), secondRead), "Decoded manifest cache hid corrupt database data");
+        writeManifest(AssetArtifactIO::JsonText(state["Manifests"][guid]));
+        Check(library->GetManifest(Guid(guid), secondRead) && secondRead.Generation == generation,
+            "Manifest cache did not recover after restoring the current row");
         std::string validation;
         Check(library->GetImportValidation(Guid(guid), validation), "Successful import did not persist fast-validation data");
         const int batches = database.Activity.WriteBatches;

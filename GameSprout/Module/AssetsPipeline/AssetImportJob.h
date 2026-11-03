@@ -11,13 +11,13 @@ class IShaderCompiler;
 // 完整导入与启动快速校验必须使用相同的算法版本。
 constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     switch (type) {
-    case eAssetImporterType::Model: return 7;
-    case eAssetImporterType::AnimationClip: return 5;
+    case eAssetImporterType::Model: return 8; // Unity LH/Y-up/+Z-forward geometry and animation.
+    case eAssetImporterType::AnimationClip: return 6; // Current Unity world coordinate contract.
     case eAssetImporterType::AnimatorController: return 5;
     case eAssetImporterType::AvatarMask: return 4;
-    case eAssetImporterType::Scene: return 4; // Preserve Missing references and stable GUID dependency edges.
-    case eAssetImporterType::Prefab: return 3;
-    case eAssetImporterType::Mesh: return 3; // Current native GSMESH01 source -> prepared GPU vertex/index bytes.
+    case eAssetImporterType::Scene: return 5; // SceneDocument2, Unity world coordinates.
+    case eAssetImporterType::Prefab: return 4; // Embedded SceneDocument2, Unity world coordinates.
+    case eAssetImporterType::Mesh: return 4; // Current native GSMESH02 Unity source -> GPU bytes.
     case eAssetImporterType::Shader: return 4; // Complete graphics Pass programs and reflected material bindings.
     case eAssetImporterType::Material: return 4; // Current engine rendering options, independent of Shader reflection.
     case eAssetImporterType::PhysicsMaterial:

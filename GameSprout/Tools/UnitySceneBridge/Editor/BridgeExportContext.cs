@@ -164,8 +164,8 @@ namespace GameSprout.UnitySceneBridge
                 "SubAssets", new object[] { BridgeJson.Object("LocalID", reference.LocalID, "Type", assetType,
                     "SourceKey", sourceKey, "Name", name ?? Path.GetFileNameWithoutExtension(relativeAssetsPath)) }));
         }
-        public static object[] Vector(Vector3 v) { return new object[] { v.x, v.y, -v.z }; }
-        public static object[] Rotation(Quaternion q) { return new object[] { -q.x, -q.y, q.z, q.w }; }
+        public static object[] Vector(Vector3 v) { return new object[] { v.x, v.y, v.z }; }
+        public static object[] Rotation(Quaternion q) { return new object[] { q.x, q.y, q.z, q.w }; }
         public static object[] Scale(Vector3 v) { return new object[] { v.x, v.y, v.z }; }
         public static object[] Color(Color c) { return new object[] { c.r, c.g, c.b, c.a }; }
     }

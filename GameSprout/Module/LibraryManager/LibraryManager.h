@@ -39,6 +39,8 @@ private:
 private:
     void StartGarbageCollection();
     void LoadImportValidation();
+    bool DecodeManifest(const std::string & key, const void * data, std::size_t length,
+        AssetImportManifest & manifest) const;
     bool RecoverPublications();
     bool PublishFlatImport(const std::string & stage, AssetImportManifest & manifest, std::string & error);
     Foundation::ITaskApi * _Tasks = nullptr;
@@ -52,6 +54,13 @@ private:
     ILDBSession * _LDBSession = nullptr;
     bool _ImportValidationReady = false;
     std::map<std::string, std::string> _ImportValidations;
+    struct DecodedManifest {
+        std::vector<std::uint8_t> Bytes;
+        AssetImportManifest Value;
+    };
+    // Cache parsed values, never borrowed LMDB memory. GetManifest still reads
+    // the current row synchronously and compares bytes before using this value.
+    mutable std::map<std::string, DecodedManifest> _DecodedManifests;
     std::map<std::string, std::vector<IAsset *>> _Loaded;
     void ClearLoaded(const std::string & guid);
     bool BuildIndexOperations(const AssetImportManifest * oldManifest,

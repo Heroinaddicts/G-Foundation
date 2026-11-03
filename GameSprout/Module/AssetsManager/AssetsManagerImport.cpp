@@ -10,7 +10,10 @@ std::vector<IAssetMeta *> AssetsManager::GetAssetMetas() const {
 }
 std::string AssetsManager::RelativePath(const std::string & absolutePath) const {
     const QDir directory(QString::fromStdString(_AssetsRoot));
-    const QString root = directory.canonicalPath().isEmpty() ? QString::fromStdString(_CanonicalAssetsRoot) : directory.canonicalPath();
+    // The canonical root is established once at project launch and already
+    // governs watcher paths. Repeating realpath for every source/dependency
+    // adds thousands of filesystem walks to an otherwise warm scan.
+    const QString root = _CanonicalAssetsRoot.empty() ? directory.canonicalPath() : QString::fromStdString(_CanonicalAssetsRoot);
     if (root.isEmpty()) return "";
     QString path = QDir::cleanPath(QDir::fromNativeSeparators(QString::fromStdString(absolutePath)));
     const QString lexicalRoot = directory.absolutePath();
@@ -151,7 +154,7 @@ void AssetsManager::WatcherDir(const std::string & path) {
     }
 }
 
-void AssetsManager::ScanDirectory(const std::string & path) {
+void AssetsManager::ScanDirectory(const std::string & path, std::map<std::string, AssetSourceRecord> * observations) {
     if (!_SourceDatabaseReady) return;
     QElapsedTimer elapsed;
     elapsed.start();
@@ -162,6 +165,9 @@ void AssetsManager::ScanDirectory(const std::string & path) {
         const std::string filename = info._Name + ((!info._IsDirectory && !info._Externsion.empty()) ? "." + info._Externsion : "");
         return QFileInfo(QDir(QString::fromStdString(info._ParentDirectory)).filePath(QString::fromStdString(filename)));
     };
+    struct ScannedSource { QFileInfo File; std::string Relative; };
+    std::vector<ScannedSource> sources;
+    sources.reserve(infos.size());
     // Enumerate once. Register every identity before submitting native documents
     // that may refer to a source appearing later in this same enumeration.
     for (const auto & info : infos) {
@@ -172,6 +178,7 @@ void AssetsManager::ScanDirectory(const std::string & path) {
         event.Type = info._IsDirectory ? Foundation::eWatcherType::Directory : Foundation::eWatcherType::File;
         event.Action = Foundation::eFileSystemAction::Create;
         event.Path = file.absoluteFilePath().toStdString();
+        sources.push_back({file, RelativePath(event.Path)});
         RestoreMissingMeta(event.Path);
         if (info._IsDirectory) {
             if (!file.isReadable()) {
@@ -194,11 +201,12 @@ void AssetsManager::ScanDirectory(const std::string & path) {
     std::vector<ImportCandidate> imports;
     std::vector<AssetSourceRecord> records;
     size_t reused = 0;
-    for (const auto & info : infos) {
-        if (!info._IsDirectory && ToLower(info._Externsion) == "meta") continue;
-        const QFileInfo file = fileInfo(info);
-        if (!file.exists() || file.isSymLink()) continue;
-        const auto known = _AssetGuidsByPath.find(RelativePath(file.absoluteFilePath().toStdString()));
+    for (auto & source : sources) {
+        // Preserve fresh existence checks: another process can remove a file
+        // during this scan. Reuse only its already-built path/relative identity.
+        source.File.refresh();
+        if (!source.File.exists() || source.File.isSymLink()) continue;
+        const auto known = _AssetGuidsByPath.find(source.Relative);
         if (known == _AssetGuidsByPath.end()) continue;
         IAssetMeta * meta = QueryAsset(Guid(known->second));
         if (!meta) continue;
@@ -210,6 +218,7 @@ void AssetsManager::ScanDirectory(const std::string & path) {
         }
         const auto previous = _SourceRecords.find(known->second);
         AssetSourceRecord current = DescribeSource(meta);
+        if (observations) observations->insert_or_assign(current.GuidString, current);
         const bool fileInfoChanged = previous != _SourceRecords.end()
             && (previous->second.SourceSize != current.SourceSize
                 || previous->second.SourceModifyTime != current.SourceModifyTime
@@ -231,7 +240,10 @@ void AssetsManager::ScanDirectory(const std::string & path) {
             continue;
         }
         // 移动资源可能刚写回 Meta 的相对路径，批量保存前重新取得最终观察值。
-        if (previous != _SourceRecords.end() && previous->second.Path != current.Path) current = DescribeSource(meta);
+        if (previous != _SourceRecords.end() && previous->second.Path != current.Path) {
+            current = DescribeSource(meta);
+            if (observations) observations->insert_or_assign(current.GuidString, current);
+        }
         current.SourceHash.clear();
         records.push_back(std::move(current));
         imports.push_back({meta});

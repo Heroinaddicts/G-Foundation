@@ -112,8 +112,8 @@ namespace GameSprout.UnitySceneBridge
                             if (source.Length % step != 0) throw new InvalidDataException("Incomplete primitive indices: " + meshName);
                             for (int i = 0; i < source.Length; i += step)
                             {
-                                if (AddTriangle(indices, source[i], source[i + 2], source[i + 1], positions)) ++nondegenerateTriangles;
-                                if (step == 4 && AddTriangle(indices, source[i], source[i + 3], source[i + 2], positions)) ++nondegenerateTriangles;
+                                if (AddTriangle(indices, source[i], source[i + 1], source[i + 2], positions)) ++nondegenerateTriangles;
+                                if (step == 4 && AddTriangle(indices, source[i], source[i + 2], source[i + 3], positions)) ++nondegenerateTriangles;
                             }
                         }
                         sections.Add(new uint[] { first, (uint)indices.Count - first, (uint)sub });
@@ -126,15 +126,15 @@ namespace GameSprout.UnitySceneBridge
                     using (var stream = new MemoryStream(checked((int)sourceBytes)))
                     using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
                     {
-                        writer.Write(Encoding.ASCII.GetBytes("GSMESH01"));
-                        writer.Write(1u); writer.Write(flags); writer.Write((uint)count); writer.Write((uint)indices.Count);
+                        writer.Write(Encoding.ASCII.GetBytes("GSMESH02"));
+                        writer.Write(2u); writer.Write(flags); writer.Write((uint)count); writer.Write((uint)indices.Count);
                         writer.Write((uint)sections.Count); writer.Write((uint)name.Length); writer.Write(name);
                         while ((stream.Position & 3) != 0) writer.Write((byte)0);
                         for (int i = 0; i < count; ++i) Write(writer, positions[i]);
                         if (hasNormals) for (int i = 0; i < count; ++i) Write(writer, normals[i]);
                         if (hasTangents) for (int i = 0; i < count; ++i)
                         {
-                            var t = tangents[i]; writer.Write(t.x); writer.Write(t.y); writer.Write(-t.z); writer.Write(-t.w);
+                            var t = tangents[i]; writer.Write(t.x); writer.Write(t.y); writer.Write(t.z); writer.Write(t.w);
                         }
                         if (hasUV) for (int i = 0; i < count; ++i) { writer.Write(uv[i].x); writer.Write(uv[i].y); }
                         foreach (uint value in indices) writer.Write(value);
@@ -189,6 +189,6 @@ namespace GameSprout.UnitySceneBridge
             if (Single.IsNaN(value) || Single.IsInfinity(value))
                 throw new InvalidDataException("Native mesh has a nonfinite " + attribute + " at vertex " + vertex + ": " + name);
         }
-        static void Write(BinaryWriter writer, Vector3 value) { writer.Write(value.x); writer.Write(value.y); writer.Write(-value.z); }
+        static void Write(BinaryWriter writer, Vector3 value) { writer.Write(value.x); writer.Write(value.y); writer.Write(value.z); }
     }
 }

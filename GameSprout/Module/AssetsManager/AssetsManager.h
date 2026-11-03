@@ -62,7 +62,7 @@ private:
     void Release(GameSproutModuleApi * const api) override;
 
     static void WatcherDir(const std::string & path);
-    void ScanDirectory(const std::string & path);
+    void ScanDirectory(const std::string & path, std::map<std::string, AssetSourceRecord> * observations = nullptr);
     void StoreAssetMeta(IAssetMeta * const meta);
     bool RemoveAssetRecords(const std::string & path, const bool recursive);
     static void OnFileSystemWatcher(const Foundation::FileSystemWatcherEvent & event, const std::string & name, const std::string & extension, void * const context);
@@ -94,7 +94,7 @@ private:
     void RecordImportResult(IAssetMeta * meta, const AssetImportResult & result);
     void RecordSourceError(const std::string & path, const std::string & error);
     void RestoreMissingMeta(const std::string & path);
-    void ReconcileSources();
+    void ReconcileSources(const std::map<std::string, AssetSourceRecord> & observations);
     void FinishStartupLoading();
     std::set<std::string> _Watches;
     std::set<std::string> _ConflictingGuids;

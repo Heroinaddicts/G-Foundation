@@ -65,7 +65,7 @@ namespace GameSprout.UnitySceneBridge
             if (!Directory.Exists(Path.GetDirectoryName(path))) throw new DirectoryNotFoundException("Output parent directory must already exist");
             Dictionary<string, object> details;
             var environment = BridgeEnvironmentLighting.Capture(out details);
-            var document = BridgeJson.Object("Version", 1, "UnityVersion", Application.unityVersion,
+            var document = BridgeJson.Object("Version", 2, "CoordinateSystem", "LeftHandedYUp", "UnityVersion", Application.unityVersion,
                 "SourceScene", scene.path, "SourceSceneDirty", scene.isDirty,
                 "EnvironmentLighting", environment, "EnvironmentLightingConversion", details);
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(BridgeJson.Serialize(document));
@@ -197,7 +197,7 @@ namespace GameSprout.UnitySceneBridge
                     "Path", HierarchyPath(transform), "NodeID", nodeIDs[transform]));
             }
             string relativeScene = "Scenes/" + ExportContext.SafeName(scene.name) + ".scene";
-            var document = BridgeJson.Object("Version", 1, "Name", scene.name, "NextObjectID", nextID,
+            var document = BridgeJson.Object("Version", 2, "Name", scene.name, "NextObjectID", nextID,
                 "MainCameraID", mainCameraID, "EnvironmentLighting", environment, "Objects", objects);
             context.WriteJsonFile(relativeScene, document);
             var sceneReference = new BridgeReference(ExportContext.Hash("GameSprout.UnitySceneBridge.Scene:" + AssetDatabase.AssetPathToGUID(scene.path)), 1);
@@ -205,12 +205,12 @@ namespace GameSprout.UnitySceneBridge
             context.WriteProjectJson("Info/project.json", BridgeJson.Object("Project", BridgeJson.Object("name", scene.name)));
             context.WriteProjectJson("UserSettings/EditorState.json", BridgeJson.Object("LastScenePath", relativeScene));
             context.Report.Assets.Add(BridgeJson.Object("UnityPath", scene.path, "UnityGuid", AssetDatabase.AssetPathToGUID(scene.path), "Path", relativeScene, "Reference", sceneReference.ToJson()));
-            context.AddWarning("LightingEnvironmentNotImplemented", "Scene-wide ambient diffuse lighting is exported as the final Unity SH snapshot. Spatial light probes, baked GI/lightmaps, reflection probes, skybox rendering, shadows and tone mapping remain unsupported; source environment is recorded in this manifest.");
+            context.AddWarning("LightingEnvironmentPartial", "Scene-wide ambient diffuse SH and directional shadow settings are exported. Spatial light probes, baked GI/lightmaps, reflection probes, skybox rendering and tone mapping remain unsupported; source environment is recorded in this manifest.");
             var warningValues = new List<object>(); foreach (var warning in context.Report.Warnings.Values) warningValues.Add(warning);
             var layerMapping = new List<object>(); for (int i = 0; i < 32; ++i) layerMapping.Add(BridgeJson.Object("UnityLayer", i, "UnityName", LayerMask.LayerToName(i), "GameSproutLayer", layers[i]));
-            context.WriteProjectJson("Info/UnityExportManifest.json", BridgeJson.Object("Version", 1,
+            context.WriteProjectJson("Info/UnityExportManifest.json", BridgeJson.Object("Version", 2,
                 "UnityVersion", Application.unityVersion, "SourceScene", scene.path, "SourceSceneDirty", scene.isDirty,
-                "OutputProject", finalOutput, "CoordinateConversion", "Unity LH/YUp/+ZForward -> Runtime RH/YUp/-ZForward: mirror Z, q=(-x,-y,z,w), reverse triangle winding, tangent.w negated",
+                "OutputProject", finalOutput, "CoordinateConversion", "Unity LH/YUp/+ZForward -> Runtime LH/YUp/+ZForward: preserve positions, quaternions, triangle winding, tangents and SH",
                 "PrefabPolicy", "Expanded resolved hierarchy snapshot, including inactive nodes and final property/material overrides; prefab linkage and instance override metadata are not exported",
                 "SkinningPolicy", "SkinnedMeshRenderer.BakeMesh local current pose exported as static Mesh; no Animator state or animation playback",
                 "ColorSpace", QualitySettings.activeColorSpace.ToString(), "LayerMapping", layerMapping,
@@ -268,9 +268,9 @@ namespace GameSprout.UnitySceneBridge
                 if (light.type != LightType.Directional) { context.AddWarning("UnsupportedLightType", "Only directional lights are currently supported; light type " + light.type + " omitted.", light); return; }
                 if (light.useColorTemperature) context.AddWarning("LightTemperature", "Color temperature is not evaluated; exported light.color and intensity only.", light);
                 output.Add(Component("GameSproutRuntime.Light", "Settings", BridgeJson.Object("Type", "Directional", "Enabled", light.enabled,
-                    "Color", ExportContext.Color(light.color.linear), "Intensity", light.intensity, "CullingMask", ConvertMask((uint)light.cullingMask))));
+                    "Color", ExportContext.Color(light.color.linear), "Intensity", light.intensity, "CullingMask", ConvertMask((uint)light.cullingMask),
+                    "Shadows", GameSproutShadowExport.Capture(light, context))));
                 context.Count("DirectionalLights");
-                if (light.shadows != LightShadows.None) context.AddWarning("LightShadowsNotExported", "Directional light shadows require a Runtime shadow implementation.", light);
                 return;
             }
             var camera = source as Camera;
@@ -295,7 +295,7 @@ namespace GameSprout.UnitySceneBridge
             if (type == "UnityEngine.Rendering.Universal.UniversalAdditionalLightData")
             {
                 context.Count("URPAdditionalLightData");
-                context.AddWarning("URPAdditionalLightData", "Only the Light component's supported color/intensity/culling mask are exported; URP-specific light/shadow layers and pipeline data are not consumed.", source);
+                context.AddWarning("URPAdditionalLightData", "Supported Light color/intensity/culling mask and active pipeline directional shadow settings are exported; URP-specific rendering layers, cookies and exact soft-shadow quality are not consumed.", source);
                 return;
             }
             context.AddWarning("UnsupportedComponent:" + type, "Component is not supported by the current Runtime snapshot bridge and was omitted: " + type, source);
@@ -305,8 +305,8 @@ namespace GameSprout.UnitySceneBridge
             var materials = new List<object>();
             foreach (var material in renderer.sharedMaterials) materials.Add(material ? GameSproutMaterialExport.Export(material, context).ToJson() : null);
             context.Count("RendererComponents"); if (renderer.enabled && renderer.gameObject.activeInHierarchy) context.Count("ActiveEnabledRenderers");
-            if (renderer.shadowCastingMode != ShadowCastingMode.Off || renderer.receiveShadows)
-                context.AddWarning("RendererShadowSettings", "Cast/receive shadow flags have no matching Runtime rendering feature yet.", renderer);
+            if (renderer.shadowCastingMode != ShadowCastingMode.On || !renderer.receiveShadows)
+                context.AddWarning("RendererShadowSettings", "Current Runtime shadow pass uses the supported built-in opaque geometry; individual Renderer cast/receive modes are not yet exported.", renderer);
             if (renderer.lightmapIndex >= 0 && renderer.lightmapIndex < 65534)
                 context.AddWarning("RendererLightmap", "Renderer uses a baked lightmap; binding and scale/offset are not exported to unsupported Runtime fields.", renderer);
             return Component("GameSproutRuntime.MeshRenderer", "Visible", renderer.enabled, "Materials", materials);
@@ -398,8 +398,7 @@ namespace GameSprout.UnitySceneBridge
             // ambient colors and ignore the Skybox intensity slider.
             // Do not mutate RenderSettings or call DynamicGI.UpdateEnvironment.
             SphericalHarmonicsL2 probe = RenderSettings.ambientProbe;
-            var source = Coefficients(probe, false);
-            var reflected = Coefficients(probe, true);
+            var coefficients = Coefficients(probe);
             bool zero = true;
             for (int coefficient = 0; coefficient < 9; ++coefficient)
                 for (int channel = 0; channel < 3; ++channel)
@@ -410,7 +409,7 @@ namespace GameSprout.UnitySceneBridge
             var environment = BridgeJson.Object("Mode", "SphericalHarmonics", "Intensity", 1f,
                 "AmbientColor", ExportContext.Color(sky), "SkyColor", ExportContext.Color(sky),
                 "EquatorColor", ExportContext.Color(equator), "GroundColor", ExportContext.Color(ground),
-                "SHCoefficients", reflected);
+                "SHCoefficients", coefficients);
             float maximumError;
             var validation = ValidateDirections(probe, out maximumError);
             var synthetic = new SphericalHarmonicsL2();
@@ -423,24 +422,23 @@ namespace GameSprout.UnitySceneBridge
                 "SourceAmbientIntensity", Finite(RenderSettings.ambientIntensity), "ExportedIntensity", 1f,
                 "SourceColorSpace", QualitySettings.activeColorSpace.ToString(), "SHColorSpace", "Linear",
                 "Normalization", "Already diffuse-convolved E/pi polynomial coefficients; no extra basis normalization or pi factor",
-                "SHBasis", Basis, "CoordinateConversion", "Mirror world Z: negate coefficients 2 (z), 5 (yz), 7 (xz)",
+                "SHBasis", Basis, "CoordinateConversion", "Identity: Unity and Runtime use the same LH/Y-up/+Z-forward world coordinates",
                 "IntensityPolicy", "RenderSettings.ambientProbe is final; source Skybox intensity is already gamma-to-linear scaled. Do not multiply again. Flat/Trilight ignore Skybox intensity.",
                 "TrilightApproxNotUsed", true, "AllModesUseFinalProbeSnapshot", true,
                 "FinalProbeAllZero", zero, "ZeroProbePolicy", "Preserve exact black SH; do not fabricate sky-color fallback",
-                "SourceFinalSHCoefficients", source, "ExportedSHCoefficients", reflected,
+                "SourceFinalSHCoefficients", coefficients, "ExportedSHCoefficients", coefficients,
                 "AmbientColorSourceSRGB", ExportContext.Color(RenderSettings.ambientSkyColor),
                 "SkyColorLinear", ExportContext.Color(sky), "EquatorColorLinear", ExportContext.Color(equator), "GroundColorLinear", ExportContext.Color(ground),
                 "DirectionalValidation", validation, "DirectionalValidationMaxError", maximumError,
                 "SyntheticValidation", syntheticValidation, "SyntheticValidationMaxError", syntheticError);
             return environment;
         }
-        static object[] Coefficients(SphericalHarmonicsL2 probe, bool mirrorZ)
+        static object[] Coefficients(SphericalHarmonicsL2 probe)
         {
             var values = new object[9];
             for (int index = 0; index < values.Length; ++index)
             {
-                float sign = mirrorZ && (index == 2 || index == 5 || index == 7) ? -1 : 1;
-                values[index] = new object[] { Finite(probe[0, index] * sign), Finite(probe[1, index] * sign), Finite(probe[2, index] * sign) };
+                values[index] = new object[] { Finite(probe[0, index]), Finite(probe[1, index]), Finite(probe[2, index]) };
             }
             return values;
         }
@@ -465,7 +463,7 @@ namespace GameSprout.UnitySceneBridge
             for (int index = 0; index < directions.Count; ++index)
             {
                 Vector3 source = directions[index];
-                var runtime = new Vector3(source.x, source.y, -source.z);
+                var runtime = source;
                 var basis = new[] { 1f, runtime.y, runtime.z, runtime.x, runtime.x * runtime.y,
                     runtime.y * runtime.z, 3 * runtime.z * runtime.z - 1, runtime.x * runtime.z,
                     runtime.x * runtime.x - runtime.y * runtime.y };
@@ -473,8 +471,7 @@ namespace GameSprout.UnitySceneBridge
                 for (int channel = 0; channel < 3; ++channel)
                     for (int coefficient = 0; coefficient < 9; ++coefficient)
                     {
-                        float sign = coefficient == 2 || coefficient == 5 || coefficient == 7 ? -1 : 1;
-                        rgb[channel] += probe[channel, coefficient] * sign * basis[coefficient];
+                        rgb[channel] += probe[channel, coefficient] * basis[coefficient];
                     }
                 float error = Mathf.Max(Mathf.Abs(rgb[0] - evaluated[index].r), Mathf.Max(Mathf.Abs(rgb[1] - evaluated[index].g), Mathf.Abs(rgb[2] - evaluated[index].b)));
                 float scale = Mathf.Max(1f, Mathf.Max(Mathf.Abs(evaluated[index].r), Mathf.Max(Mathf.Abs(evaluated[index].g), Mathf.Abs(evaluated[index].b))));

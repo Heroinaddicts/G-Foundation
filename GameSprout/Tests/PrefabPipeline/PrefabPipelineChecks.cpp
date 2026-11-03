@@ -33,7 +33,7 @@ bool SameReference(const Json::Value& value,const std::string& guid,std::uint64_
 Json::Value Source() {
     Json::Value source(Json::objectValue);source["Version"]=1;source["Format"]="GameSproutPrefab";
     source["Base"]=Json::Value();source["NestedInstances"]=Json::Value(Json::arrayValue);
-    auto& data=source["Data"];data["Version"]=1;data["Name"]="Prefab pipeline fixture";data["NextObjectID"]=Json::UInt64(4);
+    auto& data=source["Data"];data["Version"]=GameSproutRuntime::SceneDocumentVersion;data["Name"]="Prefab pipeline fixture";data["NextObjectID"]=Json::UInt64(4);
     data["Objects"]=Json::Value(Json::arrayValue);Json::Value node;
     node["ID"]=Json::UInt64(1);node["ParentID"]=Json::UInt64(0);node["Name"]="Mesh root";node["Components"]=Json::Value(Json::arrayValue);
     Json::Value transform;transform["ID"]=Json::UInt64(2);transform["Type"]="GameSproutRuntime.Transform";node["Components"].append(transform);
@@ -174,7 +174,7 @@ void CheckSceneRecomposition(Fixture& fixture,std::uint64_t prefabLocalID) {
     for(const auto& [source,scene]:ids) {
         Json::Value mapping;mapping["SourceID"]=Json::UInt64(source);mapping["SceneID"]=Json::UInt64(scene);mapping["Component"]=source!=1&&source!=6;record["Mappings"].append(mapping);
     }
-    Json::Value scene;scene["Version"]=1;scene["Name"]="Stale authoring scene";scene["NextObjectID"]=Json::UInt64(500);scene["Objects"]=Json::Value(Json::arrayValue);
+    Json::Value scene;scene["Version"]=GameSproutRuntime::SceneDocumentVersion;scene["Name"]="Stale authoring scene";scene["NextObjectID"]=Json::UInt64(500);scene["Objects"]=Json::Value(Json::arrayValue);
     scene["Objects"].append(SceneNode(50,0,"Placement parent",51));scene["Objects"].append(SceneNode(60,0,"External target",61));
     for(const auto& node:expanded["Objects"])scene["Objects"].append(node);
     scene["Annotations"]["PrefabInstances"]=Json::Value(Json::arrayValue);scene["Annotations"]["PrefabInstances"].append(record);

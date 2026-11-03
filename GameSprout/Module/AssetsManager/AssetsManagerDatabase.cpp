@@ -75,7 +75,12 @@ AssetSourceRecord AssetsManager::DescribeSource(IAssetMeta * meta) const {
     record.SourceModifyTime = source.lastModified().isValid() ? source.lastModified().toMSecsSinceEpoch() : -1;
     record.MetaModifyTime = sidecar.lastModified().isValid() ? sidecar.lastModified().toMSecsSinceEpoch() : -1;
     Json::Value json;
-    if (meta->SerializeMeta(record.MetaJson) && AssetArtifactIO::Parse(record.MetaJson, json)) {
+    // All factory-created Meta objects implement this local converter. Build
+    // the value once rather than serializing then reparsing it merely to hash settings.
+    if (static_cast<const AssetMeta *>(meta)->ConvertToJson(json)) {
+        Json::StreamWriterBuilder writer;
+        writer["indentation"] = ""; // Preserve SerializeMeta's exact current encoding.
+        record.MetaJson = Json::writeString(writer, json);
         record.SettingsHash = AssetArtifactIO::Hash(QByteArray::fromStdString(
             std::to_string(static_cast<uint16_t>(record.Importer)) + ":" + AssetArtifactIO::JsonText(json["ImportSettings"])));
     }
@@ -199,14 +204,17 @@ void AssetsManager::RestoreMissingMeta(const std::string & path) {
     }
 }
 
-void AssetsManager::ReconcileSources() {
+void AssetsManager::ReconcileSources(const std::map<std::string, AssetSourceRecord> & observations) {
     size_t added = 0, changed = 0, moved = 0, removed = 0;
     const QDir root(QString::fromStdString(_AssetsRoot));
-    const auto previous = _StartupSourceRecords;
+    const auto & previous = _StartupSourceRecords;
     for (const auto & entry : _Assets) {
         if (_ConflictingGuids.count(entry.first)) continue;
         IAssetMeta * meta = entry.second;
-        AssetSourceRecord record = DescribeSource(meta);
+        const auto observed = observations.find(entry.first);
+        // ScanDirectory has already read/serialized each unchanged source.
+        // Only a source that disappeared during enumeration needs a fresh fallback.
+        const AssetSourceRecord record = observed == observations.end() ? DescribeSource(meta) : observed->second;
         // Content hashing and artifact validation are done by this resource's
         // ImportAsset task; preserve the last known hash until its completion.
         const auto old = previous.find(entry.first);

@@ -221,7 +221,7 @@ public:
 };
 
 Json::Value ReadArtifact(IAsset * asset,QByteArray * payload=nullptr) {
-    Check(asset && asset->GetDataVersion()==2,"Artifact has no version-2 DB descriptor");
+    Check(asset && asset->GetDataVersion()==AssetArtifactIO::CurrentDataVersion(asset->GetAssetType()),"Artifact has no current-format DB descriptor");
     Json::Value value;
     Check(AssetArtifactIO::Parse(asset->GetDataDescriptorJson(),value) && value.isObject(),"Invalid DB data descriptor");
     QFile file(QString::fromStdString(asset->GetArtifactPath()));Check(file.open(QIODevice::ReadOnly),"Artifact missing");

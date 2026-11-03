@@ -117,7 +117,7 @@ bool AssetsPipeline::CanReuseAsset(IAssetMeta * meta) const {
         required.insert("0:" + dependency.Path + ".meta");
     }
     for (const auto & artifact : manifest.Assets) {
-        if (artifact.DataVersion != 2) return false;
+        if (artifact.DataVersion != AssetArtifactIO::CurrentDataVersion(artifact.Type)) return false;
         required.insert("1:" + manifest.Directory + "/" + artifact.Path);
     }
     if(ValidationVersion(meta->_ImporterType)==2) {
@@ -137,7 +137,7 @@ bool AssetsPipeline::CanReuseAsset(IAssetMeta * meta) const {
             bool matched=false;
             for(const auto& artifact:producer.Assets)if(artifact.LocalID==localID) {
                 const auto relative=producer.Directory+"/"+artifact.Path;
-                if(artifact.DataVersion!=2||!AssetArtifactIO::RelativePath(relative)||input["Path"]!=relative
+                if(artifact.DataVersion!=AssetArtifactIO::CurrentDataVersion(artifact.Type)||!AssetArtifactIO::RelativePath(relative)||input["Path"]!=relative
                     ||input["Hash"]!=artifact.Hash||input["DescriptorHash"]!=AssetArtifactIO::Hash(QByteArray::fromStdString(artifact.DescriptorJson)))return false;
                 required.insert("1:"+relative);matched=true;break;
             }

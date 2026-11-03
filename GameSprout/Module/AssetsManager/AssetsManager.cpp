@@ -116,8 +116,9 @@ void AssetsManager::LaunchFinished(GameSproutModuleApi * const api) {
     // The Assets directory itself is observed through its parent, per watcher semantics.
     WatcherDir(g_IProject->GetProjectRoot());
     WatcherDir(_AssetsRoot);
-    ScanDirectory(_AssetsRoot);
-    ReconcileSources();
+    std::map<std::string, AssetSourceRecord> observations;
+    ScanDirectory(_AssetsRoot, &observations);
+    ReconcileSources(observations);
     _ReconcileOnScan = false;
     if (_ActiveImportCallbacks.empty()) FinishStartupLoading();
 }

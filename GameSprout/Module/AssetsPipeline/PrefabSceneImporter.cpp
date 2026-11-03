@@ -24,7 +24,7 @@ Json::Value Capture(const Json::Value& scene,std::uint64_t root,std::set<std::ui
         if(!selected.insert(id).second)throw std::runtime_error("Prefab instance hierarchy contains a cycle");
         if(const auto found=children.find(id);found!=children.end())pending.insert(pending.end(),found->second.begin(),found->second.end());
     }
-    Json::Value result(Json::objectValue);result["Version"]=1;result["Name"]="Prefab instance";
+    Json::Value result(Json::objectValue);result["Version"]=GameSproutRuntime::SceneDocumentVersion;result["Name"]="Prefab instance";
     result["NextObjectID"]=Json::UInt64(NextIdentity(scene));
     const auto camera=scene.get("MainCameraID",Json::UInt64(0)).asUInt64();
     result["MainCameraID"]=Json::UInt64(selected.count(camera)?camera:0);
@@ -81,7 +81,6 @@ bool ResolveScenePrefabInstances(AssetImportJob& job,Json::Value& document) {
                 return job.Fail("Prefab scene source GUID does not identify a .prefab source");
             QByteArray bytes;
             if(!job.AddDependency(sourcePath,&bytes))return false;
-            if(bytes.size()>64*1024*1024)return job.Fail("Prefab scene source exceeds 64 MiB");
             Json::Value source,data;
             if(!AssetArtifactIO::Parse(bytes.toStdString(),source)||!PrefabDefinition::Validate(source,data,error))
                 return job.Fail("Invalid Prefab scene source "+sourcePath+": "+error);

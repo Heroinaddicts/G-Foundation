@@ -41,7 +41,7 @@ bool LibraryRuntimeResources::LoadModel(const GameSproutRuntime::ResourceReferen
     if(!Read(reference,eAssetType::Model,descriptor,bytes,error))return false;
     const auto fail=[&error](){error="Invalid prepared Model hierarchy or references";return false;};
     std::vector<GameSproutRuntime::SkeletonNode> nodes;
-    if(!Body(descriptor,bytes,body)||body["CoordinateSystem"]!="RightHandedYUp"||body["UnitMeters"]!=1.0
+    if(!Body(descriptor,bytes,body)||body["CoordinateSystem"]!="LeftHandedYUp"||body["UnitMeters"]!=1.0
         ||!Nodes(body["Nodes"],nodes)||!body["Animations"].isArray())return fail();
     GameSproutRuntime::ModelData data;
     if(body.isMember("Skeleton")&&!LibraryResourceDecode::ReferenceValue(body["Skeleton"],data.Skeleton))return fail();

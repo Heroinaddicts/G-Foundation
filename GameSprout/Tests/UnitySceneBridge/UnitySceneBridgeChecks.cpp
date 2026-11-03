@@ -42,15 +42,15 @@ void Meta(const QDir& root,const QString& path,const char* guid,const char* impo
 }
 void Fixture(const QDir& root) {
     Check(root.mkpath("Assets")&&root.mkpath("Info"),"Cannot create fixture project");
-    QByteArray mesh("GSMESH01",8);QDataStream output(&mesh,QIODevice::Append);
+    QByteArray mesh("GSMESH02",8);QDataStream output(&mesh,QIODevice::Append);
     output.setByteOrder(QDataStream::LittleEndian);output.setFloatingPointPrecision(QDataStream::SinglePrecision);
     const QByteArray name("Bridge triangle");
-    output<<quint32(1)<<quint32(5)<<quint32(3)<<quint32(3)<<quint32(1)<<quint32(name.size());
+    output<<quint32(2)<<quint32(5)<<quint32(3)<<quint32(3)<<quint32(1)<<quint32(name.size());
     output.writeRawData(name.data(),name.size());while(mesh.size()%4)output<<quint8(0);
     for(float value:{-1.f,-1.f,0.f,1.f,-1.f,0.f,0.f,1.f,0.f})output<<value;
-    for(int vertex=0;vertex<3;++vertex)output<<0.f<<0.f<<1.f;
+    for(int vertex=0;vertex<3;++vertex)output<<0.f<<0.f<<-1.f;
     for(float value:{0.f,0.f,1.f,0.f,.5f,1.f})output<<value;
-    output<<quint32(0)<<quint32(1)<<quint32(2)<<quint32(0)<<quint32(3)<<quint32(0);
+    output<<quint32(0)<<quint32(2)<<quint32(1)<<quint32(0)<<quint32(3)<<quint32(0);
     Write(root,"Assets/Triangle.mesh",mesh);
     constexpr const char* meshGuid="6666777788884999aabbccddeeff0011";
     constexpr const char* materialGuid="6666777788884999aabbccddeeff0022";
@@ -67,10 +67,12 @@ void Fixture(const QDir& root) {
     image.setPixelColor(0,1,Qt::blue);image.setPixelColor(1,1,Qt::blue);
     QByteArray png;QBuffer pngOutput(&png);Check(pngOutput.open(QIODevice::WriteOnly)&&image.save(&pngOutput,"PNG"),"Cannot encode UV probe");
     Write(root,"Assets/UnityUV.png",png);Meta(root,"UnityUV.png",textureGuid,"Texture",eAssetType::Texture);
-    Json::Value probe;probe["Version"]=1;probe["Shader"]="GameSprout/Preview";
+    // A controlled scene directional light faces the Unity -Z surface normal.
+    // Keep row-orientation assertions independent of Preview's fixed world light.
+    Json::Value probe;probe["Version"]=1;probe["Shader"]="GameSprout/Lit";
     probe["BaseColorTexture"]=Ref(textureGuid);WriteJson(root,"Assets/UnityUV.mat",probe);
     Meta(root,"UnityUV.mat",probeGuid,"Material",eAssetType::Material);
-    Json::Value scene;scene["Version"]=1;scene["Name"]="Bridge fixture";scene["MainCameraID"]=Json::UInt64(5);scene["NextObjectID"]=Json::UInt64(11);
+    Json::Value scene;scene["Version"]=SceneDocumentVersion;scene["Name"]="Bridge fixture";scene["MainCameraID"]=Json::UInt64(5);scene["NextObjectID"]=Json::UInt64(11);
     scene["Objects"]=Json::Value(Json::arrayValue);
     Json::Value node;node["ID"]=Json::UInt64(1);node["ParentID"]=Json::UInt64(0);node["Name"]="Triangle";node["Active"]=true;
     Json::Value transform;transform["ID"]=Json::UInt64(2);transform["Type"]="GameSproutRuntime.Transform";
@@ -79,7 +81,7 @@ void Fixture(const QDir& root) {
     component=Json::Value();component["ID"]=Json::UInt64(4);component["Type"]="GameSproutRuntime.MeshRenderer";component["Visible"]=true;
     component["Materials"].append(Ref(materialGuid));node["Components"].append(component);scene["Objects"].append(node);
     node=Json::Value();node["ID"]=Json::UInt64(5);node["ParentID"]=Json::UInt64(0);node["Name"]="Main Camera";node["Active"]=true;
-    transform["ID"]=Json::UInt64(6);transform["Position"]=Array({0,0,3});node["Components"].append(transform);
+    transform["ID"]=Json::UInt64(6);transform["Position"]=Array({0,0,-3});node["Components"].append(transform);
     component=Json::Value();component["ID"]=Json::UInt64(7);component["Type"]="GameSproutRuntime.Camera";node["Components"].append(component);scene["Objects"].append(node);
     node=Json::Value();node["ID"]=Json::UInt64(8);node["ParentID"]=Json::UInt64(0);node["Name"]="Directional Light";node["Active"]=true;
     transform["ID"]=Json::UInt64(9);transform["Position"]=Array({0,0,0});node["Components"].append(transform);
@@ -102,11 +104,20 @@ void SavePreview(const std::vector<std::uint8_t>& pixels,const QString& path) {
 int main(int argc,char** argv) {
     QGuiApplication application(argc,argv);Foundation::FoundationApi* real=nullptr;
     IGameSproutRuntime* runtime=nullptr;IRuntimeViewport* viewport=nullptr;
+    IRuntimeViewport* transitionViewport=nullptr;
+    bool transitionProviderBound=false;
     TestProject project;TestConsole console;TestIDE ide;FoundationProxy foundation;
     BridgeEditor* editor=nullptr;GameSproutEditor::GameSproutModuleApi* api=nullptr;
     std::vector<GameSproutEditor::IGameSproutModule*> initialized;
     const auto cleanup=[&] {
+        delete transitionViewport;transitionViewport=nullptr;
         delete viewport;viewport=nullptr;
+        if(runtime&&transitionProviderBound) {
+            std::string releaseError;
+            runtime->EndExecution(releaseError);
+            runtime->SetResourceProvider(nullptr);
+            transitionProviderBound=false;
+        }
         if(editor)for(const std::string name:{"RuntimeAssets","AssetsManager","AssetsPipeline","ShaderCompiler","ProjectSettings","LibraryManager","LocalDatabase","GuidCreator"}) {
             const auto found=editor->Modules.find(name);
             if(found!=editor->Modules.end()&&std::find(initialized.begin(),initialized.end(),found->second)!=initialized.end())GameSproutEditor::GameSproutEditorFinal::Release(found->second,api);
@@ -115,14 +126,22 @@ int main(int argc,char** argv) {
     };
     try {
         QTemporaryDir temporary;QString root;bool fixture=application.arguments().contains("--fixture");bool renderAll=false,compareEnvironment=false,compareBatching=false;
+        bool profileTransitions=false,profilePlay=false;
         for(const auto& argument:application.arguments()) {
             if(argument.startsWith("--project-root="))root=argument.mid(QStringLiteral("--project-root=").size());
             if(argument=="--render-all")renderAll=true;
             if(argument=="--compare-environment")compareEnvironment=true;
             if(argument=="--compare-batching")compareBatching=true;
+            if(argument=="--profile-transitions")profileTransitions=true;
+            if(argument=="--profile-play"){profilePlay=true;profileTransitions=true;}
         }
+        const auto profile=[&](const char* stage,const QElapsedTimer& elapsed) {
+            if(profileTransitions)std::cout<<"Transition profile: stage="<<stage
+                <<" elapsedMs="<<double(elapsed.nsecsElapsed())/1e6<<std::endl;
+        };
         if(fixture){Check(temporary.isValid(),"Cannot create temporary fixture");root=temporary.path();Fixture(QDir(root));}
         Check(!root.isEmpty()&&QFileInfo::exists(root+"/Info/project.json"),"Use --fixture or --project-root=<exported project>");
+        QElapsedTimer moduleBoot;moduleBoot.start();
         runtime=Export(TEST_BINARY_ROOT);Check(runtime,"Runtime load failed");editor=new BridgeEditor(runtime);editor->IDE=&ide;
         real=Foundation::GetFoundationApi(TEST_BINARY_ROOT);Check(real&&real->Initialize(argc,argv)&&real->Launch(),"Foundation startup failed");
         foundation.Real=real;foundation.Tasks.Real=real->TaskApi();foundation.Tasks.IDE=&ide;project.Root=root.toStdString();
@@ -131,6 +150,7 @@ int main(int argc,char** argv) {
         for(const auto& entry:editor->Modules)GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor->Modules){Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Initialize "+entry.first);initialized.push_back(entry.second);}
         for(const auto& entry:editor->Modules)Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Launch "+entry.first);
+        profile("module-load-initialize-launch",moduleBoot);
         auto* assets=static_cast<IAssetsManager*>(editor->Modules["AssetsManager"]);auto* library=static_cast<ILibraryManager*>(editor->Modules["LibraryManager"]);
         QElapsedTimer timer;timer.start();GameSproutEditor::GameSproutEditorFinal::Finished(assets,api);
         for(;;) {
@@ -139,8 +159,10 @@ int main(int argc,char** argv) {
             if(!pending)break;Check(timer.elapsed()<600000,"Bridge import timed out");QThread::msleep(2);
         }
         std::cout<<"Bridge resource scan/import complete, elapsedMs="<<timer.elapsed()<<std::endl;
+        profile("asset-reconciliation-and-import",timer);
         auto* resources=static_cast<IRuntimeAssets*>(editor->Modules["RuntimeAssets"])->GetResourceProvider();Check(resources,"Missing Runtime resource provider");
         std::size_t meshes=0,materials=0,textures=0;std::uint64_t triangles=0;std::string scenePath,error;
+        QElapsedTimer resourceValidation;resourceValidation.start();
         for(auto* meta:assets->GetAssetMetas()) {
             Check(meta->GetImportState()!=eAssetImportState::Failed,"Import failed "+meta->GetPath()+": "+meta->GetImportError());
             AssetImportManifest manifest;if(!library->GetManifest(meta->_Guid,manifest))continue;
@@ -152,8 +174,16 @@ int main(int argc,char** argv) {
                 else if(asset.Type==eAssetType::Scene)scenePath=meta->GetPath();
             }
         }
-        Check(!scenePath.empty(),"Export contains no scene");const auto document=ReadJson(root+"/Assets/"+QString::fromStdString(scenePath));
-        IScene* scene=nullptr;SceneDocument::ObjectIDs identities;Check(SceneDocument::Instantiate(document,*runtime,scene,identities,error),error);
+        profile("source-resource-validation",resourceValidation);
+        Check(!scenePath.empty(),"Export contains no scene");
+        QElapsedTimer sceneRead;sceneRead.start();
+        const auto document=ReadJson(root+"/Assets/"+QString::fromStdString(scenePath));
+        profile("scene-json-read",sceneRead);
+        IScene* scene=nullptr;SceneDocument::ObjectIDs identities;
+        QElapsedTimer sceneInstantiate;sceneInstantiate.start();
+        Check(SceneDocument::Instantiate(document,*runtime,scene,identities,error),error);
+        profile("scene-instantiate",sceneInstantiate);
+        QElapsedTimer sceneVerification;sceneVerification.start();
         scene->SetSimulationEnabled(false);std::size_t nodes=0,renderers=0,colliders=0,unboundRenderers=0,missing=0;
         std::vector<IGameObject*> pending{scene};
         while(!pending.empty()) {
@@ -181,14 +211,21 @@ int main(int argc,char** argv) {
                 counts.get("CapsuleColliderComponents",0).asUInt64()+counts.get("MeshColliderComponents",0).asUInt64();
             Check(expectedColliders==colliders,"Runtime collider count differs from Unity export");
         }
+        profile("scene-node-and-reference-validation",sceneVerification);
         std::cout<<"Bridge scene restored: nodes="<<nodes<<" colliders="<<colliders<<", elapsedMs="<<timer.elapsed()<<std::endl;
-        if(fixture||renderAll) {
+        if(fixture||renderAll||profileTransitions) {
             auto* camera=scene->GetMainCamera();Check(camera,"No enabled MainCamera selected by exporter");
             RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={.08f,.1f,.15f,1};
             view.Camera.Projection=camera->GetSettings();Check(camera->GetViewMatrix(view.Camera.View),"Invalid camera view");
             const Mat4 matrix=camera->GetGameObject()->GetTransform()->GetWorldMatrix();view.Camera.Position={matrix(0,3),matrix(1,3),matrix(2,3)};
-            viewport=runtime->CreateOffscreenRenderer(640,360,resources,error);Check(viewport,error);Check(viewport->Render(view),viewport->GetLastError());
+            QElapsedTimer firstView;firstView.start();
+            viewport=runtime->CreateOffscreenRenderer(640,360,resources,error);Check(viewport,error);
+            profile("scene-viewport-create",firstView);
+            firstView.restart();Check(viewport->Render(view),viewport->GetLastError());
+            profile("scene-first-render-submit",firstView);
+            firstView.restart();
             std::vector<std::uint8_t> pixels;Check(viewport->ReadPixels(pixels,error),error);
+            profile("scene-first-render-readback",firstView);
             Check(viewport->GetStatistics().DrawCalls>0,"Exported scene produced no draws");
             if(fixture){const auto offset=(std::size_t(180)*640+320)*4;Check(pixels[offset+2]>pixels[offset]+20,"Converted native triangle/material not rendered correctly");}
             if(fixture) {
@@ -197,7 +234,9 @@ int main(int argc,char** argv) {
                 Check(viewport->Render(view),viewport->GetLastError());Check(viewport->ReadPixels(pixels,error),error);
                 const auto bottom=(std::size_t(245)*640+320)*4,top=(std::size_t(110)*640+320)*4;
                 Check(pixels[bottom]>pixels[bottom+2]+80&&pixels[top+2]>pixels[top]+80,
-                      "Unity PNG row conversion no longer matches Runtime UV sampling");
+                      "Unity PNG row conversion no longer matches Runtime UV sampling: bottom RGB="+
+                      std::to_string(pixels[bottom])+","+std::to_string(pixels[bottom+1])+","+std::to_string(pixels[bottom+2])+
+                      "; top RGB="+std::to_string(pixels[top])+","+std::to_string(pixels[top+1])+","+std::to_string(pixels[top+2]));
             }
             if(renderAll)SavePreview(pixels,root+"/BridgePreview.png");
             if(compareBatching) {
@@ -232,6 +271,8 @@ int main(int argc,char** argv) {
                 Check(viewport->GetStatistics().InstanceBufferUploads==0,"Unchanged full scene uploaded instances again");
                 std::cout<<"Batching comparison: individualDraws="<<unbatched.DrawCalls<<" instancedDraws="<<batched.DrawCalls
                     <<" savedDraws="<<batched.SavedDrawCalls<<" instances="<<batched.InstancedInstances
+                    <<" shadowDraws="<<batched.ShadowDrawCalls<<" shadowCascades="<<batched.ShadowCascadeCount
+                    <<" cachedShadowUpdates="<<viewport->GetStatistics().ShadowMapUpdates
                     <<" triangles="<<batched.Triangles<<" changedPixels="<<different
                     <<" meanChannelDifference="<<totalDifference/pixels.size()
                     <<" residentBytes="<<viewport->GetStatistics().ResidentInstanceBytes
@@ -256,6 +297,54 @@ int main(int argc,char** argv) {
                 std::cout<<"Environment linear RGB sum: disabled="<<before<<" enabled="<<after<<std::endl;
             }
             std::cout<<"GPU draws="<<viewport->GetStatistics().DrawCalls<<" triangles="<<viewport->GetStatistics().Triangles<<'\n';
+            if(profileTransitions) {
+                QElapsedTimer transition;transition.start();
+                // Keep the first viewport alive: the second view should lease
+                // the same provider/device resources rather than load them again.
+                transitionViewport=runtime->CreateOffscreenRenderer(640,360,resources,error);
+                Check(transitionViewport,error);profile("second-viewport-create",transition);
+                transition.restart();Check(transitionViewport->Render(view),transitionViewport->GetLastError());
+                profile("second-viewport-first-render-submit",transition);
+                transition.restart();
+                std::vector<std::uint8_t> secondPixels;
+                Check(transitionViewport->ReadPixels(secondPixels,error),error);
+                profile("second-viewport-first-render-readback",transition);
+                transition.restart();
+                constexpr int warmFrames=10;
+                for(int frame=0;frame<warmFrames;++frame)
+                    Check(transitionViewport->Render(view),transitionViewport->GetLastError());
+                Check(transitionViewport->ReadPixels(secondPixels,error),error);
+                std::cout<<"Transition profile: stage=second-viewport-warm-frame elapsedMs="
+                    <<double(transition.nsecsElapsed())/1e6/warmFrames
+                    <<" frames="<<warmFrames<<" includesFinalReadback=1"<<std::endl;
+                delete transitionViewport;transitionViewport=nullptr;
+                // Releasing one lease must leave the first viewport functional.
+                Check(viewport->Render(view),viewport->GetLastError());
+                Check(viewport->ReadPixels(secondPixels,error),error);
+            }
+        }
+        if(profilePlay) {
+            // This optional benchmark changes only Runtime objects. It neither
+            // advances normal gameplay frames nor writes the source Scene/Prefab.
+            runtime->SetResourceProvider(resources);transitionProviderBound=true;
+            QElapsedTimer play;play.start();
+            Json::Value snapshot;
+            Check(SceneDocument::Serialize(*scene,identities,snapshot,error),error);
+            profile("play-scene-serialize",play);
+            IScene* playScene=nullptr;SceneDocument::ObjectIDs playIdentities;
+            play.restart();Check(SceneDocument::Instantiate(snapshot,*runtime,playScene,playIdentities,error),error);
+            profile("play-scene-instantiate",play);
+            playScene->SetSimulationEnabled(false);
+            play.restart();Check(runtime->DestroyScene(scene),"Cannot destroy the previous benchmark scene");
+            scene=playScene;identities=std::move(playIdentities);
+            profile("play-old-scene-destroy",play);
+            play.restart();scene->SetSimulationEnabled(true);
+            profile("play-enable-simulation",play);
+            play.restart();Check(runtime->BeginExecution(error),error);
+            profile("play-begin-execution",play);
+            play.restart();Check(runtime->EndExecution(error),error);
+            profile("play-end-execution",play);
+            scene->SetSimulationEnabled(false);
         }
         Check(ide.Count==0&&ide.Loads==ide.Unloads,"Unbalanced Loading/Unloading");
         std::cout<<"PASS bridge project: nodes="<<nodes<<" renderers="<<renderers<<" sourceUnboundRenderers="<<unboundRenderers<<" colliders="<<colliders<<" meshes="<<meshes<<" materials="<<materials<<" textures="<<textures<<" uniqueMeshTriangles="<<triangles<<" imports="<<foundation.Tasks.Submissions<<" elapsedMs="<<timer.elapsed()<<'\n';

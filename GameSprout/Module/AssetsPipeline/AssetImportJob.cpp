@@ -65,7 +65,7 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
     const std::string filename = std::to_string(id) + ".gsasset";
     if (!AssetArtifactIO::Write(QDir(QString::fromStdString(Stage)).filePath(QString::fromStdString(filename)), bytes, Result.Error)) return false;
     AssetArtifact artifact{id, type, name, key, filename, AssetArtifactIO::Hash(bytes)};
-    artifact.DataVersion = 2;
+    artifact.DataVersion = AssetArtifactIO::CurrentDataVersion(type);
     artifact.DataSize = static_cast<uint64_t>(bytes.size());
     artifact.DescriptorJson = AssetArtifactIO::JsonText(descriptor);
     Result.Manifest.Assets.push_back(std::move(artifact));
@@ -231,7 +231,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if (cached) {
         // A manually changed identity registry must never be overwritten by a cache hit.
         for (const auto & asset : job.Request.Previous.Assets) {
-            if (asset.DataVersion != 2) { cached = false; break; }
+            if (asset.DataVersion != AssetArtifactIO::CurrentDataVersion(asset.Type)) { cached = false; break; }
             const std::string key = std::to_string(static_cast<uint16_t>(asset.Type)) + ":" + asset.SourceKey;
             const auto identity = job.IDs.find(key);
             if (identity == job.IDs.end() || identity->second != asset.LocalID) { cached = false; break; }

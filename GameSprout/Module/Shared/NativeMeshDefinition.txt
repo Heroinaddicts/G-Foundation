@@ -1,15 +1,16 @@
-GameSprout native .mesh source, GSMESH01 / Version 1
+GameSprout native .mesh source, GSMESH02 / Version 2
 
 Purpose
 An offline author/export tool writes a native mesh in Runtime coordinates:
-right handed, +Y up, metres. The importer does not repeat source-platform unit
-or handedness conversion. Static and collision-only meshes use this same file.
+Unity left handed, +Y up, +Z forward, metres. The importer does not repeat source-platform unit
+or handedness conversion. Front faces use Unity clockwise winding. Static and
+collision-only meshes use this same file.
 Skinned export can bake the current pose as a static snapshot; this format does
 not contain a skeleton, bind poses, skin weights or animation semantics.
 
 Binary source layout (all integers and float32 values are little endian)
-0   char[8] "GSMESH01"
-8   uint32 Version = 1
+0   char[8] "GSMESH02"
+8   uint32 Version = 2
 12  uint32 Flags: bit0 normals, bit1 tangents, bit2 UV0, bit3 colors
 16  uint32 VertexCount >= 3
 20  uint32 IndexCount >= 3 and divisible by 3
@@ -54,8 +55,10 @@ recalculate authored tangents, or generate additional UV channels.
 
 Unity bridge note
 Export resolved Mesh data, including Unity native Mesh subassets used by convex
-colliders. Mirroring Z into Runtime coordinates also mirrors normal/tangent Z,
-negates tangent handedness W and reverses triangle winding. Apply baseVertex to
-the exported indices. That conversion belongs to the exporter, not this importer.
+colliders. Unity and Runtime now share world coordinates: preserve positions,
+normals, tangent XYZ/W and triangle winding exactly. Apply baseVertex to the
+exported indices. No world-axis reflection belongs in this exporter/importer pair.
+Version 1 was a different right-handed authoring contract and is rejected, not
+converted. Re-export native sources from Unity with the current bridge.
 Retain a mapping from Unity GUID+fileID to output .mesh GUID+LocalID rather than
 assuming Unity's imported fileID is a Runtime resource identity.

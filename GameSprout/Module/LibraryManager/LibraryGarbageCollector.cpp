@@ -37,10 +37,9 @@ void LibraryManager::StartGarbageCollection() {
                 const auto * candidates=context.Get<std::vector<std::string>>();
                 if(!success || !candidates) return;
                 std::set<std::string> referenced;
-                const bool valid=_LDBSession->GetTable("Manifests")->ForEach([&](const std::string &,const void * bytes,int length) {
-                    Json::Value value;AssetImportManifest manifest;
-                    if(!AssetArtifactIO::Parse(std::string(static_cast<const char *>(bytes),size_t(length)),value)
-                        || !AssetArtifactIO::FromJson(value,manifest)) throw std::runtime_error("Invalid manifest during cache cleanup");
+                const bool valid=_LDBSession->GetTable("Manifests")->ForEach([&](const std::string & key,const void * bytes,int length) {
+                    AssetImportManifest manifest;
+                    if(length <= 0 || !DecodeManifest(key, bytes, static_cast<std::size_t>(length), manifest)) throw std::runtime_error("Invalid manifest during cache cleanup");
                     for(const AssetArtifact & artifact:manifest.Assets)
                         referenced.insert(manifest.Directory+"/"+artifact.Path);
                     return true;

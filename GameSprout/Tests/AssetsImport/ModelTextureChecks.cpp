@@ -1,6 +1,10 @@
 #include "AssetTestSupport.h"
 #include "AssetImportJob.h"
 #include "ModelTextureResolver.h"
+#include "Math/TransformMath.h"
+#include <QtEndian>
+#include <array>
+#include <bit>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -198,6 +202,56 @@ void CheckResolver(ModelFixture& fixture) {
     } else std::cout<<"SKIP case-distinct duplicate candidates: fixture filesystem is case insensitive\n";
     std::cout<<"PASS resolver exact basename, directory priority, FBM/MTL/ancestor/relative/absolute, Windows paths, no extension guesses/outside/recursive search\n";
 }
+void CheckUnityCoordinates(ModelFixture& fixture) {
+    // OBJ has no metadata: its documented RH/Y-up/metre source assumption must
+    // still be converted. An asymmetric XYZ triangle catches missing/double flips.
+    WriteFile(fixture.Asset("Coordinates/Shape.obj"),
+        "mtllib Materials/Shape.mtl\no Asymmetric\nv -1 0 2\nv 2 0 2\nv 0 1 3\n"
+        "vt 0 0\nvt 1 0\nvt 0 1\nusemtl Surface\nf 1/1 2/2 3/3\n");
+    WriteFile(fixture.Asset("Coordinates/Materials/Shape.mtl"),"newmtl Surface\nKd 1 1 1\n");
+    TestMeta meta(eAssetImporterType::Model,fixture.NewGuid(),"Coordinates/Shape.obj");
+    const auto imported=fixture.Import(meta);CheckModel(imported);
+    Json::Value model;
+    for(const auto& artifact:imported.Manifest.Assets)if(artifact.Type==eAssetType::Model) {
+        Check(artifact.DataVersion==3,"Model artifact does not identify Unity coordinates");
+        model=ReadArtifact(fixture.Library->QueryAsset(meta._Guid,artifact.LocalID));
+    }
+    Check(model["CoordinateSystem"]=="LeftHandedYUp","Model hierarchy is not in Unity coordinates");
+    const auto pose=[](const Json::Value& value) {
+        const auto& p=value["Translation"];const auto& q=value["Rotation"];const auto& z=value["Scale"];
+        Check(z[0].asDouble()*z[1].asDouble()*z[2].asDouble()>0,"Handedness conversion left a reflected root/skeleton TRS");
+        return GameSproutRuntime::RuntimeMath::ComposeTRS(
+            {p[0].asFloat(),p[1].asFloat(),p[2].asFloat()},
+            {q[0].asFloat(),q[1].asFloat(),q[2].asFloat(),q[3].asFloat()},
+            {z[0].asFloat(),z[1].asFloat(),z[2].asFloat()});
+    };
+    const auto number=[](const QByteArray& bytes,std::size_t offset) {
+        return std::bit_cast<float>(qFromLittleEndian<std::uint32_t>(reinterpret_cast<const uchar*>(bytes.constData()+offset)));
+    };
+    std::set<std::array<int,3>> worldPositions;
+    for(Json::ArrayIndex index=0;index<model["Nodes"].size();++index) {
+        const auto& node=model["Nodes"][index];if(!node.isMember("Mesh"))continue;
+        auto world=pose(node["Transform"]);int parent=node["Parent"].asInt();
+        while(parent>=0) {const auto& ancestor=model["Nodes"][parent];world=pose(ancestor["Transform"])*world;parent=ancestor["Parent"].asInt();}
+        world=world*pose(node["GeometryTransform"]);
+        QByteArray bytes;
+        auto* asset=fixture.Library->QueryAsset(Guid(node["Mesh"]["Guid"].asString()),node["Mesh"]["LocalID"].asUInt64());
+        Check(asset&&asset->GetDataVersion()==3,"Prepared mesh does not identify Unity coordinates");
+        const auto descriptor=ReadArtifact(asset,&bytes);
+        const auto stride=descriptor["VertexStride"].asUInt();
+        for(std::size_t vertex=0;vertex<descriptor["VertexCount"].asUInt64();++vertex) {
+            const auto point=world*GameSproutRuntime::Vector4(number(bytes,vertex*stride),number(bytes,vertex*stride+4),number(bytes,vertex*stride+8),1);
+            worldPositions.insert({int(std::lround(point.X*1000)),int(std::lround(point.Y*1000)),int(std::lround(point.Z*1000))});
+        }
+    }
+    const std::set<std::array<int,3>> expected{{-1000,0,-2000},{2000,0,-2000},{0,1000,-3000}};
+    Check(worldPositions==expected,"OBJ source was not converted once into the Unity world basis");
+    AssetImportManifest roundtrip;
+    Check(fixture.Library->GetManifest(meta._Guid,roundtrip),"Cannot restore current-format model manifest");
+    for(const auto& asset:roundtrip.Assets)
+        Check(asset.DataVersion==AssetArtifactIO::CurrentDataVersion(asset.Type),"Manifest roundtrip lost resource coordinate version");
+    std::cout<<"PASS Unity model coordinates, explicit OBJ source basis, nonreflected TRS and typed artifact version roundtrip\n";
+}
 void CheckBinding(ModelFixture& fixture) {
     TestMeta red(eAssetImporterType::Texture,fixture.NewGuid(),"Valid/Paint/Red.png");
     TestMeta blue(eAssetImporterType::Texture,fixture.NewGuid(),"Valid/Paint/Blue.png");
@@ -330,7 +384,7 @@ int main(int argc,char** argv) {
         Check(real&&real->Initialize(argc,argv)&&real->Launch(),"Cannot launch real Foundation");
         {
             ModelFixture fixture(real);
-            CheckResolver(fixture);CheckBinding(fixture);CheckMissingCache(fixture);CheckCompletionRace(fixture);CheckRealModels(fixture,realAssets,required);
+            CheckResolver(fixture);CheckUnityCoordinates(fixture);CheckBinding(fixture);CheckMissingCache(fixture);CheckCompletionRace(fixture);CheckRealModels(fixture,realAssets,required);
             Check(fixture.IDE.Count==0&&fixture.IDE.Loads==fixture.IDE.Unloads,"Final Loading imbalance");
         }
         real->Release();

@@ -35,7 +35,7 @@ Json::Value Reference(const TestMeta& meta,uint64_t localID) {
 }
 Json::Value Source(const TestMeta& mesh,const TestMeta& script,bool internalTarget) {
     Json::Value result;result["Version"]=1;result["Format"]="GameSproutPrefab";result["Base"]=Json::Value();result["NestedInstances"]=Json::Value(Json::arrayValue);
-    auto& data=result["Data"];data["Version"]=1;data["Name"]="Mesh";data["NextObjectID"]=Json::UInt64(7);data["Objects"]=Json::Value(Json::arrayValue);
+    auto& data=result["Data"];data["Version"]=GameSproutRuntime::SceneDocumentVersion;data["Name"]="Mesh";data["NextObjectID"]=Json::UInt64(7);data["Objects"]=Json::Value(Json::arrayValue);
     Json::Value root;root["ID"]=Json::UInt64(1);root["ParentID"]=Json::UInt64(0);root["Name"]="Mesh";root["Components"]=Json::Value(Json::arrayValue);
     Json::Value transform;transform["ID"]=Json::UInt64(2);transform["Type"]="GameSproutRuntime.Transform";root["Components"].append(transform);
     Json::Value renderer;renderer["ID"]=Json::UInt64(3);renderer["Type"]="GameSproutRuntime.Mesh";renderer["Mesh"]=Reference(mesh,41);root["Components"].append(renderer);
@@ -102,7 +102,15 @@ int main(int argc,char** argv) {
             Check(internalTarget?target["ObjectFileID"].asUInt64()==5:target.isNull(),"Prefab artifact changed internal/null object reference");generation=result.Manifest.Generation;
         }
         auto missing=Source(mesh,script,false);const Guid absent(901,902,903,904);missing["Data"]["Objects"][0]["Components"][1]["Mesh"]["Guid"]=absent.GetGuidString();
-        const auto rejected=import(prefab,missing);Check(!rejected.Success&&rejected.Error.find("Referenced asset GUID is missing: "+absent.GetGuidString())!=std::string::npos,"Real missing resource was not rejected precisely");
+        const auto preserved=import(prefab,missing);
+        Check(preserved.Success&&preserved.Diagnostics.find("Missing resource GUID retained: "+absent.GetGuidString())!=std::string::npos,
+            "Missing resource was not preserved with a precise diagnostic");
+        const auto prepared=ReadArtifact(library->QueryAsset(prefab._Guid,preserved.Manifest.Assets[0].LocalID));
+        Check(prepared["Data"]["Objects"][0]["Components"][1]["Mesh"]["Guid"]==absent.GetGuidString(),"Missing Prefab resource identity was erased");
+        generation=preserved.Manifest.Generation;
+        auto malformed=missing;malformed["Data"]["Objects"][0]["Components"][1]["Mesh"]["Guid"]="invalid-guid";
+        const auto rejected=import(prefab,malformed);
+        Check(!rejected.Success&&rejected.Error.find("Invalid resource reference")!=std::string::npos,"Malformed resource identity was not rejected precisely");
         AssetImportManifest retained;Check(library->GetManifest(prefab._Guid,retained)&&retained.Generation==generation,"Failed Prefab replaced last published artifact");
         // Optional read-only reproduction with source snapshots from a user
         // project. All copies and produced data stay inside this temporary root.

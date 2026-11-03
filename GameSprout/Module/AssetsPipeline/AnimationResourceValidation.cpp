@@ -18,7 +18,7 @@ bool ValidateAnimationReference(AssetImportJob& job,const GameSproutRuntime::Res
 bool ReadAnimationPrepared(AssetImportJob& job,const GameSproutRuntime::ResourceReference& ref,eAssetType expected,Json::Value& descriptor,QByteArray& bytes) {
     if(!ValidateAnimationReference(job,ref,expected))return false;
     const auto found=job.Request.PreparedResources.find(ref.Guid+"_"+std::to_string(ref.LocalID));
-    if(found==job.Request.PreparedResources.end()||found->second.Type!=expected||found->second.Version!=2||found->second.Hash.empty()
+    if(found==job.Request.PreparedResources.end()||found->second.Type!=expected||found->second.Version!=AssetArtifactIO::CurrentDataVersion(expected)||found->second.Hash.empty()
         ||!AssetArtifactIO::Parse(found->second.DescriptorJson,descriptor)||!descriptor.isObject())return job.Fail("Animation dependency has no current prepared resource; import its source first");
     std::string hash;
     if(!job.ReadFile(found->second.Path,&bytes,hash)||static_cast<uint64_t>(bytes.size())!=found->second.Size)return job.Fail("Animation dependency prepared resource is missing or damaged");

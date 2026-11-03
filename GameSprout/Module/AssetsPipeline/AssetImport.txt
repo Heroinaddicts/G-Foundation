@@ -101,10 +101,18 @@ Editor.lock 防止两个编辑器进程同时打开同一 Library。
 依赖指纹由源内容 SHA256 与规范化 Meta 的 GUID/导入设置/子资源登记组合，
 不要求每个依赖者重读相同文件字节。
 导入器算法发生不兼容变化时，应递增 AssetImportManifest::ImporterVersion。
+Model 导入统一经 ufbx 烘到 Unity 左手/Y-up/+Z-forward：FBX 使用文件轴和单位；
+OBJ 没有轴/单位元数据，明确按右手/Y-up/-Z-forward/米源坐标读取，再进行一次换基。
+显式 X 镜像轴让 ufbx 同步转换几何、节点、逆绑定矩阵、BlendShape 与动画采样，避免反射根缩放。
+已经处于 Unity 坐标的 GSMESH02 源不再转换轴、单位、法线或 Tangent.w。
 当前 Portable 表示通用数据格式；Shader 的具体平台能力由 Variants 标注，
 不代表一份 MetalLib 可用于 Windows/iOS 等其他目标。
 
-.gsasset 数据与 ArtifactDB 描述（DataVersion=2）
+.gsasset 数据与 ArtifactDB 描述（按资源类型确定当前 DataVersion）
+Mesh、Model、Skeleton、AnimationClip、Avatar 使用 DataVersion=3，约定为 Unity 左手、Y向上、+Z向前世界坐标；
+其余类型目前使用 DataVersion=2。Emit、发布清单、缓存校验和 RuntimeAssets 解码都必须严格匹配类型当前版本。
+旧右手产物不解码、不补默认坐标，需要管线从当前源重新生成。
+Native .mesh 的 GSMESH02/源 Version=2 与预处理 Mesh 的 DataVersion=3 是不同层的版本。
 文件从偏移 0 开始就是资源正文，没有 GSPROUT 容器头或 JSON 元数据头。
 ArtifactDB 的 Manifests 表保存 GUID、LocalID、Type、Path、Hash、DataVersion、
 DataSize 和 Descriptor；Descriptor 是数据库中的 JSON 对象，不写进文件头。

@@ -32,7 +32,10 @@ struct AssetArtifact {
     std::string SourceKey;
     std::string Path; // Relative to this manifest's artifact directory.
     std::string Hash;
-    uint32_t DataVersion = 2; // Headerless resource data; its layout is stored in ArtifactDB.
+    // Headerless payload layout lives in ArtifactDB. Pipeline explicitly writes
+    // current per-type versions: coordinate-bearing Mesh/Model/Skeleton/Clip/Avatar
+    // use 3 (Unity world basis); other resource types currently use 2.
+    uint32_t DataVersion = 2;
     uint64_t DataSize = 0;
     std::string DescriptorJson = "{}"; // Stored in ArtifactDB, never prepended to data.
 };

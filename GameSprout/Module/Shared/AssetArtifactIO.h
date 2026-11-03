@@ -11,6 +11,20 @@
 #include <set>
 
 namespace AssetArtifactIO {
+// Coordinate-bearing resources use the current Unity world-space contract.
+// This is a type-specific current format, not a fallback for old RH payloads.
+inline constexpr uint32_t CurrentDataVersion(eAssetType type) {
+    switch(type) {
+    case eAssetType::Mesh:
+    case eAssetType::Model:
+    case eAssetType::Skeleton:
+    case eAssetType::AnimationClip:
+    case eAssetType::Avatar:
+        return 3;
+    default:
+        return 2;
+    }
+}
 inline std::string JsonText(const Json::Value & value) {
     Json::StreamWriterBuilder writer;
     writer["indentation"] = "";
@@ -126,9 +140,10 @@ inline bool FromJson(const Json::Value & value, AssetImportManifest & manifest) 
             || !item["Hash"].isString()) return false;
         AssetArtifact asset{item["LocalID"].asUInt64(), static_cast<eAssetType>(item["Type"].asUInt()),
             item["Name"].asString(), item["SourceKey"].asString(), item["Path"].asString(), item["Hash"].asString()};
-        if (!item["DataVersion"].isUInt() || item["DataVersion"].asUInt() != 2
+        if (!item["DataVersion"].isUInt() || item["DataVersion"].asUInt() != CurrentDataVersion(asset.Type)
             || !item["DataSize"].isUInt64() || !item["Descriptor"].isObject()
             || (item["Descriptor"]["Encoding"] != "RawBytes" && item["Descriptor"]["Encoding"] != "BinaryValueLE1")) return false;
+        asset.DataVersion = item["DataVersion"].asUInt();
         asset.DataSize = item["DataSize"].asUInt64();
         asset.DescriptorJson = JsonText(item["Descriptor"]);
         result.Assets.push_back(std::move(asset));

@@ -54,9 +54,9 @@ int main(int argc,char** argv) {
         const auto publishSkeleton=[&](){
             const std::string stage=library->GetLibraryRoot()+"/Staging/prepared-"+std::to_string(++generation);Check(QDir().mkpath(QString::fromStdString(stage)),"Cannot create prepared stage");
             QByteArray bytes;Check(AssetValueBinary::Encode(skeletonBody,bytes),"Cannot encode Skeleton");Check(AssetArtifactIO::Write(QString::fromStdString(stage+"/33.gsasset"),bytes,error),error);
-            AssetArtifact artifact;artifact.LocalID=33;artifact.Type=eAssetType::Skeleton;artifact.Name="Skeleton";artifact.SourceKey="skeleton";artifact.Path="33.gsasset";
+            AssetArtifact artifact;artifact.LocalID=33;artifact.Type=eAssetType::Skeleton;artifact.DataVersion=AssetArtifactIO::CurrentDataVersion(artifact.Type);artifact.Name="Skeleton";artifact.SourceKey="skeleton";artifact.Path="33.gsasset";
             artifact.Hash=AssetArtifactIO::Hash(bytes);artifact.DataSize=static_cast<uint64_t>(bytes.size());Json::Value descriptor;descriptor["Encoding"]="BinaryValueLE1";descriptor["Format"]="StructuredResource";artifact.DescriptorJson=AssetArtifactIO::JsonText(descriptor);
-            AssetImportManifest manifest;manifest.GuidString=model._Guid.GetGuidString();manifest.SourcePath=model.Path;manifest.SourceHash=std::string(64,'a');manifest.SettingsHash=std::string(64,'b');manifest.ImporterVersion=6;manifest.SubAssetsJson=model.Identities;manifest.Assets.push_back(artifact);
+            AssetImportManifest manifest;manifest.GuidString=model._Guid.GetGuidString();manifest.SourcePath=model.Path;manifest.SourceHash=std::string(64,'a');manifest.SettingsHash=std::string(64,'b');manifest.ImporterVersion=8;manifest.SubAssetsJson=model.Identities;manifest.Assets.push_back(artifact);
             Check(library->CommitImport(stage,manifest,error),error);
         };
         publishSkeleton();GameSproutRuntime::AvatarMaskData fullMask;fullMask.Skeleton={model._Guid.GetGuidString(),33};fullMask.DefaultWeight=1;fullMask.RootMotionWeight=1;
