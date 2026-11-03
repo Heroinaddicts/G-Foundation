@@ -65,20 +65,23 @@ CommandBufferSDL::~CommandBufferSDL() {
 IRenderPass* CommandBufferSDL::BeginRenderPass(const RenderPassDesc& desc) {
     Owner->ClearError();
     if(!OnThread() || Active || !Error.empty()){Fail("Invalid thread, nested pass or failed command.");return nullptr;}
-    const auto* color=Owner->FindTarget(desc.ColorTarget.Token);
+    const auto* color=desc.ColorTarget.Token?Owner->FindTarget(desc.ColorTarget.Token):nullptr;
     const auto* depth=desc.DepthTarget.Token?Owner->FindTarget(desc.DepthTarget.Token):nullptr;
-    if(!color || color->Format==TextureFormat::D32_Float || (color->Command && color->Command!=this) ||
+    if(!desc.ColorTarget.Token&&!desc.DepthTarget.Token) {
+        Fail("Render pass requires a color or depth target.");return nullptr;
+    }
+    if(desc.ColorTarget.Token && (!color || color->Format==TextureFormat::D32_Float || (color->Command && color->Command!=this) ||
        static_cast<unsigned>(desc.Load)>2 || static_cast<unsigned>(desc.Store)>1 ||
        (color->Command && desc.Load==LoadOp::Load) || !std::isfinite(desc.ClearColor.R) ||
-       !std::isfinite(desc.ClearColor.G) || !std::isfinite(desc.ClearColor.B) || !std::isfinite(desc.ClearColor.A)) {
+       !std::isfinite(desc.ClearColor.G) || !std::isfinite(desc.ClearColor.B) || !std::isfinite(desc.ClearColor.A))) {
         Fail("Invalid color target, load/store operation or clear color.");return nullptr;
     }
     if(desc.DepthTarget.Token && (!depth || depth->Command || depth->Format!=TextureFormat::D32_Float ||
-       depth->Width!=color->Width || depth->Height!=color->Height || static_cast<unsigned>(desc.DepthLoad)>2 ||
+       (color && (depth->Width!=color->Width || depth->Height!=color->Height)) || static_cast<unsigned>(desc.DepthLoad)>2 ||
        static_cast<unsigned>(desc.DepthStore)>1 || !std::isfinite(desc.ClearDepth) || desc.ClearDepth<0 || desc.ClearDepth>1)) {
         Fail("Invalid depth target, dimensions, load/store operation or clear depth.");return nullptr;
     }
-    auto* pass=new RenderPassSDL(this,desc,*color,depth?*depth:TargetSDL{});
+    auto* pass=new RenderPassSDL(this,desc,color?*color:TargetSDL{},depth?*depth:TargetSDL{});
     try {Passes.push_back(pass);}catch(...){delete pass;throw;}
     Active=pass;return pass;
 }
@@ -93,9 +96,10 @@ bool RenderPassSDL::Usable() {
     return ValidateTargets();
 }
 bool RenderPassSDL::ValidateTargets() {
-    const auto* color=Command->Owner->FindTarget(Desc.ColorTarget.Token);
+    const auto* color=Desc.ColorTarget.Token?Command->Owner->FindTarget(Desc.ColorTarget.Token):nullptr;
     const auto* depth=Desc.DepthTarget.Token?Command->Owner->FindTarget(Desc.DepthTarget.Token):nullptr;
-    if(!color || color->Texture!=Target.Texture || (Desc.DepthTarget.Token && (!depth || depth->Texture!=Depth.Texture)))
+    if((Desc.ColorTarget.Token && (!color || color->Texture!=Target.Texture)) ||
+       (Desc.DepthTarget.Token && (!depth || depth->Texture!=Depth.Texture)))
         return Command->Fail("A render target was released before command submission.");
     return true;
 }

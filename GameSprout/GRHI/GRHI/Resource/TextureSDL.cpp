@@ -51,7 +51,7 @@ ITexture* DeviceSDL::CreateTexture(const TextureDesc& desc, const TextureInitial
     const auto usage = static_cast<unsigned>(desc.Usage);
     const bool depth=desc.Format==TextureFormat::D32_Float;
     if (!_Device || !desc.Width || !desc.Height || format == SDL_GPU_TEXTUREFORMAT_INVALID || !usage || (usage & ~7u) ||
-        (depth ? usage!=4u || initial!=nullptr : (usage&4u)!=0)) {
+        (depth ? (usage!=4u && usage!=5u) || initial!=nullptr : (usage&4u)!=0)) {
         Fail("Invalid texture description or released device."); return nullptr;
     }
     SDL_GPUTextureCreateInfo info{};

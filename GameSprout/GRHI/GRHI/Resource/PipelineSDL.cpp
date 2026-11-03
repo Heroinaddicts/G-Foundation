@@ -37,9 +37,11 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
     auto* vertex = Resource<ShaderSDL>(desc.VertexShader,ResourceKindSDL::Shader);
     auto* fragment = Resource<ShaderSDL>(desc.FragmentShader,ResourceKindSDL::Shader);
     const auto format = ToSDL(desc.ColorFormat);
+    const bool depthOnly=desc.ColorFormat==TextureFormat::Unknown;
     if (!_Device || !vertex || !fragment || vertex->Owner != this || fragment->Owner != this ||
         !vertex->Native || !fragment->Native || vertex->Stage != ShaderStage::Vertex || fragment->Stage != ShaderStage::Fragment ||
-        format == SDL_GPU_TEXTUREFORMAT_INVALID || desc.ColorFormat==TextureFormat::D32_Float || static_cast<unsigned>(desc.Primitive) > 4 ||
+        (!depthOnly && format == SDL_GPU_TEXTUREFORMAT_INVALID) || desc.ColorFormat==TextureFormat::D32_Float ||
+        (depthOnly && (desc.DepthFormat!=TextureFormat::D32_Float || desc.Blend!=BlendMode::Opaque)) || static_cast<unsigned>(desc.Primitive) > 4 ||
         static_cast<unsigned>(desc.Cull) > 2 || static_cast<unsigned>(desc.Winding) > 1 || static_cast<unsigned>(desc.Blend) > 2 ||
         static_cast<unsigned>(desc.DepthCompare)>7 || (desc.DepthFormat!=TextureFormat::Unknown && desc.DepthFormat!=TextureFormat::D32_Float) ||
         ((desc.DepthTest || desc.DepthWrite) && desc.DepthFormat==TextureFormat::Unknown) ||
@@ -75,7 +77,7 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
         used[a.Binding]=true;attributes.push_back({a.Location,a.Binding,formats[f],a.Offset});
     }
     for(const auto& binding:buffers)if(!used[binding.slot]) {Fail("Each vertex binding must have at least one attribute.");return nullptr;}
-    if (!SDL_GPUTextureSupportsFormat(_Device, format, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET)) {
+    if (!depthOnly && !SDL_GPUTextureSupportsFormat(_Device, format, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET)) {
         Fail("Unsupported pipeline color format."); return nullptr;
     }
     SDL_GPUColorTargetDescription color{};
@@ -98,7 +100,8 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
     info.rasterizer_state.front_face = desc.Winding == FrontFace::CounterClockwise ? SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE : SDL_GPU_FRONTFACE_CLOCKWISE;
     info.rasterizer_state.enable_depth_clip=true;
     info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
-    info.target_info.color_target_descriptions = &color; info.target_info.num_color_targets = 1;
+    info.target_info.color_target_descriptions = depthOnly?nullptr:&color;
+    info.target_info.num_color_targets = depthOnly?0:1;
     info.vertex_input_state.vertex_buffer_descriptions=buffers.data();info.vertex_input_state.num_vertex_buffers=static_cast<uint32_t>(buffers.size());
     info.vertex_input_state.vertex_attributes=attributes.data();info.vertex_input_state.num_vertex_attributes=static_cast<uint32_t>(attributes.size());
     if(desc.DepthFormat!=TextureFormat::Unknown) {

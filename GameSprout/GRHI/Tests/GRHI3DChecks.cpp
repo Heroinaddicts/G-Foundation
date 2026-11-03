@@ -312,12 +312,111 @@ fragment float4 imageFragment(Output in [[stage_in]],texture2d<float> image [[te
     Check(f.Device->ReadTexture(bgraImage,pixels) && pixels==std::vector<uint8_t>({30,20,10,255}),"BGRA readback did not normalize to RGBA");
     std::cout<<"PASS compatible procedural image draw, texture/sampler bindings and BGRA-to-RGBA readback\n";
 }
+
+static void SampledDepthChecks(Fixture& f) {
+    static const char source[]=R"(
+#include <metal_stdlib>
+using namespace metal;
+struct Output {float4 position [[position]];float2 uv;};
+vertex Output depthVertex(uint id [[vertex_id]]) {
+    float2 p[3]={float2(-.6,-.6),float2(.6,-.6),float2(0,.6)};
+    Output out;out.position=float4(p[id],.2,1);out.uv=float2(0);return out;
+}
+fragment void depthFragment() {}
+vertex Output sampleVertex(uint id [[vertex_id]]) {
+    float2 p[3]={float2(-1,1),float2(3,1),float2(-1,-3)};
+    float2 uv[3]={float2(0,0),float2(2,0),float2(0,2)};
+    Output out;out.position=float4(p[id],0,1);out.uv=uv[id];return out;
+}
+fragment float4 sampleDepth(Output in [[stage_in]],texture2d<float> depth [[texture(0)]],sampler depthSampler [[sampler(0)]]) {
+    float value=depth.sample(depthSampler,in.uv).r;return float4(value,value,value,1);
+}
+)";
+    const auto shader=[&](GRHI::ShaderStage stage,const char* entry,uint32_t samplers) {
+        GRHI::ShaderCode code;code.Format=GRHI::ShaderCodeFormat::MSL;code.Data=source;code.DataSize=sizeof(source);
+        code.EntryPoint=entry;code.SamplerCount=samplers;
+        GRHI::ShaderDesc desc;desc.Stage=stage;desc.Codes=&code;desc.CodeCount=1;
+        return f.Keep(f.Device->CreateShader(desc),"sampled depth shader");
+    };
+    auto* vertex=shader(GRHI::ShaderStage::Vertex,"depthVertex",0);
+    auto* fragment=shader(GRHI::ShaderStage::Fragment,"depthFragment",0);
+    GRHI::GraphicsPipelineDesc description;description.VertexShader=vertex;description.FragmentShader=fragment;
+    description.DepthFormat=GRHI::TextureFormat::D32_Float;description.DepthTest=true;description.DepthWrite=true;
+    auto* write=f.Keep(f.Device->CreateGraphicsPipeline(description),"depth-only pipeline");
+    Check(write->GetColorFormat()==GRHI::TextureFormat::Unknown,"Depth-only pipeline exposes a color format");
+    auto invalid=description;invalid.DepthFormat=GRHI::TextureFormat::Unknown;
+    Check(!f.Device->CreateGraphicsPipeline(invalid),"Target-less pipeline accepted");
+    invalid=description;invalid.FragmentShader=nullptr;
+    Check(!f.Device->CreateGraphicsPipeline(invalid),"Missing SDL fragment shader accepted");
+    invalid=description;invalid.Blend=GRHI::BlendMode::Alpha;
+    Check(!f.Device->CreateGraphicsPipeline(invalid),"Depth-only blend state accepted");
+
+    description.VertexShader=shader(GRHI::ShaderStage::Vertex,"sampleVertex",0);
+    description.FragmentShader=shader(GRHI::ShaderStage::Fragment,"sampleDepth",1);
+    description.ColorFormat=GRHI::TextureFormat::RGBA8_UNorm;
+    description.DepthFormat=GRHI::TextureFormat::Unknown;description.DepthTest=false;description.DepthWrite=false;
+    auto* read=f.Keep(f.Device->CreateGraphicsPipeline(description),"sampled-depth display pipeline");
+    description.DepthFormat=GRHI::TextureFormat::D32_Float;
+    auto* feedback=f.Keep(f.Device->CreateGraphicsPipeline(description),"depth feedback validation pipeline");
+    GRHI::TextureDesc texture;texture.Width=64;texture.Height=64;texture.Format=GRHI::TextureFormat::D32_Float;
+    texture.Usage=GRHI::TextureUsage::DepthStencilTarget|GRHI::TextureUsage::Sampled;
+    auto* depth=f.Keep(f.Device->CreateTexture(texture),"sampled D32 target");
+    Check(depth->GetDepthTargetView().Token&&!depth->GetColorTargetView().Token,"Sampled depth view domain mismatch");
+    texture.Usage=GRHI::TextureUsage::Sampled;
+    Check(!f.Device->CreateTexture(texture),"Sampled D32 without depth target usage accepted");
+    texture.Usage=GRHI::TextureUsage::DepthStencilTarget|GRHI::TextureUsage::ColorTarget;
+    Check(!f.Device->CreateTexture(texture),"Depth-as-color usage accepted");
+    texture.Usage=GRHI::TextureUsage::DepthStencilTarget|GRHI::TextureUsage::Sampled;
+    const float initialDepth=.5f;const GRHI::TextureInitialData initial{&initialDepth,sizeof(initialDepth),0};
+    Check(!f.Device->CreateTexture(texture,&initial),"D32 initial pixel upload accepted");
+    auto* color=Color(f);
+    GRHI::SamplerDesc samplerDesc;samplerDesc.MinFilter=GRHI::FilterMode::Nearest;samplerDesc.MagFilter=GRHI::FilterMode::Nearest;
+    auto* sampler=f.Keep(f.Device->CreateSampler(samplerDesc),"nearest depth sampler");
+    for(unsigned frame=0;frame<2;++frame) {
+        Recording recording(f.Device);
+        GRHI::RenderPassDesc pass;pass.DepthTarget=depth->GetDepthTargetView();pass.DepthStore=GRHI::StoreOp::Store;pass.ClearDepth=frame?.75f:.9f;
+        recording.Pass=recording.Command->BeginRenderPass(pass);Check(recording.Pass,"Cannot begin depth-only pass");
+        recording.Pass->SetPipeline(write);recording.Pass->Draw(3);
+        recording.Command->EndRenderPass(recording.Pass);recording.Pass=nullptr;
+        // Same command: the second pass must see depth produced by the first,
+        // including Store semantics, clear value and the default depth viewport.
+        pass={};pass.ColorTarget=color->GetColorTargetView();
+        recording.Pass=recording.Command->BeginRenderPass(pass);Check(recording.Pass,"Cannot begin depth sampling pass");
+        recording.Pass->SetPipeline(read);recording.Pass->SetFragmentTextureSampler(0,depth,sampler);recording.Pass->Draw(3);
+        Check(recording.Submit(),f.Device->GetLastError());
+        std::vector<uint8_t> pixels;Check(f.Device->ReadTexture(color,pixels),f.Device->GetLastError());
+        const auto center=Pixel(pixels,32,32),outside=Pixel(pixels,1,1);
+        Check(center[0]>=49&&center[0]<=53,"Depth-only draw was not stored and sampled as .2");
+        Check(frame?(outside[0]>=190&&outside[0]<=193):(outside[0]>=228&&outside[0]<=231),"Depth clear/store or repeated sampling failed");
+    }
+    {
+        Recording recording(f.Device);Check(!recording.Command->BeginRenderPass({}),"Render pass with no attachments accepted");
+        Check(!recording.Submit(),"Attachment-less pass reached GPU");
+    }
+    {
+        Recording recording(f.Device);GRHI::RenderPassDesc pass;pass.DepthTarget=depth->GetDepthTargetView();
+        recording.Pass=recording.Command->BeginRenderPass(pass);Check(recording.Pass,"Cannot begin depth-only validation pass");
+        recording.Pass->SetPipeline(read);Check(!recording.Submit(),"Color pipeline bound to depth-only pass");
+    }
+    {
+        Recording recording(f.Device);recording.Pass=recording.Command->BeginRenderPass(PassDesc(color,depth));
+        recording.Pass->SetPipeline(feedback);recording.Pass->SetFragmentTextureSampler(0,depth,sampler);recording.Pass->Draw(3);
+        Check(!recording.Submit(),"Depth read/write feedback accepted");
+    }
+    {
+        auto* doomed=f.Keep(f.Device->CreateTexture(texture),"released sampled depth");
+        Recording recording(f.Device);GRHI::RenderPassDesc pass;pass.DepthTarget=doomed->GetDepthTargetView();
+        recording.Pass=recording.Command->BeginRenderPass(pass);recording.Pass->SetPipeline(write);recording.Pass->Draw(3);
+        doomed->Release();Check(!recording.Submit(),"Released depth-only target reached GPU submission");
+    }
+    std::cout<<"PASS real Metal sampled D32: depth-only draw/clear/store, consecutive-pass sampling, reuse and invalid targets/feedback/lifetimes\n";
+}
 #endif
 int main(int argc,char** argv) {
 #if !defined(__APPLE__)
     (void)argc;(void)argv;std::cout<<"SKIP real GPU fixture currently supplies Metal source; API remains platform independent\n";return 77;
 #else
-    try {Check(argc==2,"Expected runtime binary directory");Fixture fixture;fixture.Api=ExportGRHIApi(argv[1]);Check(fixture.Api,"Cannot load GRHI");fixture.Device=fixture.Api->CreateDevice();Check(fixture.Device,"Cannot create Metal device");GPUChecks(fixture);InstanceChecks(fixture);ReplayChecks(fixture);ImageCompatibility(fixture);return 0;}
+    try {Check(argc==2,"Expected runtime binary directory");Fixture fixture;fixture.Api=ExportGRHIApi(argv[1]);Check(fixture.Api,"Cannot load GRHI");fixture.Device=fixture.Api->CreateDevice();Check(fixture.Device,"Cannot create Metal device");GPUChecks(fixture);InstanceChecks(fixture);ReplayChecks(fixture);ImageCompatibility(fixture);SampledDepthChecks(fixture);return 0;}
     catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<"\n";return 1;}
 #endif
 }

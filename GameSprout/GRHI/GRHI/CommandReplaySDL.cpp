@@ -18,7 +18,7 @@ bool CommandBufferSDL::Encode() {
         depth.load_op=loads[static_cast<unsigned>(pass->Desc.DepthLoad)];
         depth.store_op=pass->Desc.DepthStore==StoreOp::Store?SDL_GPU_STOREOP_STORE:SDL_GPU_STOREOP_DONT_CARE;
         depth.stencil_load_op=SDL_GPU_LOADOP_DONT_CARE;depth.stencil_store_op=SDL_GPU_STOREOP_DONT_CARE;
-        auto* nativePass=SDL_BeginGPURenderPass(Native,&color,1,depth.texture?&depth:nullptr);
+        auto* nativePass=SDL_BeginGPURenderPass(Native,color.texture?&color:nullptr,color.texture?1:0,depth.texture?&depth:nullptr);
         if(!nativePass)return Fail(SDL_GetError());
         ReplayStateSDL state;
         for(const auto& draw:pass->Draws) {

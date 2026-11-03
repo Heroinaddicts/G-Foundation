@@ -44,7 +44,10 @@ public:
 class RenderPassSDL final : public IRenderPass {
 public:
     RenderPassSDL(CommandBufferSDL* command,const RenderPassDesc& desc,const TargetSDL& target,const TargetSDL& depth)
-        : Command(command),Desc(desc),Target(target),Depth(depth) { State.View.Width=float(target.Width);State.View.Height=float(target.Height); }
+        : Command(command),Desc(desc),Target(target),Depth(depth) {
+        State.View.Width=float(target.Texture?target.Width:depth.Width);
+        State.View.Height=float(target.Texture?target.Height:depth.Height);
+    }
     void SetPipeline(IGraphicsPipeline*) override;
     void SetViewport(const Viewport&) override;
     void SetFragmentTextureSampler(uint32_t,ITexture*,ISampler*) override;

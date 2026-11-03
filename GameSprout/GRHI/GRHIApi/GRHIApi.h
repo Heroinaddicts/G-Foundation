@@ -45,7 +45,7 @@ namespace GRHI {
         RGBA8_UNorm_sRGB, // RGBA 排列，RGB 使用 sRGB 编码，适合通常的彩色图片。
         BGRA8_UNorm,      // 每像素 4 字节，依次为 B、G、R、A，各通道 8 位，线性编码。
         BGRA8_UNorm_sRGB, // BGRA 排列，RGB 使用 sRGB 编码，也可能用于窗口画面。
-        D32_Float        // 单通道 32 位浮点深度，仅作深度目标。
+        D32_Float        // 单通道 32 位浮点深度，可作深度目标并由后续 Pass 采样。
     };
 
     // 纹理允许的使用方式，可通过 | 组合；实际组合还须得到设备支持。
@@ -73,7 +73,7 @@ namespace GRHI {
         uint32_t Width = 0;    // 像素宽度，创建时必须大于 0。
         uint32_t Height = 0;   // 像素高度，创建时必须大于 0。
         TextureFormat Format = TextureFormat::RGBA8_UNorm; // 每个像素的格式。
-        TextureUsage Usage = TextureUsage::Sampled;      // 创建后允许进行哪些操作。
+        TextureUsage Usage = TextureUsage::Sampled;      // D32 须含 DepthStencilTarget，可附加 Sampled；不允许 ColorTarget 或初始像素上传。
     };
 
     // CPU 内存中的初始像素数据；像素排列必须与 TextureDesc::Format 一致。
@@ -205,8 +205,8 @@ namespace GRHI {
     // 绘制时使用的一组固定规则，与要绘制的具体图片资源分开创建。
     struct GraphicsPipelineDesc {
         IShader* VertexShader = nullptr;   // 顶点 Shader，必须是 Vertex 阶段。
-        IShader* FragmentShader = nullptr; // 片元 Shader，必须是 Fragment 阶段。
-        TextureFormat ColorFormat = TextureFormat::Unknown; // 必须匹配绘制目标格式。
+        IShader* FragmentShader = nullptr; // 必须是 Fragment 阶段；仅深度管线也须提供无颜色输出的片元程序。
+        TextureFormat ColorFormat = TextureFormat::Unknown; // Unknown 表示仅深度管线，须指定 D32_Float DepthFormat；否则须匹配颜色目标。
         PrimitiveType Primitive = PrimitiveType::TriangleList; // 顶点的组合方式。
         CullMode Cull = CullMode::None;                      // 三角形剔除方式。
         FrontFace Winding = FrontFace::CounterClockwise;     // 三角形的正面定义。
@@ -279,7 +279,7 @@ namespace GRHI {
 
     // 一段绘制过程的目标和开始/结束规则，不包含具体 Draw 命令。
     struct RenderPassDesc {
-        ColorTargetView ColorTarget;  // 从 Surface 或 ITexture 取得的有效目标视图。
+        ColorTargetView ColorTarget;  // 从 Surface 或 ITexture 取得；Token=0 时须提供有效 DepthTarget，形成仅深度 Pass。
         LoadOp Load = LoadOp::Clear;   // 开始时清屏、保留或忽略原内容。
         StoreOp Store = StoreOp::Store; // 结束时是否保留结果；窗口呈现时使用 Store。
         Color ClearColor;              // 仅 Load 为 Clear 时使用。
@@ -375,7 +375,7 @@ namespace GRHI {
         // 初始化管线 ID；Shader 和绘制状态由 CreateGraphicsPipeline 提供。
         explicit IGraphicsPipeline(const uint64_t guid) : IResource(guid) {}
 
-        // 返回管线要求的颜色输出格式，必须与当前 RenderPass 的目标一致。
+        // 返回管线要求的颜色输出格式，必须与当前 RenderPass 的目标一致；仅深度管线返回 Unknown。
         virtual TextureFormat GetColorFormat() const = 0;
     };
 
@@ -432,7 +432,7 @@ namespace GRHI {
         // 禁止覆盖尚未提交或取消的命令对象。
         ICommandBuffer& operator=(const ICommandBuffer&) = delete;
 
-        // 开始向 desc.ColorTarget 绘制，并按 desc.Load 决定是否清屏。
+        // 开始向 desc.ColorTarget 和/或 desc.DepthTarget 绘制，按各自 Load 决定是否清屏。
         // 同一命令不能同时存在多个活动 Pass；目标须有效且属于同一 Device。
         // 失败返回 nullptr；成功时初始 Viewport 覆盖整个目标。
         virtual IRenderPass* BeginRenderPass(const RenderPassDesc& desc) = 0;
