@@ -39,9 +39,11 @@ void SceneViewportEditing::OnActiveSceneChanged(){
     Cancel();_ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
     _TransformEditActive=_Scenes && _Scenes->HasTransformEdit();
     _SceneID=0;_ObjectID=0;_Ready=false;
+    _Viewport.RequestRender();
 }
 void SceneViewportEditing::OnSceneStateChanged(){
     _TransformEditActive=_Scenes && _Scenes->HasTransformEdit();
+    _Viewport.RequestRender();
 }
 void SceneViewportEditing::OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>& selection){
     if(!selection.empty())OnSceneObjectSelectionChanged({});
@@ -49,6 +51,7 @@ void SceneViewportEditing::OnAssetSelectionChanged(const std::vector<ProjectAsse
 void SceneViewportEditing::OnSceneObjectSelectionChanged(const SceneObjectSelection& selection){
     if(_SelectionSnapshot==selection)return;
     Cancel();_SelectionSnapshot=selection;_ObjectID=0;_Ready=false;
+    _Viewport.RequestRender();
 }
 void SceneViewportEditing::Report(const std::string& error){if(!error.empty())_Viewport.ReportEditingError(error);}
 bool SceneViewportEditing::View(SceneGizmoView& view) const {
@@ -140,6 +143,7 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
 bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
     _HoverPixel=logical;_HasHover=true;
     if(_Gizmo.IsDragging()) {
+        _Viewport.RequestRender();
         if(!_Scenes||!Selected()||Selected()->GetInstanceID()!=_ObjectID||!_Scenes->HasTransformEdit()){Cancel();return true;}
         // 拖动时相机和目标像素尺寸都固定。宿主 resize 会先取消此事务。
         SceneGizmoTransform candidate;std::string error;
@@ -150,7 +154,10 @@ bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
         return true;
     }
     SceneGizmoView view;
-    if(_Ready&&View(view))_Gizmo.Hover(Pixel(logical,view));
+    if(_Ready&&View(view)) {
+        const auto previous=_Gizmo.ActiveHandle();
+        if(_Gizmo.Hover(Pixel(logical,view))!=previous)_Viewport.RequestRender();
+    }
     return false;
 }
 bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap) {
@@ -165,7 +172,7 @@ bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap)
 void SceneViewportEditing::Cancel() {
     const bool dragging=_Gizmo.IsDragging();_Gizmo.CancelDrag();_Ready=false;
     if(dragging&&_Scenes){std::string error;if(!_Scenes->CancelTransformEdit(error))Report(error);}
-    if(dragging)_Viewport.ReleaseEditingCapture();
+    if(dragging){_Viewport.ReleaseEditingCapture();_Viewport.RequestRender();}
 }
 bool SceneViewportEditing::DeleteSelection() {
     if(_ReadOnly)return false;
@@ -187,7 +194,11 @@ void SceneViewportEditing::SetTool(SceneEditingTool tool) {
     Cancel();_Viewport.ClearEditingError();_Tool=tool;
     if(tool!=SceneEditingTool::View)_Settings.Tool=tool==SceneEditingTool::Move?SceneGizmoTool::Move:tool==SceneEditingTool::Rotate?SceneGizmoTool::Rotate:SceneGizmoTool::Scale;
     if(ToolChanged)ToolChanged(tool);
+    _Viewport.RequestRender();
 }
-void SceneViewportEditing::SetSpace(SceneGizmoSpace value){Cancel();_Viewport.ClearEditingError();_Settings.Space=value;}
-void SceneViewportEditing::SetPivot(SceneGizmoPivot value){Cancel();_Viewport.ClearEditingError();_Settings.Pivot=value;}
-void SceneViewportEditing::SetSnap(bool enabled,float move,float rotation,float scale){Cancel();_Viewport.ClearEditingError();_Snap=enabled;_Settings.TranslationSnap=move;_Settings.RotationSnapDegrees=rotation;_Settings.ScaleSnap=scale;}
+void SceneViewportEditing::SetSpace(SceneGizmoSpace value){Cancel();_Viewport.ClearEditingError();_Settings.Space=value;_Viewport.RequestRender();}
+void SceneViewportEditing::SetPivot(SceneGizmoPivot value){Cancel();_Viewport.ClearEditingError();_Settings.Pivot=value;_Viewport.RequestRender();}
+void SceneViewportEditing::SetSnap(bool enabled,float move,float rotation,float scale){Cancel();_Viewport.ClearEditingError();_Snap=enabled;_Settings.TranslationSnap=move;_Settings.RotationSnapDegrees=rotation;_Settings.ScaleSnap=scale;_Viewport.RequestRender();}
+void SceneViewportEditing::SetReadOnly(bool value){if(_ReadOnly!=value){Cancel();_ReadOnly=value;_Ready=false;_Viewport.RequestRender();}}
+void SceneViewportEditing::SetShowAllColliders(bool enabled){if(_ShowAllColliders!=enabled){_ShowAllColliders=enabled;_Viewport.RequestRender();}}
+void SceneViewportEditing::SetExternalToolActive(bool value){_ExternalToolActive=value;_Ready=false;_Viewport.RequestRender();}

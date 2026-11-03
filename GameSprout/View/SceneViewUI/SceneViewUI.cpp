@@ -53,6 +53,7 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     QObject::connect(_Ui->focusSelectionButton,&QToolButton::clicked,_Dispatch,[this]{FocusSelection();});
     QObject::connect(_Ui->retryRenderButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
     QObject::connect(_Ui->allCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowAllColliders(checked);});
+    QObject::connect(_Ui->gridCheck,&QCheckBox::toggled,_Dispatch,[this](bool){if(_Viewport)_Viewport->RequestRender();});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
 }
@@ -63,10 +64,13 @@ bool SceneViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     _Attached=true;_Docker->SetTitle(QStringLiteral("Scene"));
     if(!_Chrome->Attach(_Docker))return false;
     _DockerVisibilitySubscribed=_Docker->RegisterContentVisibilityCallback(this,
-        [this](bool visible){_DockerContentVisible=visible;_Timer.start();});
+        [this](bool visible){_DockerContentVisible=visible;_Timer.start();if(visible&&_Viewport)_Viewport->RequestRender();});
     _DockerContentVisible=_Docker->IsContentVisible();
+    _LoadingSubscribed=g_IIDEWindow->RegisterLoadingStateCallback(this,[this](bool loading){_Loading=loading;_Timer.start();if(!loading&&_Viewport)_Viewport->RequestRender();});
+    _Loading=g_IIDEWindow->IsLoading();
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    if(_RuntimeAssets)_ResourcesSubscribed=_RuntimeAssets->RegisterResourceListener(this);
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();_Timer.start();
     return _DockerVisibilitySubscribed && (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
@@ -77,13 +81,20 @@ void SceneViewUI::Hide(){if(_Window)_Window->hide();}
 void SceneViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void SceneViewUI::OnActiveSceneChanged() {
     _ActiveScene=_Scenes?_Scenes->GetActiveScene():nullptr;
+    if(_Viewport)_Viewport->RequestRender();
 }
-void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
+void SceneViewUI::OnRuntimeResourcesChanged(std::uint64_t){if(_Viewport)_Viewport->RequestRender();}
+void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     // Editor camera navigation continues while simulation is paused.
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
-    if(_DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed);
+    const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
+    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_ResourcesSubscribed&&_RuntimeAssets)_RuntimeAssets->UnregisterResourceListener(this);
+    _ResourcesSubscribed=false;
+    if(_LoadingSubscribed && g_IIDEWindow)g_IIDEWindow->UnregisterLoadingStateCallback(this);
+    _LoadingSubscribed=false;_Loading=false;
     if(_DockerVisibilitySubscribed && _Docker)_Docker->UnregisterContentVisibilityCallback(this);
     _DockerVisibilitySubscribed=false;_DockerContentVisible=false;
     if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
@@ -105,7 +116,7 @@ void SceneViewUI::ResetCamera(){if(_Viewport){_Viewport->Editing().Cancel();_Vie
 bool SceneViewUI::IsRenderingAvailable() const{return _Viewport&&_Viewport->IsRenderingAvailable();}
 std::string SceneViewUI::GetRenderError() const{return _Viewport?_Viewport->GetRenderError():"Scene viewport is not initialized";}
 bool SceneViewUI::RegisterSceneTool(const void* owner,ISceneTool* tool){return _Viewport&&_Viewport->Tools().Register(owner,tool);}
-bool SceneViewUI::ActivateSceneTool(ISceneTool* tool){return _Viewport&&_Viewport->Tools().Activate(tool);}
+bool SceneViewUI::ActivateSceneTool(ISceneTool* tool){if(!_Viewport)return false;const bool activated=_Viewport->Tools().Activate(tool);if(activated)_Viewport->RequestRender();return activated;}
 void SceneViewUI::DeactivateSceneTool(ISceneTool* tool){if(_Viewport)_Viewport->Tools().Deactivate(tool);}
 ISceneTool* SceneViewUI::GetActiveSceneTool() const{return _Viewport?_Viewport->Tools().Active():nullptr;}
 void SceneViewUI::UnregisterSceneTools(const void* owner){if(_Viewport)_Viewport->Tools().Unregister(owner);}
@@ -171,6 +182,7 @@ bool SceneViewUI::FocusSelection() {
 }
 
 void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    if(_Viewport)_Viewport->RequestRender();
     if(_Viewport&&_ToolPlayStateKnown&&_ToolPlayState!=state.State)_Viewport->Tools().Deactivate();
     _ToolPlayStateKnown=true;_ToolPlayState=state.State;
     _CanEdit=state.State==EditorPlayState::Edit;

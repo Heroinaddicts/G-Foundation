@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include "IRuntimeHost.h"
 #include "ISceneManager.h"
+#include "IRuntimeAssets.h"
 
 QT_BEGIN_NAMESPACE
 class QMainWindow;
@@ -19,7 +20,7 @@ class IRuntimeAssets;
 class SceneViewport;
 class SceneViewChrome;
 
-class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener, public IPlayModeListener {
+class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener, public IPlayModeListener,public IRuntimeAssetsListener {
 public:
     ~SceneViewUI() override;
 
@@ -28,6 +29,7 @@ public:
     void Hide() override;
     void OnRuntimeFrame(const RuntimeFrameEvent&) override;
     void OnActiveSceneChanged() override;
+    void OnRuntimeResourcesChanged(std::uint64_t) override;
     SceneViewCameraState GetCameraState() const override;
     bool SetCameraState(const SceneViewCameraState& state) override;
     void ResetCamera() override;
@@ -59,10 +61,12 @@ private:
     SceneViewChrome* _Chrome=nullptr;
     IIDEDocker* _Docker=nullptr;
     bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;
+    bool _Loading=false,_LoadingSubscribed=false;
     ISceneManager* _Scenes=nullptr;
     IRuntimeHost* _Host=nullptr;
     GameSproutRuntime::IScene* _ActiveScene=nullptr;
     bool _FrameSubscribed=false,_SceneSubscribed=false;
+    bool _ResourcesSubscribed=false;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     ISelectionManager* _Selection=nullptr;
     IRuntimeAssets* _RuntimeAssets=nullptr;

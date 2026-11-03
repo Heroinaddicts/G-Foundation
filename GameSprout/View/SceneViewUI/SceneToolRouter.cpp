@@ -37,7 +37,7 @@ void SceneToolRouter::Unregister(const void* owner) {
         if(found->second==owner){if(_Active==found->first)Deactivate();found=_Tools.erase(found);}else ++found;
     }
 }
-void SceneToolRouter::CancelDrag() { if(_Active)_Active->CancelSceneToolDrag(); }
+void SceneToolRouter::CancelDrag() { if(_Active){const bool dragging=_Active->IsSceneToolDragging();_Active->CancelSceneToolDrag();if(dragging)_Viewport.RequestRender();} }
 bool SceneToolRouter::Context(SceneToolContext& context) const {
     if(!_Active||!_Scenes||!_Viewport.GetRuntime()||!_Viewport.GetRenderedCamera(context.Frame))return false;
     auto* scene=_Scenes->GetActiveScene();
@@ -56,11 +56,14 @@ void SceneToolRouter::Draw(GameSproutRuntime::IScene* scene,GameSproutRuntime::D
     const auto error=tool->GetSceneToolError();if(!error.empty())_Viewport.ReportEditingError(error);
 }
 bool SceneToolRouter::Press(GameSproutRuntime::Vector2 point,bool shift,bool alt,bool snap) {
+    if(_Active)_Viewport.RequestRender();
     SceneToolContext context;return Context(context)&&_Active->PressSceneTool(context,Pointer(point,shift,alt,snap));
 }
 bool SceneToolRouter::Move(GameSproutRuntime::Vector2 point,bool shift,bool alt,bool snap) {
+    if(_Active)_Viewport.RequestRender();
     SceneToolContext context;return Context(context)&&_Active->MoveSceneTool(context,Pointer(point,shift,alt,snap));
 }
 bool SceneToolRouter::Release(GameSproutRuntime::Vector2 point,bool shift,bool alt,bool snap) {
+    if(_Active)_Viewport.RequestRender();
     SceneToolContext context;return Context(context)&&_Active->ReleaseSceneTool(context,Pointer(point,shift,alt,snap));
 }

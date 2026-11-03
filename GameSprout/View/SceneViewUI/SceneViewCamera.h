@@ -1,6 +1,7 @@
 #pragma once
 #include "ISceneViewUI.h"
 #include "Math/Projection.h"
+#include <functional>
 
 class SceneViewCamera {
 public:
@@ -15,6 +16,7 @@ public:
     bool Focus(GameSproutRuntime::Vector3 center,float radius,float aspect = 1.0f);
     GameSproutRuntime::Vector3 Forward() const;
     GameSproutRuntime::Mat4 ViewMatrix() const;
+    std::function<void()> Changed;
 private:
     void UpdatePivot();
     SceneViewCameraState _State;

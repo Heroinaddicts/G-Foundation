@@ -6,6 +6,7 @@
 #include "IRuntimeHost.h"
 #include "ISceneManager.h"
 #include "IAnimationPreview.h"
+#include "IRuntimeAssets.h"
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -20,7 +21,7 @@ class IRuntimeAssets;
 class IAnimationPreview;
 class GameViewport;
 
-class GameViewUI : public IGameViewUI, public IRuntimeFrameListener, public ISceneListener, public IAnimationPreviewListener, public IPlayModeListener {
+class GameViewUI : public IGameViewUI, public IRuntimeFrameListener, public ISceneListener, public IAnimationPreviewListener, public IPlayModeListener,public IRuntimeAssetsListener {
 public:
     ~GameViewUI() override;
 
@@ -30,6 +31,9 @@ public:
     void OnRuntimeFrame(const RuntimeFrameEvent&) override;
     void OnActiveSceneChanged() override;
     void OnAnimationPreviewStateChanged(bool scenePlaying) override;
+    void OnAnimationPreviewReset() override;
+    void OnClipPreviewStateChanged(std::uint64_t,const GameSproutRuntime::AnimationClipPlaybackState&) override;
+    void OnRuntimeResourcesChanged(std::uint64_t) override;
 
 private:
     IPlayMode* _PlayMode=nullptr;
@@ -47,10 +51,12 @@ private:
     GameViewport* _Viewport=nullptr;
     IIDEDocker* _Docker=nullptr;
     bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;
+    bool _Loading=false,_LoadingSubscribed=false;
     ISceneManager* _Scenes=nullptr;
     IRuntimeHost* _Host=nullptr;
     GameSproutRuntime::IScene* _ActiveScene=nullptr;
     bool _FrameSubscribed=false,_SceneSubscribed=false,_PreviewSubscribed=false;
+    bool _ResourcesSubscribed=false;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     IAnimationPreview* _Preview=nullptr;
     IRuntimeAssets* _Resources=nullptr;

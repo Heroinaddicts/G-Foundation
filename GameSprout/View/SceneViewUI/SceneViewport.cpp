@@ -11,6 +11,7 @@ bool SceneViewport::IsHeadless(){const QString name=QGuiApplication::platformNam
 SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
     _Editing=new SceneViewportEditing(*this);
     _Tools=new SceneToolRouter(*this);
+    _Camera.Changed=[this]{RequestRender();};
     if(!IsHeadless()) {
         setAttribute(Qt::WA_NativeWindow);
         setAttribute(Qt::WA_DontCreateNativeAncestors);
@@ -23,6 +24,8 @@ void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager*
 QPaintEngine* SceneViewport::paintEngine() const{return IsHeadless()?QWidget::paintEngine():nullptr;}
 void SceneViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
     Shutdown();_Runtime=runtime;_Initialized=true;_Resources=resources;
+    if(_Runtime)_RuntimeSubscribed=_Runtime->RegisterListener(this);
+    RequestRender();
     if(IsHeadless())SetStatus("离屏测试环境：保留 Scene 视图与独立相机，不创建原生 GPU 窗口。",true);
     else if(!NativePlatformSupported())SetStatus("当前 Qt 平台尚无兼容的 Runtime 原生窗口句柄。",true);
 }
@@ -47,9 +50,12 @@ void SceneViewport::DestroyGpu() {
     auto* renderer=_Renderer;_Renderer=nullptr;
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
+    RequestRender();
     delete renderer;
 }
 void SceneViewport::Shutdown() {
+    if(_RuntimeSubscribed&&_Runtime)_Runtime->UnregisterListener(this);
+    _RuntimeSubscribed=false;_SceneID=0;
     _Tools->Shutdown();
     _Editing->Unbind();
     ClearInput();DestroyGpu();
@@ -59,6 +65,7 @@ void SceneViewport::Shutdown() {
     _Runtime=nullptr;_Initialized=false;
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}
+void SceneViewport::OnSceneVisualChanged(std::uint64_t sceneID) {if(sceneID==_SceneID)RequestRender();}
 void SceneViewport::ObserveNativeWindow() {
     QWindow* native=windowHandle();
     if(native!=_NativeWindow) {
@@ -83,21 +90,27 @@ void SceneViewport::ObserveNativeWindow() {
 bool SceneViewport::event(QEvent* event) {
     if(event->type()==QEvent::PlatformSurface && static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType()==QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed){ClearInput();DestroyGpu();}
     else if(event->type()==QEvent::WinIdChange){ClearInput();DestroyGpu();ObserveNativeWindow();}
-    else if(event->type()==QEvent::Resize
+    else if(event->type()==QEvent::Resize||event->type()==QEvent::ScreenChangeInternal
 #if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
             ||event->type()==QEvent::DevicePixelRatioChange
 #endif
-    ){ClearInput();_ViewportChanged=true;}
-    else if(event->type()==QEvent::Leave&&!_Editing->IsDragging())_Editing->Move({-100,-100},false);
+    ){ClearInput();_ViewportChanged=true;RequestRender();}
+    else if(event->type()==QEvent::Leave&&!_Editing->IsDragging()){
+        _Tools->Move({-100,-100},false,false,false);_Editing->Move({-100,-100},false);
+    }
     else if(event->type()==QEvent::WindowDeactivate||event->type()==QEvent::UngrabMouse)ClearInput();
+    if(event->type()==QEvent::Show||event->type()==QEvent::Paint||event->type()==QEvent::Expose||
+       event->type()==QEvent::WindowActivate||event->type()==QEvent::ScreenChangeInternal)RequestRender();
     return QWidget::event(event);
 }
 bool SceneViewport::eventFilter(QObject* watched,QEvent* event) {
     if((watched==_NativeWindow||watched==_HostWindow) && event->type()==QEvent::PlatformSurface) {
         const auto kind=static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType();
         if(kind==QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed){ClearInput();DestroyGpu();}
-        else if(kind==QPlatformSurfaceEvent::SurfaceCreated)_Attempted=false;
+        else if(kind==QPlatformSurfaceEvent::SurfaceCreated){_Attempted=false;RequestRender();}
     }
+    if((watched==_NativeWindow||watched==_HostWindow)&&
+       (event->type()==QEvent::Expose||event->type()==QEvent::WindowActivate||event->type()==QEvent::ScreenChangeInternal))RequestRender();
     return QWidget::eventFilter(watched,event);
 }
 bool SceneViewport::CanRender() const {
@@ -132,13 +145,19 @@ bool SceneViewport::EnsureRendering() {
     _NativeID=id;
     return true;
 }
-void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt) {
-    AdvanceInput(dt);
-    if(!scene||!CanRender()||_Rendering||!EnsureRendering()){_Editing->UpdateFrame(scene);return;}
+void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous) {
+    const auto sceneID=scene?scene->GetInstanceID():0;
+    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
+    if(_Drag!=DragMode::None)AdvanceInput(dt);
+    if(!_NeedsRender&&!continuous&&_Drag==DragMode::None)return;
+    if(_Rendering||!CanRender())return;
+    _NeedsRender=false;
+    if(!EnsureRendering())return;
     _Rendering=true;
     struct Guard{bool& Value;~Guard(){Value=false;}} guard{_Rendering};
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=grid;
+    view.DrawScene=scene!=nullptr;
     view.Camera.View=_Camera.ViewMatrix();view.Camera.Position=_Camera.GetState().Position;
     const auto& camera=_Camera.GetState();
     view.Camera.Projection.VerticalFovRadians=GameSproutRuntime::DegreesToRadians(camera.VerticalFovDegrees);
@@ -150,7 +169,11 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     view.DebugDraw=&debug;
     // Runtime Renderer 从 SurfaceFrame 实际像素尺寸算投影，包含 resize / Retina DPI。
     if(!_Renderer->Render(view)){SetStatus(_Renderer->GetLastError(),true);return;}
+    const bool refreshOverlays=_ViewportChanged;
     _ViewportChanged=false;
+    // Initial/changed pixel dimensions need one follow-up to build gizmos from
+    // the first successfully presented camera. Later idle frames do no work.
+    if(refreshOverlays)RequestRender();
     const auto& info=_Renderer->GetStatistics();
     if(info.Width&&info.Height) {
         std::string message=std::to_string(info.Width)+" × "+std::to_string(info.Height)+" px · "+std::to_string(info.DrawCalls)+" draws · "+std::to_string(info.Triangles)+" triangles · skipped "+std::to_string(info.SkippedObjects);

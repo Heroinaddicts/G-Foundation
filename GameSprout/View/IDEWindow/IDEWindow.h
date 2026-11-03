@@ -35,6 +35,9 @@ public:
     void Loading(const std::string & title, const std::string & desc) override;
     void Unloading() override;
     void SetLoadingInfo(const std::string & title, const std::string & desc) override;
+    bool IsLoading() const override { return _LoadingRefCount > 0; }
+    bool RegisterLoadingStateCallback(const void*, const fLoadingStateCallback&) override;
+    void UnregisterLoadingStateCallback(const void*) override;
     void BindTaskApi(Foundation::ITaskApi* taskApi) override;
     uint64_t BeginImportProgress(uint64_t total, const std::string& description) override;
     bool UpdateImportProgress(uint64_t token, uint64_t completed, const std::string& path) override;
@@ -52,6 +55,7 @@ private:
     void IncreaseCompletionBudget();
     void RestoreCompletionBudget();
     void RefreshLoadingProgress();
+    void NotifyLoadingState(bool);
 
     // Qt 窗口及 C++ 包装对象均在 Release 中按顺序显式清理。
     QMainWindow* _Window = nullptr;
@@ -62,6 +66,8 @@ private:
     std::vector<std::pair<QString, IIDEDocker*>> _Dockers;
 
     int _LoadingRefCount = 0;
+    std::map<uint64_t, std::pair<const void*, fLoadingStateCallback>> _LoadingCallbacks;
+    uint64_t _NextLoadingCallback = 0;
     struct ImportProgress {
         uint64_t Total;
         uint64_t Completed = 0;

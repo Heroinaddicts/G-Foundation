@@ -69,6 +69,7 @@ void IDEWindow::Loading(const std::string & title, const std::string & desc) {
     _LoadingTitle = title;
     _LoadingDescription = desc;
     RefreshLoadingProgress();
+    if (_LoadingRefCount == 1) NotifyLoadingState(true);
 }
 
 void IDEWindow::Unloading() {
@@ -81,6 +82,7 @@ void IDEWindow::Unloading() {
         _LoadingOverlay->End();
         _ImportProgress.clear();
         _HadImportProgress = false;
+        NotifyLoadingState(false);
     } else RefreshLoadingProgress();
 }
 
@@ -88,6 +90,29 @@ void IDEWindow::SetLoadingInfo(const std::string & title, const std::string & de
     _LoadingTitle = title;
     _LoadingDescription = desc;
     RefreshLoadingProgress();
+}
+
+bool IDEWindow::RegisterLoadingStateCallback(const void* owner, const fLoadingStateCallback& callback) {
+    if (!_Window || !owner || !callback || _NextLoadingCallback == UINT64_MAX) return false;
+    for (const auto& entry : _LoadingCallbacks) if (entry.second.first == owner) return false;
+    _LoadingCallbacks.emplace(++_NextLoadingCallback, std::make_pair(owner, callback));
+    return true;
+}
+
+void IDEWindow::UnregisterLoadingStateCallback(const void* owner) {
+    for (auto entry = _LoadingCallbacks.begin(); entry != _LoadingCallbacks.end();)
+        if (entry->second.first == owner) entry = _LoadingCallbacks.erase(entry); else ++entry;
+}
+
+void IDEWindow::NotifyLoadingState(bool loading) {
+    const auto last = _NextLoadingCallback;
+    auto entry = _LoadingCallbacks.begin();
+    while (entry != _LoadingCallbacks.end() && entry->first <= last && IsLoading() == loading) {
+        const auto id = entry->first;
+        const auto callback = entry->second.second; // 回调可注销自身。
+        try { callback(loading); } catch (...) { qWarning("Loading state callback threw an exception"); }
+        entry = _LoadingCallbacks.upper_bound(id);
+    }
 }
 
 void IDEWindow::BindTaskApi(Foundation::ITaskApi* const taskApi) {
@@ -140,6 +165,7 @@ void IDEWindow::Update(GameSproutEditor::GameSproutViewApi * const editor) {
 
 void IDEWindow::Release(GameSproutEditor::GameSproutViewApi * const editor) {
     Q_UNUSED(editor);
+    _LoadingCallbacks.clear();
     RestoreCompletionBudget();
     _TaskApi = nullptr;
     delete _LoadingOverlay;

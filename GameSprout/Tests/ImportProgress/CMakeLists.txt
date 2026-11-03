@@ -5,6 +5,7 @@ enable_testing()
 get_filename_component(gamesprout_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${gamesprout_root}/Foundation/FoundationApi.cmake")
 include("${gamesprout_root}/GRHI/GRHI.cmake")
+include("${gamesprout_root}/GameSproutRuntime/GameSproutRuntime.cmake")
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 add_executable(ImportProgressChecks ImportProgressChecks.cpp)
@@ -13,7 +14,7 @@ target_include_directories(ImportProgressChecks PRIVATE
     "${gamesprout_root}/View/Interface"
     "${gamesprout_root}/GameSproutEditor/Api")
 target_link_libraries(ImportProgressChecks PRIVATE
-    Foundation::FoundationApi GRHI::GRHIApi Qt6::Widgets)
+    Foundation::FoundationApi GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Widgets)
 
 if(APPLE)
     set(default_ide_library "${gamesprout_root}/../Bin/GameSproutEditor.app/Contents/MacOS/Logic/View/libIDEWindow.dylib")
@@ -33,7 +34,7 @@ target_include_directories(PipelineProgressChecks PRIVATE
     "${gamesprout_root}/View/Interface"
     "${gamesprout_root}/GameSproutEditor/Api")
 target_link_libraries(PipelineProgressChecks PRIVATE
-    Foundation::FoundationApi GRHI::GRHIApi Qt6::Widgets)
+    Foundation::FoundationApi GRHI::GRHIApi GameSproutRuntime::GameSproutRuntimeApi Qt6::Widgets)
 if(APPLE)
     set(pipeline_test_binary_root "${gamesprout_root}/../Bin/GameSproutEditor.app/Contents/MacOS")
 else()

@@ -23,7 +23,7 @@ public:
     bool Move(GameSproutRuntime::Vector2 logicalPixel,bool snap);
     bool Release(GameSproutRuntime::Vector2 logicalPixel,bool snap);
     void Cancel();
-    void SetReadOnly(bool value) { if (_ReadOnly!=value) { Cancel(); _ReadOnly=value; _Ready=false; } }
+    void SetReadOnly(bool value);
     bool DeleteSelection();
     bool IsDragging() const {return _Gizmo.IsDragging();}
     SceneEditingTool Tool() const {return _Tool;}
@@ -31,9 +31,9 @@ public:
     void SetSpace(SceneGizmoSpace space);
     void SetPivot(SceneGizmoPivot pivot);
     void SetSnap(bool enabled,float move,float rotation,float scale);
-    void SetShowAllColliders(bool enabled) {_ShowAllColliders=enabled;}
+    void SetShowAllColliders(bool enabled);
     bool ShowAllColliders() const {return _ShowAllColliders;}
-    void SetExternalToolActive(bool value) {_ExternalToolActive=value;_Ready=false;}
+    void SetExternalToolActive(bool value);
     std::function<void(SceneEditingTool)> ToolChanged;
 private:
     bool View(SceneGizmoView& view) const;

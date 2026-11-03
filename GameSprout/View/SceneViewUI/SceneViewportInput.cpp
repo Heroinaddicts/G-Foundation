@@ -40,6 +40,7 @@ void SceneViewport::AdvanceInput(float dt) {
         (_Keys.contains(Qt::Key_E)?1:0)-(_Keys.contains(Qt::Key_Q)?1:0),_Keys.contains(Qt::Key_Shift),dt);
 }
 void SceneViewport::mousePressEvent(QMouseEvent* event) {
+    RequestRender();
     setFocus(Qt::MouseFocusReason);
     DragMode mode=DragMode::None;
     if(event->button()==Qt::RightButton && !(event->modifiers()&Qt::AltModifier))mode=DragMode::Look;
@@ -73,6 +74,7 @@ void SceneViewport::mouseMoveEvent(QMouseEvent* event) {
     event->accept();
 }
 void SceneViewport::mouseReleaseEvent(QMouseEvent* event) {
+    RequestRender();
     if(event->button()==Qt::LeftButton&&_Tools->Release(Pixel(event),event->modifiers()&Qt::ShiftModifier,event->modifiers()&Qt::AltModifier,Snap(event->modifiers()))) {
         ReleaseEditingCapture();event->accept();return;
     }

@@ -47,10 +47,13 @@ bool GameViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     if(!_Docker||!_Docker->AttachWidget(_Window))return false;
     _Docker->SetTitle("Game");_Attached=true;
     _DockerVisibilitySubscribed=_Docker->RegisterContentVisibilityCallback(this,
-        [this](bool visible){_DockerContentVisible=visible;});
+        [this](bool visible){_DockerContentVisible=visible;if(visible&&_Viewport)_Viewport->RequestRender();});
     _DockerContentVisible=_Docker->IsContentVisible();
+    _LoadingSubscribed=g_IIDEWindow->RegisterLoadingStateCallback(this,[this](bool loading){_Loading=loading;if(!loading&&_Viewport)_Viewport->RequestRender();});
+    _Loading=g_IIDEWindow->IsLoading();
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Host)_FrameSubscribed=_Host->RegisterFrameListener(this);
+    if(_Resources)_ResourcesSubscribed=_Resources->RegisterResourceListener(this);
     if(_Preview)_PreviewSubscribed=_Preview->RegisterPreviewListener(this);
     if(_PlayMode){_PlaySubscribed=_PlayMode->RegisterPlayModeListener(this);OnPlayModeStateChanged(_PlayMode->GetState());}
     OnActiveSceneChanged();OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
@@ -60,17 +63,27 @@ void GameViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
 void GameViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
 void GameViewUI::Hide(){if(_Window)_Window->hide();}
 void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
-void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent&) {
-    if(_DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene);
+void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
+    const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
+    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene,continuous);
 }
 void GameViewUI::OnActiveSceneChanged() {
     _ActiveScene=_Scenes?_Scenes->GetMainScene():nullptr;
+    if(_Viewport)_Viewport->RequestRender();
 }
 void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
+    if(_Viewport)_Viewport->RequestRender();
     if(!_Window || !_Ui)return;
     const QSignalBlocker blocker(_Ui->playButton);_Ui->playButton->setChecked(scenePlaying);
 }
+void GameViewUI::OnAnimationPreviewReset(){if(_Viewport)_Viewport->RequestRender();}
+void GameViewUI::OnClipPreviewStateChanged(std::uint64_t,const GameSproutRuntime::AnimationClipPlaybackState&){if(_Viewport)_Viewport->RequestRender();}
+void GameViewUI::OnRuntimeResourcesChanged(std::uint64_t){if(_Viewport)_Viewport->RequestRender();}
 void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    if(_ResourcesSubscribed&&_Resources)_Resources->UnregisterResourceListener(this);
+    _ResourcesSubscribed=false;
+    if(_LoadingSubscribed && g_IIDEWindow)g_IIDEWindow->UnregisterLoadingStateCallback(this);
+    _LoadingSubscribed=false;_Loading=false;
     if(_DockerVisibilitySubscribed && _Docker)_Docker->UnregisterContentVisibilityCallback(this);
     _DockerVisibilitySubscribed=false;_DockerContentVisible=false;
     if(_PlaySubscribed&&_PlayMode)_PlayMode->UnregisterPlayModeListener(this);
@@ -88,6 +101,7 @@ void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
 }
 
 void GameViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
+    if(_Viewport)_Viewport->RequestRender();
     _CanEdit=state.State==EditorPlayState::Edit;
     if(!_Window||!_Ui)return;
     _Ui->playButton->setEnabled(_CanEdit);_Ui->stopButton->setEnabled(_CanEdit);

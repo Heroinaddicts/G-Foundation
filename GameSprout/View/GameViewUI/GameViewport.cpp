@@ -19,6 +19,8 @@ QPaintEngine* GameViewport::paintEngine() const {return Headless()?QWidget::pain
 void GameViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,
     GameSproutRuntime::IRuntimeResourceProvider* resources) {
     Shutdown();_Runtime=runtime;_Resources=resources;_Initialized=true;
+    if(_Runtime)_RuntimeSubscribed=_Runtime->RegisterListener(this);
+    RequestRender();
 }
 void GameViewport::Status(const std::string& text) {
     if (_Status==text) return;
@@ -27,9 +29,12 @@ void GameViewport::Status(const std::string& text) {
 void GameViewport::DestroyGPU() {
     auto* renderer=_Renderer;_Renderer=nullptr;
     _Attempted=false;
+    RequestRender();
     delete renderer;
 }
 void GameViewport::Shutdown(){
+    if(_RuntimeSubscribed&&_Runtime)_Runtime->UnregisterListener(this);
+    _RuntimeSubscribed=false;_SceneID=0;
     ReleaseGameInput();_GameplayInputEnabled=false;
     _Initialized=false;DestroyGPU();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
@@ -37,6 +42,7 @@ void GameViewport::Shutdown(){
     _Runtime=nullptr;_Resources=nullptr;
 }
 void GameViewport::RetryRendering(){DestroyGPU();_Attempted=false;}
+void GameViewport::OnSceneVisualChanged(std::uint64_t sceneID){if(sceneID==_SceneID)RequestRender();}
 void GameViewport::ObserveNativeWindow() {
     QWindow* native=windowHandle();
     if(native!=_NativeWindow){
@@ -58,7 +64,14 @@ bool GameViewport::event(QEvent* event) {
         const auto type=static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType();
         if(type==QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)DestroyGPU();
         _Attempted=false;
+        RequestRender();
     }
+    if(event->type()==QEvent::Resize||event->type()==QEvent::Show||event->type()==QEvent::Paint||
+       event->type()==QEvent::Expose||event->type()==QEvent::WindowActivate||event->type()==QEvent::ScreenChangeInternal
+#if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
+       ||event->type()==QEvent::DevicePixelRatioChange
+#endif
+    )RequestRender();
     return QWidget::event(event);
 }
 bool GameViewport::eventFilter(QObject* watched,QEvent* event) {
@@ -67,8 +80,10 @@ bool GameViewport::eventFilter(QObject* watched,QEvent* event) {
         const auto type=static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType();
         // Native QWindow receives this before its platform handle is destroyed, including host teardown/reparenting.
         if(type==QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)DestroyGPU();
-        else if(type==QPlatformSurfaceEvent::SurfaceCreated)_Attempted=false;
+        else if(type==QPlatformSurfaceEvent::SurfaceCreated){_Attempted=false;RequestRender();}
     }
+    if((watched==_NativeWindow||watched==_HostWindow)&&
+       (event->type()==QEvent::Expose||event->type()==QEvent::WindowActivate||event->type()==QEvent::ScreenChangeInternal))RequestRender();
     return QWidget::eventFilter(watched,event);
 }
 bool GameViewport::EnsureRendering() {
@@ -104,8 +119,13 @@ bool GameViewport::EnsureRendering() {
     if(!_Renderer){DestroyGPU();_Attempted=true;Status(error);return false;}
     return true;
 }
-void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
+void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous) {
+    const auto sceneID=scene?scene->GetInstanceID():0;
+    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
+    if(!_NeedsRender&&!continuous)return;
     if (!_Initialized||!isVisible()||width()<=0||height()<=0||_Rendering) return;
+    if(!Headless()&&(!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()))return;
+    _NeedsRender=false;
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=false;
     std::string diagnostic;
@@ -121,7 +141,6 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene) {
     // Runtime owns target clearing as well as scene drawing; the View never records content commands.
     view.DrawScene=diagnostic.empty();
     if (Headless()) {Status(diagnostic.empty()?"离屏环境：Game 使用 Main Camera，与 Scene 共用动画姿态。":diagnostic);return;}
-    if (!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()) return;
     if (!EnsureRendering()) return;
     _Rendering=true;
     struct Scope{bool& Flag;~Scope(){Flag=false;}} scope{_Rendering};

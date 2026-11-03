@@ -137,6 +137,15 @@ public:
     virtual void Unloading() = 0;
     virtual void SetLoadingInfo(const std::string & title, const std::string & desc) = 0;
 
+    // 主线程：只通知最外层 Loading 开始和最后一次 Unloading 完成。
+    // 先订阅后读取一次快照；视口据此暂停被遮罩盖住的绘制，不轮询其他模块。
+    using fLoadingStateCallback = std::function<void(bool)>;
+    virtual bool IsLoading() const { return false; }
+    virtual bool RegisterLoadingStateCallback(const void* owner, const fLoadingStateCallback& callback) {
+        (void)owner; (void)callback; return false;
+    }
+    virtual void UnregisterLoadingStateCallback(const void* owner) { (void)owner; }
+
     // 主线程注入借用的 TaskApi；必须存活至解绑或 IDEWindow::Release。
     // Loading 期间可临时增加完成回调预算，最后一次 Unloading 后恢复。
     virtual void BindTaskApi(Foundation::ITaskApi* taskApi) { (void)taskApi; }

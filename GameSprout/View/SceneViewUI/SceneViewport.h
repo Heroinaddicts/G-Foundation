@@ -11,14 +11,18 @@ class ISelectionManager;
 class SceneViewportEditing;
 class SceneToolRouter;
 
-class SceneViewport final : public QWidget {
+class SceneViewport final : public QWidget,public GameSproutRuntime::IRuntimeListener {
     Q_OBJECT
 public:
     explicit SceneViewport(QWidget* parent=nullptr);
     ~SceneViewport() override;
     // 也可借用宿主资源提供者；其生命周期须覆盖本 viewport 的渲染生命周期。
     void Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
-    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds);
+    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false);
+    void RequestRender(){_NeedsRender=true;}
+    bool NeedsRender() const{return _NeedsRender;}
+    void OnSceneVisualChanged(std::uint64_t sceneID) override;
+    void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override {}
     void Shutdown();
     void RetryRendering();
     GameSproutRuntime::IGameSproutRuntime* GetRuntime() const{return _Runtime;}
@@ -78,6 +82,8 @@ private:
     bool _Attempted=false;
     bool _Rendering=false;
     bool _ViewportChanged=true;
+    bool _NeedsRender=true,_RuntimeSubscribed=false;
+    std::uint64_t _SceneID=0;
     std::string _EditingError;
     std::string _ColliderDebugError;
     std::string _Error;

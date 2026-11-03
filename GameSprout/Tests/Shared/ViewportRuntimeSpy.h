@@ -2,6 +2,7 @@
 #include "RuntimeRenderApi.h"
 #include <stdexcept>
 #include <algorithm>
+#include <functional>
 
 // Observe the native-window boundary without exposing a GRHI device to View tests.
 class ViewportRuntimeSpy final : public GameSproutRuntime::IGameSproutRuntime {
@@ -9,11 +10,14 @@ public:
     GameSproutRuntime::IGameSproutRuntime* Real=nullptr;
     int NativeCalls=0;
     bool RejectNativeCalls=false;
+    std::function<GameSproutRuntime::IRuntimeViewport*(const GameSproutRuntime::NativeWindow&,
+        GameSproutRuntime::IRuntimeResourceProvider*,std::string&)> ViewportFactory;
     std::vector<GameSproutRuntime::IRuntimeListener*> Listeners;
     GameSproutRuntime::IRuntimeViewport* CreateViewport(const GameSproutRuntime::NativeWindow& window,
         GameSproutRuntime::IRuntimeResourceProvider* resources,std::string& error) override {
         ++NativeCalls;
         if(RejectNativeCalls)throw std::runtime_error("Headless View passed a fake native window to Runtime");
+        if(ViewportFactory)return ViewportFactory(window,resources,error);
         return Real?Real->CreateViewport(window,resources,error):nullptr;
     }
     GameSproutRuntime::IRuntimeViewport* CreateOffscreenRenderer(std::uint32_t width,std::uint32_t height,

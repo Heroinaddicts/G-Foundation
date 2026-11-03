@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace GameSproutEditor {
 class GameSproutEditorFinal {
@@ -68,7 +69,19 @@ int main(int argc, char** argv) {
         Check(GameSproutEditor::GameSproutEditorFinal::Initialize(window), "IDEWindow initialization failed");
         Check(window->BeginImportProgress(0, "empty") == 0, "Empty plan should not create a batch");
 
+        std::vector<bool> loadingStates;
+        Check(!window->IsLoading(), "Initialized IDE incorrectly reports Loading");
+        Check(window->RegisterLoadingStateCallback(&loadingStates,[&](bool active){loadingStates.push_back(active);}),
+            "Cannot subscribe viewport Loading state");
+        Check(!window->RegisterLoadingStateCallback(&loadingStates,[](bool){}), "Duplicate Loading owner accepted");
+        int selfRemoved = 0;
+        Check(window->RegisterLoadingStateCallback(&selfRemoved,[&](bool){
+            ++selfRemoved;window->UnregisterLoadingStateCallback(&selfRemoved);
+        }), "Cannot register self-unsubscribing Loading listener");
+
         window->Loading("初始化资源", "扫描 Assets");
+        Check(window->IsLoading() && loadingStates == std::vector<bool>{true} && selfRemoved == 1,
+            "Loading transition or self-unsubscription failed");
         CheckIndeterminate();
         const uint64_t first = window->BeginImportProgress(3, "准备导入");
         Check(first != 0, "Could not register fixed plan");
@@ -78,6 +91,7 @@ int main(int argc, char** argv) {
         window->Loading("资源导入", "third.png");
         window->Loading("清理资源缓存", "检查遗留产物");
         window->SetLoadingInfo("清理资源缓存", "删除过期产物");
+        Check(loadingStates == std::vector<bool>{true}, "Nested Loading notified repeated viewport suspension");
         GameSproutEditor::GameSproutEditorFinal::Update(window);
         CheckProgress(0, 3, 0, "准备导入");
         window->Unloading(); // GC completion must not advance the resource numerator.
@@ -107,10 +121,14 @@ int main(int argc, char** argv) {
         window->Unloading();
         window->Unloading();
         Check(Overlay()->isHidden(), "Final Unloading did not hide overlay");
+        Check(!window->IsLoading() && loadingStates == std::vector<bool>({true,false}) && selfRemoved == 1,
+            "Final Unloading did not resume viewports exactly once");
+        window->UnregisterLoadingStateCallback(&loadingStates);
 
         const uint64_t hugeTotal = (std::numeric_limits<uint64_t>::max)();
         const uint64_t huge = window->BeginImportProgress(hugeTotal, "large plan");
         window->Loading("large", "work");
+        Check(loadingStates.size() == 2, "Released Loading subscription was called");
         Check(window->UpdateImportProgress(huge, hugeTotal - 1, "near completion"), "Large plan update failed");
         CheckProgress(hugeTotal - 1, hugeTotal, 99, "near completion");
         Check(window->UpdateImportProgress(huge, hugeTotal, "done") && window->EndImportProgress(huge), "Large plan did not finish");

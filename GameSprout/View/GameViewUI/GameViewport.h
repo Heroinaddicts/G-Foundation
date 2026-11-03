@@ -5,13 +5,17 @@
 class QWindow;
 
 // Native viewport and focused gameplay input adapter; RuntimeHost owns all clocks.
-class GameViewport final : public QWidget {
+class GameViewport final : public QWidget,public GameSproutRuntime::IRuntimeListener {
     Q_OBJECT
 public:
     explicit GameViewport(QWidget* parent=nullptr);
     ~GameViewport() override;
     void Initialize(GameSproutRuntime::IGameSproutRuntime*,GameSproutRuntime::IRuntimeResourceProvider*);
-    void RenderGame(GameSproutRuntime::IScene*);
+    void RenderGame(GameSproutRuntime::IScene*,bool continuous=false);
+    void RequestRender(){_NeedsRender=true;}
+    bool NeedsRender() const{return _NeedsRender;}
+    void OnSceneVisualChanged(std::uint64_t sceneID) override;
+    void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override {}
     void Shutdown();
     void RetryRendering();
     void SetGameplayInputEnabled(bool enabled);
@@ -48,5 +52,7 @@ private:
     bool _Initialized=false;
     bool _Attempted=false;
     bool _Rendering=false;
+    bool _NeedsRender=true,_RuntimeSubscribed=false;
+    std::uint64_t _SceneID=0;
     std::string _Status;
 };
