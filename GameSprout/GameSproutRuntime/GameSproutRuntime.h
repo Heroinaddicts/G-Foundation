@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <typeindex>
+#include <type_traits>
 #include <vector>
 
 namespace GameSproutRuntime {
@@ -14,6 +15,8 @@ class Scene;
 class AnimatorComponent;
 class ScriptComponent;
 class RuntimePhysicsSystem;
+class RenderResourceCache;
+class RenderResourceLease;
 
 class Runtime final : public IGameSproutRuntime {
 public:
@@ -37,6 +40,26 @@ public:
     // deferred Editor events, so every query observes the committed hierarchy.
     std::uint64_t GetTransformEpoch() const {return _TransformEpoch;}
     void InvalidateTransforms();
+    // Internal factory metadata: inherited IComponent no-op hooks do not need
+    // a frame visit. Inaccessible/ambiguous user overrides stay conservative.
+    template<typename Implementation> static constexpr std::uint8_t ComponentTickMask() {
+        std::uint8_t mask=0;
+        if constexpr(requires { &Implementation::Update; }) {
+            if constexpr(!std::is_same_v<decltype(&Implementation::Update),decltype(&IComponent::Update)>)mask|=1;
+        }else mask|=1;
+        if constexpr(requires { &Implementation::FixedUpdate; }) {
+            if constexpr(!std::is_same_v<decltype(&Implementation::FixedUpdate),decltype(&IComponent::FixedUpdate)>)mask|=2;
+        }else mask|=2;
+        return mask;
+    }
+    void RegisterAnimationComponent(std::uint64_t objectID,const IComponent*);
+    void UnregisterAnimationComponent(std::uint64_t objectID,const IComponent*);
+    void RegisterComponentTick(std::uint64_t objectID,std::uint8_t mask);
+    void UnregisterComponentTick(std::uint64_t objectID,std::uint8_t mask);
+    void RegisterScriptIdentity(std::uint64_t objectID,std::uint64_t instanceID);
+    void UnregisterScriptIdentity(std::uint64_t objectID,std::uint64_t instanceID);
+    std::vector<std::pair<std::uint64_t,std::uint64_t>> SnapshotScriptIdentities() const;
+
     void CheckObservedScriptProperties(std::uint64_t objectID);
     void MarkNativeScriptPropertiesChanged() {if(!_PropertyObservations.empty())_ObservedScriptFieldsDirty=true;}
     const RuntimeProjectSettings& GetProjectSettings() const override { return _ProjectSettings; }
@@ -170,6 +193,11 @@ private:
     void NotifyInitializationError(GameObjectState&,IComponent&,const std::string&);
     std::vector<Scene*> _Scenes;
     std::map<std::uint64_t,GameObjectState*> _Nodes;
+    struct TickCounts {std::size_t Variable=0,Fixed=0;};
+    std::map<std::uint64_t,TickCounts> _TickObjects;
+    std::map<std::uint64_t,std::size_t> _AnimationObjects;
+    std::set<std::pair<std::uint64_t,std::uint64_t>> _ScriptIdentities;
+
     RuntimeProjectSettings _ProjectSettings;
     std::map<std::uint64_t,std::string> _TagNames{{0,"Untagged"}};
     std::map<std::string,std::uint64_t> _TagIDs{{"Untagged",0}};
@@ -217,6 +245,8 @@ private:
     AnimationResources _AnimationResources;
     GRHI::GRHIApi* _RenderApi=nullptr;
     GRHI::IDevice* _RenderDevice=nullptr;
+    std::map<IRuntimeResourceProvider*,RenderResourceCache*> _RenderResourceCaches;
+    friend class RenderResourceLease;
     RuntimePhysicsSystem* _PhysicsSystem=nullptr;
     ScriptComponent* _InvokingScript=nullptr;
     std::string _LastPhysicsError;

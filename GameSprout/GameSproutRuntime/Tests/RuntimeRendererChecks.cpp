@@ -37,7 +37,7 @@ public:
     bool LoadTexture(const GameSproutRuntime::ResourceReference&,GameSproutRuntime::TextureRenderData& data,std::string& error) override {
         ++TextureLoads;data={};data.Width=2;data.Height=2;data.SRGB=SRGB;
         if(MissingTexture) {data={};error="Missing prepared texture fixture";return false;}
-        for(int i=0;i<4;++i) data.Pixels.insert(data.Pixels.end(),{0,Green,0,255});return true;
+        data.Pixels={0,Green,0,255,0,Green,0,255,0,Green,0,255,0,Green,0,255};return true;
     }
     bool LoadMaterial(const GameSproutRuntime::ResourceReference& reference,GameSproutRuntime::MaterialRenderData& data,std::string& error) override {
         ++MaterialLoads;data={};

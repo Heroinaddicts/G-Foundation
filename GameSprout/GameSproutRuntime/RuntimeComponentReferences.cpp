@@ -93,14 +93,11 @@ void Runtime::ForgetSceneComponentIdentity(const IComponent* component) {
 void Runtime::InvalidateNativeScriptReferences(ScriptComponent* target) {
     if(!_ScriptExecutionEnabled||!target||!target->PeekNativeInstance())return;
     RuntimeOperation operation(*this);
-    std::vector<std::pair<std::uint64_t,std::uint64_t>> scripts;
-    for(const auto& [id,node]:_Nodes)for(const auto& entry:node->Components)
-        if(const auto* script=dynamic_cast<const ScriptComponent*>(entry.Pointer);script&&script!=target)
-            scripts.emplace_back(id,script->GetScriptInstanceID());
+    const auto scripts=SnapshotScriptIdentities();
     for(const auto& [id,instance]:scripts) {
         auto* node=Find(id);if(!node||node->Destroying)continue;
         for(const auto& entry:node->Components)if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer);
-            script&&script->GetScriptInstanceID()==instance) {
+            script&&script!=target&&script->GetScriptInstanceID()==instance) {
             if(script->InvalidateNativeInstanceReference(target)&&IsInScene(node))Notify(*node,SceneNodeEventType::ComponentChanged,script->GetTypeName());
             break;
         }
@@ -110,9 +107,7 @@ void Runtime::InvalidateNativeScriptReferences(ScriptComponent* target) {
 void Runtime::InvalidateScriptComponentReferences(IComponent* component) {
     if(_ScriptExecutionEnabled) {
         RuntimeOperation operation(*this);
-        std::vector<std::pair<std::uint64_t,std::uint64_t>> scripts;
-        for(const auto& [id,node]:_Nodes)for(const auto& entry:node->Components)
-            if(const auto* script=dynamic_cast<const ScriptComponent*>(entry.Pointer))scripts.emplace_back(id,script->GetScriptInstanceID());
+        const auto scripts=SnapshotScriptIdentities();
         for(const auto& [id,instance]:scripts) {
             auto* node=Find(id);if(!node||node->Destroying)continue;
             for(const auto& entry:node->Components)if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer);

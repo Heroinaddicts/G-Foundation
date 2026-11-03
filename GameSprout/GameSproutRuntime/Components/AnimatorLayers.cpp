@@ -102,7 +102,7 @@ bool AnimatorComponent::ApplyPose(){
         auto* object=Owner().QueryGameObject(id);auto* transform=dynamic_cast<TransformComponent*>(object->GetTransform());if(!transform){_Error="Animator requires Runtime Transform nodes";return false;}
         transforms.push_back(transform);matrices.push_back(RuntimeMath::ComposeTRS(output[i].Position,output[i].Rotation,output[i].Scale));
     }
-    _Applied.clear();for(std::size_t i=0;i<output.size();++i){if(!transforms[i]->SetEvaluatedPose(_GameObject->GetInstanceID(),matrices[i])){_Error="Skeleton pose is owned by another Animator";ClearPoses();_Playing=false;return false;}_Applied.push_back(transforms[i]->GetGameObject()->GetInstanceID());}
+    _Applied.clear();for(std::size_t i=0;i<output.size();++i){if(!transforms[i]->SetEvaluatedPose(_GameObject->GetInstanceID(),matrices[i],output[i].Rotation)){_Error="Skeleton pose is owned by another Animator or has an invalid rotation";ClearPoses();_Playing=false;return false;}_Applied.push_back(transforms[i]->GetGameObject()->GetInstanceID());}
     _Pose=std::move(output);return true;
 }
 void AnimatorComponent::Update(IGameSproutRuntime*,float delta){

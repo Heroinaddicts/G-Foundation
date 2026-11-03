@@ -92,6 +92,21 @@ inline Quaternion RotationQuaternion(const DoubleVector3 (&columns)[3]) {
 }
 }
 
+// Unity Quaternion.LookRotation convention: local +Z follows forward and +Y
+// follows the orthogonalized up direction. Failure leaves output unchanged.
+inline bool TryMakeLookRotation(Vector3 forward, Vector3 worldUp, Quaternion& output) {
+    Vector3 direction, up, right;
+    if (!forward.TryNormalize(direction) || !worldUp.TryNormalize(up) ||
+        !up.Cross(direction).TryNormalize(right)) return false;
+    up = direction.Cross(right);
+    const Detail::DoubleVector3 columns[3] = {
+        {right.X,right.Y,right.Z}, {up.X,up.Y,up.Z}, {direction.X,direction.Y,direction.Z}};
+    Quaternion rotation;
+    if (!Detail::RotationQuaternion(columns).TryNormalize(rotation)) return false;
+    output=rotation;
+    return true;
+}
+
 // 支持非均匀缩放、负缩放和一般可逆仿射变换。奇异/近共线的线性基拒绝；
 // double 中间计算后仍不能用 float 表示逆矩阵时失败，不修改 output。
 inline bool TryInverseAffine(const Mat4& value, Mat4& output) {

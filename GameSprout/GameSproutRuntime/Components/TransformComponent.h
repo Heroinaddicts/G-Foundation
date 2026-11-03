@@ -17,7 +17,9 @@ public:
     Mat4 GetWorldMatrix() const override;
     bool SetLocalMatrix(const Mat4& value);
     // Evaluation changes the displayed pose, never the serialized authoring TRS.
-    bool SetEvaluatedPose(std::uint64_t animatorID, const Mat4& matrix);
+    // Keep its actual rotation separately: signed/zero scale and root-motion
+    // shear make the original quaternion impossible to recover from the matrix.
+    bool SetEvaluatedPose(std::uint64_t animatorID, const Mat4& matrix, Quaternion rotation);
     bool CanSetEvaluatedPose(std::uint64_t animatorID) const {return animatorID&&!IsSceneRoot()&&!(_HasPhysicsPose&&_PhysicsDynamic)&&(!_PoseOwner||_PoseOwner==animatorID);}
     void ClearEvaluatedPose(std::uint64_t animatorID);
     // Simulation poses are visible to Runtime/scripts but never emit authoring
@@ -29,6 +31,8 @@ public:
     // result that already contains the previous frame's animation movement.
     Vector3 GetAuthoringLocalPosition() const { return _Position; }
     Quaternion GetAuthoringLocalRotation() const { return _Rotation; }
+    // Orientation of the effective pose, without authored scale/reflection.
+    bool GetCurrentLocalRotation(Quaternion& output) const;
 
 private:
     bool IsSceneRoot() const;
@@ -43,6 +47,7 @@ private:
     Vector3 _Scale{1.0f, 1.0f, 1.0f};
     std::uint64_t _PoseOwner = 0;
     Mat4 _EvaluatedMatrix;
+    Quaternion _EvaluatedRotation;
     bool _HasPhysicsPose=false,_PhysicsDynamic=false;
     Vector3 _PhysicsPosition;
     Quaternion _PhysicsRotation;

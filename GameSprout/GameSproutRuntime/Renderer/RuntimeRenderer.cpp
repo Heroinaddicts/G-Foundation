@@ -37,7 +37,7 @@ namespace GameSproutRuntime {
 bool Renderer::Render(const RenderView& view) {
     _HasRenderedCamera=false;_RenderedCamera={};
     if(_Rendering || _Runtime.IsExecuting() || _Runtime.IsShuttingDown() || _Runtime.IsConstructing()) return Fail("Runtime Renderer cannot run inside a Runtime callback, construction or another Render");
-    _Error.clear();_Statistics={};
+    _Error.clear();_Statistics={};_ShadowRecorded=false;
     _PreparedDraws.clear();
     if(!_Surface&&!_ColorTarget){_Statistics={};return true;}
     if(_Surface&&_ColorTarget)return Fail("Viewport has conflicting render targets");
@@ -192,6 +192,7 @@ bool Renderer::Render(const RenderView& view) {
             if(skipped || !drawn) ++_Statistics.SkippedObjects;
         }
         SortPrepared(prepared);
+        if(view.DrawScene&&!RenderShadows(*command.Command,view,float(width)/height))return false;
         GRHI::RenderPassDesc pass;
         pass.ColorTarget=target;pass.ClearColor={view.ClearColor.R,view.ClearColor.G,view.ClearColor.B,view.ClearColor.A};
         if(depth){pass.DepthTarget=depth->GetDepthTargetView();pass.DepthLoad=GRHI::LoadOp::Clear;pass.ClearDepth=1.0f;}
@@ -204,6 +205,9 @@ bool Renderer::Render(const RenderView& view) {
         command.Command->EndRenderPass(command.Pass);command.Pass=nullptr;
         auto* submitted=command.Command;command.Command=nullptr;
         if(!_Device.Submit(submitted)) return Fail(DeviceError("Submit Runtime view"));
+        // A recorded atlas is reusable only after the whole command is submitted.
+        // A later color-pass error/cancel must not cache an unexecuted depth pass.
+        if(_ShadowRecorded)_ShadowValid=true;
         if(view.DrawScene){_RenderedCamera={view.Camera,viewProjection,width,height,view.Scene->GetInstanceID()};_HasRenderedCamera=true;}
         return true;
     } catch(const std::exception& exception) {return Fail(std::string("Runtime Renderer: ")+exception.what());}

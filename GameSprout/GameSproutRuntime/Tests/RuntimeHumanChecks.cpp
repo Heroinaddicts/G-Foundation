@@ -93,6 +93,21 @@ int main(int argc,char** argv){if(argc!=2)return 2;auto* runtime=Export(argv[1])
         Check(animator->Play("Move"),animator->GetLastError());animator->Pause();
         const int hand=resources.Roles.at(GameSproutRuntime::HumanBone::LeftHand),upper=resources.Roles.at(GameSproutRuntime::HumanBone::LeftUpperArm),lower=resources.Roles.at(GameSproutRuntime::HumanBone::LeftLowerArm);
         Check(Near(Position(first.Nodes[hand]).X,-2)&&Near(Position(first.Nodes[hand]).Y,3.6f),"Retarget neutral did not preserve target reference with different bone axes");
+        const int head=resources.Roles.at(GameSproutRuntime::HumanBone::Head);
+        const auto headPosition=Position(first.Nodes[head]);
+        GameSproutRuntime::AnimatorLookAt forwardLook;forwardLook.Weight=1;forwardLook.HeadWeight=1;
+        forwardLook.BodyWeight=0;forwardLook.EyesWeight=0;forwardLook.ClampWeight=0;
+        forwardLook.Position=headPosition+GameSproutRuntime::Vector3{0,0,3};
+        Check(animator->SetLookAt(forwardLook),"Cannot look toward Unity +Z");
+        auto headWorld=first.Nodes[head]->GetTransform()->GetWorldMatrix();
+        Check(headWorld(2,2)>.999f&&std::fabs(headWorld(0,2))<.001f,
+              "Neutral Humanoid LookAt does not face local +Z");
+        forwardLook.Position=headPosition+GameSproutRuntime::Vector3{3,0,0};
+        Check(animator->SetLookAt(forwardLook),"Cannot turn Humanoid gaze toward +X");
+        headWorld=first.Nodes[head]->GetTransform()->GetWorldMatrix();
+        Check(headWorld(0,2)>.999f&&std::fabs(headWorld(2,2))<.001f,
+              "Humanoid +Z forward did not rotate toward +X for a right-side target");
+        animator->ClearIKGoals();
         Check(animator->Seek(.5f),animator->GetLastError());const auto moved=Position(first.Nodes[hand]);Check(moved.Y<3.59f&&!Near(moved.X,-2),"Different-name Human clip was not retargeted");
         Check(Near((Position(first.Nodes[lower])-Position(first.Nodes[upper])).Length(),.8f)&&Near((moved-Position(first.Nodes[lower])).Length(),.6f),"Retarget stretched target limbs");
         auto bad=resources.TargetAvatar;bad.Bones.erase(std::remove_if(bad.Bones.begin(),bad.Bones.end(),[](const auto& value){return value.Bone==GameSproutRuntime::HumanBone::RightFoot;}),bad.Bones.end());std::string error;Check(!GameSproutRuntime::ValidateHumanAvatar(resources.Target,bad,error),"Missing required bone accepted");

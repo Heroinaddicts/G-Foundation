@@ -12,13 +12,14 @@ enum class Handedness { RightHanded, LeftHanded };
 enum class Axis { PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ };
 
 struct CoordinateSystem {
-    Handedness Hand = Handedness::RightHanded;
+    Handedness Hand = Handedness::LeftHanded;
     Axis Up = Axis::PositiveY;
-    Axis Forward = Axis::NegativeZ;
+    Axis Forward = Axis::PositiveZ;
     float MetersPerUnit = 1.0f;
 };
 
-// 世界和局部空间统一采用此约定。相机局部前方 -Z，正旋转服从右手规则。
+// Unity 世界/局部空间约定：+X 右、+Y 上、+Z 前，1 单位 = 1 米。
+// 四元数与 Cross 的代数公式保持不变；相机视图空间单独采用 -Z 前方。
 inline constexpr CoordinateSystem RuntimeCoordinates{};
 inline constexpr float Pi = 3.14159265358979323846f;
 constexpr float DegreesToRadians(float value) { return value * (Pi / 180.0f); }

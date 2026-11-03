@@ -140,7 +140,7 @@ GRHI::IGraphicsPipeline* Renderer::ShaderPipeline(const ResourceReference& refer
     description.VertexBindings=&binding;description.VertexBindingCount=1;description.VertexAttributes=attributes;description.VertexAttributeCount=4;
     switch(pass.Cull){case ShaderCullMode::Off:description.Cull=GRHI::CullMode::None;break;case ShaderCullMode::Front:description.Cull=GRHI::CullMode::Front;break;case ShaderCullMode::Back:description.Cull=GRHI::CullMode::Back;break;}
     switch(pass.Blend){case ShaderBlendMode::Opaque:description.Blend=GRHI::BlendMode::Opaque;break;case ShaderBlendMode::Alpha:description.Blend=GRHI::BlendMode::Alpha;break;case ShaderBlendMode::PremultipliedAlpha:description.Blend=GRHI::BlendMode::PremultipliedAlpha;break;}
-    description.Winding=negative?GRHI::FrontFace::Clockwise:GRHI::FrontFace::CounterClockwise;
+    description.Winding=negative?GRHI::FrontFace::CounterClockwise:GRHI::FrontFace::Clockwise;
     description.DepthFormat=GRHI::TextureFormat::D32_Float;description.DepthTest=pass.DepthTest;description.DepthWrite=pass.DepthWrite;
     description.DepthCompare=static_cast<GRHI::CompareOp>(pass.DepthCompare);
     auto* pipeline=_Device.CreateGraphicsPipeline(description);

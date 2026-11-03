@@ -96,9 +96,10 @@ static void CheckComponents(GameSproutRuntime::IGameObject* object) {
           "Camera did not validate output aspect");
     GameSproutRuntime::Mat4 view;
     Check(camera->GetViewMatrix(view), "Camera cannot invert valid world matrix");
-    CheckMatrix(view * transform->GetWorldMatrix(),{},"Camera view is not inverse of world matrix");
+    GameSproutRuntime::Mat4 cameraSpace;cameraSpace(2,2)=-1;
+    CheckMatrix(view * transform->GetWorldMatrix(),cameraSpace,"Camera view did not apply the Unity Z reflection");
     transform->SetLocalScale({0,1,1});
-    Check(!camera->GetViewMatrix(view), "Camera accepted singular world matrix");
+    Check(camera->GetViewMatrix(view), "Camera incorrectly inherited zero Transform scale");
     transform->SetLocalScale({1,1,1});
     Check(!transform->SetLocalRotation({0,0,0,0}), "Zero quaternion accepted");
     Check(transform->SetLocalRotation({0,0,0,2}) && Near(transform->GetLocalRotation().W,1), "Quaternion not normalized");

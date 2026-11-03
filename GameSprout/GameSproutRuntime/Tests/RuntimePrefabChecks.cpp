@@ -35,7 +35,7 @@ Json::Value Component(const char* name,std::uint64_t id) {
     Json::Value result(Json::objectValue);result["Type"]=std::string("GameSproutRuntime.")+name;result["ID"]=Json::UInt64(id);return result;
 }
 Json::Value Template() {
-    Json::Value data(Json::objectValue);data["Version"]=1;data["Name"]="Prefab";data["NextObjectID"]=Json::UInt64(200);
+    Json::Value data(Json::objectValue);data["Version"]=GameSproutRuntime::SceneDocumentVersion;data["Name"]="Prefab";data["NextObjectID"]=Json::UInt64(200);
     data["Objects"]=Json::Value(Json::arrayValue);
     Json::Value root(Json::objectValue);root["ID"]=Json::UInt64(10);root["ParentID"]=Json::UInt64(0);root["Name"]="Root";root["Components"]=Json::Value(Json::arrayValue);
     auto script=Component("ScriptComponent",100);script["InstanceID"]=Json::UInt64(7);script["ScriptTypeID"]="prefab-probe";

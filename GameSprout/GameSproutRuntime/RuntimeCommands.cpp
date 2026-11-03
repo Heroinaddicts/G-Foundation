@@ -49,7 +49,10 @@ bool Runtime::ReparentNow(GameObjectState& child,GameObjectState* parent,bool ke
     if(child.Parent==parent) {child.PendingAttach=false;return true;}
     Mat4 local;
     if(!CanReparent(child,parent,keepWorld,&local)) return false;
-    if(parent) parent->Children.reserve(parent->Children.size()+1);
+    // Geometric vector growth is intentional; reserve(size+1) on every append
+    // reallocates and copies the entire sibling array for wide imported scenes.
+    if(parent&&parent->Children.size()==parent->Children.capacity())
+        parent->Children.reserve(std::max(std::size_t{4},parent->Children.size()*2));
     std::vector<GameObjectState*> subtree{&child};
     for(std::size_t index=0;index<subtree.size();++index)
         subtree.insert(subtree.end(),subtree[index]->Children.begin(),subtree[index]->Children.end());
@@ -97,14 +100,15 @@ bool Runtime::RequestRemoveComponent(GameObjectState* object,IComponent* compone
     return true;
 }
 void Runtime::DestroyNow(GameObjectState& state) {
-    // 关闭场景时也回收尚未挂载的对象；不分配额外遍历内存。
+    // 关闭场景时先释放直属子树，再回收尚未挂载的同场景对象。
     if(state.IsSceneRoot()) {
-        for (;;) {
-            GameObjectState* other=nullptr;
-            for(const auto& entry:_Nodes) if(entry.second!=&state && entry.second->SceneOwner==state.SceneOwner) { other=entry.second;break; }
-            if(!other) break;
-            DestroyNow(*other);
-        }
+        while(!state.Children.empty())DestroyNow(*state.Children.back());
+        // A partial construction can own detached/pending objects. Freeze their
+        // IDs once, rather than rescanning all Runtime scenes for each child.
+        std::vector<std::uint64_t> detached;
+        for(const auto& [id,node]:_Nodes)
+            if(node!=&state&&node->SceneOwner==state.SceneOwner)detached.push_back(id);
+        for(const auto id:detached)if(auto* other=Find(id);other&&other->SceneOwner==state.SceneOwner)DestroyNow(*other);
     }
     GameObjectState* current=&state;
     for (;;) {
@@ -120,7 +124,10 @@ void Runtime::DestroyNow(GameObjectState& state) {
         ForgetObjectAnimationBindings(current->ID);
         _PropertyObservations.erase(current->ID);
         current->ReleaseComponents();
-        if(parent) std::erase(parent->Children,current);
+        if(parent) {
+            if(!parent->Children.empty()&&parent->Children.back()==current)parent->Children.pop_back();
+            else std::erase(parent->Children,current);
+        }
         if(current->IsSceneRoot()) std::erase(_Scenes,current->SceneOwner);
         ForgetObjectTag(*current);
         _DetachedObjects.erase(current->ID);

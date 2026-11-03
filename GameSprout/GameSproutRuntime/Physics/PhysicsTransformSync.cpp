@@ -6,6 +6,7 @@
 
 namespace GameSproutRuntime {
 bool RuntimePhysicsSystem::PublishTransforms(SceneWorld &world, std::string &error) {
+    if(world.StaticOnly)return true;
     std::vector<std::pair<std::size_t, uint64_t>> ordered;
     for (const auto &[id, record] : world.Bodies)
         if (record.ComponentID) {

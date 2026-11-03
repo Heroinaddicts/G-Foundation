@@ -25,6 +25,9 @@
 
 
 namespace GameSproutRuntime {
+    // Current Scene/Prefab node documents use Unity world coordinates. Older
+    // right-handed documents are rejected rather than silently reinterpreted.
+    inline constexpr std::uint32_t SceneDocumentVersion = 2;
     struct AnimationNotification;
     struct RootMotionNotification;
     class IRuntimeRenderer;
@@ -329,7 +332,8 @@ namespace GameSproutRuntime {
     public:
         virtual const CameraSettings& GetSettings() const = 0;
         virtual bool SetSettings(const CameraSettings& settings) = 0; // 校验失败不修改。
-        virtual bool GetViewMatrix(Mat4& output) const = 0; // 世界矩阵不可逆时失败。
+        // Unity: Scale(1,1,-1) * inverse(world position + rotation), ignoring scale.
+        virtual bool GetViewMatrix(Mat4& output) const = 0;
         virtual bool GetProjectionMatrix(float aspect, Mat4& output) const = 0;
     protected:
         using IComponent::IComponent;

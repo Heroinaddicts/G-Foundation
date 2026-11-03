@@ -30,6 +30,8 @@ bool Renderer::DrawBuiltin(GRHI::IRenderPass& pass,const PreparedDraw& draw,cons
         const auto lightUniform=MakeLitUniform(view,*draw.Object,*draw.Material,lights,draw.NormalTexture!=nullptr);
         pass.SetFragmentUniform(0,&lightUniform,sizeof(lightUniform));
         pass.SetFragmentUniform(1,environment,environmentSize);
+        pass.SetFragmentUniform(2,&_ShadowUniform,sizeof(_ShadowUniform));
+        pass.SetFragmentTextureSampler(2,_ShadowAtlas?_ShadowAtlas:_White,_ShadowSampler?_ShadowSampler:_DefaultSampler);
         pass.SetFragmentTextureSampler(1,draw.NormalTexture?draw.NormalTexture->Texture:_White,
             draw.NormalTexture?draw.NormalTexture->Sampler:_DefaultSampler);
     }

@@ -51,6 +51,42 @@ GameSproutRuntime::IBoxColliderComponent *Ground(GameSproutRuntime::IScene *scen
     Check(collider && collider->SetShape({{30, 1, 30}}), "Cannot create a ground collider");
     return collider;
 }
+void CheckUnityWorldDirections(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    std::string error;
+    auto* scene=runtime.CreateScene("Unity world physics directions");
+    auto* wall=scene->CreateGameObject("Positive Z wall");
+    wall->GetTransform()->SetLocalPosition({0,0,5});
+    Check(wall->AddComponent<GameSproutRuntime::IBoxColliderComponent>(),"Cannot create +Z wall");
+    GameSproutRuntime::PhysicsRaycastHit hit;GameSproutRuntime::PhysicsQuerySettings query;
+    Check(runtime.Raycast(scene,{{0,0,0},{0,0,1}},10,hit,query,error)&&
+          hit.Collider.ObjectID==wall->GetInstanceID()&&std::fabs(hit.Distance-4.5f)<.001f&&
+          std::fabs(hit.Position.Z-4.5f)<.001f&&hit.Normal.Z<-.99f,
+          "+Z world ray/position/normal changed sign at the physics boundary: "+error);
+    auto* actor=scene->CreateGameObject("Positive Y turn");
+    actor->GetTransform()->SetLocalPosition({-4,2,0});
+    const float halfTurn=std::sqrt(.5f);
+    Check(actor->GetTransform()->SetLocalRotation({0,halfTurn,0,halfTurn}),"Cannot author +90 Y rotation");
+    Check(actor->AddComponent<GameSproutRuntime::ISphereColliderComponent>(),"Cannot create rotating sphere");
+    auto* body=actor->AddComponent<GameSproutRuntime::IRigidbodyComponent>();
+    auto settings=body->GetSettings();settings.GravityFactor=0;settings.LinearDamping=0;settings.AngularDamping=0;
+    Check(body->SetSettings(settings)&&runtime.BeginExecution(error),error);
+    runtime.FixedUpdate(1.f/60);
+    auto matrix=actor->GetTransform()->GetWorldMatrix();
+    Check(matrix(0,2)>.999f&&std::fabs(matrix(2,2))<.001f,
+          "Authored +90 Y quaternion did not rotate local +Z toward +X through Jolt");
+    Check(runtime.EndExecution(error),error);
+    Check(actor->GetTransform()->SetLocalRotation({}),"Cannot reset authored rotation");
+    Check(runtime.BeginExecution(error),error);
+    Check(body->SetLinearVelocity({0,0,2})&&body->SetAngularVelocity({0,GameSproutRuntime::Pi*.5f,0}),
+          "Cannot set Unity-style velocity directions");
+    Steps(runtime,30);matrix=actor->GetTransform()->GetWorldMatrix();
+    Check(std::fabs(matrix(2,3)-1)<.002f&&matrix(0,2)>.69f&&matrix(0,2)<.72f&&
+          matrix(2,2)>.69f&&matrix(2,2)<.72f,
+          "+Z velocity or +Y angular velocity was reflected during simulation");
+    Check(body->GetLinearVelocity().Z>1.99f&&body->GetAngularVelocity().Y>1.56f,
+          "Physics velocity getters changed the public world convention");
+    Check(runtime.EndExecution(error)&&runtime.DestroyScene(scene),error);
+}
 void CheckQueriesAndStaticPairs(GameSproutRuntime::IGameSproutRuntime &runtime) {
     std::string error;
     auto *scene = runtime.CreateScene("Static colliders");
@@ -468,6 +504,8 @@ int main(int argc, char **argv) {
     auto *runtime = Export(argv[1]);
     try {
         Check(runtime, "Cannot load Runtime physics SDK");
+        std::cout << "physics Unity world directions\n";
+        CheckUnityWorldDirections(*runtime);
         std::cout << "physics queries/static pairs\n";
         CheckQueriesAndStaticPairs(*runtime);
         std::cout << "physics raycast self exclusions\n";

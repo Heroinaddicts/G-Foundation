@@ -93,7 +93,11 @@ bool Load(const ResourceReference& reference,MeshRenderData& output,std::string&
     case PrimitiveType::Capsule:Round(geometry,true);break;
     case PrimitiveType::Cylinder:Cylinder(geometry);break;
     case PrimitiveType::Plane:geometry.Quad({},{10,0,0},{0,0,-10},{0,1,0});break;
-    case PrimitiveType::Quad:geometry.Quad({},{1,0,0},{0,1,0},{0,0,1});break;
+    case PrimitiveType::Quad:
+        geometry.Quad({}, {1,0,0},{0,1,0},{0,0,-1});
+        for(std::size_t triangle=0;triangle<geometry.Indices.size();triangle+=3)
+            std::swap(geometry.Indices[triangle+1],geometry.Indices[triangle+2]);
+        break;
     }
     MeshRenderData mesh;
     mesh.VertexCount=static_cast<std::uint32_t>(geometry.Vertices.size());mesh.VertexStride=32;mesh.UVOffset=24;

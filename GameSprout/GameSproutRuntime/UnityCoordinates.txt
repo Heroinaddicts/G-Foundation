@@ -1,0 +1,49 @@
+GameSprout Unity coordinate contract
+
+World, local Transform, scripts, Scene/Prefab and prepared model/animation data:
+  +X right, +Y up, +Z forward; left-handed world convention; one unit = one metre.
+  Quaternion XYZW, identity (0,0,0,1); Unity default Euler order Z -> X -> Y.
+  Quaternion/TRS multiplication and Vector3.Cross keep their existing formulas.
+
+Camera/render boundary:
+  View = Scale(1,1,-1) * inverse(world position and rotation without scale).
+  Actual world position includes parent scaling; view orientation does not.
+  Camera-space forward remains -Z. Projection depth remains [0,1].
+  TryMakeLookAt returns this world-to-view matrix, not a world Transform pose.
+  RuntimeMath::TryMakeLookRotation creates an object rotation with local +Z forward.
+  Triangle fronts use clockwise projected winding; odd negative model scale
+  reverses culling. Shadow cameras use the same winding contract.
+  GRHI/SDL handle GPU clip/viewport conventions; they do not convert world nodes.
+
+Asset and physics boundaries:
+  FBX/OBJ source axes are converted once by the asset pipeline. Unity-exported
+  native meshes, transforms, tangent frames and SH coefficients retain Unity values.
+  Jolt vectors/quaternions/angular velocities use the same numeric components.
+  Collision mesh indices keep outward faces; odd negative scale reverses winding.
+  Animation, bind poses, root motion and IK consume the prepared Unity-space data.
+  Optional FBX CameraProperties.ProjectionAxes and LightProperties.LocalDirection
+  still describe their source attachment frames. They are metadata, not Runtime
+  Camera/Light components. A future component-instantiation adapter must apply
+  that declared attachment orientation; world-axis conversion is not a substitute.
+
+Current-format policy:
+  SceneDocumentVersion=2 (also the Data node document inside a Prefab).
+  The Prefab envelope version is independent. Old right-handed node documents
+  and native mesh formats are rejected. Re-export/recreate sources and rebuild
+  Library artifacts; no old-format fallback or automatic source migration exists.
+
+Unity 2021.3.17f source reviewed before implementation:
+  Runtime/Transform/ScriptBindings/Transform.bindings.cs: forward = rotation * +Z.
+  Runtime/Math/Quaternion.cpp: EulerToQuaternion default qY * qX * qZ.
+  Runtime/Math/Simd/RotationOrder.h: kOrderUnityDefault = kOrderZXY.
+  Runtime/Camera/Camera.cpp: GetImplicitWorldToCameraMatrix applies Scale(1,1,-1)
+    to Transform::GetWorldToLocalMatrixNoScale.
+  Runtime/Transform/TransformHierarchy.h: CalculateGlobalPositionAndRotation
+    supplies the no-scale camera matrix.
+  Editor/Mono/SceneView/SceneViewMotion.cs: camera = pivot - rotation * forward * distance.
+  Modules/Physics/NxWrapperUtility.h: vectors/quaternions copied component-wise.
+  Modules/Physics/Rigidbody.cpp: angular velocity passed through to PhysX.
+  Modules/Physics/NxMeshCreation.cpp: original indices; odd negative scale flips normals.
+  Modules/AssetPipelineEditor/Public/ModelImporting/FBXImporter/UnityFBX.cpp
+    and Conversion.h:
+    target Y-up/Z-forward/left-handed; reflection includes geometry and winding.

@@ -102,7 +102,9 @@ void Equivalent(const std::vector<std::uint8_t>& actual,const std::vector<std::u
 }
 std::array<int,3> Sample(const std::vector<std::uint8_t>& pixels,const RenderStatistics& size,float x,float y,float height){
     const float width=height*float(size.Width)/float(size.Height);
-    const auto px=std::clamp(int((x/width+.5f)*size.Width),0,int(size.Width)-1);
+    // This camera stands on +Z and looks back toward the origin. Its Unity
+    // transform is turned 180 degrees, so screen-right is world -X.
+    const auto px=std::clamp(int((.5f-x/width)*size.Width),0,int(size.Width)-1);
     const auto py=std::clamp(int((.5f-y/height)*size.Height),0,int(size.Height)-1);
     const auto offset=(std::size_t(py)*size.Width+std::size_t(px))*4;
     return {pixels[offset],pixels[offset+1],pixels[offset+2]};
@@ -228,6 +230,8 @@ int main(int argc,char** argv){
             Check(object->SetLayer(index<2?0:1),"Cannot set instanced light layer");}
         auto* red=scene->CreateGameObject("Red layer 0")->AddComponent<ILightComponent>();
         auto* blue=scene->CreateGameObject("Blue layer 1")->AddComponent<ILightComponent>();
+        red->GetGameObject()->GetTransform()->SetLocalRotation({0,1,0,0});
+        blue->GetGameObject()->GetTransform()->SetLocalRotation({0,1,0,0});
         Check(red->SetColor({1,0,0,1})&&red->SetCullingMask(1)&&blue->SetColor({0,0,1,1})&&blue->SetCullingMask(2),"Cannot configure filtered lights");
         pixels=Pixels(*viewport,view);Check(viewport->GetStatistics().DrawCalls==2&&viewport->GetStatistics().InstancedInstances==4,
             "Instances with different matching directional lights shared one lighting uniform");
@@ -239,6 +243,7 @@ int main(int argc,char** argv){
         scene=runtime->CreateScene("Specular material option");view=View(scene,4);
         Object(*scene,1,102,{-1,0,0});Object(*scene,1,102,{1,0,0});
         auto* sun=scene->CreateGameObject("Sun")->AddComponent<ILightComponent>();
+        sun->GetGameObject()->GetTransform()->SetLocalRotation({0,1,0,0});
         provider.Materials[102].Metallic=1;provider.Materials[102].Roughness=.65f;provider.Materials[102].BaseColor={.5f,.5f,.5f,1};
         provider.Materials[102].SpecularHighlights=true;++provider.Revision;
         pixels=Pixels(*viewport,view);const auto highlight=Sample(pixels,viewport->GetStatistics(),-1,0,4);

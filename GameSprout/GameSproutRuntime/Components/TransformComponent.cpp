@@ -78,11 +78,23 @@ Mat4 TransformComponent::GetLocalMatrix() const {
     return _LocalMatrixCache;
 }
 
-bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& matrix) {
-    if(!animatorID || IsSceneRoot() || (_HasPhysicsPose&&_PhysicsDynamic) || !RuntimeMath::IsFinite(matrix) || (_PoseOwner && _PoseOwner!=animatorID)) return false;
-    bool changed=_PoseOwner!=animatorID;
+bool TransformComponent::GetCurrentLocalRotation(Quaternion& output) const {
+    if (_PoseOwner && !(_HasPhysicsPose && _PhysicsDynamic)) {
+        output=_EvaluatedRotation;
+        return true;
+    }
+    output=GetLocalRotation();
+    return true;
+}
+
+bool TransformComponent::SetEvaluatedPose(std::uint64_t animatorID,const Mat4& matrix,Quaternion rotation) {
+    Quaternion unit;
+    if(!animatorID || IsSceneRoot() || (_HasPhysicsPose&&_PhysicsDynamic) || !RuntimeMath::IsFinite(matrix) ||
+       (_PoseOwner && _PoseOwner!=animatorID) || !UnitRotation(rotation,unit)) return false;
+    bool changed=_PoseOwner!=animatorID || unit.X!=_EvaluatedRotation.X || unit.Y!=_EvaluatedRotation.Y ||
+        unit.Z!=_EvaluatedRotation.Z || unit.W!=_EvaluatedRotation.W;
     for(unsigned index=0;index<16&&!changed;++index)changed=_EvaluatedMatrix.Data[index]!=matrix.Data[index];
-    _EvaluatedMatrix=matrix;_PoseOwner=animatorID;
+    _EvaluatedMatrix=matrix;_EvaluatedRotation=unit;_PoseOwner=animatorID;
     if(changed){InvalidateLocalMatrix();NotifyRuntimePropertiesChanged(_GameObject);}
     return true;
 }

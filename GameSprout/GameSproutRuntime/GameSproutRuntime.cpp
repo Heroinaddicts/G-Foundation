@@ -43,14 +43,16 @@ bool Runtime::IsUsable(const GameObjectState* object) const {
     return !object->SceneOwner || !object->SceneOwner->State().PendingDestroy;
 }
 bool Runtime::IsInScene(const GameObjectState* object) const {
-    if(!IsUsable(object) || !object->SceneOwner) return false;
+    if(_ShuttingDown||!object||&object->Owner!=this||!object->SceneOwner)return false;
     const GameObjectState* root=object;
     for(;;) {
         if(root->PendingAttach || root->Destroying || root->PendingDestroy) return false;
         if(!root->Parent) break;
         root=root->Parent;
     }
-    return root->Object==object->SceneOwner && Find(root->Object)==root;
+    // State and SceneOwner are Runtime-owned and updated atomically when a
+    // subtree moves. A second pointer-map lookup of this live root is redundant.
+    return root==&object->SceneOwner->State();
 }
 IScene* Runtime::CreateScene(const std::string& name) {
     if (_ShuttingDown) return nullptr;
@@ -129,14 +131,16 @@ void Runtime::TickComponents(float deltaSeconds,bool fixed) {
         if(!_ConstructionDepth&&hasSimulatingScene) {
             RuntimeOperation operation(*this);
             std::vector<std::uint64_t> objects;
-            objects.reserve(_Nodes.size());
-            for(const auto& entry:_Nodes) objects.push_back(entry.first);
+            objects.reserve(_TickObjects.size());
+            for(const auto& [id,counts]:_TickObjects)
+                if(fixed?counts.Fixed:counts.Variable)objects.push_back(id);
             for(auto id:objects) {
                 GameObjectState* node=Find(id);
                 if(!node || !node->SceneOwner || !node->SceneOwner->IsSimulationEnabled() ||
-                    !IsInScene(node) || !node->IsActiveInHierarchy()) continue;
+                    !node->IsActiveInHierarchy()) continue;
                 const auto components=node->Components;
                 for(const auto& component:components) {
+                    if(!(component.TickMask&(fixed?2:1)))continue;
                     if(!IsUsable(node) || !node->SceneOwner->IsSimulationEnabled()) break;
                     const auto current=std::find_if(node->Components.begin(),node->Components.end(),[&](const auto& item){return item.Serial==component.Serial;});
                     if(current==node->Components.end() || current->PendingRemove || !current->Initialized || current->InitializationFailed) continue;

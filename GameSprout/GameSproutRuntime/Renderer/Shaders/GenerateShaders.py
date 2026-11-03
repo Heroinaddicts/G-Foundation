@@ -29,7 +29,7 @@ def main():
                              ("SkinnedMeshNoColorVertex", "vertex"), ("SkinnedMeshNoUVNoColorVertex", "vertex"),
                              ("LitFragment", "fragment"),
                              ("InstancedMeshVertex", "vertex"), ("InstancedMeshNoUVVertex", "vertex"),
-                             ("InstancedMeshNoColorVertex", "vertex"), ("InstancedMeshNoUVNoColorVertex", "vertex")]:
+                             ("InstancedMeshNoColorVertex", "vertex"), ("InstancedMeshNoUVNoColorVertex", "vertex"), ("ShadowFragment", "fragment")]:
             spirv = root / (entry + ".spv")
             # One source contains several entry points. Keep only resources used
             # by that entry; retaining a fragment binding in a vertex module

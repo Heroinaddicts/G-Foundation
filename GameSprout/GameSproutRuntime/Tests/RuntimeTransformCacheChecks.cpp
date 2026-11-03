@@ -55,14 +55,21 @@ void Transforms(Runtime& runtime) {
 
     auto* access=dynamic_cast<TransformComponent*>(leaf->GetTransform());Check(access,"Missing native Transform");
     const auto authored=access->GetLocalMatrix();
-    Check(access->SetEvaluatedPose(11,Translate(7)),"Cannot apply evaluated animation pose");
+    Check(access->SetEvaluatedPose(11,Translate(7),{}),"Cannot apply evaluated animation pose");
     Position(access->GetLocalMatrix(),7,"Animation retained authored local matrix");
     Matrix(access->GetWorldMatrix(),child->GetTransform()->GetWorldMatrix()*Translate(7),"Animation did not invalidate world cache");
+    const auto evaluatedEpoch=runtime.GetTransformEpoch();
+    Check(access->SetEvaluatedPose(11,Translate(7),{0,0,0,-2}),"Evaluated quaternion normalization failed");
+    Quaternion effective;
+    Check(access->GetCurrentLocalRotation(effective)&&effective.X==0&&effective.Y==0&&effective.Z==0&&effective.W==1&&
+          runtime.GetTransformEpoch()==evaluatedEpoch,"Equivalent evaluated quaternion changed canonical rotation or invalidated the cache");
+    Check(!access->SetEvaluatedPose(11,Translate(99),{0,0,0,0}),"Zero evaluated quaternion was accepted");
+    Position(access->GetLocalMatrix(),7,"Rejected evaluated quaternion changed the matrix");
     Check(access->SetPhysicsPose(Translate(9),false),"Cannot apply kinematic physics pose");
     Position(access->GetLocalMatrix(),7,"Kinematic pose incorrectly displaced active animation pose");
     Check(access->SetPhysicsPose(Translate(11),true),"Cannot apply dynamic physics pose");
     Position(access->GetLocalMatrix(),11,"Dynamic physics did not override cached animation pose");
-    Check(!access->SetEvaluatedPose(11,Translate(12)),"Animation overrode dynamic physics");
+    Check(!access->SetEvaluatedPose(11,Translate(12),{}),"Animation overrode dynamic physics");
     access->ClearPhysicsPose();Position(access->GetLocalMatrix(),7,"Physics reset did not restore evaluated animation");
     access->ClearEvaluatedPose(999);Position(access->GetLocalMatrix(),7,"Wrong animator cleared another owner's pose");
     access->ClearEvaluatedPose(11);Matrix(access->GetLocalMatrix(),authored,"Animation reset did not restore authored local matrix");

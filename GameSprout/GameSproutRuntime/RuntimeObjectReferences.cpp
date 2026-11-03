@@ -6,15 +6,8 @@
 
 namespace GameSproutRuntime {
 namespace {
-// Stable identities only across a bridge callback, never a retained component
-// pointer. Invalidating a malformed custom bridge may release its script.
-std::vector<std::pair<std::uint64_t,std::uint64_t>> Scripts(const std::map<std::uint64_t,GameObjectState*>& nodes) {
-    std::vector<std::pair<std::uint64_t,std::uint64_t>> result;
-    for(const auto& node:nodes) for(const auto& entry:node.second->Components)
-        if(auto* script=dynamic_cast<IScriptComponent*>(entry.Pointer))
-            result.emplace_back(node.first,script->GetScriptInstanceID());
-    return result;
-}
+// Resolve the registered identities after every user callback; never keep a
+// native component pointer across a mutation/lifetime boundary.
 ScriptComponent* Resolve(Runtime& runtime,const std::pair<std::uint64_t,std::uint64_t>& key) {
     auto* node=runtime.Find(key.first);
     if(!node) return nullptr;
@@ -91,7 +84,7 @@ void Runtime::InvalidateScriptObjectReferences(IGameObject* object) {
     if(!_ScriptExecutionEnabled) return;
     RuntimeOperation operation(*this);
     const auto identity=_ObjectFileIDs.find(object->GetInstanceID());
-    for(const auto& key:Scripts(_Nodes)) if(auto* script=Resolve(*this,key)) {
+    for(const auto& key:SnapshotScriptIdentities()) if(auto* script=Resolve(*this,key)) {
         bool affected=script->InvalidateObjectReference(object);
         auto* node=Find(key.first);
         if(identity!=_ObjectFileIDs.end() && node && node->SceneOwner && node->SceneOwner->GetInstanceID()==identity->second.SceneID)
@@ -107,7 +100,7 @@ void Runtime::RefreshScriptObjectReferences() {
     // N identities must not scan N scene graphs before execution even starts.
     if(!_ScriptExecutionEnabled) return;
     RuntimeOperation operation(*this);
-    for(const auto& key:Scripts(_Nodes)) if(auto* script=Resolve(*this,key))
+    for(const auto& key:SnapshotScriptIdentities()) if(auto* script=Resolve(*this,key))
         if(script->RebindMissingObjectReferences()) if(auto* node=Find(key.first);IsInScene(node))
             Notify(*node,SceneNodeEventType::ComponentChanged,script->GetTypeName());
 }

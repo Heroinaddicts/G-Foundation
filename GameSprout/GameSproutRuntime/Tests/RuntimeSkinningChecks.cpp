@@ -59,7 +59,8 @@ static Character CreateCharacter(GameSproutRuntime::IScene& scene,float x) {
     Check(skin->SetAnimatorObjectID(character.Root->GetInstanceID()),"Cannot bind skin to Animator");return character;
 }
 static int Pixel(const std::vector<std::uint8_t>& pixels,float worldX,float worldY=0) {
-    const int x=static_cast<int>((worldX*.5f+.5f)*256),y=static_cast<int>((.5f-worldY*.5f)*256);
+    // A Unity camera on +Z looking at the origin has world -X as screen-right.
+    const int x=static_cast<int>((.5f-worldX*.5f)*256),y=static_cast<int>((.5f-worldY*.5f)*256);
     return pixels[(std::size_t(y)*256+std::size_t(x))*4];
 }
 int main(int argc,char** argv) {

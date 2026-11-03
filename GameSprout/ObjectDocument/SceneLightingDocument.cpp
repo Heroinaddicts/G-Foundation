@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 [[noreturn]] void Fail(const std::string& path,const char* reason) {throw std::runtime_error(path+": "+reason);}
@@ -24,7 +25,7 @@ GameSproutRuntime::LightSettings Read(const Json::Value& component,const std::st
     GameSproutRuntime::LightSettings result;
     if(!component.isMember("Settings"))return result;
     const auto& settings=component["Settings"];const std::string key=path+".Settings";
-    Keys(settings,key,{"Type","Enabled","Color","Intensity","CullingMask"});
+    Keys(settings,key,{"Type","Enabled","Color","Intensity","CullingMask","Shadows"});
     if(settings.isMember("Type")&&(!settings["Type"].isString()||settings["Type"].asString()!="Directional"))
         Fail(key+".Type","only Directional is supported");
     if(settings.isMember("Enabled")) {
@@ -44,6 +45,25 @@ GameSproutRuntime::LightSettings Read(const Json::Value& component,const std::st
         if((mask.type()!=Json::intValue&&mask.type()!=Json::uintValue)||!mask.isUInt64()||
            mask.asUInt64()>std::numeric_limits<std::uint32_t>::max())Fail(key+".CullingMask","expected uint32");
         result.CullingMask=static_cast<std::uint32_t>(mask.asUInt64());
+    }
+    if(settings.isMember("Shadows")) {
+        const auto& shadows=settings["Shadows"];const std::string shadowKey=key+".Shadows";
+        Keys(shadows,shadowKey,{"Enabled","Strength","Distance","Resolution","CascadeCount","DepthBias","NormalBias","Soft"});
+        for(const auto& [name,target]:{std::pair<const char*,bool*>{"Enabled",&result.Shadows.Enabled},{"Soft",&result.Shadows.Soft}})
+            if(shadows.isMember(name)) {
+                if(!shadows[name].isBool())Fail(shadowKey+"."+name,"expected bool");
+                *target=shadows[name].asBool();
+            }
+        for(const auto& [name,target]:{std::pair<const char*,float*>{"Strength",&result.Shadows.Strength},
+            {"Distance",&result.Shadows.Distance},{"DepthBias",&result.Shadows.DepthBias},{"NormalBias",&result.Shadows.NormalBias}})
+            if(shadows.isMember(name))*target=Number(shadows[name],shadowKey+"."+name);
+        for(const auto& [name,target]:{std::pair<const char*,std::uint32_t*>{"Resolution",&result.Shadows.Resolution},{"CascadeCount",&result.Shadows.CascadeCount}})
+            if(shadows.isMember(name)) {
+                if(!shadows[name].isUInt())Fail(shadowKey+"."+name,"expected uint32");
+                *target=shadows[name].asUInt();
+            }
+        if(!GameSproutRuntime::IsValidLightShadows(result.Shadows))
+            Fail(shadowKey,"invalid shadow settings: strength [0,1], positive distance, resolution 256/512/1024/2048/4096, cascades 1/2/4, biases [0,10] texels");
     }
     return result;
 }
@@ -67,6 +87,11 @@ Json::Value Serialize(GameSproutRuntime::IComponent& component) {
     auto& color=data["Color"];color=Json::Value(Json::arrayValue);
     color.append(settings.Color.R);color.append(settings.Color.G);color.append(settings.Color.B);color.append(settings.Color.A);
     data["Intensity"]=settings.Intensity;data["CullingMask"]=Json::UInt(settings.CullingMask);
+    auto& shadows=data["Shadows"];
+    shadows["Enabled"]=settings.Shadows.Enabled;shadows["Strength"]=settings.Shadows.Strength;
+    shadows["Distance"]=settings.Shadows.Distance;shadows["Resolution"]=Json::UInt(settings.Shadows.Resolution);
+    shadows["CascadeCount"]=Json::UInt(settings.Shadows.CascadeCount);shadows["DepthBias"]=settings.Shadows.DepthBias;
+    shadows["NormalBias"]=settings.Shadows.NormalBias;shadows["Soft"]=settings.Shadows.Soft;
     Validate(result,"Light");
     return result;
 }

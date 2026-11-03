@@ -155,7 +155,7 @@ bool Serialize(GameSproutRuntime::IScene& scene,ObjectIDs& ids,Json::Value& outp
             next.BindComponentFileID(component,id);
         }
         Json::Value document(Json::objectValue);
-        document["Version"]=Json::UInt(1);document["Name"]=scene.GetName();document["RootActive"]=scene.IsActiveSelf();
+        document["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);document["Name"]=scene.GetName();document["RootActive"]=scene.IsActiveSelf();
         document["RootLayer"]=Json::UInt(scene.GetLayer());document["RootTagID"]=Json::UInt64(scene.GetTagID());
         document["RootStaticFlags"]=Json::UInt(static_cast<std::uint32_t>(scene.GetStaticFlags()));
         document["RootComponents"]=Components(scene,next);document["NextObjectID"]=Json::UInt64(next.Next);

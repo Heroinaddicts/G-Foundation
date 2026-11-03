@@ -1,6 +1,7 @@
 #include "Api/RuntimeResourceApi.h"
 #include "Components/TransformComponent.h"
 #include "GameObject.h"
+#include "Scene.h"
 #include "PhysicsConversions.h"
 #include "RuntimePhysicsSystem.h"
 #include "Api/RuntimeColliderMath.h"
@@ -210,6 +211,14 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
     return true;
 }
 bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float delta, std::string &error) {
+    const auto revision=static_cast<Scene*>(scene)->GetRenderRevision();
+    auto* provider=_Runtime.GetResourceProvider();
+    const auto providerRevision=provider?provider->GetRevision():0;
+    const auto& matrix=_Runtime.GetProjectSettings().CollisionMatrix;
+    world.UnchangedStatic=world.SnapshotKnown&&world.StaticOnly&&world.SceneRevision==revision&&
+        world.Provider==provider&&world.ProviderRevision==providerRevision&&world.CollisionMatrix==matrix;
+    if(world.UnchangedStatic)return true;
+    world.SnapshotKnown=false;
     std::map<uint64_t, BodyRequest> requests;
     if (!BuildRequests(scene, requests, error))
         return false;
@@ -300,6 +309,11 @@ bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float d
             rigid.Impulse = {};
         }
     }
+    world.StaticOnly=std::none_of(world.Bodies.begin(),world.Bodies.end(),
+        [](const auto& entry){return entry.second.ComponentID!=0;});
+    world.SceneRevision=static_cast<Scene*>(scene)->GetRenderRevision();
+    world.Provider=provider;world.ProviderRevision=providerRevision;world.CollisionMatrix=matrix;
+    world.SnapshotKnown=true;
     return true;
 }
 } // namespace GameSproutRuntime

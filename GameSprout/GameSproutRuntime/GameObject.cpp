@@ -17,6 +17,9 @@ void GameObjectState::ReleaseComponents() noexcept {
     Destroying = true;
     while (!Components.empty()) {
         IComponent* component=Components.back().Pointer;
+        Owner.UnregisterComponentTick(ID,Components.back().TickMask);
+        Owner.UnregisterAnimationComponent(ID,component);
+        if(auto* script=dynamic_cast<IScriptComponent*>(component))Owner.UnregisterScriptIdentity(ID,script->GetScriptInstanceID());
         try {Owner.InvalidateScriptComponentReferences(component);}catch(...) {}
         Components.pop_back();
         try { component->OnRelease(&Owner); } catch (...) {}
@@ -51,9 +54,14 @@ void GameObjectState::SetActive(bool active) {
     Owner.Notify(*this,SceneNodeEventType::ActiveChanged);
 }
 bool GameObjectState::IsActiveInHierarchy() const {
-    if(!Owner.IsInScene(this)) return false;
-    for (const GameObjectState* node=this; node; node=node->Parent) if (!node->Active || node->PendingDestroy) return false;
-    return true;
+    if(Owner.IsShuttingDown()||!SceneOwner)return false;
+    const GameObjectState* root=this;
+    for(;;) {
+        if(!root->Active||root->PendingDestroy||root->PendingAttach||root->Destroying)return false;
+        if(!root->Parent)break;
+        root=root->Parent;
+    }
+    return root==&SceneOwner->State();
 }
 IGameObject* GameObjectState::FindChild(const std::string& name) const {
     for (GameObjectState* child:Children) if (child->Name==name) return child->Object;
@@ -149,12 +157,16 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
     IComponent* component=nullptr;
     bool registered=false;
     try {
-        component=CreateBuiltinComponent(type,Object);
+        std::uint8_t tickMask=3;
+        component=CreateBuiltinComponent(type,Object,&tickMask);
         if (!component) return nullptr;
         if (NextComponentSerial==std::numeric_limits<std::uint64_t>::max()) { delete component; return nullptr; }
         component->_ComponentInstanceID=NextComponentSerial+1;
         Components.push_back({component,++NextComponentSerial,false});
         registered=true;
+        Components.back().TickMask=tickMask;
+        Owner.RegisterComponentTick(ID,tickMask);
+        Owner.RegisterAnimationComponent(ID,component);
         const auto serial=NextComponentSerial;
         component->OnCreate(&Owner);
         // 初始化回调可以请求移除/销毁；此时不能把即将失效的接口返回调用方。
@@ -166,7 +178,10 @@ IComponent* GameObjectState::AddComponent(const std::type_info& type) {
     } catch (...) {
         if (registered) {
             const auto found=std::find_if(Components.begin(),Components.end(),[&](const ComponentEntry& entry){return entry.Pointer==component;});
-            if(found!=Components.end()) Components.erase(found);
+            if(found!=Components.end()) {
+                Owner.UnregisterComponentTick(ID,found->TickMask);
+                Owner.UnregisterAnimationComponent(ID,component);Components.erase(found);
+            }
             try { component->OnRelease(&Owner); } catch (...) {}
         }
         delete component;
@@ -212,6 +227,9 @@ bool GameObjectState::RemoveComponentNow(IComponent* component,std::uint64_t ser
     Owner.Notify(*this,SceneNodeEventType::ComponentRemoved,component->GetTypeName());
     Owner.InvalidateScriptComponentReferences(component);
     // 从查询中移除后再执行释放回调，避免释放阶段再次取到正在销毁的组件。
+    Owner.UnregisterComponentTick(ID,found->TickMask);
+    Owner.UnregisterAnimationComponent(ID,component);
+    if(auto* script=dynamic_cast<IScriptComponent*>(component))Owner.UnregisterScriptIdentity(ID,script->GetScriptInstanceID());
     Components.erase(found);
     try { component->OnRelease(&Owner); } catch (...) {}
     delete component;

@@ -38,12 +38,14 @@ inline bool TryMakeOrthographic(float height, float aspect, float nearPlane, flo
     return true;
 }
 
-// 相机世界位置与观察目标。两者不能重合，up 不能平行于观察方向。
+// Unity 世界中的相机位置和观察目标 -> 右手相机视图空间（前方 -Z）。
+// 这是 View 矩阵，不是对象的世界姿态；不要直接取逆后当成 Transform 旋转。
+// 两者不能重合，up 不能平行于观察方向。
 inline bool TryMakeLookAt(Vector3 eye, Vector3 target, Vector3 worldUp, Mat4& output) {
     Vector3 forward, up, right;
     if (!(target - eye).TryNormalize(forward) || !worldUp.TryNormalize(up) ||
-        !forward.Cross(up).TryNormalize(right)) return false;
-    up = right.Cross(forward);
+        !up.Cross(forward).TryNormalize(right)) return false;
+    up = forward.Cross(right);
     Mat4 result;
     result(0,0)=right.X; result(0,1)=right.Y; result(0,2)=right.Z; result(0,3)=-right.Dot(eye);
     result(1,0)=up.X; result(1,1)=up.Y; result(1,2)=up.Z; result(1,3)=-up.Dot(eye);

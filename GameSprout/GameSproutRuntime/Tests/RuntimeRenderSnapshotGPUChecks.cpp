@@ -47,7 +47,8 @@ std::array<int,3> Pixel(IRuntimeViewport& viewport,float worldX=0){
     std::vector<std::uint8_t> pixels;std::string error;Check(viewport.ReadPixels(pixels,error),error);
     const auto& stats=viewport.GetStatistics();
     const float extent=2.f*stats.Width/stats.Height;
-    const auto x=std::uint32_t((worldX/extent+.5f)*stats.Width);
+    // The +Z-side Unity camera looks toward -Z; its local right is world -X.
+    const auto x=std::uint32_t((.5f-worldX/extent)*stats.Width);
     Check(x<stats.Width,"Snapshot test sample outside target");
     const auto offset=(std::size_t(stats.Height/2)*stats.Width+x)*4;
     return {pixels[offset],pixels[offset+1],pixels[offset+2]};
@@ -109,7 +110,8 @@ int main(int argc,char** argv){
         renderer->SetVisible(true);Render(*viewport,view);
 
         renderer->SetMaterial(0,{Guid,13});stats=Render(*viewport,view);Check(Pixel(*viewport)[0]==0,"Lit snapshot invented illumination");
-        auto* sunObject=scene->CreateGameObject("Sun");auto* sun=sunObject->AddComponent<ILightComponent>();
+        auto* sunObject=scene->CreateGameObject("Sun");sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
+        auto* sun=sunObject->AddComponent<ILightComponent>();
         stats=Render(*viewport,view);Check(stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[0]>50,"New directional light was absent from cached lighting");
         Check(sun->SetColor({0,0,1,1}),"Cannot change snapshot light");stats=Render(*viewport,view);
         Check(stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[2]>50&&Pixel(*viewport)[0]==0,"Light setter did not update the next render");

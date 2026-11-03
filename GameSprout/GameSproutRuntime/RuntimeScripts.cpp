@@ -161,8 +161,17 @@ IScriptComponent* Runtime::AddScriptComponent(IGameObject* object,const std::str
     RuntimeOperation operation(*this);
     auto* script=new ScriptComponent(*this,object,type,source,id);
     script->_ComponentInstanceID=node->NextComponentSerial+1;
-    try {node->Components.push_back({script,++node->NextComponentSerial,false});}
-    catch(...) {delete script;error="Cannot allocate script component";return nullptr;}
+    bool tickRegistered=false;
+    try {
+        node->Components.push_back({script,++node->NextComponentSerial,false});
+        RegisterComponentTick(node->ID,3);tickRegistered=true;
+        RegisterScriptIdentity(node->ID,id);
+    }catch(...) {
+        if(tickRegistered)UnregisterComponentTick(node->ID,3);
+        UnregisterScriptIdentity(node->ID,id);
+        if(!node->Components.empty()&&node->Components.back().Pointer==script)node->Components.pop_back();
+        delete script;error="Cannot allocate script component";return nullptr;
+    }
     node->NextScriptID=std::max(node->NextScriptID,id);
     QueueComponentInitialization(*node,node->NextComponentSerial);
     Notify(*node,SceneNodeEventType::ComponentAdded,script->GetTypeName());

@@ -1,4 +1,5 @@
 #include "RuntimeRenderer.h"
+#include "RuntimeRenderResourceCache.h"
 #include "RuntimeMath.h"
 #include "Resources/BuiltinMeshes.h"
 #include <cmath>
@@ -84,33 +85,36 @@ GRHI::SamplerDesc ToGRHISampler(const SamplerSettings& settings) {
 }
 
 Renderer::Renderer(Runtime& runtime,GRHI::IDevice& device,IRuntimeResourceProvider& resources)
-    :_Runtime(runtime),_Device(device),_Resources(resources) {}
+    :_Runtime(runtime),_Device(device),_Resources(resources),
+     _ResourceLease(runtime,device,resources),_ResourceCache(_ResourceLease.Get()),
+     _Meshes(_ResourceCache.Meshes),_Textures(_ResourceCache.Textures),_Materials(_ResourceCache.Materials),
+     _UserShaders(_ResourceCache.UserShaders),_ShaderPipelines(_ResourceCache.ShaderPipelines),_Pipelines(_ResourceCache.Pipelines),
+     _Shaders(_ResourceCache.Shaders),_White(_ResourceCache.White),_DefaultSampler(_ResourceCache.DefaultSampler),
+     _Grid(_ResourceCache.Grid),_GridVertices(_ResourceCache.GridVertices) {}
 Renderer::~Renderer() {
     ClearResources();
-    for(auto& entry:_Pipelines) delete entry.second;
     for(auto& entry:_Depths) delete entry.second.Texture;
-    for(auto* shader:_Shaders) delete shader;
-    delete _White;delete _DefaultSampler;delete _Grid;
+    delete _ShadowAtlas;delete _ShadowSampler;
     delete _ColorTarget;
     if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
+    _ShadowValid=false;_ShadowUniform.Info={};
     _PreparedDraws.clear();_SceneObjects.clear();_SceneLights.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;
     _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;
     _ExtractionDiagnostic.clear();_LightDiagnostic.clear();
     ClearInstanceBuffers();
-    for(auto& entry:_ShaderPipelines)delete entry.second;
-    _ShaderPipelines.clear();
-    for(auto& entry:_UserShaders){delete entry.second.Vertex;delete entry.second.Fragment;}
-    _UserShaders.clear();
-    for(auto& entry:_Meshes) {delete entry.second.Buffer;delete entry.second.ShaderVertexBuffer;}
-    for(auto& entry:_Textures) {delete entry.second.Texture;delete entry.second.Sampler;}
-    _Meshes.clear();_ColliderMeshes.clear();_Textures.clear();_Materials.clear();
+    _ColliderMeshes.clear();
 }
 void Renderer::SyncRevision() {
-    const auto revision=_Resources.GetRevision();
-    if(!_RevisionKnown || revision!=_Revision) {ClearResources();_Revision=revision;_RevisionKnown=true;}
+    _ResourceCache.Synchronize();
+    if(_ResourceGeneration!=_ResourceCache.Generation) {
+        // A sibling viewport may already have released the previous shared
+        // generation. Discard every local borrowed address before looking up
+        // resources in the new maps; private render targets remain independent.
+        ClearResources();_ResourceGeneration=_ResourceCache.Generation;
+    }
 }
 std::string Renderer::DeviceError(const std::string& operation) const {
     const auto& error=_Device.GetLastError();return operation+(error.empty()?"":": "+error);

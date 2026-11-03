@@ -2,6 +2,7 @@
 #include "GPhysics.h"
 #include "GameSproutRuntime.h"
 #include "PhysicsComponents.h"
+#include <array>
 #include <map>
 #include <tuple>
 
@@ -27,6 +28,13 @@ class RuntimePhysicsSystem {
     struct SceneWorld {
         GPhysics::World Backend;
         std::map<uint64_t, BodyRecord> Bodies;
+        // A world with no enabled Rigidbody has no simulation to advance.
+        // Reuse its synchronized bodies until an authoring/pose/resource or
+        // collision-matrix change. Dynamic worlds retain the full update path.
+        bool SnapshotKnown=false,StaticOnly=false,UnchangedStatic=false;
+        uint64_t SceneRevision=0,ProviderRevision=0;
+        IRuntimeResourceProvider* Provider=nullptr;
+        std::array<std::uint32_t,32> CollisionMatrix{};
     };
     struct BodyRequest {
         IGameObject *Object = nullptr;

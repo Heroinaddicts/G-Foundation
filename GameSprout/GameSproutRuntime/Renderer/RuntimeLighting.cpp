@@ -1,6 +1,7 @@
 #include "RuntimeRenderer.h"
 #include "RuntimeMath.h"
 #include "Scene.h"
+#include "Components/TransformComponent.h"
 #include <algorithm>
 #include <cmath>
 
@@ -23,12 +24,17 @@ bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights
         const auto& settings=light->GetSettings();
         if(!settings.Enabled||settings.Intensity==0||!settings.CullingMask)continue;
         if(settings.Type!=LightType::Directional){Diagnostic("Unsupported scene light type");continue;}
-        // Ray direction is local -Z, so the surface-to-light direction is +Z.
+        // Unity light rays follow local +Z; surface-to-light is local -Z.
         // Compose authored rotations only: ancestor scale, including reflections
         // and zero scales, must never change the orientation of a directional light.
-        Vector3 direction{0,0,1};
+        Vector3 direction{0,0,-1};
         for(auto* node=object;node;node=node->Parent()) {
-            const Mat4 rotation=RuntimeMath::ComposeTRS({},node->GetTransform()->GetLocalRotation(),{1,1,1});
+            auto* transform=node->GetTransform();
+            Quaternion orientation;
+            if(const auto* current=dynamic_cast<const TransformComponent*>(transform)) {
+                if(!current->GetCurrentLocalRotation(orientation))return Fail("Invalid animated directional light orientation");
+            } else orientation=transform->GetLocalRotation();
+            const Mat4 rotation=RuntimeMath::ComposeTRS({},orientation,{1,1,1});
             const auto rotated=rotation*Vector4{direction.X,direction.Y,direction.Z,0};
             direction={rotated.X,rotated.Y,rotated.Z};
         }
@@ -38,7 +44,7 @@ bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights
         if(!direction.TryNormalize(normalized)||!RuntimeMath::IsFinite(radiance)) {
             Diagnostic("Skipped nonfinite directional light radiance/orientation: "+object->GetName());continue;
         }
-        lights.push_back({normalized,radiance,settings.CullingMask});
+        lights.push_back({normalized,radiance,settings.CullingMask,settings.Shadows});
     }
     // Highest linear luminance first; hierarchy order resolves exact ties.
     std::stable_sort(lights.begin(),lights.end(),[](const DirectionalLight& left,const DirectionalLight& right){
@@ -60,9 +66,10 @@ Renderer::LitUniform Renderer::MakeLitUniform(const RenderView& view,const DrawO
     result.Emission=material.EmissionColor;result.NormalTextureST=material.NormalTextureST;
     std::size_t count=0;
     for(const auto& light:lights) {
+        const auto lightIndex=static_cast<std::size_t>(&light-lights.data());
         if(!(light.CullingMask&(std::uint32_t{1}<<object.Layer)))continue;
         if(count==MaxDirectionalLights){Diagnostic("Lit uses the four brightest matching directional lights per object");break;}
-        result.Directions[count]={light.TowardsLight.X,light.TowardsLight.Y,light.TowardsLight.Z,1};
+        result.Directions[count]={light.TowardsLight.X,light.TowardsLight.Y,light.TowardsLight.Z,lightIndex==_ShadowLightIndex&&_ShadowUniform.Info.X>0?2.0f:1.0f};
         result.Radiances[count]=light.Radiance;++count;
     }
     return result;

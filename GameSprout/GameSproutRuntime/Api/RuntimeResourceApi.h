@@ -3,6 +3,7 @@
 #include "GameSproutRuntimeApi.h"
 #include "RuntimeAnimationData.h"
 #include "RuntimeShaderData.h"
+#include "Memory/ByteBuffer.h"
 
 namespace GameSproutRuntime {
 
@@ -42,7 +43,9 @@ struct TextureRenderData {
     std::uint32_t Height = 0;
     bool SRGB = true;
     // 第一版上传 mip0；此处已是紧密排列的 RGBA8，无源图片解码。
-    std::vector<std::uint8_t> Pixels;
+    // Owning bulk byte storage. Rebuild all SDK consumers after this API layout
+    // change; the prepared RGBA8 file format itself is unchanged.
+    ByteBuffer Pixels;
     SamplerSettings Sampler;
 };
 

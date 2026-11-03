@@ -134,13 +134,14 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
                    GameSproutRuntime::IGameSproutRuntime* runtime=nullptr) {
     if(value.isObject()&&value.isMember("ID")) {
         if(!Unsigned(value["ID"],path+".ID"))Fail(path+".ID","component ID must be nonzero");
-        Json::Value fields=value;fields.removeMember("ID");
-        ComponentData(fields,object,path,runtime);return;
+        // ID is document metadata, already validated here. Borrow the original
+        // component instead of recursively deep-copying Settings/Shape/Fields
+        // merely to remove that key during both validation and assembly.
     }
     if (!value.isObject() || !value["Type"].isString()) Fail(path,"component requires Type string");
     const std::string type=value["Type"].asString();
     if (type=="GameSproutRuntime.Transform") {
-        Members(value,path,{"Type","Position","Rotation","Scale"});
+        Members(value,path,{"ID","Type","Position","Rotation","Scale"});
         const auto position=Vector3Member(value,"Position",{},path);
         const auto scale=Vector3Member(value,"Scale",{1,1,1},path);
         GameSproutRuntime::Quaternion rotation;
@@ -158,7 +159,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if (!component->SetLocalRotation(rotation)) Fail(path,"Runtime rejected rotation");
         }
     } else if (type=="GameSproutRuntime.RectTransform") {
-        Members(value,path,{"Type","AnchorMin","AnchorMax","Pivot","AnchoredPosition","SizeDelta"});
+        Members(value,path,{"ID","Type","AnchorMin","AnchorMax","Pivot","AnchoredPosition","SizeDelta"});
         const auto minimum=Vector2Member(value,"AnchorMin",{0.5f,0.5f},path);
         const auto maximum=Vector2Member(value,"AnchorMax",{0.5f,0.5f},path);
         const auto pivot=Vector2Member(value,"Pivot",{0.5f,0.5f},path);
@@ -173,7 +174,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             component->SetAnchoredPosition(position); component->SetSizeDelta(size);
         }
     } else if (type=="GameSproutRuntime.Image") {
-        Members(value,path,{"Type","Texture","Color","UVRect"});
+        Members(value,path,{"ID","Type","Texture","Color","UVRect"});
         const auto texture=Resource(value["Texture"],path+".Texture");
         GameSproutRuntime::Color color;
         if (value.isMember("Color")) {
@@ -193,7 +194,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             component->SetTexture(texture); component->SetColor(color); component->SetUVRect(uv);
         }
     } else if (type=="GameSproutRuntime.Canvas") {
-        Members(value,path,{"Type","RenderMode","ReferenceResolution","PixelsPerUnit"});
+        Members(value,path,{"ID","Type","RenderMode","ReferenceResolution","PixelsPerUnit"});
         GameSproutRuntime::CanvasRenderMode mode=GameSproutRuntime::CanvasRenderMode::ScreenSpace;
         if (value.isMember("RenderMode")) {
             if (!value["RenderMode"].isString()) Fail(path+".RenderMode","expected string");
@@ -210,11 +211,11 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if (!component->SetReferenceResolution(resolution) || !component->SetPixelsPerUnit(pixels)) Fail(path,"Runtime rejected canvas settings");
         }
     } else if (type=="GameSproutRuntime.Mesh") {
-        Members(value,path,{"Type","Mesh"});
+        Members(value,path,{"ID","Type","Mesh"});
         const auto mesh=Resource(value["Mesh"],path+".Mesh");
         if (object) Component<GameSproutRuntime::IMeshComponent>(object,path)->SetMesh(mesh);
     } else if (type=="GameSproutRuntime.MeshRenderer") {
-        Members(value,path,{"Type","Materials","Visible"});
+        Members(value,path,{"ID","Type","Materials","Visible"});
         const bool visible=BoolMember(value,"Visible",true,path);
         std::vector<GameSproutRuntime::ResourceReference> materials;
         if (value.isMember("Materials")) {
@@ -238,7 +239,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         SceneAnimationDocument::Validate(value,path);
         if (object) SceneAnimationDocument::Create(value,*object);
     } else if (type=="GameSproutRuntime.Camera") {
-        Members(value,path,{"Type","Settings"});
+        Members(value,path,{"ID","Type","Settings"});
         GameSproutRuntime::CameraSettings settings;
         if (value.isMember("Settings")) {
             const auto& json=value["Settings"];
@@ -354,7 +355,8 @@ void PublishComponentIdentities(GameSproutRuntime::IScene& scene,const SceneDocu
 Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     Members(document,"Scene",{"Version","Name","RootActive","RootLayer","RootTagID","RootStaticFlags","RootComponents","RootMainCamera","MainCameraID","NextObjectID","Objects","Annotations","EnvironmentLighting"});
     if(document.isMember("Annotations")&&!document["Annotations"].isObject())Fail("Scene.Annotations","expected object");
-    if (Unsigned(document["Version"],"Scene.Version")!=1) Fail("Scene.Version","only version 1 is supported");
+    if (Unsigned(document["Version"],"Scene.Version")!=GameSproutRuntime::SceneDocumentVersion)
+        Fail("Scene.Version","expected current Unity-coordinate scene version 2; recreate or re-export the source document");
     Plan plan;
     if(document.isMember("EnvironmentLighting"))plan.EnvironmentLighting=SceneEnvironmentLightingDocument::Read(document["EnvironmentLighting"]);
     plan.Name=Name(document["Name"],"Scene.Name");
@@ -605,14 +607,14 @@ bool RestoreComponent(const Json::Value& data,GameSproutRuntime::IGameObject& ob
 }
 Json::Value CreateDefault(const std::string& name) {
     Json::Value result(Json::objectValue);
-    result["Version"]=Json::UInt(1); result["Name"]=name; result["MainCameraID"]=Json::UInt64(1);
+    result["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion); result["Name"]=name; result["MainCameraID"]=Json::UInt64(1);
     Json::Value camera(Json::objectValue);
     camera["ID"]=Json::UInt64(1); camera["ParentID"]=Json::UInt64(0);
     camera["Name"]="Main Camera"; camera["Active"]=true;
     camera["Components"]=Json::Value(Json::arrayValue);
     Json::Value transform(Json::objectValue);
     transform["Type"]="GameSproutRuntime.Transform";
-    transform["Position"]=Array({0,0,3}); transform["Rotation"]=Array({0,0,0,1}); transform["Scale"]=Array({1,1,1});
+    transform["Position"]=Array({0,0,-3}); transform["Rotation"]=Array({0,0,0,1}); transform["Scale"]=Array({1,1,1});
     camera["Components"].append(transform);
     Json::Value component(Json::objectValue);
     component["Type"]="GameSproutRuntime.Camera";
@@ -666,16 +668,24 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
         ObjectIDs candidateIDs;
         candidateIDs.Next=plan.Next;
-        for (const auto& node:plan.Nodes) {
-            auto* object=candidate->CreateGameObject(node.Name);
-            if (!object) Fail("Object "+std::to_string(node.ID),"Runtime could not create object");
+        // Build each node under its final parent, after that parent exists.
+        // The per-parent lists retain file order even when children precede their
+        // parent in the source. Avoid a temporary N-wide root followed by N
+        // ordered erases/reparents and repeated subtree initialization requests.
+        std::map<std::uint64_t,std::vector<const Node*>> children;
+        for(const auto& node:plan.Nodes)children[node.ParentID].push_back(&node);
+        std::vector<const Node*> pending;
+        pending.reserve(plan.Nodes.size());
+        if(const auto roots=children.find(0);roots!=children.end())pending=roots->second;
+        for(std::size_t index=0;index<pending.size();++index) {
+            const auto& node=*pending[index];
+            auto* parent=node.ParentID?objects.at(node.ParentID):candidate;
+            auto* object=candidate->CreateGameObject(node.Name,parent);
+            if(!object)Fail("Object "+std::to_string(node.ID),"Runtime could not create object");
             objects.emplace(node.ID,object);
             candidateIDs.RuntimeToFile.emplace(object->GetInstanceID(),node.ID);
-        }
-        // 全部创建后按文件顺序重挂载，文件可先写子节点，仍保留每组兄弟节点的顺序。
-        for (const auto& node:plan.Nodes) {
-            if (node.ParentID && !objects.at(node.ParentID)->AddChild(objects.at(node.ID),false))
-                Fail("Object "+std::to_string(node.ID),"Runtime rejected parent relationship");
+            if(const auto descendants=children.find(node.ID);descendants!=children.end())
+                pending.insert(pending.end(),descendants->second.begin(),descendants->second.end());
         }
         // Source identities are values; Runtime alone resolves them to native
         // pointers once the complete assembly is ready for script callbacks.

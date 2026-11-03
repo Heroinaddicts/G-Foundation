@@ -157,7 +157,7 @@ class RigidbodyComponent final : public BuiltinComponent<IRigidbodyComponent> {
     Vector3 TargetPosition;
     Quaternion TargetRotation;
 };
-IComponent *CreatePhysicsComponent(const std::type_info &, IGameObject *);
+IComponent *CreatePhysicsComponent(const std::type_info &, IGameObject *,std::uint8_t* tickMask=nullptr);
 bool CalculateColliderFit(const IColliderComponent &,ColliderFitResult &,std::string &error);
 void InitializeColliderFit(PhysicsColliderState &);
 } // namespace GameSproutRuntime

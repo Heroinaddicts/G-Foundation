@@ -11,6 +11,8 @@ public:
         bool Initialized = false;
         bool InitializationQueued = false;
         bool InitializationFailed = false;
+        std::uint8_t TickMask = 3; // Unknown/custom implementations retain both hooks.
+
     };
     GameObjectState(Runtime& owner, IGameObject* object, Scene* scene, std::string name, std::uint64_t id);
     ~GameObjectState();

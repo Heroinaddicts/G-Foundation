@@ -179,6 +179,58 @@ cbuffer EnvironmentUniform : register(b1, space3)
     float4 GroundColor;
     float4 EnvironmentSH[9];
 };
+// Canonical light clip -> top-first atlas UV. This block is independent from
+// scene ambient diffuse; shadows only attenuate the selected direct light.
+cbuffer ShadowUniform : register(b2, space3)
+{
+    float4x4 WorldToShadow[4];
+    float4x4 ShadowCameraView;
+    float4 CascadeSplits;
+    float4 ShadowInfo;
+    float4 CascadeBias[4];
+    float4 CascadeAtlas[4];
+};
+Texture2D<float> ShadowTexture : register(t2, space2);
+SamplerState ShadowSampler : register(s2, space2);
+
+float DirectionalShadow(float3 worldPosition, float3 normal)
+{
+    if (ShadowInfo.x < 0.5) return 1.0;
+    // Matrices are column-major, same packing as Runtime's Mat4.
+    float depth = -mul(ShadowCameraView, float4(worldPosition, 1.0)).z;
+    if (depth < 0.0 || depth >= ShadowInfo.z) return 1.0;
+    int cascade = 0;
+    if (depth > CascadeSplits.x) cascade = 1;
+    if (depth > CascadeSplits.y && ShadowInfo.x > 2.5) cascade = 2;
+    if (depth > CascadeSplits.z && ShadowInfo.x > 3.5) cascade = 3;
+    cascade = min(cascade, (int)ShadowInfo.x - 1);
+    float3 query = worldPosition + normal * CascadeBias[cascade].y;
+    float4 clip = mul(WorldToShadow[cascade], float4(query, 1.0));
+    float3 ndc = clip.xyz / clip.w;
+    float2 localUV = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(localUV < 0.0) || any(localUV > 1.0) || ndc.z < 0.0 || ndc.z > 1.0) return 1.0;
+    uint width, height; ShadowTexture.GetDimensions(width, height);
+    float2 texel = 1.0 / float2(width, height);
+    float4 tile = CascadeAtlas[cascade];
+    float2 uv = localUV * tile.xy + tile.zw;
+    float reference = ndc.z - CascadeBias[cascade].x;
+    float visibility = 0.0;
+    if (CascadeBias[cascade].z < 0.5)
+        visibility = reference <= ShadowTexture.SampleLevel(ShadowSampler, uv, 0).r ? 1.0 : 0.0;
+    else
+    {
+        [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+        {
+            float2 tap = clamp(uv + float2(x, y) * texel, tile.zw + texel * 0.5, tile.zw + tile.xy - texel * 0.5);
+            visibility += reference <= ShadowTexture.SampleLevel(ShadowSampler, tap, 0).r ? 1.0 : 0.0;
+        }
+        visibility /= 9.0;
+    }
+    float fade = saturate((ShadowInfo.z - depth) / max(ShadowInfo.z - ShadowInfo.w, 0.0001));
+    return 1.0 - (1.0 - visibility) * ShadowInfo.y * fade;
+}
+
 Texture2D<float4> NormalTexture : register(t1, space2);
 SamplerState NormalSampler : register(s1, space2);
 
@@ -269,9 +321,13 @@ float4 LitFragment(MeshOutput input) : SV_Target0
         float visibility = 0.5 / max(visibilityL + visibilityV, 1e-6);
         float fresnelWeight = pow(1.0 - vDotH, 5.0);
         float3 fresnel = f0 + (1.0 - f0) * fresnelWeight;
-        float3 diffuse = albedo * (1.0 - metallic) * (1.0 - fresnel) / pi;
-        float3 specular = CameraPosition.w >= 0.5 ? distribution * visibility * fresnel : 0.0;
-        color += (diffuse + specular) * LightRadiances[index].rgb * nDotL;
+        // URP-compatible relative light units: the Lambert pi factor is
+        // absorbed into the author-facing intensity, consistently with the
+        // imported Light.intensity. Environment SH is already E/pi and is unchanged.
+        float3 diffuse = albedo * (0.96 * (1.0 - metallic));
+        float3 specular = CameraPosition.w >= 0.5 ? distribution * visibility * fresnel * pi : 0.0;
+        float shadow = LightDirections[index].w > 1.5 ? DirectionalShadow(input.WorldPosition, SafeDirection(input.Normal, float3(0, 1, 0))) : 1.0;
+        color += (diffuse + specular) * LightRadiances[index].rgb * nDotL * shadow;
     }
     return float4(color, base.a);
 }
@@ -293,3 +349,6 @@ GridOutput GridVertex(GridInput input) {
 float4 GridFragment(GridOutput input) : SV_Target0 {
     return input.Color;
 }
+
+// SDL GPU requires a fragment stage even for a depth-only graphics pipeline.
+void ShadowFragment() {}

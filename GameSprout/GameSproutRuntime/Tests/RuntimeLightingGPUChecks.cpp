@@ -58,20 +58,24 @@ int main(int argc,char** argv){
         Check(TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Camera failed");
         const auto render=[&]{Check(viewport->Render(view),viewport->GetLastError());return Center(*viewport);};
         auto pixel=render();Check(pixel[0]==0&&pixel[1]==0&&pixel[2]==0,"Lit invented a preview/ambient light");
-        auto* sunObject=scene->CreateGameObject("Sun");auto* light=sunObject->AddComponent<ILightComponent>();Check(light,"No Light factory");
-        pixel=render();const int white=pixel[0];Check(white>65&&white<100&&std::abs(pixel[1]-white)<2,"Directional light did not produce linear diffuse/specular radiance");
-        auto settings=light->GetSettings();settings.Intensity=2;Check(light->SetSettings(settings),"Intensity failed");
+        auto* sunObject=scene->CreateGameObject("Sun");
+        // The surface normal points +Z. Unity lights emit along local +Z, so
+        // rotate this source toward -Z to illuminate the camera-facing side.
+        sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
+        auto* light=sunObject->AddComponent<ILightComponent>();Check(light,"No Light factory");light->SetIntensity(.25f);
+        pixel=render();const int white=pixel[0];Check(white>58&&white<68&&std::abs(pixel[1]-white)<2,"Directional light did not match the URP relative-intensity calibration");
+        auto settings=light->GetSettings();settings.Intensity=.5f;Check(light->SetSettings(settings),"Intensity failed");
         pixel=render();Check(std::abs(pixel[0]-2*white)<3,"Light intensity was not linear or did not update next frame");
-        settings.Intensity=1;settings.Color={0,0,1,1};light->SetSettings(settings);
-        pixel=render();Check(pixel[0]==0&&pixel[1]==0&&pixel[2]>65,"Light color did not reach Lit shader");
+        settings.Intensity=.25f;settings.Color={0,0,1,1};light->SetSettings(settings);
+        pixel=render();Check(pixel[0]==0&&pixel[1]==0&&pixel[2]>55,"Light color did not reach Lit shader");
         settings.Color={1,1,1,1};settings.Enabled=false;light->SetSettings(settings);Check(render()[0]==0,"Disabled light still contributes");
         settings.Enabled=true;settings.CullingMask=1;light->SetSettings(settings);object->SetLayer(31);Check(render()[0]==0,"Light ignored object layer");
-        settings.CullingMask=std::uint32_t{1}<<31;light->SetSettings(settings);Check(render()[0]>65,"High-bit light layer mask failed");object->SetLayer(0);
+        settings.CullingMask=std::uint32_t{1}<<31;light->SetSettings(settings);Check(render()[0]>55,"High-bit light layer mask failed");object->SetLayer(0);
         settings.CullingMask=AllLayers;light->SetSettings(settings);sunObject->SetActive(false);Check(render()[0]==0,"Inactive hierarchy light still contributes");sunObject->SetActive(true);
         auto* parent=scene->CreateGameObject("Scaled light parent");Check(parent->AddChild(sunObject,false),"Light parenting failed");
         parent->GetTransform()->SetLocalScale({-2,0,5});sunObject->GetTransform()->SetLocalPosition({100,20,-300});
         Check(std::abs(render()[0]-white)<2,"Light direction depended on position, reflected scale or zero parent scale");
-        sunObject->GetTransform()->SetLocalRotation({0,1,0,0});Check(render()[0]==0,"Direction ignored rotation");sunObject->GetTransform()->SetLocalRotation({});
+        sunObject->GetTransform()->SetLocalRotation({});Check(render()[0]==0,"Direction ignored rotation");sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
         settings.Enabled=false;light->SetSettings(settings);provider.Material.EmissionColor={.25f,.125f,0,1};++provider.Revision;
         pixel=render();Check(std::abs(pixel[0]-64)<2&&std::abs(pixel[1]-32)<2,"Emission Color was not linear or required a light");
         provider.Material.EmissionColor={0,0,0,1};settings.Enabled=true;light->SetSettings(settings);
@@ -84,19 +88,20 @@ int main(int argc,char** argv){
         provider.Material.BaseColorTexture={};provider.Material.NormalTexture={"0123456789abcdef0123456789abcdef",4};++provider.Revision;
         const int flat=render()[0];Check(std::abs(flat-white)<3,"Flat tangent normal did not preserve vertex normal");
         provider.NormalPixel={255,128,128,255};++provider.Revision;const int tilted=render()[0];Check(tilted<flat/4,"Tangent normal map did not change illumination");
-        provider.Material.NormalScale=0;++provider.Revision;Check(render()[0]>65,"Zero normal strength did not restore geometric normal");
-        provider.Material.NormalScale=1;sunObject->GetTransform()->SetLocalRotation({0,.38268343f,0,.92387953f});++provider.Revision;
+        provider.Material.NormalScale=0;++provider.Revision;Check(render()[0]>55,"Zero normal strength did not restore geometric normal");
+        provider.Material.NormalScale=1;sunObject->GetTransform()->SetLocalRotation({0,.92387953f,0,-.38268343f});++provider.Revision;
         const int towardsMappedNormal=render()[0];provider.Material.NormalTextureST={-1,1,0,0};++provider.Revision;
         Check(towardsMappedNormal>30&&render()[0]<towardsMappedNormal/5,"Mirrored normal-map UV transform did not preserve tangent handedness");
-        sunObject->GetTransform()->SetLocalRotation({});provider.Material.NormalTextureST={1,1,0,0};
+        sunObject->GetTransform()->SetLocalRotation({0,1,0,0});provider.Material.NormalTextureST={1,1,0,0};
         provider.NormalSRGB=true;++provider.Revision;render();Check(viewport->GetStatistics().DrawCalls==0&&viewport->GetLastError().find("Linear")!=std::string::npos,"sRGB normal map reached GPU without an actionable diagnostic");
         provider.NormalSRGB=false;provider.Material.NormalTexture={};provider.Material.NormalScale=1;
-        for(int variant=0;variant<4;++variant){provider.UV=(variant&1)!=0;provider.VertexColor=(variant&2)!=0;++provider.Revision;Check(render()[0]>65,"Static Lit optional vertex layout failed");}
-        auto* secondLight=scene->CreateGameObject("Fill")->AddComponent<ILightComponent>();
-        settings=secondLight->GetSettings();settings.Intensity=.25f;secondLight->SetSettings(settings);
+        for(int variant=0;variant<4;++variant){provider.UV=(variant&1)!=0;provider.VertexColor=(variant&2)!=0;++provider.Revision;Check(render()[0]>55,"Static Lit optional vertex layout failed");}
+        auto* fillObject=scene->CreateGameObject("Fill");fillObject->GetTransform()->SetLocalRotation({0,1,0,0});
+        auto* secondLight=fillObject->AddComponent<ILightComponent>();
+        settings=secondLight->GetSettings();settings.Intensity=.0625f;secondLight->SetSettings(settings);
         Check(std::abs(render()[0]-int(white*1.25f))<3,"Multiple directional lights were not accumulated");
         std::vector<ILightComponent*> extraLights;
-        for(int index=0;index<3;++index){auto* extra=scene->CreateGameObject("Extra directional")->AddComponent<ILightComponent>();extra->SetIntensity(.25f);extraLights.push_back(extra);}
+        for(int index=0;index<3;++index){auto* extraObject=scene->CreateGameObject("Extra directional");extraObject->GetTransform()->SetLocalRotation({0,1,0,0});auto* extra=extraObject->AddComponent<ILightComponent>();extra->SetIntensity(.0625f);extraLights.push_back(extra);}
         Check(std::abs(render()[0]-int(white*1.75f))<3&&viewport->GetLastError().find("four brightest")!=std::string::npos,
             "Directional-light limit silently overran uniforms or selected the wrong lights");
         // An excluded brighter light must not consume one of this object's slots.
@@ -107,7 +112,7 @@ int main(int argc,char** argv){
         provider.Skin=true;provider.UV=true;++provider.Revision;auto* animator=object->AddComponent<IAnimatorComponent>();
         auto* bone=scene->CreateGameObject("Bone",object);Check(animator->SetNodeBindings({{"Bone",bone->GetInstanceID()}}),"Skin node binding failed");
         auto* skin=object->AddComponent<ISkinnedMeshRendererComponent>();Check(skin->SetAnimatorObjectID(object->GetInstanceID()),"Skin owner failed");
-        Check(render()[0]>65,"Lit skinned vertex shader did not render");bone->GetTransform()->SetLocalPosition({1.5f,0,0});Check(render()[0]==0,"Lit vertex stage ignored skin palette");
+        Check(render()[0]>55,"Lit skinned vertex shader did not render");bone->GetTransform()->SetLocalPosition({1.5f,0,0});Check(render()[0]==0,"Lit vertex stage ignored skin palette");
         delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
         std::cout<<"PASS Lit GPU: linear colors/intensity, active/direction/layers, scale-independent lights, emission, GGX, sRGB, derivative normals, optional layouts, multiple lights, skinning\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete viewport;delete runtime;return 1;}

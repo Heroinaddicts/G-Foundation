@@ -137,9 +137,9 @@ int main() {
               !object->GetComponent<GameSproutRuntime::IImageComponent>(), "Component removal failed");
 
         GameSproutRuntime::CoordinateConversion conversion;
-        const GameSproutRuntime::CoordinateSystem left{
-            GameSproutRuntime::Handedness::LeftHanded,GameSproutRuntime::Axis::PositiveY,GameSproutRuntime::Axis::PositiveZ,0.01f};
-        Check(GameSproutRuntime::CoordinateConversion::TryCreate(left,GameSproutRuntime::RuntimeCoordinates,conversion), "LH conversion failed");
+        const GameSproutRuntime::CoordinateSystem right{
+            GameSproutRuntime::Handedness::RightHanded,GameSproutRuntime::Axis::PositiveY,GameSproutRuntime::Axis::NegativeZ,0.01f};
+        Check(GameSproutRuntime::CoordinateConversion::TryCreate(right,GameSproutRuntime::RuntimeCoordinates,conversion), "RH source conversion failed");
         CheckVector(conversion.ConvertPosition({100,200,300}),{1,2,-3});
         CheckVector(conversion.ConvertDirection({0,0,1}),{0,0,-1});
         Check(conversion.ReversesWinding,"Handedness did not flag winding");

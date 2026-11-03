@@ -44,7 +44,8 @@ Shader 的 float3 字段可能有不同对齐要求，上传结构必须依照�
 Mat4 列连续存储，下标为 (行, 列)，使用列向量，内存最后一列存平移。
 局部矩阵 = T * R * S；世界矩阵 = ParentWorld * Local；裁剪坐标 = P * V * M * position。
 Quaternion 存 XYZW，单位四元数表示旋转，默认 (0,0,0,1)。角度统一弧度。
-世界空间：右手系、Y 向上、前方 -Z、1 单位 = 1 米。相机同样朝局部 -Z 观察。
+世界/局部空间：Unity 左手系、+X 右、+Y 上、+Z 前、1 单位 = 1 米。
+相机视图空间前方 -Z；View = Scale(1,1,-1) * WorldToLocalNoScale，忽略相机及父级缩放对朝向的影响。
 模型资源顶点与对象局部变换都应在导入阶段统一；不要在 Runtime 每帧重复换基。
 
 坐标约定转换
@@ -98,7 +99,7 @@ Provider 只返回已预处理 typed 数据，不能返回 FBX/PNG 源文件。G
 Render 返回 true 表示本帧提交或成功跳过；仍应读取非空诊断，了解被跳过的资源。
 空材质槽使用默认白色，无纹理使用 1x1 白采样；这不代替缺失的已绑定资源。
 Grid 是世界 Y=0、X/Z 各 [-50,50] 米参考线；多 View 复用按尺寸缓存的深度目标，最多保留四种尺寸。
-内置 Renderer/Shaders/Preview.hlsl 统一右手 Y-up/-Z-forward、深度 [0,1]、列主序 P*V*M。
+内置 Renderer/Shaders/Preview.hlsl 接收 Unity 世界数据，View 转到右手 -Z-forward 相机空间；深度 [0,1]、列主序 P*V*M。
 离线 SDL_shadercross 生成 SPIRV/MSL/DXIL 并嵌入发布 DLL；正常运行不依赖 ShaderCompiler/Slang/编译工具。
 RuntimeGenerateShaders 显式重新生成，或运行 GenerateShaders.py --shadercross 工具路径。
 Runtime.RendererGPU 使用实际 GRHI/Metal 离屏像素验证矩阵/纹理/sRGB、四种属性布局、depth、法线、负/零缩放、grid/resize与缓存。

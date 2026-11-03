@@ -3,7 +3,7 @@
 
 namespace GameSproutRuntime {
 // 返回尚未挂载、尚未执行 OnCreate 的内部组件。调用方接管所有权。
-IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owner);
+IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owner,std::uint8_t* tickMask=nullptr);
 bool AllowsMultipleBuiltinComponents(const std::type_info& type);
 // 先完整分解校验，再一次性提交 TRS；失败时保留原值。
 bool SetLocalTransform(ITransformComponent* transform, const Mat4& matrix);

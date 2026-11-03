@@ -80,11 +80,15 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
         _Shaders[fragment]=CreatePreviewShader(_Device,static_cast<PreviewShader>(fragment));
         if(!_Shaders[fragment]) {Fail(DeviceError("Create Runtime Lit fragment shader"));return nullptr;}
     }
-    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[fragment];
-    description.ColorFormat=key.Format;description.Primitive=key.Grid&&!key.DebugTriangles?GRHI::PrimitiveType::LineList:GRHI::PrimitiveType::TriangleList;
+    if(key.Shadow&&!_Shaders[16]) {
+        _Shaders[16]=CreatePreviewShader(_Device,PreviewShader::ShadowFragment);
+        if(!_Shaders[16]){Fail(DeviceError("Create depth-only shadow fragment shader"));return nullptr;}
+    }
+    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[key.Shadow?16:fragment];
+    description.ColorFormat=key.Shadow?GRHI::TextureFormat::Unknown:key.Format;description.Primitive=key.Grid&&!key.DebugTriangles?GRHI::PrimitiveType::LineList:GRHI::PrimitiveType::TriangleList;
     if(key.Grid) description.Blend=GRHI::BlendMode::Alpha;
     description.Cull=key.Grid || key.DoubleSided?GRHI::CullMode::None:GRHI::CullMode::Back;
-    description.Winding=key.Negative?GRHI::FrontFace::Clockwise:GRHI::FrontFace::CounterClockwise;
+    description.Winding=key.Negative?GRHI::FrontFace::CounterClockwise:GRHI::FrontFace::Clockwise;
     description.VertexBindings=bindings;description.VertexBindingCount=key.Instanced?2:1;
     description.VertexAttributes=attributes;description.VertexAttributeCount=count;
     description.DepthFormat=GRHI::TextureFormat::D32_Float;description.DepthTest=key.DepthTest;description.DepthWrite=!key.Grid;

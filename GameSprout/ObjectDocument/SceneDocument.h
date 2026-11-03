@@ -37,7 +37,7 @@ private:
     std::map<const GameSproutRuntime::IComponent*,std::uint64_t> _ComponentToFile;
     std::map<const GameSproutRuntime::IComponent*,ComponentLifetime> _ComponentLifetimes;
 };
-// V1 编辑器源场景。只生成数据，不做文件 IO，也不创建预处理产物。
+// 当前 Unity 坐标编辑器源场景。只生成数据，不做文件 IO，也不创建预处理产物。
 Json::Value CreateDefault(const std::string& name);
 
 // 宿主线程调用，在 Runtime 更新/遍历/事件回调之外执行。

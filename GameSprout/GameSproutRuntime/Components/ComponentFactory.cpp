@@ -1,4 +1,5 @@
 #include "ComponentFactory.h"
+#include "GameSproutRuntime.h"
 #include "TransformComponent.h"
 #include "RectTransformComponent.h"
 #include "ImageComponent.h"
@@ -12,21 +13,28 @@
 #include "Physics/PhysicsComponents.h"
 
 namespace GameSproutRuntime {
-IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owner) {
+namespace {
+template<typename Implementation>
+IComponent* NewComponent(IGameObject* owner,std::uint8_t* tickMask) {
+    if(tickMask)*tickMask=Runtime::ComponentTickMask<Implementation>();
+    return new Implementation(owner);
+}
+}
+IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owner,std::uint8_t* tickMask) {
     if (!owner) return nullptr;
     if(owner==owner->GetScene()&&(type==typeid(IAnimatorComponent)||type==typeid(ISkinnedMeshRendererComponent)))return nullptr;
-    if (type == typeid(ITransformComponent)) return new TransformComponent(owner);
-    if (type == typeid(IRectTransformComponent)) return new RectTransformComponent(owner);
-    if (type == typeid(IImageComponent)) return new ImageComponent(owner);
-    if (type == typeid(ICanvasComponent)) return new CanvasComponent(owner);
-    if (type == typeid(IMeshComponent)) return new MeshComponent(owner);
-    if (type == typeid(IMeshRendererComponent)) return new MeshRendererComponent(owner);
-    if (type == typeid(ICameraComponent)) return new CameraComponent(owner);
-    if (type == typeid(ILightComponent) && owner!=owner->GetScene()) return new LightComponent(owner);
-    if (type == typeid(IAnimatorComponent)) return new AnimatorComponent(owner);
-    if (type == typeid(ISkinnedMeshRendererComponent)) return new SkinnedMeshRendererComponent(owner);
+    if (type == typeid(ITransformComponent)) return NewComponent<TransformComponent>(owner,tickMask);
+    if (type == typeid(IRectTransformComponent)) return NewComponent<RectTransformComponent>(owner,tickMask);
+    if (type == typeid(IImageComponent)) return NewComponent<ImageComponent>(owner,tickMask);
+    if (type == typeid(ICanvasComponent)) return NewComponent<CanvasComponent>(owner,tickMask);
+    if (type == typeid(IMeshComponent)) return NewComponent<MeshComponent>(owner,tickMask);
+    if (type == typeid(IMeshRendererComponent)) return NewComponent<MeshRendererComponent>(owner,tickMask);
+    if (type == typeid(ICameraComponent)) return NewComponent<CameraComponent>(owner,tickMask);
+    if (type == typeid(ILightComponent) && owner!=owner->GetScene()) return NewComponent<LightComponent>(owner,tickMask);
+    if (type == typeid(IAnimatorComponent)) return NewComponent<AnimatorComponent>(owner,tickMask);
+    if (type == typeid(ISkinnedMeshRendererComponent)) return NewComponent<SkinnedMeshRendererComponent>(owner,tickMask);
     if (owner==owner->GetScene()) return nullptr;
-    return CreatePhysicsComponent(type,owner);
+    return CreatePhysicsComponent(type,owner,tickMask);
 }
 bool AllowsMultipleBuiltinComponents(const std::type_info& type) {
     return type==typeid(IBoxColliderComponent) || type==typeid(ISphereColliderComponent) ||

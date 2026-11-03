@@ -38,6 +38,25 @@ int main(int argc,char **argv) {
         Check(runtime->Raycast(scene,{{0,4,0},{0,-1,0}},10,hit,query,error)&&hit.Collider.ComponentID==collider->GetComponentInstanceID(),"Builtin plane failed without a provider: "+error);
         floor->GetTransform()->SetLocalScale({-2,1,3});
         Check(runtime->Raycast(scene,{{0,4,0},{0,-1,0}},10,hit,query,error)&&hit.Normal.Y>.99f,"Mirrored triangle plane inverted front face: "+error);
+        // Rotate a +Y plane into a +Z-facing wall. Unity's +Z forward must not
+        // introduce a second winding flip at the Runtime -> Jolt boundary.
+        auto* wall=scene->CreateGameObject("Positive Z triangle face");
+        wall->GetTransform()->SetLocalPosition({0,3,5});
+        const float halfTurn=std::sqrt(.5f);
+        Check(wall->GetTransform()->SetLocalRotation({halfTurn,0,0,halfTurn}),"Cannot rotate triangle wall");
+        auto* wallCollider=wall->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+        Check(wallCollider&&wallCollider->SetShape(collider->GetShape()),"Cannot assign triangle wall mesh");
+        for(const float xScale:{1.f,-1.f}) {
+            wall->GetTransform()->SetLocalScale({xScale,1,1});
+            Check(runtime->Raycast(scene,{{0,3,8},{0,0,-1}},2.9f,hit,query,error)==false,
+                  "Triangle ray unexpectedly hit before its plane");
+            Check(runtime->Raycast(scene,{{0,3,8},{0,0,-1}},4,hit,query,error)&&
+                  hit.Collider.ComponentID==wallCollider->GetComponentInstanceID()&&hit.Normal.Z>.99f,
+                  "Positive Z triangle face or mirrored face normal changed sign: "+error);
+            Check(!runtime->Raycast(scene,{{0,3,2},{0,0,1}},4,hit,query,error)&&error.empty(),
+                  "Triangle back face became solid after changing world convention: "+error);
+        }
+        Check(scene->DestroyGameObject(wall),"Cannot destroy triangle wall fixture");
         // A rotated child of a non-uniform parent has shear, baked into static triangles.
         auto *parent=scene->CreateGameObject("Scaled parent");parent->GetTransform()->SetLocalScale({2,1,3});
         auto *sheared=scene->CreateGameObject("Sheared triangles",parent);sheared->GetTransform()->SetLocalPosition({10,0,0});

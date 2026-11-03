@@ -5,6 +5,10 @@
 #include <cmath>
 
 namespace GameSproutRuntime {
+// Unity-style world values stay numerically identical at the physics boundary.
+// Jolt and Unity use the same component-wise quaternion rotation/cross-product
+// algebra; +Z positions, normals and velocities must not be reflected here.
+// Angular velocity uses that same quaternion convention, without a sign flip.
 inline GPhysics::Vector3 PhysicsVector(Vector3 value) {
     return {value.X, value.Y, value.Z};
 }

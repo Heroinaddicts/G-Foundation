@@ -292,18 +292,25 @@ bool RigidbodyComponent::Teleport(Vector3 position, Quaternion rotation, bool cl
     ClearTeleportVelocity = clear;
     return true;
 }
-IComponent *CreatePhysicsComponent(const std::type_info &type, IGameObject *owner) {
+namespace {
+template<typename Implementation>
+Implementation* NewPhysicsComponent(IGameObject* owner,std::uint8_t* tickMask) {
+    if(tickMask)*tickMask=Runtime::ComponentTickMask<Implementation>();
+    return new Implementation(owner);
+}
+}
+IComponent *CreatePhysicsComponent(const std::type_info &type, IGameObject *owner,std::uint8_t* tickMask) {
     if (!owner || owner == owner->GetScene())
         return nullptr;
     if (type == typeid(IRigidbodyComponent))
-        return new RigidbodyComponent(owner);
+        return NewPhysicsComponent<RigidbodyComponent>(owner,tickMask);
     PhysicsColliderState* primitive=nullptr;
-    if (type == typeid(IBoxColliderComponent))primitive=new BoxColliderComponent(owner);
-    else if (type == typeid(ISphereColliderComponent))primitive=new SphereColliderComponent(owner);
-    else if (type == typeid(ICapsuleColliderComponent))primitive=new CapsuleColliderComponent(owner);
+    if (type == typeid(IBoxColliderComponent))primitive=NewPhysicsComponent<BoxColliderComponent>(owner,tickMask);
+    else if (type == typeid(ISphereColliderComponent))primitive=NewPhysicsComponent<SphereColliderComponent>(owner,tickMask);
+    else if (type == typeid(ICapsuleColliderComponent))primitive=NewPhysicsComponent<CapsuleColliderComponent>(owner,tickMask);
     if(primitive){InitializeColliderFit(*primitive);return primitive->ColliderInterface();}
     if (type == typeid(IMeshColliderComponent)) {
-        auto *collider = new MeshColliderComponent(owner);
+        auto *collider = NewPhysicsComponent<MeshColliderComponent>(owner,tickMask);
         if (auto *mesh = owner->GetComponent<IMeshComponent>()) collider->Shape.Mesh = mesh->GetMesh();
         if (auto *body = collider->GetAttachedRigidbody())
             collider->Shape.Convex = body->GetMotionType() == PhysicsMotionType::Dynamic;

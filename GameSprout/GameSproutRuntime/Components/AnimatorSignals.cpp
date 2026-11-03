@@ -35,7 +35,8 @@ bool AnimatorComponent::ApplyRootMotion(const RootMotionDelta& delta) {
     auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform());if(!transform)return false;
     const auto accumulated=AnimationMotion::Compose(_AccumulatedMotion,delta);
     const Mat4 authoring=RuntimeMath::ComposeTRS(transform->GetAuthoringLocalPosition(),transform->GetAuthoringLocalRotation(),transform->GetLocalScale());
-    if(!transform->SetEvaluatedPose(_GameObject->GetInstanceID(),authoring*AnimationMotion::Matrix(accumulated)))return false;
+    const auto rotation=AnimationMotion::Compose({{},transform->GetAuthoringLocalRotation()},accumulated).Rotation;
+    if(!transform->SetEvaluatedPose(_GameObject->GetInstanceID(),authoring*AnimationMotion::Matrix(accumulated),rotation))return false;
     _AccumulatedMotion=accumulated;return true;
 }
 void AnimatorComponent::EnterState(std::uint32_t layerIndex,int state) {

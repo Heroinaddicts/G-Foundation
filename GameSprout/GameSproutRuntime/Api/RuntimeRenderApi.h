@@ -91,6 +91,10 @@ struct RenderStatistics {
     // CPU scene/light snapshots rebuilt this frame (unchanged scenes use zero).
     std::uint32_t SceneSnapshotRebuilds = 0;
     std::uint32_t LightSnapshotRebuilds = 0;
+    // Additional depth-only work, separate from visible color draw statistics.
+    std::uint32_t ShadowDrawCalls = 0;
+    std::uint32_t ShadowMapUpdates = 0;
+    std::uint32_t ShadowCascadeCount = 0;
 };
 
 class IRuntimeRenderer {

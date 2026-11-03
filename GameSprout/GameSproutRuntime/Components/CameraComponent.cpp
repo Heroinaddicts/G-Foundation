@@ -1,5 +1,6 @@
 #include "CameraComponent.h"
 #include "ComponentFactory.h"
+#include "TransformComponent.h"
 #include "RuntimeMath.h"
 #include <cmath>
 
@@ -22,7 +23,27 @@ bool CameraComponent::SetSettings(const CameraSettings& value) {
 }
 bool CameraComponent::GetViewMatrix(Mat4& output) const {
     ITransformComponent* transform = _GameObject->GetTransform();
-    return transform && RuntimeMath::TryInverseAffine(transform->GetWorldMatrix(), output);
+    if (!transform) return false;
+    // Unity Camera::GetImplicitWorldToCameraMatrix uses world position and
+    // rotation without scale, then reflects camera-space Z exactly once.
+    const Mat4 world=transform->GetWorldMatrix();
+    if (!RuntimeMath::IsFinite(world)) return false;
+    Mat4 pose;
+    for (auto* node=_GameObject;node;node=node->Parent()) {
+        auto* local=node->GetTransform();
+        if (!local) return false;
+        Quaternion rotation;
+        if (const auto* current=dynamic_cast<const TransformComponent*>(local)) {
+            if (!current->GetCurrentLocalRotation(rotation)) return false;
+        } else rotation=local->GetLocalRotation();
+        pose=RuntimeMath::ComposeTRS({},rotation,{1,1,1})*pose;
+    }
+    for (std::size_t row=0;row<3;++row) pose(row,3)=world(row,3);
+    Mat4 view;
+    if (!RuntimeMath::TryInverseAffine(pose,view)) return false;
+    for (std::size_t column=0;column<4;++column) view(2,column)=-view(2,column);
+    output=view;
+    return true;
 }
 bool CameraComponent::GetProjectionMatrix(float aspect, Mat4& output) const {
     if (_Settings.Projection == CameraProjection::Perspective) {

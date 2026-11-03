@@ -66,7 +66,7 @@ bool AnimatorComponent::ApplyClipPlayback(AnimationClipPlaybackState& playback){
     }
     if(std::find(applied.begin(),applied.end(),_GameObject->GetInstanceID())==applied.end())
         if(auto* transform=dynamic_cast<TransformComponent*>(_GameObject->GetTransform()))transform->ClearEvaluatedPose(_GameObject->GetInstanceID());
-    for(std::size_t i=0;i<transforms.size();++i)transforms[i]->SetEvaluatedPose(_GameObject->GetInstanceID(),matrices[i]);
+    for(std::size_t i=0;i<transforms.size();++i)transforms[i]->SetEvaluatedPose(_GameObject->GetInstanceID(),matrices[i],poses[i].Rotation);
     _Applied=std::move(applied);_RootMotionDelta={};_Error.clear();return true;
 }
 

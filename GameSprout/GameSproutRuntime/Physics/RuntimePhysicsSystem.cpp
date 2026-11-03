@@ -60,6 +60,9 @@ bool RuntimePhysicsSystem::Step(float delta, std::string &error) {
         }
         if (!Synchronize(scene, *world, delta, error))
             return false;
+        // A newly changed world still drains backend removals/Exit events once.
+        // Stable static-only pairs cannot generate contacts or moving poses.
+        if(world->UnchangedStatic)continue;
         std::vector<GPhysics::Contact> events;
         if (!world->Backend.Step(delta, events, error) || !PublishTransforms(*world, error))
             return false;
