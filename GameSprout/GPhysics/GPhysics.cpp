@@ -1,5 +1,6 @@
 #include "GPhysics.h"
 #include "MeshCooking.h"
+#include "MeshShapeCache.h"
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
@@ -150,6 +151,7 @@ struct World::Impl final : public JPH::ContactListener {
     JPH::PhysicsSystem Physics;
     JPH::TempAllocatorImpl Temporary{16 * 1024 * 1024};
     JPH::JobSystemThreadPool Jobs;
+    Detail::MeshShapeCache MeshCache;
     std::map<uint64_t, BodyRecord> Bodies;
     std::map<uint64_t, Shape> Shapes;
     std::mutex EventMutex;
@@ -171,6 +173,13 @@ struct World::Impl final : public JPH::ContactListener {
         return body.GetShape()->GetSubShapeUserData(id);
     }
     const Shape *FindShape(const JPH::Body &body, JPH::SubShapeID id) const {
+        // Shared single-mesh leaves deliberately carry no collider identity.
+        // Resolve the owning body's current values, never another body's cached
+        // userdata/material/layer/trigger settings. Compound leaves retain the
+        // original subshape userdata lookup below.
+        const auto owner=Bodies.find(body.GetUserData());
+        if(owner!=Bodies.end()&&owner->second.Settings.Shapes.size()==1)
+            return &owner->second.Settings.Shapes.front();
         const auto found = Shapes.find(Collider(body, id));
         return found == Shapes.end() ? nullptr : &found->second;
     }
@@ -336,7 +345,8 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
             if (shape.Type==ShapeType::TriangleMesh && (settings.Motion==MotionType::Dynamic || shape.Trigger)) {
                 error="Non-convex MeshCollider requires a static/kinematic non-trigger body";return false;
             }
-            result=Detail::CreateMeshShape(*shape.Mesh,shape.Type==ShapeType::ConvexHull,shape.Collider);
+            result=_Impl->MeshCache.Cook(*shape.Mesh,shape.Type==ShapeType::ConvexHull,
+                settings.Shapes.size()==1?0:shape.Collider);
         }
         if (result.HasError()) {
             error = result.GetError().c_str();
@@ -419,6 +429,9 @@ void World::RemoveBody(uint64_t key) {
     for (const auto &shape : found->second.Settings.Shapes)
         _Impl->Shapes.erase(shape.Collider);
     _Impl->Bodies.erase(found);
+}
+MeshCookStatistics World::GetMeshCookStatistics() const {
+    return _Impl?_Impl->MeshCache.GetStatistics():MeshCookStatistics{};
 }
 bool World::ContainsBody(uint64_t key) const {
     return _Impl && _Impl->Bodies.count(key);
@@ -579,6 +592,9 @@ bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool tr
         RayShapeFilter(const std::map<uint64_t,Shape>& shapes,const std::set<uint64_t>& ignored,uint32_t mask,bool triggers)
             : _Shapes(shapes),_Ignored(ignored),_Mask(mask),_Triggers(triggers) {}
         bool ShouldCollide(const JPH::Shape* shape,const JPH::SubShapeID&) const override {
+            // Zero-userdata includes shared single-mesh leaves. Their owning
+            // BodyRecord is filtered after the all-hit query, below.
+            if(!shape->GetUserData())return true;
             const auto found=_Shapes.find(shape->GetUserData());
             // Compound/decorator roots carry no collider key. Let Jolt enter
             // those shapes, then filter each registered primitive leaf.

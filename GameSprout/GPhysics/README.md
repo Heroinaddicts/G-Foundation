@@ -101,3 +101,24 @@ ctest --test-dir /tmp/gamesprout-gphysics --output-on-failure
 
 See upstream [license](https://github.com/jrouwe/JoltPhysics/blob/v5.6.0/LICENSE)
 and [architecture](https://jrouwe.github.io/JoltPhysics/) for engine constraints.
+
+## Reusing cooked mesh leaves
+
+A World retains up to 32 MiB of comparison geometry plus reported Jolt leaf
+memory for exactly identical single-Collider mesh bodies. Triangle meshes and
+convex hulls use separate recipes. A content fingerprint only selects candidate
+entries: every vertex's original float bits and every index must also match.
+No quantization, approximate match, or borrowed geometry pointer is retained.
+Oversized entries and a full budget fall back to ordinary cooking.
+
+Cached leaves have zero Collider user data. A single-shape body's contact,
+material, trigger, layer and raycast identity is resolved from that body's own
+current BodyRecord. Compound bodies still cook identity-bearing leaves and use
+subshape user data. Ray queries enter shared zero-userdata leaves, then apply
+the body-specific Collider exclusions and query mask to the collected hits.
+Removing/replacing one body does not mutate another body's shared shape.
+
+`World::GetMeshCookStatistics()` is a backend-only value diagnostic for cook
+calls, cache hits, retained shapes and retained bytes; it adds no Runtime SDK
+virtual method or Editor dependency. The extra cache references live only as
+long as their World. Live bodies retain their own Jolt shape references.

@@ -82,6 +82,10 @@ struct RayHit {
     float Fraction = 0;
     Vector3 Position, Normal;
 };
+// Backend diagnostics only; no Jolt values or SDK virtual methods are exposed.
+struct MeshCookStatistics {
+    uint64_t CookCalls=0,CacheHits=0,CachedShapes=0,RetainedBytes=0;
+};
 class World {
   public:
     World();
@@ -92,6 +96,7 @@ class World {
     bool PutBody(const BodySettings &, std::string &error);
     void RemoveBody(uint64_t key);
     bool ContainsBody(uint64_t key) const;
+    MeshCookStatistics GetMeshCookStatistics() const;
     bool GetBodyState(uint64_t key, BodyState &) const;
     bool SetPose(uint64_t key, const Pose &, bool kinematic, float deltaSeconds);
     bool SetVelocity(uint64_t key, Vector3 linear, Vector3 angular);
