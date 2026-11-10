@@ -5,6 +5,52 @@
 #include "../Shared/AssetValueBinary.h"
 #include "../Shared/AssetMetaFormat.h"
 #include "IShaderCompiler.h"
+#include "RuntimeResourceApi.h"
+
+namespace {
+bool AppendMeshCollision(AssetImportJob & job, Json::Value & descriptor, QByteArray & bytes) {
+    const auto cook = job.Request.MeshCollision.Cook;
+    if (!cook) return true;
+    if (job.Cancelled()) return false;
+
+    const Json::Value & layout = descriptor;
+    if (layout["IndexFormat"] != "UInt32" || !layout["VertexCount"].isUInt() || !layout["VertexStride"].isUInt()
+        || !layout["IndexCount"].isUInt() || !layout["IndexOffset"].isUInt64()
+        || !layout["VertexAttributes"].isArray()) return true;
+    for (const auto & attribute : layout["VertexAttributes"]) {
+        if (attribute["Semantic"] != "Position" || attribute["Format"] != "Float32x3"
+            || !attribute["Offset"].isUInt()) continue;
+        GameSproutRuntime::MeshCollisionBakeInput input;
+        input.Bytes = {reinterpret_cast<const std::uint8_t *>(bytes.constData()), static_cast<std::size_t>(bytes.size())};
+        input.VertexCount = layout["VertexCount"].asUInt();
+        input.VertexStride = layout["VertexStride"].asUInt();
+        input.IndexCount = layout["IndexCount"].asUInt();
+        input.PositionOffset = attribute["Offset"].asUInt();
+        input.IndexOffset = layout["IndexOffset"].asUInt64();
+        GameSproutRuntime::CookedMeshCollisionData output;
+        std::string error;
+        const bool cooked = cook(input, output, error);
+        if (job.Cancelled()) return false;
+        if (!cooked) return true;
+
+        // Preserve valid render geometry when Jolt cannot represent a shape or
+        // an appended collision payload would exceed the runtime read limit.
+        constexpr std::uint64_t maximumArtifactBytes = 512ull * 1024 * 1024;
+        const auto append = [&](const char * kind, const std::vector<std::uint8_t> & payload) {
+            const auto offset = static_cast<std::uint64_t>(bytes.size());
+            if (payload.empty() || offset >= maximumArtifactBytes || payload.size() > maximumArtifactBytes - offset) return;
+            auto & range = descriptor["Collision"][kind];
+            range["Offset"] = Json::UInt64(offset);
+            range["Size"] = Json::UInt64(payload.size());
+            bytes.append(reinterpret_cast<const char *>(payload.data()), static_cast<qsizetype>(payload.size()));
+        };
+        append("Triangle", output.Triangle);
+        append("Convex", output.Convex);
+        break;
+    }
+    return true;
+}
+}
 
 AssetImportJob::~AssetImportJob() {
     if (!Stage.empty()) QDir(QString::fromStdString(Stage)).removeRecursively();
@@ -38,7 +84,7 @@ uint64_t AssetImportJob::ID(eAssetType type, const std::string & key, const std:
 }
 
 bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::string & name,
-    Json::Value metadata, const QByteArray & payload) {
+    Json::Value metadata, QByteArray payload) {
     if (Context && Context->IsCancellationRequested()) return Fail("Import cancelled");
     const std::string typedKey = std::to_string(static_cast<uint16_t>(type)) + ":" + key;
     if (!ProducedKeys.insert(typedKey).second) return Fail("Duplicate imported object identity: " + key);
@@ -56,9 +102,10 @@ bool AssetImportJob::Emit(eAssetType type, const std::string & key, const std::s
         for (const char * key : {"Nodes", "Bones", "Animations", "Textures"})
             if (metadata[key].isArray()) descriptor[std::string(key) + "Count"] = metadata[key].size();
     } else {
-        bytes = payload;
+        bytes = std::move(payload);
         descriptor = std::move(metadata);
         descriptor["Encoding"] = "RawBytes";
+        if (type == eAssetType::Mesh && !AppendMeshCollision(*this, descriptor, bytes)) return false;
     }
     // Resource type, identity, layout and byte size belong to ArtifactDB. The
     // file contains only raw payload or the structural binary body, no JSON header.
@@ -243,7 +290,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if(job.Request.Importer==eAssetImporterType::Shader || job.Request.Importer==eAssetImporterType::ComputeShader) {
         if(!job.Request.Compiler) return job.Fail("ShaderCompiler module is unavailable");
         manifest.ToolchainHash=job.Request.Compiler->GetToolchainHash();
-    }
+    } else manifest.ToolchainHash=MeshCollisionToolchainHash(job.Request.Importer, job.Request.MeshCollision);
     bool cached = !job.Request.Force && job.Request.HasPrevious
         && job.Request.Previous.Directory == "Artifact" && !job.Request.Previous.Generation.empty() && job.Request.Previous.SourcePath == manifest.SourcePath
         && job.Request.Previous.SourceHash == manifest.SourceHash && job.Request.Previous.SettingsHash == manifest.SettingsHash

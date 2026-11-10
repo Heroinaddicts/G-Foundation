@@ -29,6 +29,8 @@ void AssetsPipeline::BeforeInitialize(GameSproutModuleApi * api) {
     GetGameSproutModule(api->_EditorApi, _Library, LibraryManager);
     GetGameSproutModule(api->_EditorApi, _ShaderCompiler, ShaderCompiler);
     GetGameSproutView(api->_EditorApi, _IDE, IDEWindow);
+    const auto * runtime = api->_EditorApi->_Runtime;
+    _MeshCollisionCooker = runtime ? runtime->GetMeshCollisionCooker() : GameSproutRuntime::MeshCollisionCooker{};
     if (_IDE) _IDE->BindTaskApi(_Tasks);
 }
 bool AssetsPipeline::Initialize(GameSproutModuleApi * api) { g_GameSproutModuleApi = api; return _Tasks && _Project && _Assets && _Library && _ShaderCompiler && _IDE; }
@@ -89,6 +91,7 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
     request.Force = force;
     request.Importer = meta->_ImporterType;
     request.Compiler = _ShaderCompiler;
+    request.MeshCollision = _MeshCollisionCooker;
     request.SourcePath = meta->GetPath();
     // 只复制模型显式映射的材质身份；普通模型不遍历整份资源列表。
     if (request.Importer == eAssetImporterType::Model) {
@@ -105,7 +108,7 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
     }
     // Native resource documents can contain arbitrary GUID references.
     switch (request.Importer) {
-    case eAssetImporterType::Mesh: case eAssetImporterType::Material: case eAssetImporterType::Scene:
+    case eAssetImporterType::Material: case eAssetImporterType::Scene:
     case eAssetImporterType::Prefab:
     case eAssetImporterType::AnimationClip: case eAssetImporterType::AnimatorController:
     case eAssetImporterType::AnimatorOverrideController: case eAssetImporterType::AvatarMask:

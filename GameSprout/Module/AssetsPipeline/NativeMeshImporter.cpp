@@ -153,5 +153,5 @@ bool ImportNativeMesh(AssetImportJob& job) {
     metadata["Bounds"]["Extents"]=vector({maximum.X*.5-minimum.X*.5,maximum.Y*.5-minimum.Y*.5,maximum.Z*.5-minimum.Z*.5});
     metadata["Bones"]=Json::Value(Json::arrayValue);metadata["BlendShapes"]=Json::Value(Json::arrayValue);
     metadata["Settings"]=job.Settings;
-    return job.Emit(eAssetType::Mesh,"main",decodedName.toStdString(),metadata,payload);
+    return job.Emit(eAssetType::Mesh,"main",decodedName.toStdString(),std::move(metadata),std::move(payload));
 }

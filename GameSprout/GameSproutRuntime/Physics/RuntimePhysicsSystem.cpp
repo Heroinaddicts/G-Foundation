@@ -28,7 +28,7 @@ bool RuntimePhysicsSystem::Prepare(std::string &error) {
         auto *&world = _Worlds[scene->GetInstanceID()];
         if (!world) {
             world = new SceneWorld;
-            if (!world->Backend.Initialize(error)) {
+            if (!world->Backend.Initialize(error, &_CookedMeshes)) {
                 delete world;
                 world = nullptr;
                 return false;
@@ -52,7 +52,7 @@ bool RuntimePhysicsSystem::Step(float delta, std::string &error) {
         auto *&world = _Worlds[scene->GetInstanceID()];
         if (!world) {
             world = new SceneWorld;
-            if (!world->Backend.Initialize(error)) {
+            if (!world->Backend.Initialize(error, &_CookedMeshes)) {
                 delete world;
                 world = nullptr;
                 return false;
@@ -97,11 +97,16 @@ void RuntimePhysicsSystem::Reset() {
     _Worlds.clear();
     _ColliderKeys.clear();
     _Identities.clear();
+    _NextColliderKey = 0;
     _Materials.clear();
     _MeshSources.clear();
+    _PreparedMeshSources.clear();
     _MeshShapes.clear();
+    _NextMeshRevision = 0;
     _ResourceRevisions.clear();
     _Provider = nullptr;
     _ProviderRevision = 0;
+    _ResourceGeneration = 1;
+    // _CookedMeshes owns geometry only and is reused by the next world.
 }
 } // namespace GameSproutRuntime

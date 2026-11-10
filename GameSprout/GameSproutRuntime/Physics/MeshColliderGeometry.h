@@ -8,6 +8,7 @@ namespace GameSproutRuntime {
 // Unity-style world coordinates do not require a second vertex/index conversion
 // for Jolt. Authored triangle fronts retain their numerical cross-product normal.
 bool DecodeMeshColliderGeometry(const MeshRenderData &,GPhysics::MeshGeometry &,std::string &error);
+bool DecodeMeshColliderGeometry(const MeshCollisionBakeInput &,GPhysics::MeshGeometry &,std::string &error);
 // Bake the complete invertible affine transform, including mirror/nonuniform
 // scale/shear. Mirroring reverses winding so triangle front faces remain solid.
 bool TransformMeshColliderGeometry(const GPhysics::MeshGeometry &,const Mat4 &,

@@ -16,6 +16,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/EmptyShape.h>
+#include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -128,6 +129,27 @@ Material CombineMaterials(const Material &a, const Material &b) {
     result.Restitution = Combine(a.Restitution, b.Restitution, a.RestitutionCombine, b.RestitutionCombine);
     return result;
 }
+
+struct MeshCookCache::Impl {
+    explicit Impl(std::size_t budget) : Shapes(budget) {}
+    Detail::MeshShapeCache Shapes;
+};
+
+MeshCookCache::MeshCookCache(std::size_t budget) {
+    AcquireJolt();
+    try {
+        _Impl = new Impl(budget);
+    } catch (...) {
+        ReleaseJolt();
+        throw;
+    }
+}
+
+MeshCookCache::~MeshCookCache() {
+    delete _Impl;
+    ReleaseJolt();
+}
+
 struct World::Impl final : public JPH::ContactListener {
     struct BodyRecord {
         JPH::BodyID ID;
@@ -151,9 +173,10 @@ struct World::Impl final : public JPH::ContactListener {
     JPH::PhysicsSystem Physics;
     JPH::TempAllocatorImpl Temporary{16 * 1024 * 1024};
     JPH::JobSystemThreadPool Jobs;
-    Detail::MeshShapeCache MeshCache;
+    Detail::MeshShapeCache LocalMeshCache;
+    Detail::MeshShapeCache &MeshCache;
     std::map<uint64_t, BodyRecord> Bodies;
-    std::map<uint64_t, Shape> Shapes;
+    std::map<uint64_t, Shape> PrimitiveShapes;
     std::mutex EventMutex;
     std::vector<RawEvent> Pending;
     std::map<RawKey, Contact> RawContacts;
@@ -161,27 +184,31 @@ struct World::Impl final : public JPH::ContactListener {
     std::map<uint32_t, bool> BodyActivity;
     std::atomic<bool> Overflow{false};
     bool Initialized = false;
-    Impl()
+    explicit Impl(Detail::MeshShapeCache *meshCookCache)
         : Jobs(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
-               static_cast<int>(std::min(8u, std::max(1u, std::thread::hardware_concurrency()) - 1))) {
+               static_cast<int>(std::min(8u, std::max(1u, std::thread::hardware_concurrency()) - 1))),
+          MeshCache(meshCookCache ? *meshCookCache : LocalMeshCache) {
         Pending.reserve(65536);
         Physics.Init(32768, 0, 65536, 32768, Layers, Broad, Pairs);
         Physics.SetContactListener(this);
         Initialized = true;
     }
-    static uint64_t Collider(const JPH::Body &body, JPH::SubShapeID id) {
-        return body.GetShape()->GetSubShapeUserData(id);
-    }
     const Shape *FindShape(const JPH::Body &body, JPH::SubShapeID id) const {
-        // Shared single-mesh leaves deliberately carry no collider identity.
-        // Resolve the owning body's current values, never another body's cached
-        // userdata/material/layer/trigger settings. Compound leaves retain the
-        // original subshape userdata lookup below.
-        const auto owner=Bodies.find(body.GetUserData());
-        if(owner!=Bodies.end()&&owner->second.Settings.Shapes.size()==1)
-            return &owner->second.Settings.Shapes.front();
-        const auto found = Shapes.find(Collider(body, id));
-        return found == Shapes.end() ? nullptr : &found->second;
+        const auto owner = Bodies.find(body.GetUserData());
+        if (owner == Bodies.end() || owner->second.Settings.Shapes.empty())
+            return nullptr;
+        const auto &shapes = owner->second.Settings.Shapes;
+        if (shapes.size() == 1)
+            return &shapes.front();
+
+        // Compound metadata stores the owner's settings index. Shared Jolt
+        // leaves contain no collider identity, and the full ID stays in World.
+        const auto *compound = static_cast<const JPH::StaticCompoundShape *>(body.GetShape());
+        if (!compound->IsSubShapeIDValid(id))
+            return nullptr;
+        JPH::SubShapeID remainder;
+        const auto index = compound->GetSubShape(compound->GetSubShapeIndexFromID(id, remainder)).mUserData;
+        return index < shapes.size() ? &shapes[index] : nullptr;
     }
     bool Allowed(const Shape *a, const Shape *b) const {
         return a && b && (a->Mask & (1u << b->Layer)) && (b->Mask & (1u << a->Layer));
@@ -267,13 +294,13 @@ World::~World() {
         ReleaseJolt();
     }
 }
-bool World::Initialize(std::string &error) {
+bool World::Initialize(std::string &error, MeshCookCache *meshCookCache) {
     error.clear();
     if (_Impl)
         return true;
     AcquireJolt();
     try {
-        _Impl = new Impl();
+        _Impl = new Impl(meshCookCache ? &meshCookCache->_Impl->Shapes : nullptr);
         return true;
     } catch (...) {
         ReleaseJolt();
@@ -294,7 +321,8 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
     }
     JPH::StaticCompoundShapeSettings compound;
     std::set<uint64_t> keys;
-    for (const Shape &shape : settings.Shapes) {
+    for (std::size_t index = 0; index < settings.Shapes.size(); ++index) {
+        const Shape &shape = settings.Shapes[index];
         if (!shape.Collider || !keys.insert(shape.Collider).second || !ValidPose(shape.LocalPose) ||
             shape.Layer > 31 || !std::isfinite(shape.Surface.Friction) || shape.Surface.Friction < 0 ||
             !std::isfinite(shape.Surface.Restitution) || shape.Surface.Restitution < 0 ||
@@ -341,18 +369,40 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
             }
         }
         else {
-            if (!shape.Mesh || !shape.GeometryRevision) {error="MeshCollider geometry is unavailable";return false;}
+            if ((!shape.Mesh && !shape.PreparedMesh) || !shape.GeometryRevision) {
+                error = "MeshCollider geometry is unavailable";
+                return false;
+            }
             if (shape.Type==ShapeType::TriangleMesh && (settings.Motion==MotionType::Dynamic || shape.Trigger)) {
                 error="Non-convex MeshCollider requires a static/kinematic non-trigger body";return false;
             }
-            result=_Impl->MeshCache.Cook(*shape.Mesh,shape.Type==ShapeType::ConvexHull,
-                settings.Shapes.size()==1?0:shape.Collider);
+            if (shape.PreparedMesh) {
+                const auto *native = static_cast<const JPH::Shape *>(shape.PreparedMesh->NativeShape());
+                const auto expected = shape.Type == ShapeType::ConvexHull ? JPH::EShapeSubType::ConvexHull
+                                                                       : JPH::EShapeSubType::Mesh;
+                if (!native || native->GetSubType() != expected ||
+                    !shape.PreparedMesh->SupportsScale(shape.MeshScale)) {
+                    error = "Prepared MeshCollider geometry does not match the collider";
+                    return false;
+                }
+                if (shape.MeshScale == Vector3{1, 1, 1})
+                    compound.AddShape(Vector(shape.LocalPose.Position), Rotation(shape.LocalPose.Rotation),
+                                      native, static_cast<std::uint32_t>(index));
+                else {
+                    const JPH::RefConst<JPH::Shape> scaled = new JPH::ScaledShape(native, Vector(shape.MeshScale));
+                    compound.AddShape(Vector(shape.LocalPose.Position), Rotation(shape.LocalPose.Rotation),
+                                      scaled, static_cast<std::uint32_t>(index));
+                }
+                continue;
+            }
+            result = _Impl->MeshCache.Cook(*shape.Mesh, shape.Type == ShapeType::ConvexHull, 0);
         }
         if (result.HasError()) {
             error = result.GetError().c_str();
             return false;
         }
-        compound.AddShape(Vector(shape.LocalPose.Position), Rotation(shape.LocalPose.Rotation), result.Get());
+        compound.AddShape(Vector(shape.LocalPose.Position), Rotation(shape.LocalPose.Rotation),
+                          result.Get(), static_cast<std::uint32_t>(index));
     }
     JPH::Shape::ShapeResult shape;
     if (settings.Shapes.empty()) {
@@ -406,11 +456,17 @@ bool World::PutBody(const BodySettings &settings, std::string &error) {
     }
     RemoveBody(settings.Key);
     auto saved=settings;
-    for(auto &item:saved.Shapes)item.Mesh=nullptr;
+    for (auto &item : saved.Shapes) {
+        item.Mesh = nullptr;
+        item.PreparedMesh = nullptr;
+    }
     _Impl->Bodies.emplace(settings.Key, Impl::BodyRecord{body->GetID(), std::move(saved)});
     for (auto item : settings.Shapes) {
-        item.Mesh=nullptr;
-        _Impl->Shapes[item.Collider] = std::move(item);
+        if (item.Type <= ShapeType::Capsule) {
+            item.Mesh = nullptr;
+            item.PreparedMesh = nullptr;
+            _Impl->PrimitiveShapes[item.Collider] = std::move(item);
+        }
     }
     _Impl->Physics.GetBodyInterface().AddBody(body->GetID(), motion == JPH::EMotionType::Static
                                                                  ? JPH::EActivation::DontActivate
@@ -427,7 +483,8 @@ void World::RemoveBody(uint64_t key) {
     api.RemoveBody(found->second.ID);
     api.DestroyBody(found->second.ID);
     for (const auto &shape : found->second.Settings.Shapes)
-        _Impl->Shapes.erase(shape.Collider);
+        if (shape.Type <= ShapeType::Capsule)
+            _Impl->PrimitiveShapes.erase(shape.Collider);
     _Impl->Bodies.erase(found);
 }
 MeshCookStatistics World::GetMeshCookStatistics() const {
@@ -592,8 +649,8 @@ bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool tr
         RayShapeFilter(const std::map<uint64_t,Shape>& shapes,const std::set<uint64_t>& ignored,uint32_t mask,bool triggers)
             : _Shapes(shapes),_Ignored(ignored),_Mask(mask),_Triggers(triggers) {}
         bool ShouldCollide(const JPH::Shape* shape,const JPH::SubShapeID&) const override {
-            // Zero-userdata includes shared single-mesh leaves. Their owning
-            // BodyRecord is filtered after the all-hit query, below.
+            // Shared mesh leaves have zero userdata. Their owning BodyRecord
+            // and compound index are resolved after the all-hit query.
             if(!shape->GetUserData())return true;
             const auto found=_Shapes.find(shape->GetUserData());
             // Compound/decorator roots carry no collider key. Let Jolt enter
@@ -607,7 +664,7 @@ bool World::Raycast(Vector3 origin, Vector3 displacement, uint32_t mask, bool tr
         const std::set<uint64_t>& _Ignored;
         uint32_t _Mask;
         bool _Triggers;
-    } filter(_Impl->Shapes,ignored,mask,triggers);
+    } filter(_Impl->PrimitiveShapes,ignored,mask,triggers);
     JPH::AllHitCollisionCollector<JPH::CastRayCollector> collector;
     _Impl->Physics.GetNarrowPhaseQuery().CastRay(
         JPH::RRayCast(JPH::RVec3(Vector(origin)), Vector(displacement)), JPH::RayCastSettings{}, collector,

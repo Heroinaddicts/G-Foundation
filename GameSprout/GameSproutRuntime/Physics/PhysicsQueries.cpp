@@ -33,7 +33,7 @@ bool RuntimePhysicsSystem::Raycast(IScene *scene, const Ray &ray, float maximum,
     auto *&world = _Worlds[scene->GetInstanceID()];
     if (!world) {
         world = new SceneWorld;
-        if (!world->Backend.Initialize(error)) {
+        if (!world->Backend.Initialize(error, &_CookedMeshes)) {
             delete world;
             world = nullptr;
             return false;

@@ -1,5 +1,7 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -36,6 +38,29 @@ struct MeshGeometry {
 // No World or GPU is needed. Convex output is the actual cooked hull (radius 0),
 // useful for editor wireframes; invalid/non-finite/degenerate input fails.
 bool CookMeshGeometry(const MeshGeometry &, bool convex, MeshGeometry &, std::string &error);
+// Backend artifact for the current Jolt revision and target. Cooking may run
+// on import workers and does not need a World.
+std::uint64_t MeshArtifactFormat();
+bool CookMeshArtifact(const MeshGeometry &, bool convex, std::vector<std::uint8_t> &, std::string &error);
+// Owns immutable native geometry restored once per mesh asset and shape kind.
+// The object and any borrowed views are used on the owning thread.
+class CookedMesh final {
+  public:
+    CookedMesh() = default;
+    ~CookedMesh();
+    CookedMesh(const CookedMesh &) = delete;
+    CookedMesh &operator=(const CookedMesh &) = delete;
+    CookedMesh(CookedMesh &&) noexcept;
+    CookedMesh &operator=(CookedMesh &&) noexcept;
+    bool Restore(std::span<const std::uint8_t>, bool convex, std::string &error);
+    bool SupportsScale(Vector3) const;
+
+  private:
+    struct Impl;
+    Impl *_Impl = nullptr;
+    const void *NativeShape() const;
+    friend class World;
+};
 struct Shape {
     uint64_t Collider = 0;
     ShapeType Type = ShapeType::Box;
@@ -45,6 +70,10 @@ struct Shape {
     // Borrowed only for PutBody; the backend never keeps or dereferences Mesh
     // after that call. GeometryRevision is an owner-issued monotonic identity.
     const MeshGeometry *Mesh = nullptr;
+    // PutBody retains restored native geometry. PreparedMesh is borrowed only
+    // for PutBody; MeshScale applies to that prepared leaf.
+    const CookedMesh *PreparedMesh = nullptr;
+    Vector3 MeshScale{1, 1, 1};
     uint64_t GeometryRevision = 0;
     bool Trigger = false;
     uint32_t Layer = 0, Mask = 0xffffffffu;
@@ -86,13 +115,28 @@ struct RayHit {
 struct MeshCookStatistics {
     uint64_t CookCalls=0,CacheHits=0,CachedShapes=0,RetainedBytes=0;
 };
+// Retains only immutable cooked geometry, with exact input-content matching.
+// The owner calls from one thread and keeps this alive until all borrowing
+// worlds are destroyed. Body poses, contacts and collider IDs stay in World.
+class MeshCookCache final {
+  public:
+    explicit MeshCookCache(std::size_t budget = 32u * 1024u * 1024u);
+    ~MeshCookCache();
+    MeshCookCache(const MeshCookCache &) = delete;
+    MeshCookCache &operator=(const MeshCookCache &) = delete;
+
+  private:
+    struct Impl;
+    Impl *_Impl = nullptr;
+    friend class World;
+};
 class World {
   public:
     World();
     ~World();
     World(const World &) = delete;
     World &operator=(const World &) = delete;
-    bool Initialize(std::string &error);
+    bool Initialize(std::string &error, MeshCookCache *meshCookCache = nullptr);
     bool PutBody(const BodySettings &, std::string &error);
     void RemoveBody(uint64_t key);
     bool ContainsBody(uint64_t key) const;

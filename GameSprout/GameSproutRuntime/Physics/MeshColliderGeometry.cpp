@@ -5,6 +5,10 @@
 
 namespace GameSproutRuntime {
 bool DecodeMeshColliderGeometry(const MeshRenderData &source,GPhysics::MeshGeometry &output,std::string &error) {
+    return DecodeMeshColliderGeometry(MeshCollisionBakeInput{source.Bytes,source.VertexCount,source.VertexStride,
+        source.IndexCount,source.PositionOffset,source.IndexOffset},output,error);
+}
+bool DecodeMeshColliderGeometry(const MeshCollisionBakeInput &source,GPhysics::MeshGeometry &output,std::string &error) {
     output={};error.clear();
     const uint64_t vertexBytes=uint64_t(source.VertexCount)*source.VertexStride;
     const uint64_t indexBytes=uint64_t(source.IndexCount)*sizeof(uint32_t);

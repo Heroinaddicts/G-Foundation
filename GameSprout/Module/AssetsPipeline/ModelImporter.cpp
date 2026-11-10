@@ -259,7 +259,7 @@ bool Mesh(AssetImportJob & job, ufbx_mesh * mesh, const std::string & key, doubl
             }
             metadata["BlendShapes"].append(shape);
         }
-    return job.Emit(eAssetType::Mesh, key, Name(mesh->name), metadata, payload);
+    return job.Emit(eAssetType::Mesh, key, Name(mesh->name), std::move(metadata), std::move(payload));
 }
 
 bool Scene(AssetImportJob & job, ufbx_scene * scene) {

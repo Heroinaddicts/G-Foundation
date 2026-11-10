@@ -33,8 +33,7 @@ bool SameGeometry(const MeshGeometry& a,const MeshGeometry& b) {
 }
 }
 JPH::Shape::ShapeResult MeshShapeCache::Cook(const MeshGeometry& geometry,bool convex,uint64_t collider) {
-    // Compound leaves must preserve their individual userdata. They never enter
-    // the cache, including when the same geometry is already retained here.
+    // Caller-specific userdata must never be attached to a shared leaf.
     if(collider) {++_Statistics.CookCalls;return CreateMeshShape(geometry,convex,collider);}
     const auto hash=_Fingerprint?_Fingerprint(geometry,convex):Fingerprint(geometry,convex);
     const auto range=_Entries.equal_range(hash);

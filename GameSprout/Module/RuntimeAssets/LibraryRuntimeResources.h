@@ -8,6 +8,7 @@
 class ILibraryManager;
 namespace Json { class Value; }
 class QByteArray;
+class QFile;
 
 // 编辑器适配层：查询 ArtifactDB 的布局描述，读取 Library 已预处理的产物。
 // Runtime 本身不依赖编辑器模块、Qt、源文件格式或数据库。
@@ -30,6 +31,8 @@ public:
     bool LoadAnimatorController(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::AnimatorControllerData&, std::string&) override;
     bool LoadHumanoidAvatar(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::HumanoidAvatarData&, std::string&) override;
     bool LoadAvatarMask(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::AvatarMaskData&, std::string&) override;
+    bool LoadMeshCollision(const GameSproutRuntime::ResourceReference&, bool convex,
+                           std::vector<std::uint8_t>&, std::string&) override;
     void OnAssetCreate(const AssetEvent&) override;
     void OnAssetModify(const AssetEvent&) override;
     void OnAssetRemove(const AssetEvent&) override;
@@ -70,6 +73,8 @@ private:
     void ResetDependencies(const GameSproutRuntime::ResourceReference&);
     void AddDependency(const GameSproutRuntime::ResourceReference&,const GameSproutRuntime::ResourceReference&);
     bool Read(const GameSproutRuntime::ResourceReference&, eAssetType, Json::Value&, QByteArray&, std::string&);
+    bool OpenArtifact(const GameSproutRuntime::ResourceReference&, eAssetType, Json::Value&, QFile&,
+                      ResourceState*&, std::string&);
     IAssetsManager* _Assets = nullptr;
     ILibraryManager* _Library = nullptr;
     std::uint64_t _Revision = 1;

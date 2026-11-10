@@ -36,6 +36,7 @@ public:
     bool RegisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
     void UnregisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
     bool SynchronizePhysics(std::string&) override;
+    MeshCollisionCooker GetMeshCollisionCooker() const override;
     void MarkObjectPropertiesChanged(std::uint64_t objectID);
     // Internal matrix cache clock. Mutations advance it synchronously, before
     // deferred Editor events, so every query observes the committed hierarchy.
@@ -163,7 +164,7 @@ public:
     bool IsShuttingDown() const { return _ShuttingDown; }
     bool IsConstructing() const { return _ConstructionDepth!=0; }
     bool PreparePhysics(std::string& error);
-    void ResetPhysics();
+    void ResetPhysics(bool releaseSystem = false);
 
 private:
     enum class CommandType { Attach, Reparent, DestroyObject, DestroyScene, RemoveComponent };

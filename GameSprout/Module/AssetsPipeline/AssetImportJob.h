@@ -1,6 +1,7 @@
 #pragma once
 #include "IAssetsPipeline.h"
 #include "ITaskApi.h"
+#include "GameSproutRuntimeApi.h"
 #include "../Shared/AssetArtifactIO.h"
 #include "../Shared/AssetFileStamp.h"
 #include "AssetFileFingerprintCache.h"
@@ -11,19 +12,23 @@ class IShaderCompiler;
 // 完整导入与启动快速校验必须使用相同的算法版本。
 constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     switch (type) {
-    case eAssetImporterType::Model: return 8; // Unity LH/Y-up/+Z-forward geometry and animation.
+    case eAssetImporterType::Model: return 9; // Bake local-space collider payloads for imported meshes.
     case eAssetImporterType::AnimationClip: return 6; // Current Unity world coordinate contract.
     case eAssetImporterType::AnimatorController: return 5;
     case eAssetImporterType::AvatarMask: return 4;
     case eAssetImporterType::Scene: return 5; // SceneDocument2, Unity world coordinates.
     case eAssetImporterType::Prefab: return 4; // Embedded SceneDocument2, Unity world coordinates.
-    case eAssetImporterType::Mesh: return 4; // Current native GSMESH02 Unity source -> GPU bytes.
+    case eAssetImporterType::Mesh: return 5; // Native GSMESH02 -> GPU bytes and cooked colliders.
     case eAssetImporterType::Shader: return 4; // Complete graphics Pass programs and reflected material bindings.
     case eAssetImporterType::Material: return 4; // Current engine rendering options, independent of Shader reflection.
     case eAssetImporterType::PhysicsMaterial:
     case eAssetImporterType::ComputeShader: return 3;
     default: return 2;
     }
+}
+inline std::string MeshCollisionToolchainHash(eAssetImporterType type, GameSproutRuntime::MeshCollisionCooker cooker) {
+    return cooker.Cook && (type == eAssetImporterType::Mesh || type == eAssetImporterType::Model)
+        ? std::to_string(cooker.Format) : std::string{};
 }
 
 struct AssetImportPreparedResource {
@@ -34,6 +39,7 @@ struct AssetImportPreparedResource {
 struct AssetImportRequest {
     AssetFileFingerprintCache * Fingerprints = nullptr; // 借用模块缓存，宿主在线程 join 后销毁模块。
     IShaderCompiler * Compiler = nullptr; // Initialized editor module; kept alive until all tasks finish.
+    GameSproutRuntime::MeshCollisionCooker MeshCollision; // Process-lifetime SDK code, independent of the Runtime instance.
     std::string GuidString;
     std::string AssetsRoot;
     std::string LibraryRoot;
@@ -79,7 +85,7 @@ struct AssetImportJob {
     bool Fail(const std::string & error);
     uint64_t ID(eAssetType type, const std::string & key, const std::string & name);
     bool Emit(eAssetType type, const std::string & key, const std::string & name,
-        Json::Value metadata, const QByteArray & payload = {});
+        Json::Value metadata, QByteArray payload = {});
     bool AddDependency(const std::string & relativePath, QByteArray * bytes = nullptr, bool recheck = false);
     std::string TrackGuidReference(const std::string& guid);
     bool ReadFile(const std::string & path, QByteArray * bytes, std::string & hash);

@@ -236,7 +236,7 @@ void CheckUnityCoordinates(ModelFixture& fixture) {
         world=world*pose(node["GeometryTransform"]);
         QByteArray bytes;
         auto* asset=fixture.Library->QueryAsset(Guid(node["Mesh"]["Guid"].asString()),node["Mesh"]["LocalID"].asUInt64());
-        Check(asset&&asset->GetDataVersion()==3,"Prepared mesh does not identify Unity coordinates");
+        Check(asset&&asset->GetDataVersion()==AssetArtifactIO::CurrentDataVersion(eAssetType::Mesh),"Prepared mesh does not identify the current mesh layout");
         const auto descriptor=ReadArtifact(asset,&bytes);
         const auto stride=descriptor["VertexStride"].asUInt();
         for(std::size_t vertex=0;vertex<descriptor["VertexCount"].asUInt64();++vertex) {

@@ -19,20 +19,29 @@ endforeach()
 foreach(feature USE_SSE4_1 USE_SSE4_2 USE_AVX USE_AVX2 USE_AVX512 USE_LZCNT USE_TZCNT USE_F16C USE_FMADD)
     set(${feature} OFF CACHE BOOL "Portable CPU baseline" FORCE)
 endforeach()
+set(gphysics_jolt_revision e77f175595e64cb44218cc9d9d56fc365ad0e36a)
 FetchContent_Declare(gamesprout_jolt
-    URL "https://codeload.github.com/jrouwe/JoltPhysics/tar.gz/e77f175595e64cb44218cc9d9d56fc365ad0e36a"
+    URL "https://codeload.github.com/jrouwe/JoltPhysics/tar.gz/${gphysics_jolt_revision}"
     URL_HASH SHA256=1f32328fb763135de10a244568d6ccb2ed9b1e6593fafe6dc6db5b2719d330bd
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     SOURCE_SUBDIR Build)
 FetchContent_MakeAvailable(gamesprout_jolt)
 set_target_properties(Jolt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Editor Debug still exercises large collision meshes. Keep the private Jolt
+# target optimized while retaining its Debug symbols and build definitions.
+if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    target_compile_options(Jolt PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 if(MSVC AND CMAKE_MSVC_RUNTIME_LIBRARY)
     set_target_properties(Jolt PROPERTIES MSVC_RUNTIME_LIBRARY "${CMAKE_MSVC_RUNTIME_LIBRARY}")
 endif()
-add_library(GPhysics STATIC GPhysics.h GPhysics.cpp MeshCooking.h MeshCooking.cpp MeshShapeCache.h MeshShapeCache.cpp)
+add_library(GPhysics STATIC GPhysics.h GPhysics.cpp CookedMesh.cpp MeshCooking.h MeshCooking.cpp MeshShapeCache.h MeshShapeCache.cpp)
 add_library(GPhysics::GPhysics ALIAS GPhysics)
 target_compile_features(GPhysics PUBLIC cxx_std_20)
 target_include_directories(GPhysics PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(GPhysics PRIVATE GPHYSICS_JOLT_REVISION="${gphysics_jolt_revision}"
+    GPHYSICS_TARGET_SYSTEM="${CMAKE_SYSTEM_NAME}"
+    GPHYSICS_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}")
 target_link_libraries(GPhysics PRIVATE Jolt)
 set_target_properties(GPhysics PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
 option(GPHYSICS_BUILD_TESTS "Build standalone Jolt backend checks" OFF)

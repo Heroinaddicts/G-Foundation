@@ -1,9 +1,29 @@
 #include "GameObject.h"
 #include "GameSproutRuntime.h"
+#include "Physics/MeshColliderGeometry.h"
 #include "Physics/RuntimePhysicsSystem.h"
 #include "Scene.h"
 
 namespace GameSproutRuntime {
+namespace {
+bool CookMeshCollision(const MeshCollisionBakeInput &input, CookedMeshCollisionData &output,
+                       std::string &error) {
+    output={};
+    GPhysics::MeshGeometry geometry;
+    if(!DecodeMeshColliderGeometry(input,geometry,error))return false;
+    if(geometry.Vertices.empty()) {
+        error="Mesh collision cooking requires prepared positions and indices";
+        return false;
+    }
+    std::string unsupported;
+    GPhysics::CookMeshArtifact(geometry,false,output.Triangle,unsupported);
+    GPhysics::CookMeshArtifact(geometry,true,output.Convex,unsupported);
+    return true;
+}
+}
+MeshCollisionCooker Runtime::GetMeshCollisionCooker() const {
+    return {&CookMeshCollision,GPhysics::MeshArtifactFormat()};
+}
 bool Runtime::SynchronizePhysics(std::string& error) {
     error.clear();
     if(IsExecuting()||IsConstructing()||_ShuttingDown) {error="Synchronize physics outside Runtime callbacks and construction";return false;}
@@ -37,9 +57,13 @@ void Runtime::StepPhysics(float delta) {
     } else if (error.empty())
         _LastPhysicsError.clear();
 }
-void Runtime::ResetPhysics() {
-    delete _PhysicsSystem;
-    _PhysicsSystem = nullptr;
+void Runtime::ResetPhysics(bool releaseSystem) {
+    if (releaseSystem) {
+        delete _PhysicsSystem;
+        _PhysicsSystem = nullptr;
+    } else if (_PhysicsSystem) {
+        _PhysicsSystem->Reset();
+    }
     _LastPhysicsError.clear();
 }
 void Runtime::DropPhysicsSubscriptions(uint64_t object, uint64_t component) {

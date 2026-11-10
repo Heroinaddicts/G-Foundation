@@ -9,25 +9,72 @@ namespace {
 void Check(bool value,const std::string &error){if(!value)throw std::runtime_error(error);}
 class Meshes final : public GameSproutRuntime::IRuntimeResourceProvider {
 public:
-    uint64_t Revision=1,MeshRevision=1;unsigned Reads=0;
+    uint64_t Revision=1,MeshRevision=1;unsigned Reads=0,PreparedReads=0;
     GameSproutRuntime::MeshRenderData Mesh;
+    GameSproutRuntime::CookedMeshCollisionData Prepared;
     Meshes() {
         const float points[]={-1,0,-1,1,0,-1,0,0,1,0,2,0};
-        const uint32_t indices[]={0,2,1,0,1,3,1,2,3,2,0,3};
+        const uint32_t indices[]={0,1,2,0,3,1,1,3,2,2,3,0};
         Mesh.VertexCount=4;Mesh.VertexStride=12;Mesh.IndexCount=12;Mesh.IndexOffset=sizeof(points);
         Mesh.Bytes.resize(sizeof(points)+sizeof(indices));std::memcpy(Mesh.Bytes.data(),points,sizeof(points));std::memcpy(Mesh.Bytes.data()+sizeof(points),indices,sizeof(indices));
     }
     uint64_t GetRevision()const override{return Revision;}
     uint64_t GetResourceRevision(const GameSproutRuntime::ResourceReference &)const override{return MeshRevision;}
     bool LoadMesh(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MeshRenderData &output,std::string &error)override{++Reads;output=Mesh;error.clear();return true;}
+    bool LoadMeshCollision(const GameSproutRuntime::ResourceReference &,bool convex,std::vector<std::uint8_t>& output,
+                           std::string &error)override {
+        ++PreparedReads;output=convex?Prepared.Convex:Prepared.Triangle;error.clear();return true;
+    }
     bool LoadTexture(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::TextureRenderData &,std::string&)override{return false;}
     bool LoadMaterial(const GameSproutRuntime::ResourceReference &,GameSproutRuntime::MaterialRenderData &,std::string&)override{return false;}
 };
+void CheckPreparedCollision(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    std::string error;
+    Meshes resources;
+    const auto cooker=runtime.GetMeshCollisionCooker();
+    const auto& mesh=resources.Mesh;
+    Check(cooker.Cook&&cooker.Format&&cooker.Cook({mesh.Bytes,mesh.VertexCount,mesh.VertexStride,mesh.IndexCount,
+        mesh.PositionOffset,mesh.IndexOffset},resources.Prepared,error)&&!resources.Prepared.Triangle.empty()&&
+        !resources.Prepared.Convex.empty(),"Cannot cook native tetrahedron: "+error);
+    runtime.SetResourceProvider(&resources);
+    auto* scene=runtime.CreateScene("Offline collision geometry");
+    const GameSproutRuntime::ResourceReference reference{"11111111111111111111111111111111",1};
+    auto* triangle=scene->CreateGameObject("Uniform scaled triangle mesh");
+    triangle->GetTransform()->SetLocalScale({2,2,2});
+    auto* triangleCollider=triangle->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+    Check(triangleCollider->SetShape({reference,false}),"Assign offline triangle mesh");
+    auto* compound=scene->CreateGameObject("Signed scale compound");
+    compound->GetTransform()->SetLocalPosition({10,0,0});
+    compound->GetTransform()->SetLocalScale({-2,1,3});
+    auto* convex=compound->AddComponent<GameSproutRuntime::IMeshColliderComponent>();
+    auto* box=compound->AddComponent<GameSproutRuntime::IBoxColliderComponent>();
+    auto boxSettings=box->GetColliderSettings();boxSettings.Center={-2,0,0};
+    Check(convex->SetShape({reference,true})&&box->SetColliderSettings(boxSettings),"Assign offline compound leaves");
+    GameSproutRuntime::PhysicsRaycastHit hit;GameSproutRuntime::PhysicsQuerySettings query;
+    Check(runtime.Raycast(scene,{{0,8,-.25f},{0,-1,0}},20,hit,query,error)&&
+        hit.Collider.ComponentID==triangleCollider->GetComponentInstanceID()&&std::fabs(hit.Position.Y-3.5f)<.001f,
+        "Scaled offline triangle geometry changed: "+error);
+    Check(runtime.Raycast(scene,{{10,8,0},{0,-1,0}},20,hit,query,error)&&
+        hit.Collider.ComponentID==convex->GetComponentInstanceID()&&std::fabs(hit.Position.Y-2)<.001f,
+        "Offline convex compound geometry changed: "+error);
+    Check(resources.Reads==0&&resources.PreparedReads==2,"Prepared colliders read raw bytes or restored twice");
+    ++resources.Revision;
+    Check(runtime.Raycast(scene,{{10,8,0},{0,-1,0}},20,hit,query,error)&&resources.PreparedReads==2,
+        "Unrelated import invalidated native collision data");
+    resources.Prepared.Convex[0]^=0xff;
+    ++resources.MeshRevision;++resources.Revision;
+    Check(runtime.Raycast(scene,{{10,8,0},{0,-1,0}},20,hit,query,error)&&resources.Reads==1&&
+        resources.PreparedReads==4&&std::fabs(hit.Position.Y-2)<.001f,
+        "Malformed cooked payload did not fall back to current raw geometry: "+error);
+    Check(runtime.DestroyScene(scene),"Destroy offline collision fixture");
+    runtime.SetResourceProvider(nullptr);
+}
 }
 int main(int argc,char **argv) {
     GameSproutRuntime::IGameSproutRuntime *runtime=nullptr;
     try {
         Check(argc==2,"Pass Runtime directory");runtime=Export(argv[1]);Check(runtime,"Runtime load");std::string error;
+        CheckPreparedCollision(*runtime);
         auto *scene=runtime->CreateScene("Mesh physics");
         auto *floor=scene->CreateGameObject("Builtin plane");
         auto *mesh=floor->AddComponent<GameSproutRuntime::IMeshComponent>();mesh->SetMesh(GameSproutRuntime::GetBuiltinMeshReference(GameSproutRuntime::PrimitiveType::Plane));
@@ -109,6 +156,6 @@ int main(int argc,char **argv) {
         resources.Mesh.Bytes[0]=0; // Explicit invalid source revision must invalidate the decode cache.
         const uint32_t invalid=1000;std::memcpy(resources.Mesh.Bytes.data()+resources.Mesh.IndexOffset,&invalid,4);++resources.MeshRevision;++resources.Revision;
         Check(!runtime->BeginExecution(error)&&error.find("index")!=std::string::npos,"Invalid provider revision reused stale collision geometry");
-        delete runtime;runtime=nullptr;std::cout<<"PASS MeshCollider builtin/provider, affine/mirror, convex dynamics, restrictions, revision cache and callbacks\n";return 0;
+        delete runtime;runtime=nullptr;std::cout<<"PASS MeshCollider builtin/provider, offline geometry, affine/mirror, convex dynamics, restrictions, revision cache and callbacks\n";return 0;
     }catch(const std::exception &error){delete runtime;std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
 }

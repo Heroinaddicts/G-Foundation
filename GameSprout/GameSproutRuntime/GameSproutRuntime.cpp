@@ -8,7 +8,7 @@
 
 namespace GameSproutRuntime {
 Runtime::~Runtime() {
-    ResetPhysics();
+    ResetPhysics(true);
     _ShuttingDown=true;
     _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
     _PropertyObservations.clear();

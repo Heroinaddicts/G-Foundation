@@ -14,7 +14,7 @@ void RuntimePhysicsSystem::SyncResources() {
     const auto revision=provider?provider->GetRevision():0;
     if(provider!=_Provider) {
         _Provider=provider;_ProviderRevision=revision;
-        _Materials.clear();_MeshSources.clear();_MeshShapes.clear();_ResourceRevisions.clear();
+        _Materials.clear();_MeshSources.clear();_PreparedMeshSources.clear();_MeshShapes.clear();_ResourceRevisions.clear();
         ++_ResourceGeneration;
         return;
     }
@@ -26,6 +26,7 @@ void RuntimePhysicsSystem::SyncResources() {
         if((provider?provider->GetResourceRevision(reference):0)==found->second) {++found;continue;}
         _Materials.erase(found->first);
         _MeshSources.erase(found->first);
+        _PreparedMeshSources.erase(found->first);
         for(auto shape=_MeshShapes.begin();shape!=_MeshShapes.end();) {
             if(shape->second.Reference==reference)shape=_MeshShapes.erase(shape);else ++shape;
         }
@@ -97,8 +98,19 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
         return false;
     }
     if (auto *mesh=dynamic_cast<MeshColliderComponent*>(&state)) {
-        if(!AppendMeshCollider(request,*mesh,shape,inverse*colliderWorld,error))return false;
-        if(shape.Mesh)request.Description.Shapes.push_back(shape);
+        Mat4 relative = inverse * colliderWorld;
+        if (request.Object == collider->GetGameObject()) {
+            // The carrier and collider owner have the same world translation.
+            // Transform the local center as a vector so moving an object does
+            // not introduce cancellation noise into its cooked mesh geometry.
+            const auto center = state.Settings.Center;
+            const auto offset = inverse * (request.World * Vector4{center.X, center.Y, center.Z, 0});
+            relative(0,3) = offset.X;
+            relative(1,3) = offset.Y;
+            relative(2,3) = offset.Z;
+        }
+        if(!AppendMeshCollider(request,*mesh,shape,relative,error))return false;
+        if(shape.Mesh||shape.PreparedMesh)request.Description.Shapes.push_back(shape);
         return true;
     }
     RuntimePhysicsMath::ColliderFrame frame;
@@ -263,7 +275,10 @@ bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float d
                 return false;
             BodyRecord record;
             record.Description = request.Description;
-            for(auto &shape:record.Description.Shapes)shape.Mesh=nullptr;
+            for(auto &shape:record.Description.Shapes) {
+                shape.Mesh=nullptr;
+                shape.PreparedMesh=nullptr;
+            }
             record.ComponentID = componentID;
             record.WorldScale = request.WorldScale;
             record.LastWorld = request.World;

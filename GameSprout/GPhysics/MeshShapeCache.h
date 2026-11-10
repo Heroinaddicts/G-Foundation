@@ -4,7 +4,7 @@
 #include <map>
 
 namespace GPhysics::Detail {
-// World-owned immutable Jolt leaves. Identity/material/filtering remain on each
+// Immutable Jolt leaves. Identity/material/filtering remain on each
 // BodyRecord; only single-mesh bodies may use a zero-userdata cached leaf.
 class MeshShapeCache final {
 public:

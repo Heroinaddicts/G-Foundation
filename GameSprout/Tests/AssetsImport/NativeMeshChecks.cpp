@@ -1,5 +1,6 @@
 #include "AssetTestSupport.h"
 #include "AssetImportJob.h"
+#include "GameSproutRuntimeExport.h"
 #include "../../Module/Shared/NativeMeshDefinition.h"
 #include "../../Module/RuntimeAssets/LibraryRuntimeResources.h"
 #include <QtEndian>
@@ -25,6 +26,14 @@ QByteArray Mesh(std::uint32_t flags=NativeMeshDefinition::ValidFlags,bool degene
     if(degenerate)for(auto index:{0u,0u,1u})Put(bytes,index);
     Put(bytes,0);Put(bytes,3);Put(bytes,1);
     Put(bytes,3);Put(bytes,degenerate?6:3);Put(bytes,7);
+    return bytes;
+}
+QByteArray Tetrahedron() {
+    QByteArray bytes(NativeMeshDefinition::Magic.data(), NativeMeshDefinition::Magic.size());
+    for (auto value : {NativeMeshDefinition::Version, 0u, 4u, 12u, 1u, 4u}) Put(bytes, value);
+    bytes.append("Hull", 4);
+    for (float value : {0.f,0.f,0.f, 1.f,0.f,0.f, 0.f,1.f,0.f, 0.f,0.f,1.f}) PutFloat(bytes, value);
+    for (auto value : {0u,2u,1u, 0u,1u,3u, 0u,3u,2u, 1u,2u,3u, 0u,12u,0u}) Put(bytes, value);
     return bytes;
 }
 class Context final : public Foundation::ITaskContext {
@@ -68,6 +77,8 @@ class Fixture {
 public:
     QTemporaryDir Temporary;
     Guid ID{100,200,300,400};
+    GameSproutRuntime::IGameSproutRuntime * const Runtime = Export(TEST_BINARY_ROOT);
+    ~Fixture() { delete Runtime; }
     Imported Import(const QByteArray& source,Json::Value settings=Json::Value(Json::objectValue)) {
         Check(Temporary.isValid(),"Temporary project unavailable");QDir root(Temporary.path());Check(root.mkpath("Assets"),"Cannot create Assets");
         const QString path=root.filePath("Assets/Panel.mesh");std::string error;
@@ -76,6 +87,7 @@ public:
         meta.Identities="[{\"LocalID\":1,\"Type\":3,\"SourceKey\":\"main\",\"Name\":\"Panel\"}]";
         AssetImportRequest request;request.Importer=eAssetImporterType::Mesh;request.GuidString=ID.GetGuidString();
         request.AssetsRoot=root.filePath("Assets").toStdString();request.LibraryRoot=root.filePath("Library").toStdString();
+        request.MeshCollision=Runtime->GetMeshCollisionCooker();
         request.SourcePath="Panel.mesh";Check(meta.SerializeMeta(request.MetaJson),"Cannot serialize native mesh meta");
         AssetImportJob job(request);Context context;const bool ok=RunAssetImport(job,context);
         Check(ok==job.Result.Success,"Import function/result disagree");
@@ -103,21 +115,37 @@ public:
 int main(int argc,char** argv) {
     QGuiApplication application(argc,argv);
     try {
-        Fixture fixture;const auto source=Mesh();const auto imported=fixture.Import(source);
+        Fixture fixture;
+        const auto cooker=fixture.Runtime ? fixture.Runtime->GetMeshCollisionCooker() : GameSproutRuntime::MeshCollisionCooker{};
+        Check(cooker.Cook&&cooker.Format,"Cannot load Runtime mesh cooker");
+        const auto source=Mesh();const auto imported=fixture.Import(source);
         Check(imported.Result.Success,imported.Result.Error);
         const auto& artifact=imported.Result.Manifest.Assets[0];
         Check(artifact.LocalID==1&&artifact.SourceKey=="main"&&artifact.Type==eAssetType::Mesh,"Explicit main LocalID 1 was not retained");
         Json::Value descriptor;Check(AssetArtifactIO::Parse(artifact.DescriptorJson,descriptor),"Cannot decode native descriptor");
-        Check(descriptor["Encoding"]=="RawBytes"&&descriptor["VertexStride"].asUInt()==64&&
-            descriptor["IndexOffset"].asUInt64()==256&&imported.Bytes.size()==280,"Prepared bytes have the wrong headerless GPU layout");
         const auto decoded=fixture.Decode(imported);
-        Check(artifact.DataVersion==3,"Native prepared mesh has no Unity coordinate format version");
-        auto oldCoordinates=imported;oldCoordinates.Result.Manifest.Assets[0].DataVersion=2;
-        fixture.Decode(oldCoordinates,false);
+        Check(descriptor["Encoding"]=="RawBytes"&&descriptor["VertexStride"].asUInt()==64&&
+            descriptor["IndexOffset"].asUInt64()==256&&decoded.Bytes.size()==280,"Prepared bytes have the wrong headerless GPU layout");
+        Check(artifact.DataVersion==4,"Native prepared mesh does not identify the collision-enabled layout");
+        Check(imported.Result.Manifest.ToolchainHash==std::to_string(cooker.Format),"Manifest did not record the Jolt cook format");
+        auto oldMesh=imported;oldMesh.Result.Manifest.Assets[0].DataVersion=3;
+        fixture.Decode(oldMesh,false);
         Check(decoded.VertexCount==4&&decoded.IndexCount==6&&decoded.Sections.size()==2&&decoded.Sections[0].MaterialSlot==1&&decoded.Sections[1].MaterialSlot==7,
             "Native submesh slots/indices were changed");
         Check(Float(imported.Bytes,8)==2&&Float(imported.Bytes,20)==2&&decoded.LocalBounds.Center.Z==2&&decoded.LocalBounds.Extents.X==1,
             "Native Unity position/normal values were converted again or bounds changed");
+        const auto tetrahedron=fixture.Import(Tetrahedron());
+        const auto tetraRender=fixture.Decode(tetrahedron);
+        Json::Value tetraLayout;
+        Check(AssetArtifactIO::Parse(tetrahedron.Result.Manifest.Assets[0].DescriptorJson,tetraLayout),"Cannot read tetrahedron layout");
+        const auto& triangle=tetraLayout["Collision"]["Triangle"];
+        const auto& convex=tetraLayout["Collision"]["Convex"];
+        Check(triangle["Offset"].asUInt64()==tetraRender.Bytes.size()&&triangle["Size"].asUInt64()>0&&
+            convex["Offset"].asUInt64()==triangle["Offset"].asUInt64()+triangle["Size"].asUInt64()&&convex["Size"].asUInt64()>0&&
+            convex["Offset"].asUInt64()+convex["Size"].asUInt64()==std::uint64_t(tetrahedron.Bytes.size()),
+            "Native mesh did not append tightly packed triangle and convex Jolt payloads");
+        Check(tetraRender.Bytes.size()==144&&std::memcmp(tetraRender.Bytes.data(),tetrahedron.Bytes.constData(),144)==0,
+            "Runtime did not isolate the native mesh GPU payload from the baked collision bytes");
         const auto collision=fixture.Import(Mesh(0));Check(collision.Result.Success,collision.Result.Error);const auto collisionMesh=fixture.Decode(collision);
         Check(collisionMesh.VertexStride==24&&collisionMesh.UVOffset==-1&&Float(collision.Bytes,20)==1,
             "Position-only collision mesh did not receive generated normals");

@@ -31,6 +31,12 @@ inline bool PhysicsNear(GPhysics::Quaternion a, GPhysics::Quaternion b) {
     const float dot = a.X * b.X + a.Y * b.Y + a.Z * b.Z + a.W * b.W;
     return std::fabs(std::fabs(dot) - 1) < 0.00005f;
 }
+inline bool PhysicsMeshRotationNear(GPhysics::Quaternion a, GPhysics::Quaternion b) {
+    const float dot=a.X*b.X+a.Y*b.Y+a.Z*b.Z+a.W*b.W;
+    const float sign=dot<0?-1.0f:1.0f;
+    return PhysicsNear(a.X,sign*b.X)&&PhysicsNear(a.Y,sign*b.Y)&&
+        PhysicsNear(a.Z,sign*b.Z)&&PhysicsNear(a.W,sign*b.W);
+}
 inline bool PhysicsNear(const Mat4 &a, const Mat4 &b) {
     for (unsigned i = 0; i < 16; ++i)
         if (!PhysicsNear(a.Data[i], b.Data[i]))
@@ -64,7 +70,9 @@ inline bool PhysicsBodyPose(const Mat4 &world,GPhysics::Pose &pose,Vector3 &scal
 inline bool PhysicsShapeEqual(const GPhysics::Shape &a, const GPhysics::Shape &b) {
     return a.Collider == b.Collider && a.Type == b.Type &&
            PhysicsNear(a.LocalPose.Position, b.LocalPose.Position) &&
-           PhysicsNear(a.LocalPose.Rotation, b.LocalPose.Rotation) &&
+           (a.GeometryRevision ? PhysicsMeshRotationNear(a.LocalPose.Rotation, b.LocalPose.Rotation)
+                               : PhysicsNear(a.LocalPose.Rotation, b.LocalPose.Rotation)) &&
+           PhysicsNear(a.MeshScale,b.MeshScale) &&
            PhysicsNear(a.HalfExtents, b.HalfExtents) && PhysicsNear(a.Radius, b.Radius) &&
            PhysicsNear(a.HalfHeight, b.HalfHeight) && a.Trigger == b.Trigger && a.Layer == b.Layer &&
            a.Mask == b.Mask && a.Surface == b.Surface && a.GeometryRevision == b.GeometryRevision;

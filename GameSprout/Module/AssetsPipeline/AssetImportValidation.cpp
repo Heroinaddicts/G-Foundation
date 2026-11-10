@@ -107,7 +107,9 @@ bool AssetsPipeline::CanReuseAsset(IAssetMeta * meta) const {
         || validation["ManifestHash"] != ManifestHash(manifest) || validation["MetaHash"] != metaHash
         || !validation["Files"].isArray() || !validation["Directories"].isArray()) return false;
     const bool shader = meta->_ImporterType == eAssetImporterType::Shader || meta->_ImporterType == eAssetImporterType::ComputeShader;
-    if (manifest.ToolchainHash != (shader && _ShaderCompiler ? _ShaderCompiler->GetToolchainHash() : "")) return false;
+    const auto toolchainHash = shader && _ShaderCompiler ? _ShaderCompiler->GetToolchainHash()
+        : MeshCollisionToolchainHash(meta->_ImporterType, _MeshCollisionCooker);
+    if (manifest.ToolchainHash != toolchainHash) return false;
     const QDir assets(QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets"));
     const QDir library(QString::fromStdString(_Library->GetLibraryRoot()));
     if(!AssetGuidSourcesCurrent(manifest,_Assets,assets.absolutePath().toStdString()))return false;

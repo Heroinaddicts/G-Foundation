@@ -2,27 +2,98 @@
 #include "LibraryResourceDecode.h"
 using LibraryResourceDecode::Unsigned;
 using LibraryResourceDecode::FloatAt;
-using LibraryResourceDecode::ColorValue;
-using LibraryResourceDecode::ReferenceValue;
+namespace {
+struct ByteRange { std::uint64_t Offset=0, Size=0; };
+struct MeshArtifactLayout {
+    std::uint32_t VertexCount=0, VertexStride=0, IndexCount=0;
+    std::uint64_t IndexOffset=0, RenderSize=0;
+};
+bool ReadRenderLayout(const Json::Value& descriptor, std::uint64_t fileSize, MeshArtifactLayout& layout) {
+    if (descriptor["Encoding"] != "RawBytes" || descriptor["IndexFormat"] != "UInt32"
+        || !Unsigned(descriptor["VertexCount"], layout.VertexCount) || layout.VertexCount == 0
+        || !Unsigned(descriptor["VertexStride"], layout.VertexStride) || layout.VertexStride == 0
+        || !Unsigned(descriptor["IndexCount"], layout.IndexCount) || layout.IndexCount == 0
+        || layout.IndexCount % 3 != 0 || !descriptor["IndexOffset"].isUInt64()) return false;
+    layout.IndexOffset = descriptor["IndexOffset"].asUInt64();
+    const std::uint64_t vertexSize = std::uint64_t(layout.VertexCount) * layout.VertexStride;
+    const std::uint64_t indexSize = std::uint64_t(layout.IndexCount) * 4;
+    if (layout.IndexOffset != vertexSize || layout.VertexStride % 4 != 0
+        || vertexSize > fileSize || indexSize > fileSize - vertexSize) return false;
+    layout.RenderSize=vertexSize+indexSize;
+    return layout.RenderSize==fileSize||descriptor.isMember("Collision");
+}
+bool ReadCollisionRange(const Json::Value& descriptor, std::uint64_t renderSize, std::uint64_t fileSize,
+                        bool convex, ByteRange& output) {
+    if(!descriptor.isMember("Collision"))return true;
+    const auto& collision=descriptor["Collision"];
+    if(!collision.isObject()||collision.empty()||collision.size()!=static_cast<Json::ArrayIndex>(
+        collision.isMember("Triangle")+collision.isMember("Convex")))return false;
+    std::uint64_t next=renderSize;
+    const auto readRange=[&](const char* key, ByteRange& range) {
+        if(!collision.isMember(key))return true;
+        const auto& value=collision[key];
+        if(!value.isObject()||!value["Offset"].isUInt64()||!value["Size"].isUInt64())return false;
+        range={value["Offset"].asUInt64(),value["Size"].asUInt64()};
+        if(range.Offset!=next||!range.Size||range.Size>fileSize-next)return false;
+        next+=range.Size;
+        return true;
+    };
+    ByteRange triangle,hull;
+    if(!readRange("Triangle",triangle)||!readRange("Convex",hull)||next!=fileSize)return false;
+    output=convex?hull:triangle;
+    return true;
+}
+}
+
+bool LibraryRuntimeResources::LoadMeshCollision(const GameSproutRuntime::ResourceReference& reference,
+    bool convex, std::vector<std::uint8_t>& output, std::string& error) {
+    output.clear();
+    Json::Value descriptor;
+    QFile file;
+    ResourceState* observed=nullptr;
+    if(!OpenArtifact(reference,eAssetType::Mesh,descriptor,file,observed,error))return false;
+    MeshArtifactLayout layout;
+    ByteRange range;
+    if(!ReadRenderLayout(descriptor,file.size(),layout)||
+       !ReadCollisionRange(descriptor,layout.RenderSize,file.size(),convex,range)) {
+        error="Invalid prepared mesh collision layout";
+        if(observed)observed->ReadFailed=true;
+        return false;
+    }
+    if(!range.Size)return true;
+    output.resize(static_cast<std::size_t>(range.Size));
+    if(!file.seek(static_cast<qint64>(range.Offset))||file.read(reinterpret_cast<char*>(output.data()),
+        static_cast<qint64>(range.Size))!=static_cast<qint64>(range.Size)) {
+        output.clear();
+        error="Incomplete prepared mesh collision data";
+        if(observed)observed->ReadFailed=true;
+        return false;
+    }
+    if(observed)observed->ReadFailed=false;
+    return true;
+}
+
 bool LibraryRuntimeResources::LoadMesh(const GameSproutRuntime::ResourceReference& reference,
     GameSproutRuntime::MeshRenderData& output, std::string& error) {
     output = {};
     Json::Value descriptor;
-    QByteArray bytes;
-    if (!Read(reference, eAssetType::Mesh, descriptor, bytes, error)) return false;
+    QFile file;
+    ResourceState* observed=nullptr;
+    if(!OpenArtifact(reference,eAssetType::Mesh,descriptor,file,observed,error))return false;
+    const auto fail = [&error,observed]() {
+        error = "Invalid prepared mesh layout or index range";
+        if(observed)observed->ReadFailed=true;
+        return false;
+    };
+    MeshArtifactLayout layout;
+    if(!ReadRenderLayout(descriptor,file.size(),layout)||!descriptor["VertexAttributes"].isArray())return fail();
+    const auto bytes=file.read(static_cast<qint64>(layout.RenderSize));
+    if(bytes.size()!=static_cast<qint64>(layout.RenderSize))return fail();
     GameSproutRuntime::MeshRenderData data;
-    const auto fail = [&error]() { error = "Invalid prepared mesh layout or index range"; return false; };
-    if (descriptor["Encoding"] != "RawBytes" || descriptor["IndexFormat"] != "UInt32"
-        || !Unsigned(descriptor["VertexCount"], data.VertexCount) || data.VertexCount == 0
-        || !Unsigned(descriptor["VertexStride"], data.VertexStride) || data.VertexStride == 0
-        || !Unsigned(descriptor["IndexCount"], data.IndexCount) || data.IndexCount == 0
-        || data.IndexCount % 3 != 0 || !descriptor["IndexOffset"].isUInt64()) return fail();
-    data.IndexOffset = descriptor["IndexOffset"].asUInt64();
-    const std::uint64_t vertexSize = std::uint64_t(data.VertexCount) * data.VertexStride;
-    const std::uint64_t indexSize = std::uint64_t(data.IndexCount) * 4;
-    if (data.IndexOffset != vertexSize || data.IndexOffset % 4 != 0 || data.VertexStride % 4 != 0
-        || vertexSize > std::uint64_t(bytes.size()) || indexSize != std::uint64_t(bytes.size()) - vertexSize
-        || !descriptor["VertexAttributes"].isArray()) return fail();
+    data.VertexCount=layout.VertexCount;
+    data.VertexStride=layout.VertexStride;
+    data.IndexCount=layout.IndexCount;
+    data.IndexOffset=layout.IndexOffset;
     bool position = false, normal = false;
     for (const Json::Value& attribute : descriptor["VertexAttributes"]) {
         if (!attribute.isObject() || !attribute["Semantic"].isString()) return fail();
@@ -90,5 +161,6 @@ bool LibraryRuntimeResources::LoadMesh(const GameSproutRuntime::ResourceReferenc
     data.LocalBounds = {minimum * 0.5f + maximum * 0.5f,maximum * 0.5f - minimum * 0.5f};
     data.Bytes.assign(reinterpret_cast<const std::uint8_t*>(bytes.constData()),reinterpret_cast<const std::uint8_t*>(bytes.constData()) + bytes.size());
     output = std::move(data);
+    if(observed)observed->ReadFailed=false;
     return true;
 }

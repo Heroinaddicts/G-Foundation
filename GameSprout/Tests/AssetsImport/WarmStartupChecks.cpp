@@ -1,4 +1,7 @@
 #include "AssetTestSupport.h"
+#include "GameSproutRuntimeExport.h"
+#include "../../Module/Shared/NativeMeshDefinition.h"
+#include <QDataStream>
 #include <chrono>
 
 struct DatabaseActivity {
@@ -100,7 +103,12 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv, in
     TestIDE ide;
     TestProject project;
     TestConsole console;
-    TestEditor editor;
+    struct RuntimeOwner {
+        GameSproutRuntime::IGameSproutRuntime * Value = Export(TEST_BINARY_ROOT);
+        ~RuntimeOwner() { delete Value; }
+    } runtime;
+    Check(runtime.Value && runtime.Value->GetMeshCollisionCooker().Cook, "Runtime mesh cooker unavailable");
+    TestEditor editor(runtime.Value);
     project.Root = projectRoot.toStdString();
     editor.IDE = &ide;
     editor.Modules["Project"] = &project;
@@ -149,7 +157,7 @@ int RunEditor(const QString & projectRoot, int phase, int argc, char ** argv, in
     }
     Check(console.Errors.empty(), "Unexpected import error");
     Json::Value state = Snapshot(library);
-    Check(state["Sources"].size() == (expectedSources < 0 ? (phase == 1 ? 5 : 6) : expectedSources), "Unexpected source inventory size");
+    Check(state["Sources"].size() == (expectedSources < 0 ? (phase == 1 ? 6 : 7) : expectedSources), "Unexpected source inventory size");
     for (const auto & source : state["Sources"])
         Check(source["Status"] == "Ready" || source["Status"] == "NotRequired", "Startup retained a pending/failed source");
     if (phase == 3 && expectedSources < 0) {
@@ -256,6 +264,20 @@ void CheckWarm(const Json::Value & before, const Json::Value & after) {
         && before["ValidationJson"] == after["ValidationJson"], "Unchanged startup rewrote cache data");
 }
 
+QByteArray CollisionMesh() {
+    QByteArray mesh;
+    QDataStream stream(&mesh, QIODevice::WriteOnly);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
+    stream.writeRawData(NativeMeshDefinition::Magic.data(), NativeMeshDefinition::Magic.size());
+    for (quint32 value : {NativeMeshDefinition::Version, 0u, 4u, 12u, 1u, 4u}) stream << value;
+    stream.writeRawData("Hull", 4);
+    for (float value : {0.f,0.f,0.f, 1.f,0.f,0.f, 0.f,1.f,0.f, 0.f,0.f,1.f}) stream << value;
+    for (quint32 value : {0u,2u,1u, 0u,1u,3u, 0u,3u,2u, 1u,2u,3u, 0u,12u,0u}) stream << value;
+    Check(stream.status() == QDataStream::Ok, "Cannot encode collision mesh fixture");
+    return mesh;
+}
+
 void OverwriteSameStamp(const QString & path, const QByteArray & bytes) {
     const std::filesystem::path native(path.toStdU16String());
     const auto timestamp = std::filesystem::last_write_time(native);
@@ -300,9 +322,15 @@ int main(int argc, char ** argv) {
         Check(image.save(root.filePath("Assets/Main.png")) && image.save(root.filePath("Assets/Other.png")), "Cannot create textures");
         std::string error;
         Check(AssetArtifactIO::Write(root.filePath("Assets/Stable.txt"), "before\n", error)
-            && AssetArtifactIO::Write(root.filePath("Assets/Nested/Sub.txt"), "nested\n", error), error);
+            && AssetArtifactIO::Write(root.filePath("Assets/Nested/Sub.txt"), "nested\n", error)
+            && AssetArtifactIO::Write(root.filePath("Assets/Hull.mesh"), CollisionMesh(), error), error);
         const Json::Value initial = StartEditor(root, 1);
-        Check(initial["Activity"]["ResourceLoads"] == 4, "Initial scan did not import each file exactly once");
+        Check(initial["Activity"]["ResourceLoads"] == 5, "Initial scan did not import each file exactly once");
+        const auto & mesh = Manifest(initial, "Hull.mesh");
+        const auto & collision = mesh["Assets"][0]["Descriptor"]["Collision"];
+        Check(mesh["ToolchainHash"].isString() && !mesh["ToolchainHash"].asString().empty()
+            && collision["Convex"]["Size"].asUInt64() && collision["Triangle"]["Size"].asUInt64(),
+            "Cold startup did not publish both cooked collision shapes and the toolchain hash");
         Json::Value material;
         material["Version"] = 1;
         material["Texture"]["Guid"] = initial["Paths"]["Main.png"];
@@ -310,6 +338,7 @@ int main(int argc, char ** argv) {
         WriteJson(root.filePath("Assets/Linked.mat"), material);
         const Json::Value baseline = StartEditor(root, 2);
         Check(baseline["Activity"]["ResourceLoads"] == 1, "Adding one material revalidated unrelated resources");
+        Check(Manifest(baseline, "Hull.mesh") == mesh, "Independent startup changed the cooked mesh generation");
         const Json::Value warm = StartEditor(root, 3);
         CheckWarm(baseline, warm);
 

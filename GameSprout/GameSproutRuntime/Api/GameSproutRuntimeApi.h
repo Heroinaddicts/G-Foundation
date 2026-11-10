@@ -34,6 +34,13 @@ namespace GameSproutRuntime {
     class IRuntimeViewport;
     struct NativeWindow;
     class IRuntimeResourceProvider;
+    struct MeshCollisionBakeInput;
+    struct CookedMeshCollisionData;
+    using fCookMeshCollision = bool (*)(const MeshCollisionBakeInput&, CookedMeshCollisionData&, std::string&);
+    struct MeshCollisionCooker {
+        fCookMeshCollision Cook = nullptr;
+        std::uint64_t Format = 0;
+    };
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScriptComponent;
     struct ScriptTypeRegistration;
     struct ScriptTypeInfo;
@@ -536,6 +543,11 @@ namespace GameSproutRuntime {
         // Host 每帧调用一次，放在所有逻辑步和 Scene/Game 视口处理之后。
         // 提交结构并回收最终无场景归属的子树；不推进时间，构建范围内暂缓回收。
         virtual bool EndFrame(std::string& error) = 0;
+        // Thread-safe offline cooker. The function uses no instance state and
+        // stays callable while the Runtime module remains loaded.
+        // A valid render mesh may have no usable triangle mesh or convex hull.
+        // Unsupported shape types leave their corresponding output empty.
+        virtual MeshCollisionCooker GetMeshCollisionCooker() const { return {}; }
     };
 
 }

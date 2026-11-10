@@ -4,6 +4,7 @@
 #include "RuntimeAnimationData.h"
 #include "RuntimeShaderData.h"
 #include "Memory/ByteBuffer.h"
+#include <span>
 
 namespace GameSproutRuntime {
 
@@ -30,6 +31,20 @@ struct MeshRenderData {
     std::vector<SkinBinding> Bones;
     std::vector<MeshSection> Sections;
     Bounds LocalBounds;
+};
+
+// Borrowed prepared vertex and UInt32 index bytes. Only positions and indices
+// are read when building an optional native collision artifact.
+struct MeshCollisionBakeInput {
+    std::span<const std::uint8_t> Bytes;
+    std::uint32_t VertexCount = 0;
+    std::uint32_t VertexStride = 0;
+    std::uint32_t IndexCount = 0;
+    std::uint32_t PositionOffset = 0;
+    std::uint64_t IndexOffset = 0;
+};
+struct CookedMeshCollisionData {
+    std::vector<std::uint8_t> Triangle, Convex;
 };
 
 enum class TextureFilter : std::uint8_t { Nearest, Linear };
@@ -110,6 +125,12 @@ public:
         data={};error="Humanoid Avatar provider is unavailable";return false;
     }
     virtual bool LoadAvatarMask(const ResourceReference&, AvatarMaskData& data, std::string& error) { data={};error="AvatarMask loading is unavailable";return false; }
+    // Success with empty bytes means this mesh has no native collision artifact
+    // for the requested shape type. Runtime can still build from LoadMesh.
+    virtual bool LoadMeshCollision(const ResourceReference&, bool convex,
+                                   std::vector<std::uint8_t>& bytes, std::string& error) {
+        bytes.clear();error.clear();return true;
+    }
 };
 
 }

@@ -16,6 +16,7 @@ namespace AssetArtifactIO {
 inline constexpr uint32_t CurrentDataVersion(eAssetType type) {
     switch(type) {
     case eAssetType::Mesh:
+        return 4;
     case eAssetType::Model:
     case eAssetType::Skeleton:
     case eAssetType::AnimationClip:

@@ -45,6 +45,7 @@ private:
     IProject * _Project = nullptr;
     IAssetsManager * _Assets = nullptr;
     IShaderCompiler * _ShaderCompiler = nullptr;
+    GameSproutRuntime::MeshCollisionCooker _MeshCollisionCooker;
     ILibraryManager * _Library = nullptr;
     UInt64 _Owner = Foundation::InvalidTaskOwnerId;
     struct RunningImport { std::string GuidString; uint64_t Batch = 0; };
