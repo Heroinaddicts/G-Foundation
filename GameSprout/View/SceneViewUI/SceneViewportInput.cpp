@@ -25,6 +25,8 @@ void SceneViewport::ReleaseEditingCapture() {
     unsetCursor();
 }
 void SceneViewport::ClearInput() {
+    if(_Drag!=DragMode::None||_WheelNavigationSettle.isActive())RequestRender();
+    _WheelNavigationSettle.stop();
     _Keys.clear();_Drag=DragMode::None;_DragButton=Qt::NoButton;
     // 先结束事务，再释放捕获；UngrabMouse 可能同步重新进入此函数。
     _Editing->Cancel();
@@ -88,7 +90,10 @@ void SceneViewport::mouseReleaseEvent(QMouseEvent* event) {
 void SceneViewport::wheelEvent(QWheelEvent* event) {
     const float steps=event->angleDelta().y()!=0?static_cast<float>(event->angleDelta().y())/120.0f:static_cast<float>(event->pixelDelta().y())/40.0f;
     if(steps==0){event->ignore();return;}
-    _Editing->Cancel();_Tools->CancelDrag();_Camera.Dolly(steps);event->accept();
+    _Editing->Cancel();_Tools->CancelDrag();
+    // Treat consecutive wheel events as one camera navigation gesture.
+    if(_ReuseShadowsWhileNavigating)_WheelNavigationSettle.start();
+    _Camera.Dolly(steps);event->accept();
 }
 void SceneViewport::keyPressEvent(QKeyEvent* event) {
     if(event->key()==Qt::Key_Escape&&(_Drag!=DragMode::None||_Editing->IsDragging()||_Tools->Dragging())){ClearInput();event->accept();return;}

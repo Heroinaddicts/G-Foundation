@@ -35,6 +35,10 @@ public:
     virtual void DeactivateSceneTool(ISceneTool*) {}
     virtual ISceneTool* GetActiveSceneTool() const { return nullptr; }
     virtual void UnregisterSceneTools(const void*) {}
+
+    // 当前 Scene 视口的导航选项。View 初始化后可读写，工具栏同步显示。
+    virtual bool IsShadowReuseWhileNavigatingEnabled() const { return false; }
+    virtual void SetShadowReuseWhileNavigatingEnabled(bool) {}
 };
 
 #endif //__ISceneViewUI_h__

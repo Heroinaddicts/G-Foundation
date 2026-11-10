@@ -22,6 +22,9 @@ public:
     void ReleaseGameInput();
     bool IsRenderingAvailable() const {return _Renderer!=nullptr;}
     std::function<void(const std::string&)> StatusChanged;
+signals:
+    void FrameSubmitted();
+    void FrameStreamReset();
 protected:
     bool event(QEvent*) override;
     bool eventFilter(QObject*,QEvent*) override;

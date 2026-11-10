@@ -25,6 +25,8 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     if(!qobject_cast<QApplication*>(QCoreApplication::instance()))return false;
     _Dispatch=new QObject();_Window=new QWidget();_Ui=new Ui::GameViewUIWindow();_Ui->setupUi(_Window);
     _Viewport=_Ui->gameViewport;
+    QObject::connect(_Viewport,&GameViewport::FrameSubmitted,_Ui->fpsLabel,&ViewportFrameRateLabel::FrameSubmitted);
+    QObject::connect(_Viewport,&GameViewport::FrameStreamReset,_Ui->fpsLabel,&ViewportFrameRateLabel::Reset);
     _Viewport->Initialize(_Runtime,
         _Resources?_Resources->GetResourceProvider():nullptr);
     _Viewport->StatusChanged=[this](const std::string& text){if(_Window)_Ui->statusLabel->setText(QString::fromStdString(text));};
@@ -65,9 +67,10 @@ void GameViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate(
 void GameViewUI::Hide(){if(_Window)_Window->hide();}
 void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
+    if(_Loading||!_DockerContentVisible||!_Viewport||!_Window||!_Viewport->isVisible())return;
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    const bool animateMaterials=!event.GameplayActive&&_Ui&&_Ui->materialPreviewButton->isChecked();
-    if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene,continuous,animateMaterials);
+    const bool animateMaterials=!event.GameplayActive&&_Ui->materialPreviewButton->isChecked();
+    _Viewport->RenderGame(_ActiveScene,continuous,animateMaterials);
 }
 void GameViewUI::OnActiveSceneChanged() {
     _ActiveScene=_Scenes?_Scenes->GetMainScene():nullptr;

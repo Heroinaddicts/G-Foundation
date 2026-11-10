@@ -41,6 +41,8 @@ public:
     void DeactivateSceneTool(ISceneTool*) override;
     ISceneTool* GetActiveSceneTool() const override;
     void UnregisterSceneTools(const void*) override;
+    bool IsShadowReuseWhileNavigatingEnabled() const override;
+    void SetShadowReuseWhileNavigatingEnabled(bool enabled) override;
 
 private:
     IPlayMode* _PlayMode=nullptr;

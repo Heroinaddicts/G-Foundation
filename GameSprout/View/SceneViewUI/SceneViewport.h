@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QSet>
 #include <QPointF>
+#include <QTimer>
 #include <functional>
 class QWindow;
 class ISceneManager;
@@ -21,6 +22,8 @@ public:
     void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false,bool animateMaterials=false);
     void RequestRender(){_NeedsRender=true;}
     bool NeedsRender() const{return _NeedsRender;}
+    bool IsShadowReuseWhileNavigatingEnabled() const {return _ReuseShadowsWhileNavigating;}
+    void SetShadowReuseWhileNavigatingEnabled(bool enabled);
     void OnSceneVisualChanged(std::uint64_t sceneID) override;
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override {}
     void Shutdown();
@@ -43,6 +46,9 @@ public:
     std::function<bool()> FocusRequested;
     std::function<void(const std::string&)> StatusChanged;
     static bool IsHeadless();
+signals:
+    void FrameSubmitted();
+    void FrameStreamReset();
 protected:
     bool event(QEvent*) override;
     bool eventFilter(QObject*,QEvent*) override;
@@ -72,6 +78,7 @@ private:
     Qt::MouseButton _DragButton=Qt::NoButton;
     QPointF _LastMouse;
     QSet<int> _Keys;
+    QTimer _WheelNavigationSettle;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
     GameSproutRuntime::IRuntimeViewport* _Renderer=nullptr;
@@ -84,6 +91,7 @@ private:
     bool _ViewportChanged=true;
     bool _NeedsRender=true,_RuntimeSubscribed=false;
     bool _AnimatedMaterials=false;
+    bool _ReuseShadowsWhileNavigating=true;
     GameSproutRuntime::RenderedCamera _PresentedCamera;
     std::uint64_t _SceneID=0;
     std::string _EditingError;

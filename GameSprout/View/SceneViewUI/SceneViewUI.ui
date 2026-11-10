@@ -8,7 +8,7 @@
     <height>240</height>
    </size>
   </property>
-  <layout class="QVBoxLayout" name="mainLayout">
+  <layout class="QGridLayout" name="mainLayout">
    <property name="spacing">
     <number>0</number>
    </property>
@@ -24,7 +24,7 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
-   <item>
+   <item row="0" column="0">
     <widget class="QScrollArea" name="toolScrollArea">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -334,6 +334,19 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="reuseNavigationShadowsCheck">
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+         <property name="toolTip">
+          <string>拖动自由镜头或滚动缩放时复用阴影以提高帧率。停止操作后按新视角更新。关闭后，每次镜头变化都会更新阴影。</string>
+         </property>
+         <property name="text">
+          <string>导航时复用阴影</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QToolButton" name="snapSettingsButton">
          <property name="text">
           <string>吸附设置</string>
@@ -503,7 +516,25 @@
      </property>
     </widget>
    </item>
-   <item>
+   <item row="0" column="1">
+    <widget class="ViewportFrameRateLabel" name="fpsLabel">
+     <property name="minimumSize">
+      <size><width>82</width><height>0</height></size>
+     </property>
+     <property name="maximumSize">
+      <size><width>82</width><height>16777215</height></size>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignVCenter</set>
+     </property>
+     <property name="margin"><number>6</number></property>
+     <property name="text"><string notr="true">— FPS</string></property>
+     <property name="toolTip">
+      <string>此视口每秒成功提交的画面数。没有持续出帧时显示 — FPS。</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0" colspan="2">
     <widget class="SceneViewport" name="sceneViewport">
      <property name="focusPolicy">
       <enum>Qt::StrongFocus</enum>
@@ -532,6 +563,7 @@
   <property name="styleSheet">
    <string>QWidget#SceneViewUIWindow,QWidget#sceneViewport { background:#202329; color:#dce2e9; }
 QScrollArea#toolScrollArea,QWidget#toolContents { background:#292c32; border:0; }
+QLabel#fpsLabel { background:#292c32; color:#dce2e9; font-size:12px; }
 QToolButton { color:#dce2e9; background:transparent; border:1px solid transparent; border-radius:3px; padding:0; }
 QToolButton:hover { background:#414750; border-color:#626b77; }
 QToolButton:checked { background:#3a6588; border-color:#74a4cd; }
@@ -552,6 +584,11 @@ QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal { background:tra
    <class>SceneViewport</class>
    <extends>QWidget</extends>
    <header>SceneViewport.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ViewportFrameRateLabel</class>
+   <extends>QLabel</extends>
+   <header>../Shared/ViewportFrameRateLabel.h</header>
   </customwidget>
  </customwidgets>
  <resources>

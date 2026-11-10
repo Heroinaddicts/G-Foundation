@@ -31,6 +31,7 @@ void GameViewport::DestroyGPU() {
     _AnimatedMaterials=false;
     _Attempted=false;
     RequestRender();
+    emit FrameStreamReset();
     delete renderer;
 }
 void GameViewport::Shutdown(){
@@ -122,7 +123,7 @@ bool GameViewport::EnsureRendering() {
 }
 void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
+    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();emit FrameStreamReset();}
     if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if (!_Initialized||!isVisible()||width()<=0||height()<=0||_Rendering) return;
     if(!Headless()&&(!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()))return;
@@ -152,6 +153,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
         RequestRender();
         return;
     }
+    emit FrameSubmitted();
     _AnimatedMaterials=statistics.RequiresContinuousRendering;
     if(!diagnostic.empty()){Status(diagnostic);return;}
     std::string status=std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+

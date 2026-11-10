@@ -12,6 +12,12 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
     _Editing=new SceneViewportEditing(*this);
     _Tools=new SceneToolRouter(*this);
     _Camera.Changed=[this]{RequestRender();};
+    _WheelNavigationSettle.setSingleShot(true);
+    _WheelNavigationSettle.setTimerType(Qt::PreciseTimer);
+    _WheelNavigationSettle.setInterval(180);
+    connect(&_WheelNavigationSettle,&QTimer::timeout,this,[this] {
+        if(_Drag==DragMode::None)RequestRender();
+    });
     if(!IsHeadless()) {
         setAttribute(Qt::WA_NativeWindow);
         setAttribute(Qt::WA_DontCreateNativeAncestors);
@@ -53,6 +59,7 @@ void SceneViewport::DestroyGpu() {
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
     RequestRender();
+    emit FrameStreamReset();
     delete renderer;
 }
 void SceneViewport::Shutdown() {
@@ -67,6 +74,12 @@ void SceneViewport::Shutdown() {
     _Runtime=nullptr;_Initialized=false;
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}
+void SceneViewport::SetShadowReuseWhileNavigatingEnabled(bool enabled) {
+    if(_ReuseShadowsWhileNavigating==enabled)return;
+    _ReuseShadowsWhileNavigating=enabled;
+    if(!enabled)_WheelNavigationSettle.stop();
+    RequestRender();
+}
 void SceneViewport::OnSceneVisualChanged(std::uint64_t sceneID) {if(sceneID==_SceneID)RequestRender();}
 bool SceneViewport::GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const {
     camera=_ViewportChanged ? GameSproutRuntime::RenderedCamera{} : _PresentedCamera;
@@ -153,9 +166,9 @@ bool SceneViewport::EnsureRendering() {
 }
 void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};RequestRender();}
+    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};RequestRender();emit FrameStreamReset();}
     if(_Drag!=DragMode::None)AdvanceInput(dt);
-    if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials)&&_Drag==DragMode::None)return;
+    if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if(_Rendering||!CanRender())return;
     _NeedsRender=false;
     if(!EnsureRendering())return;
@@ -164,6 +177,8 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=grid;
     view.WaitForSurface=false;
+    view.ReuseShadowsWhileNavigating=_ReuseShadowsWhileNavigating&&
+        (_Drag!=DragMode::None||_WheelNavigationSettle.isActive());
     view.DrawScene=scene!=nullptr;
     view.Camera.View=_Camera.ViewMatrix();view.Camera.Position=_Camera.GetState().Position;
     const auto& camera=_Camera.GetState();
@@ -185,6 +200,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
         RequestRender();
         return;
     }
+    emit FrameSubmitted();
     _Renderer->GetRenderedCamera(_PresentedCamera);
     const bool refreshOverlays=_ViewportChanged;
     _ViewportChanged=false;
@@ -195,7 +211,10 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     if(info.Width&&info.Height) {
         std::string message=std::to_string(info.Width)+" × "+std::to_string(info.Height)+" px · "+std::to_string(info.DrawCalls)+" draws · "+std::to_string(info.Triangles)+" triangles · skipped "+std::to_string(info.SkippedObjects);
         if(info.InstancedDrawCalls)message+=" · instanced "+std::to_string(info.InstancedInstances)+" · saved "+std::to_string(info.SavedDrawCalls)+" draws";
-        if(info.ShadowCascadeCount)message+=" · shadow draws "+std::to_string(info.ShadowDrawCalls)+
+        if(info.LayeredShadows)message+=" · static shadow "+std::to_string(info.StaticShadowDrawCalls)+" draws / "+
+            std::to_string(info.StaticShadowMapUpdates)+" updates · dynamic shadow "+
+            std::to_string(info.DynamicShadowDrawCalls)+" draws / "+std::to_string(info.DynamicShadowMapUpdates)+" updates";
+        else if(info.ShadowCascadeCount)message+=" · shadow draws "+std::to_string(info.ShadowDrawCalls)+
             " · cascades "+std::to_string(info.ShadowCascadeCount)+" · shadow updates "+std::to_string(info.ShadowMapUpdates);
         const std::string diagnostic=_Renderer->GetLastError();
         if(!diagnostic.empty())message+=" · "+diagnostic;

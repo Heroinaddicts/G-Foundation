@@ -202,6 +202,15 @@ int main(int argc,char** argv) {
         Check(!content->findChild<QLabel*>("inputHelpLabel")&&!content->findChild<QLabel*>("statusLabel"),"Permanent help/statistics still consume Scene viewport height");
         auto* strip=content->findChild<QScrollArea*>("toolScrollArea");
         Check(strip&&strip->height()<=46&&viewport->height()>=content->height()-48,"Compact Scene toolbar reserves multiple permanent rows");
+        auto* reuseShadows=content->findChild<QCheckBox*>("reuseNavigationShadowsCheck");
+        Check(reuseShadows&&reuseShadows->isChecked()&&view->IsShadowReuseWhileNavigatingEnabled(),
+            "Scene toolbar must enable navigation shadow reuse by default");
+        reuseShadows->click();
+        Check(!reuseShadows->isChecked()&&!view->IsShadowReuseWhileNavigatingEnabled(),
+            "Scene shadow toggle did not update the public View policy");
+        view->SetShadowReuseWhileNavigatingEnabled(true);
+        Check(reuseShadows->isChecked()&&view->IsShadowReuseWhileNavigatingEnabled(),
+            "Public Scene shadow setter did not update the toolbar toggle");
         auto* help=host->findChild<QToolButton*>("sceneHelpButton");
         auto* statistics=host->findChild<QToolButton*>("statisticsButton");
         Check(help&&statistics&&help->isVisible(),"Scene title actions are not available");
