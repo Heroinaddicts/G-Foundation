@@ -1,1 +1,6 @@
-<RCC><qresource prefix="/GameSprout/Script"><file alias="Script.hpp.template">Templates/Script.hpp.template</file></qresource></RCC>
+<RCC>
+    <qresource prefix="/GameSprout/Script">
+        <file alias="Script.hpp.template">Templates/Script.hpp.template</file>
+        <file alias="Module.hpp.template">Templates/Module.hpp.template</file>
+    </qresource>
+</RCC>

@@ -125,12 +125,12 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
     const QString artifactRoot=QString::fromStdString(request.ArtifactRoot);
     const QString artifactPath=QDir(artifactRoot).filePath(QString::fromStdString(request.AssemblyGuid)+"_1."+QFileInfo(LibraryName()).suffix());
     if(result.Fingerprint==_LoadedFingerprint&&CurrentLibrary()) {
-        bool same=result.Types.size()==_Types.size();
+        bool same=result.Types.size()==_Types.size() && result.Modules==_ModuleTypes;
         for(const auto& description:result.Types) {
             const auto current=std::find_if(_Types.begin(),_Types.end(),[&](const auto& value){return value.Type.TypeID==description.TypeID;});
             if(current==_Types.end()||current->Type.Name!=description.Name||!SameFields(current->Type.Fields,description.Fields)) {same=false;break;}
         }
-        if(!same) {error="相同 GameLogic 构建标识带有不同的字段描述，请重新编译。";return false;}
+        if(!same) {error="相同 GameLogic 构建标识带有不同的类型描述，请重新编译。";return false;}
         if(QFileInfo::exists(artifactPath)) return true;
         if(!QDir().mkpath(artifactRoot)) {error="Cannot create Library/Artifact";return false;}
         // Rebuild a removed Artifact from the actual successful, mapped slot.
@@ -155,7 +155,9 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
         discard();return false;
     }
     std::vector<GameSproutRuntime::ScriptTypeRegistration> registrations;
+    std::vector<GameSproutRuntime::GameModuleRegistration> moduleRegistrations;
     std::vector<EditorScriptType> types;
+    std::vector<GameSproutRuntime::GameModuleTypeInfo> moduleTypes;
     std::string nextFingerprint,nextLibraryHash;
     bool published=false,artifactPublished=false;
     const bool hadArtifact=QFileInfo::exists(artifactPath);
@@ -177,10 +179,13 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
         }
         const auto get=error.empty()?reinterpret_cast<GameSproutRuntime::fGetScriptModule>(library->resolve(GameSproutRuntime::ScriptModuleEntryName)):nullptr;
         const auto* api=get?get():nullptr;
-        if(error.empty()&&(!api||api->Version!=GameSproutRuntime::ScriptModuleABIVersion||(api->Count&&!api->Types)||api->Count>65536))
+        if(error.empty()&&(!api||api->Version!=GameSproutRuntime::ScriptModuleABIVersion||
+            (api->Count&&!api->Types)||api->Count>65536||
+            (api->ModuleCount&&!api->Modules)||api->ModuleCount>65536))
             error="GameLogic export or SDK ABI is invalid";
-        if(error.empty()&&(!api->BuildID||result.Fingerprint!=api->BuildID||api->Count!=result.Types.size()))
-            error="GameLogic 字段描述与动态库构建版本不一致。";
+        if(error.empty()&&(!api->BuildID||result.Fingerprint!=api->BuildID||api->Count!=result.Types.size()||
+            api->ModuleCount!=result.Modules.size()))
+            error="GameLogic 类型描述与动态库构建版本不一致。";
         nextFingerprint=result.Fingerprint;nextLibraryHash=result.LibraryHash;
         std::set<std::string> identifiers;
         // __FILE__ belongs to the one fixed Sources tree. Lexical mapping also
@@ -213,6 +218,26 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
             type.Source.Guid=match->SourceGuid;type.Source.LocalID=1;type.Type.SourceFile=type.Path;
             registrations.push_back(registration);registrations.back().Source=type.Source;types.push_back(std::move(type));
         }
+        std::set<std::string> moduleNames;
+        for(std::size_t index=0;error.empty()&&index<api->ModuleCount;++index) {
+            const auto& registration=api->Modules[index];
+            const auto& description=result.Modules[index];
+            if(registration.Name.empty()||!registration.Create||!registration.Destroy||
+                !moduleNames.insert(registration.Name).second||!Guid(registration.SourceGuid).IsValid()||
+                !identifiers.insert(registration.SourceGuid).second||
+                registration.Name!=description.Name||registration.SourceGuid!=description.SourceGuid||
+                registration.SourceFile!=description.SourceFile) {
+                error="GameLogic contains an invalid, duplicate, or mismatched module descriptor";break;
+            }
+            const auto source=std::find_if(request.Sources.begin(),request.Sources.end(),[&](const auto& entry) {
+                return entry.Path==registration.SourceFile && entry.SourceGuid==registration.SourceGuid;
+            });
+            if(source==request.Sources.end()||QFileInfo(QString::fromStdString(source->Path)).suffix().toLower()!="hpp") {
+                error="Registered gameplay module has no matching .hpp source: "+registration.SourceFile;break;
+            }
+            moduleRegistrations.push_back(registration);
+            moduleTypes.push_back(description);
+        }
         if(error.empty()&&!QDir().mkpath(artifactRoot)) error="Cannot create Library/Artifact";
         QSaveFile artifact(artifactPath);
         QFile staged(loadedPath);
@@ -233,7 +258,7 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
             else artifactPublished=true;
         }
         if(error.empty()) {
-            if(_Runtime->ReplaceScriptTypes(remove,registrations,error)) published=true;
+            if(_Runtime->ReplaceGameLogicTypes(remove,registrations,moduleRegistrations,error)) published=true;
             else if(error.empty()) error="Runtime rejected the GameLogic candidate";
         }
     } catch(const std::exception& exception) {
@@ -258,6 +283,7 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
     }
     const int previousSlot=_CurrentSlot;
     _CurrentSlot=candidateSlot;_Registrations.swap(registrations);_Types.swap(types);
+    _ModuleTypes.swap(moduleTypes);
     _LoadedFingerprint.swap(nextFingerprint);_LoadedLibraryHash.swap(nextLibraryHash);
     registrations.clear(); // Every old DLL-owned closure dies before retirement.
     if(previousSlot>=0) {

@@ -109,6 +109,19 @@ struct ScriptTypeRegistration {
     void (*Destroy)(IScript*) = nullptr;
     std::vector<ScriptFieldRegistration> Fields;
 };
+struct GameModuleTypeInfo {
+    std::string Name;
+    std::string SourceGuid;
+    std::string SourceFile;
+    bool operator==(const GameModuleTypeInfo&) const = default;
+};
+struct GameModuleRegistration {
+    std::string Name;
+    std::string SourceGuid;
+    std::string SourceFile;
+    IModule* (*Create)() = nullptr;
+    void (*Destroy)(IModule*) = nullptr;
+};
 struct BuiltinComponentInfo {
     std::string TypeID, Name, Category;
     bool Intrinsic = false;
@@ -153,6 +166,13 @@ inline IComponent* IGameSproutRuntime::AddBuiltinComponent(IGameObject*,const st
 inline bool IGameSproutRuntime::RemoveBuiltinComponent(IGameObject*,const std::string&,std::string& error) { error="Component removal is unavailable"; return false; }
 inline bool IGameSproutRuntime::RegisterScriptType(const ScriptTypeRegistration&,std::string& error) { error="Native scripts are unavailable"; return false; }
 inline bool IGameSproutRuntime::ReplaceScriptTypes(const std::vector<std::string>&,const std::vector<ScriptTypeRegistration>&,std::string& error) { error="Native scripts are unavailable"; return false; }
+inline bool IGameSproutRuntime::ReplaceGameLogicTypes(const std::vector<std::string>& removeScriptTypes,
+    const std::vector<ScriptTypeRegistration>& scripts, const std::vector<GameModuleRegistration>& modules,
+    std::string& error) {
+    if (modules.empty()) return ReplaceScriptTypes(removeScriptTypes, scripts, error);
+    error = "Native gameplay modules are unavailable";
+    return false;
+}
 inline bool IGameSproutRuntime::UnregisterScriptType(const std::string&,std::string& error) { error="Native scripts are unavailable"; return false; }
 inline std::vector<ScriptTypeInfo> IGameSproutRuntime::GetScriptTypes() const { return {}; }
 inline IScriptComponent* IGameSproutRuntime::AddScriptComponent(IGameObject*,const std::string&,const ResourceReference&,std::uint64_t,std::string& error) { error="Native scripts are unavailable"; return nullptr; }
@@ -160,13 +180,15 @@ inline bool IGameSproutRuntime::RemoveScriptComponent(IGameObject*,std::uint64_t
 inline bool IGameSproutRuntime::SetScriptExecutionEnabled(bool,std::string& error) { error="Native scripts are unavailable"; return false; }
 
 // Fixed native library entry contract. All SDK/compiler/CRT versions must match.
-inline constexpr std::uint32_t ScriptModuleABIVersion = 5;
+inline constexpr std::uint32_t ScriptModuleABIVersion = 6;
 inline constexpr const char* ScriptModuleEntryName = "GetGameSproutGameLogic";
 struct ScriptModuleAPI {
     std::uint32_t Version = ScriptModuleABIVersion;
     const ScriptTypeRegistration* Types = nullptr;
     std::size_t Count = 0;
     const char* BuildID = nullptr;
+    const GameModuleRegistration* Modules = nullptr;
+    std::size_t ModuleCount = 0;
 };
 using fGetScriptModule = const ScriptModuleAPI* (*)() noexcept;
 }

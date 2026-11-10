@@ -1,6 +1,6 @@
 #pragma once
 // Compiler-generated bindings and host integration only. Gameplay sources use
-// RuntimeScriptModule.h and GAMESPROUT_SCRIPT(Type).
+// RuntimeScriptModule.h and a declaration marker.
 #include "../RuntimeScriptModule.h"
 #include "ScriptNativeValues.h"
 #include <cmath>
@@ -57,6 +57,10 @@ GAMESPROUT_SCRIPT_LOCAL inline std::vector<ScriptTypeRegistration>& ScriptModule
     static std::vector<ScriptTypeRegistration> types;
     return types;
 }
+GAMESPROUT_SCRIPT_LOCAL inline std::vector<GameModuleRegistration>& GameModuleTypes() {
+    static std::vector<GameModuleRegistration> modules;
+    return modules;
+}
 template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterScriptClass(const char* id,const char* name,const char* file,
     const ResourceReference& source,std::vector<ScriptFieldRegistration> fields={}) {
     static_assert(std::is_base_of_v<ScriptBehaviour,T>);
@@ -74,10 +78,24 @@ template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterScriptClass(const char
     ScriptModuleTypes().push_back(std::move(type));
     return true;
 }
+template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterGameModuleClass(const char* name, const char* guid,
+    const char* file) {
+    static_assert(std::is_convertible_v<T*, IModule*>, "Gameplay modules must publicly derive from IModule");
+    static_assert(std::is_default_constructible_v<T>, "Gameplay modules must be default constructible");
+    GameModuleRegistration module;
+    module.Name = name;
+    module.SourceGuid = guid;
+    module.SourceFile = file;
+    module.Create = []() -> IModule* { return new T(); };
+    module.Destroy = [](IModule* instance) { delete instance; };
+    GameModuleTypes().push_back(std::move(module));
+    return true;
+}
 GAMESPROUT_SCRIPT_LOCAL inline const ScriptModuleAPI* GetScriptModuleAPI(const char* buildID=nullptr) noexcept {
     static ScriptModuleAPI api;
     api.BuildID=buildID;
     api.Types=ScriptModuleTypes().data();api.Count=ScriptModuleTypes().size();
+    api.Modules=GameModuleTypes().data();api.ModuleCount=GameModuleTypes().size();
     return &api;
 }
 }

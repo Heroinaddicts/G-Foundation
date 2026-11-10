@@ -14,6 +14,7 @@ protected:
 };
 namespace Internal {
 template<typename T> struct ScriptMarker {};
+template<typename T> struct ModuleMarker {};
 template<typename T> struct ScriptFieldAccess;
 }
 }
@@ -33,3 +34,8 @@ template<typename T> struct ScriptFieldAccess;
 // and embeds no persistent identity or field bridge in user source files.
 #define GAMESPROUT_SCRIPT(Type) \
     namespace { using GAMESPROUT_SCRIPT_JOIN(GameSproutScriptMarker_,__COUNTER__) = ::GameSproutRuntime::Internal::ScriptMarker<Type>; }
+
+// The GameLogic build generates a factory from this declaration. Instances
+// belong to a Runtime gameplay session.
+#define GAMESPROUT_REGIST_MODULE(Type) \
+    namespace { using GAMESPROUT_SCRIPT_JOIN(GameSproutModuleMarker_,__COUNTER__) = ::GameSproutRuntime::Internal::ModuleMarker<Type>; }

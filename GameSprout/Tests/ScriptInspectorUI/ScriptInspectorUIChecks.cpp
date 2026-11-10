@@ -57,7 +57,7 @@ public:
     std::vector<EditorScriptType> Types;
     std::vector<IScriptEditorListener*> Listeners;
     ScriptBuildState State;
-    bool RejectCreation=false;std::string Created;
+    bool RejectCreation=false;std::string Created,CreatedModule;
     GameSproutRuntime::IGameSproutRuntime* Runtime=nullptr;
     SceneService* Scenes=nullptr;
     std::uint64_t Epoch=1,Located=0;
@@ -83,6 +83,9 @@ public:
     bool CreateScript(const std::string& directory,const std::string& name,std::string& path,std::string& error)override{
         if(RejectCreation){error="脚本已存在，不能覆盖。";return false;}
         path=(directory.empty()?"":directory+"/")+name+".hpp";Created=path;return true;
+    }
+    bool CreateModule(const std::string& directory,const std::string& name,std::string& path,std::string&)override{
+        path=(directory.empty()?"":directory+"/")+name+".hpp";CreatedModule=path;return true;
     }
     bool RequestCompile(std::string&)override{State.Compiling=true;for(auto* listener:Listeners)listener->OnScriptBuildStateChanged(State);return true;}
 private:
@@ -200,16 +203,22 @@ bool ScriptService::LocateObjectReference(const ScriptFieldTarget& target,const 
 }
 class ProjectView final:public IProjectAssetsUI {
 public:
-    fContextActionCallback Create=nullptr;std::string Notified;
+    fContextActionCallback CreateScript=nullptr,CreateModule=nullptr;std::string Notified;
     fAssetOpenHandler Open;
     const void* OpenOwner=nullptr;
     std::vector<ProjectAssetSelection> GetSelection()const override{return {};}
     bool NavigateToDirectory(const std::string&)override{return true;}
     bool RegisterAssetOpenHandler(const void* owner,const fAssetOpenHandler& handler)override{OpenOwner=owner;Open=handler;return true;}
     bool RegisterContextAction(const void*,const std::vector<std::string>& path,fContextActionCallback callback,const fContextActionEnabled&)override{
-        Check(path==std::vector<std::string>{"Create","Script.hpp"},"Wrong script creation menu");Create=callback;return true;
+        if(path==std::vector<std::string>{"Create","Script.hpp"})CreateScript=callback;
+        else if(path==std::vector<std::string>{"Create","Module.hpp"})CreateModule=callback;
+        else Check(false,"Wrong C++ source creation menu");
+        return true;
     }
-    void UnregisterExtensions(const void* owner)override{if(OpenOwner==owner){Open={};OpenOwner=nullptr;}Create=nullptr;}
+    void UnregisterExtensions(const void* owner)override{
+        if(OpenOwner==owner){Open={};OpenOwner=nullptr;}
+        CreateScript=nullptr;CreateModule=nullptr;
+    }
     ProjectAssetActionContext GetActionContext()const override{return {"Scripts",{}};}
     void NotifyAssetCreated(const std::string& path)override{Notified=path;}
 private:
@@ -360,12 +369,15 @@ int main(int argc,char** argv){
         Meta sourceMeta("0123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/PlayerControllerWithLongName.hpp");
         Meta textureMeta("3123456789abcdef0123456789abcdef",eAssetImporterType::Texture,"Textures/Player.png");
         Meta otherScript("4123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/Player.lua");
-        assets.Values={&sourceMeta,&textureMeta,&otherScript};
+        Meta moduleMeta("5123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/ScoreModule.hpp");
+        assets.Values={&sourceMeta,&textureMeta,&otherScript,&moduleMeta};
         Editor editor(runtime,scripts,inspector,project,assets,code,console);ScriptUI feature;
         Check(GameSproutEditor::GameSproutFinal::Start(feature,editor),"Cannot launch ScriptUI");
         Check(project.Open&&project.OpenOwner==&feature,"Script source open handler not registered");
         const ProjectAssetSelection sourceSelection{sourceMeta._Guid.GetGuidString(),0,false};
         Check(project.Open(sourceSelection)&&code.Opened==std::vector<std::string>{sourceMeta.Path},"Asset source did not request the game code project");
+        Check(project.Open({moduleMeta._Guid.GetGuidString(),0,false})&&code.Opened.back()==moduleMeta.Path,
+            "Gameplay module did not open through the shared game code project");
         sourceMeta.Path="Nested Folder/角色/Player.HPP";
         Check(project.Open(sourceSelection)&&code.Opened.back()==sourceMeta.Path,"Handler retained a stale path or rejected case-insensitive .hpp");
         const auto openCount=code.Opened.size();
@@ -548,17 +560,31 @@ int main(int argc,char** argv){
         auto forms=objectUI.findChildren<QWidget*>("ScriptComponentEditorForm");forms[1]->findChild<QToolButton*>("removeButton")->click();Pump();
         Check(first->GetScriptInstanceID()==firstID&&object->GetComponentCount()==3,"Removing second script removed another component");
         Check(scripts.Listeners.size()==1&&scripts.Observed.size()==1,"Removed script editor kept its event subscription");
-        Check(project.Create,"Script create menu not registered");project.Create();Pump();
-        auto* dialog=objectUI.findChild<QDialog*>("CreateScriptDialogForm");if(!dialog)for(auto* widget:QApplication::topLevelWidgets())if(widget->objectName()=="CreateScriptDialogForm")dialog=qobject_cast<QDialog*>(widget);
+        const auto findCreateDialog=[&]() -> QDialog* {
+            if(auto* dialog=objectUI.findChild<QDialog*>("CreateScriptDialogForm"))return dialog;
+            for(auto* widget:QApplication::topLevelWidgets())
+                if(widget->objectName()=="CreateScriptDialogForm")return qobject_cast<QDialog*>(widget);
+            return nullptr;
+        };
+        Check(project.CreateScript,"Script create menu not registered");project.CreateScript();Pump();
+        auto* dialog=findCreateDialog();
         Check(dialog&&dialog->isVisible(),"Create script dialog missing");dialog->findChild<QLineEdit*>("nameEdit")->setText("PlayerController");
         dialog->grab().save("/tmp/gamesprout-create-script.png");scripts.RejectCreation=true;
         auto* create=dialog->findChild<QPushButton*>("createButton");create->click();Pump();
         Check(dialog->isVisible()&&project.Notified.empty()&&!dialog->findChild<QLabel*>("errorLabel")->text().isEmpty(),"Failed creation closed dialog or notified asset browser");
         scripts.RejectCreation=false;create->click();Pump();Check(project.Notified=="Scripts/PlayerController.hpp","Created script not passed to resource browser");
+        Check(project.CreateModule,"Module create menu not registered");project.CreateModule();Pump();
+        dialog=findCreateDialog();
+        Check(dialog&&dialog->isVisible()&&dialog->windowTitle()==QStringLiteral("新建 C++ 模块"),"Create module dialog missing");
+        auto* moduleName=dialog->findChild<QLineEdit*>("nameEdit");
+        Check(moduleName&&moduleName->text()=="NewModule","Module dialog uses the wrong default class name");
+        moduleName->setText("ScoreModule");dialog->findChild<QPushButton*>("createButton")->click();Pump();
+        Check(project.Notified=="Scripts/ScoreModule.hpp"&&scripts.CreatedModule==project.Notified&&scripts.Created=="Scripts/PlayerController.hpp",
+            "Module action did not call the module creator and notify the resource browser");
         scenes.Changed={};objectUI.Clear();Check(scripts.Listeners.empty()&&scripts.Observed.empty(),"Cleared Inspector retained script listeners");
-        GameSproutEditor::GameSproutFinal::Stop(feature,editor);Check(!project.Create&&!project.Open&&!project.OpenOwner&&!inspector.Extension,"Feature release retained menus, source handler or editor extension");
+        GameSproutEditor::GameSproutFinal::Stop(feature,editor);Check(!project.CreateScript&&!project.CreateModule&&!project.Open&&!project.OpenOwner&&!inspector.Extension,"Feature release retained menus, source handler or editor extension");
         context.ObjectID=scenes.Scene->GetInstanceID();objectUI.Bind(context);objectUI.Load(*scenes.Scene);Check(!add->isVisible(),"Scene root exposes Add Component");objectUI.Clear();
-        delete runtime;std::cout<<"Script Inspector GUI checks passed: distinct-class edit/undo, script singleton rejection, add/search/duplicates/stale catalog, removal/lifecycle and create script dialog.\n";
+        delete runtime;std::cout<<"Script Inspector GUI checks passed: distinct-class edit/undo, script singleton rejection, add/search/duplicates/stale catalog, removal/lifecycle and script/module creation dialogs.\n";
         return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}
 }

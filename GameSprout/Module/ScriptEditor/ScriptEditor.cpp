@@ -66,19 +66,25 @@ void ScriptEditor::Release(GameSproutEditor::GameSproutModuleApi*) {
     if (_Loading) { _IDE->Unloading(); _Loading=false; }
     _State.Compiling=false;
     // Runtime must release gameplay instances and function closures while the module is loaded.
-    for (auto registration=_Registrations.begin();registration!=_Registrations.end();) {
+    _Listeners.clear();_Sources.clear();
+    if(!_Registrations.empty()||!_ModuleTypes.empty()) {
         std::string error;
         bool removed=false;
-        try {removed=_Runtime->UnregisterScriptType(registration->Info.TypeID,error);}
+        try {
+            std::vector<std::string> scriptIDs;
+            for(const auto& registration:_Registrations)scriptIDs.push_back(registration.Info.TypeID);
+            removed=_Runtime->ReplaceGameLogicTypes(scriptIDs,{},{},error);
+        }
         catch(const std::exception& exception) {error="Cannot release GameLogic registration: "+std::string(exception.what());}
         catch(...) {error="Cannot release GameLogic registration: unknown exception";}
         if (!removed) {
             if(error.empty()) error="Runtime rejected GameLogic registration release";
-            _State.Error=error;Log(error,true);++registration;
-        } else registration=_Registrations.erase(registration);
+            _State.Error=error;Log(error,true);
+            return; // Keep the image leased while Runtime still holds registrations.
+        }
+        _Registrations.clear();
+        _ModuleTypes.clear();
     }
-    _Listeners.clear();_Sources.clear();
-    if(!_Registrations.empty()) return; // Runtime still references this slot; a later Release can retry.
     _Types.clear();_CurrentSlot=-1;_LoadedFingerprint.clear();_LoadedLibraryHash.clear();
     for(int slot=0;slot<2;++slot) {
         std::string error;

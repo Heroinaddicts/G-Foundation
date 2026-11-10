@@ -80,10 +80,41 @@ bool Runtime::RegisterScriptType(const ScriptTypeRegistration& registration,std:
 }
 bool Runtime::ReplaceScriptTypes(const std::vector<std::string>& removeTypes,
     const std::vector<ScriptTypeRegistration>& addTypes,std::string& error) {
+    return ReplaceTypeCatalog(removeTypes,addTypes,nullptr,error);
+}
+bool Runtime::ReplaceGameLogicTypes(const std::vector<std::string>& removeTypes,
+    const std::vector<ScriptTypeRegistration>& addTypes,const std::vector<GameModuleRegistration>& modules,
+    std::string& error) {
+    return ReplaceTypeCatalog(removeTypes,addTypes,&modules,error);
+}
+bool Runtime::ReplaceTypeCatalog(const std::vector<std::string>& removeTypes,
+    const std::vector<ScriptTypeRegistration>& addTypes,const std::vector<GameModuleRegistration>* modules,
+    std::string& error) {
     error.clear();
-    if(IsExecuting()||_ShuttingDown||_ScriptExecutionEnabled) {error="Stop script execution before changing the type catalog";return false;}
+    if(IsExecuting()||_ShuttingDown||_ScriptExecutionEnabled||!_ActiveGameModules.empty()) {
+        error="Stop gameplay execution before changing the type catalog";return false;
+    }
     RuntimeOperation operation(*this);
     try {
+        decltype(_GameModuleTypes) candidateModules;
+        if(modules) {
+            std::set<std::string> sources;
+            for(const auto& module:*modules) {
+                if(module.Name.empty()||module.SourceGuid.empty()||module.SourceFile.empty()||!module.Create||!module.Destroy) {
+                    error="Invalid game module descriptor";return false;
+                }
+                if(!candidateModules.emplace(module.Name,module).second) {
+                    error="Duplicate game module name: "+module.Name;return false;
+                }
+                if(!sources.insert(module.SourceGuid).second) {
+                    error="Duplicate game module source GUID: "+module.SourceGuid;return false;
+                }
+            }
+        }
+        if(removeTypes.empty()&&addTypes.empty()) {
+            if(modules)_GameModuleTypes.swap(candidateModules);
+            return true;
+        }
         auto candidate=_ScriptTypes;
         std::set<std::string> removed,added;
         for(const auto& id:removeTypes) {
@@ -120,11 +151,12 @@ bool Runtime::ReplaceScriptTypes(const std::vector<std::string>& removeTypes,
         }
         // Every validation and allocation precedes publication. These swaps
         // cannot fail, so rejected native modules never alter scene author data.
+        if(modules)_GameModuleTypes.swap(candidateModules);
         _ScriptTypes.swap(candidate);
         for(auto& item:authored) item.Component->ReplaceAuthoredFields(item.Values);
         for(const auto& node:_Nodes) for(const auto& entry:node.second->Components)
             if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer);script&&(removed.contains(script->GetScriptTypeID())||added.contains(script->GetScriptTypeID())))
-                Notify(*node.second,SceneNodeEventType::ComponentChanged,script->GetTypeName());
+                try {Notify(*node.second,SceneNodeEventType::ComponentChanged,script->GetTypeName());} catch(...) {}
         return true;
     } catch(const std::exception& exception) {error=exception.what();return false;}
     catch(...) {error="Cannot prepare native script type catalog";return false;}
@@ -193,6 +225,12 @@ bool Runtime::RemoveScriptComponent(IGameObject* object,std::uint64_t id,std::st
     error="Script component is unavailable";return false;
 }
 bool Runtime::SetScriptExecutionEnabled(bool enabled,std::string& error) {
+    if(!_ActiveGameModules.empty()) {
+        error="Use BeginExecution and EndExecution for a session with game modules";return false;
+    }
+    return SetScriptExecutionState(enabled,error);
+}
+bool Runtime::SetScriptExecutionState(bool enabled,std::string& error) {
     error.clear();
     if(IsExecuting()||_ShuttingDown||_ConstructionDepth) {error="Cannot change script execution during a Runtime callback or construction";return false;}
     if(!enabled)SetInputEnabled(false);

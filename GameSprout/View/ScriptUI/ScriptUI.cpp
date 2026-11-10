@@ -29,7 +29,9 @@ bool ScriptUI::Launch(GameSproutEditor::GameSproutViewApi*){
     if(!_Scripts||!_Inspector||!_ProjectAssets||!_Assets||!_CodeEditor)return false;
     _Registered=_Inspector->RegisterExtension(this);
     if(!_Registered)return false;
-    if(!_ProjectAssets->RegisterContextAction(this,{_Ui->createMenu->title().toStdString(),_Ui->createScriptAction->text().toStdString()},&CreateScriptMenu))return false;
+    const std::string createMenu=_Ui->createMenu->title().toStdString();
+    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,_Ui->createScriptAction->text().toStdString()},&CreateScriptMenu))return false;
+    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,_Ui->createModuleAction->text().toStdString()},&CreateModuleMenu))return false;
     return _ProjectAssets->RegisterAssetOpenHandler(this,[this](const ProjectAssetSelection& selection){return OpenSourceAsset(selection);});
 }
 void ScriptUI::Release(GameSproutEditor::GameSproutViewApi*){
@@ -68,17 +70,24 @@ bool ScriptUI::OpenSourceAsset(const ProjectAssetSelection& selected){
 ComponentEditor* ScriptUI::CreateComponentEditor(const std::type_info& type,QWidget* parent){
     return type==typeid(GameSproutRuntime::IScriptComponent)?new ScriptComponentEditor(parent,_CodeEditor):nullptr;
 }
-void ScriptUI::CreateScriptMenu(){if(g_Self)g_Self->OpenCreateDialog();}
-void ScriptUI::OpenCreateDialog(){
+void ScriptUI::CreateScriptMenu(){if(g_Self)g_Self->OpenCreateDialog(false);}
+void ScriptUI::CreateModuleMenu(){if(g_Self)g_Self->OpenCreateDialog(true);}
+void ScriptUI::OpenCreateDialog(bool isModule){
     if(!_Scripts||!_ProjectAssets)return;
     delete _Dialog;delete _DialogUi;
     _Dialog=new QDialog(QApplication::activeWindow());_DialogUi=new Ui::CreateScriptDialogForm;_DialogUi->setupUi(_Dialog);
+    const auto* action=isModule?_Ui->createModuleAction:_Ui->createScriptAction;
+    _Dialog->setWindowTitle(action->property("dialogTitle").toString());
+    _DialogUi->nameEdit->setText(action->property("defaultName").toString());
     const std::string directory=_ProjectAssets->GetActionContext().Directory;
     _DialogUi->directoryLabel->setText(QString::fromStdString("Assets"+(directory.empty()?std::string():"/"+directory)));
     QObject::connect(_DialogUi->cancelButton,&QPushButton::clicked,_Dialog,&QDialog::reject);
-    QObject::connect(_DialogUi->createButton,&QPushButton::clicked,_Dialog,[this,directory]{
+    QObject::connect(_DialogUi->createButton,&QPushButton::clicked,_Dialog,[this,directory,isModule]{
         std::string path,error;
-        if(!_Scripts->CreateScript(directory,_DialogUi->nameEdit->text().trimmed().toStdString(),path,error)) {
+        const std::string name=_DialogUi->nameEdit->text().trimmed().toStdString();
+        const bool created=isModule?_Scripts->CreateModule(directory,name,path,error)
+                                   :_Scripts->CreateScript(directory,name,path,error);
+        if(!created) {
             _DialogUi->errorLabel->setText(QString::fromStdString(error));return;
         }
         _ProjectAssets->NotifyAssetCreated(path);_Dialog->accept();

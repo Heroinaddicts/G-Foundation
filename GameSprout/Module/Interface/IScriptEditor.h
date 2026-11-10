@@ -143,4 +143,9 @@ public:
     // received while blocked compile after the session ends, without replacing
     // code referenced by live script instances.
     virtual bool SetReloadBlocked(bool blocked, std::string& error) { error.clear(); return true; }
+    // A gameplay module uses the same .hpp source import pipeline as a script.
+    virtual bool CreateModule(const std::string& relativeDirectory, const std::string& name,
+                              std::string& relativePath, std::string& error) {
+        relativePath.clear();error="游戏模块创建服务不可用。";return false;
+    }
 };

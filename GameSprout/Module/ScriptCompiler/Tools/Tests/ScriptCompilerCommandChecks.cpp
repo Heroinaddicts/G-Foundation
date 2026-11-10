@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
@@ -79,11 +80,30 @@ GAMESPROUT_SCRIPT(Mover)
         result=Run(executable,project);
         Check(result.Exit==3&&result.Output.contains(".meta")&&!QFileInfo::exists(source+".meta"),"Missing source metadata accepted or generated");
         Meta(source,"1234567890abcdef1234567890abcdef");
+        const QString module=project+"/Assets/代码 Folder/WorldServices.hpp";
+        Write(module,R"(#pragma once
+#include "RuntimeScriptModule.h"
+namespace Sample {
+class WorldServices final : public GameSproutRuntime::IModule {
+protected:
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
+    bool Launch(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
+};
+GAMESPROUT_REGIST_MODULE(WorldServices)
+}
+)");
+        Meta(module,"2234567890abcdef1234567890abcdef");
         const auto metadata=Read(source+".meta"),assembly=Read(project+"/Info/GameLogic.json");
         result=Run(executable,project);Check(result.Exit==0,"Native CLI build failed: "+result.Output.toStdString());
         Check(result.Output.contains("GameLogic build succeeded")&&result.Output.contains("/Build/Output/"),"CLI did not use current fixed native build");
         const QString snapshot=project+"/Library/ScriptBuild/Sources/代码 Folder/Mover.hpp";
         Check(Read(snapshot)==Read(source),"Native compiler did not take real Assets source snapshot");
+        const QString schemaPath=project+"/Library/ScriptBuild/Build/Output/GameLogic.schema.json";
+        const auto schema=QJsonDocument::fromJson(Read(schemaPath)).object();
+        const auto modules=schema.value("Modules").toArray();
+        Check(schema.value("Types").toArray().size()==1&&modules.size()==1&&
+              modules[0].toObject()==QJsonObject{{"Name","Sample::WorldServices"},{"SourceGuid","2234567890abcdef1234567890abcdef"},
+                  {"SourceFile","代码 Folder/WorldServices.hpp"}},"GameLogic schema did not separate module and script registrations");
         result=Run(executable,project);Check(result.Exit==0&&result.Output.contains("GameLogic cache hit"),"Repeated CLI build was not incremental: "+result.Output.toStdString());
         Check(Read(source+".meta")==metadata&&Read(project+"/Info/GameLogic.json")==assembly,"CLI modified asset identity files");
 
@@ -112,6 +132,14 @@ GAMESPROUT_SCRIPT(Mover)
         Check(result.Exit==4&&result.Output.contains("/Assets/代码 Folder/Mover.hpp")&&!result.Output.contains("ScriptBuild/Sources/代码 Folder/Mover.hpp"),
               "Compiler diagnostics were not mapped to editable Assets: "+result.Output.toStdString());
         Write(source,valid);result=Run(executable,project);Check(result.Exit==0,"Cannot recover corrected source");
+        const auto validModule=Read(module);
+        Write(module,validModule+R"(
+class AdditionalScript final : public GameSproutRuntime::ScriptBehaviour {};
+GAMESPROUT_SCRIPT(AdditionalScript)
+)");
+        result=Run(executable,project);
+        Check(result.Exit==4&&result.Output.contains("one gameplay registration marker"),"Conflicting script and module markers were accepted: "+result.Output.toStdString());
+        Write(module,validModule);
         const QString helper=project+"/Assets/Other.cpp";Write(helper,"int helper() { return 1; }\n");Meta(helper,"1234567890abcdef1234567890abcdef");
         result=Run(executable,project);Check(result.Exit==3&&result.Output.contains("Duplicate"),"Duplicate source GUID accepted");
         QFile::remove(helper+".meta");QFile::remove(helper);
@@ -146,6 +174,11 @@ GAMESPROUT_SCRIPT(Mover)
         const auto before=Read(probe);QThread::msleep(350);
         Check(Read(probe)==before,"A compiler child continued writing after CLI exit");
 #endif
+        Check(QFile::remove(source)&&QFile::remove(source+".meta"),"Cannot switch to module-only project");
+        result=Run(executable,project);Check(result.Exit==0,"Module-only GameLogic failed: "+result.Output.toStdString());
+        const auto moduleOnly=QJsonDocument::fromJson(Read(schemaPath)).object();
+        Check(moduleOnly.value("Types").toArray().isEmpty()&&moduleOnly.value("Modules").toArray()==modules,"Module-only GameLogic schema is wrong");
+        result=Run(executable,project);Check(result.Exit==0&&result.Output.contains("GameLogic cache hit"),"Module-only GameLogic was not cached");
         const auto settings=ScriptCompiler().GetToolchain();
         Check(!settings.RuntimeSDKDirectory.empty()&&!settings.CMakeProgram.empty()&&!settings.CompilerProgram.empty()&&!settings.Configuration.empty(),"Public toolchain snapshot is incomplete");
         QProcess usage;usage.start(executable,{"--ProjectRoot",project});Check(usage.waitForFinished(5000)&&usage.exitCode()==2,"Invalid CLI argument rule");

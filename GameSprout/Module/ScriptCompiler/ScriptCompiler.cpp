@@ -87,7 +87,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     toolchain.addData(QByteArray("ScriptDeclarationSafety/1/-Werror=shadow-field/-Werror=overloaded-virtual"));
     toolchain.addData(directory.toUtf8()); // Relocated CMake trees cannot retain absolute object paths.
     const QString toolchainHash=QString::fromLatin1(toolchain.result().toHex());
-    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/4/RecursiveFieldSchema/2/"));hash.addData(toolchainHash.toUtf8());
+    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/5/RecursiveFieldSchema/2/GameModuleCatalog/1/"));hash.addData(toolchainHash.toUtf8());
     QJsonObject sdkInputs;
     QDirIterator sdk(QString::fromUtf8(GAMESPROUT_SCRIPT_SDK),QStringList{"*.h","*.hpp","*.inl"},QDir::Files,QDirIterator::Subdirectories);
     QStringList sdkFiles;while(sdk.hasNext()) sdkFiles.push_back(sdk.next());sdkFiles.sort();
@@ -132,7 +132,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     const QString schemaHash=QString::fromLatin1(QCryptographicHash::hash(schemaBytes,QCryptographicHash::Sha256).toHex());
     std::string schemaError;
     const bool sameSchema=!schemaBytes.isEmpty() && state.value("SchemaHash").toString()==schemaHash &&
-        ScriptSchemaDocument::Parse(schemaBytes,result.Fingerprint,result.Types,schemaError);
+        ScriptSchemaDocument::Parse(schemaBytes,result.Fingerprint,result.Types,result.Modules,schemaError);
     if(sameToolchain && sameLibrary && sameSchema && state.value("ToolchainFingerprint").toString()==toolchainHash && state.value("Fingerprint").toString()==QString::fromStdString(result.Fingerprint) && ScriptBuildStorage::SnapshotMatches(sourceRoot,state.value("Snapshot").toObject())) {
         result.ReflectionWarnings=state.value("ReflectionWarnings").toString().toStdString();result.Diagnostics=result.ReflectionWarnings;
         result.SchemaPath=schemaPath.toStdString();result.SchemaHash=schemaHash.toStdString();
@@ -163,7 +163,8 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
         result.Diagnostics=diagnostics.toStdString();
     };
     result.Types.clear();
-    if(!ScriptBindingsGenerator::Generate(normalized,sourceRoot,probe,bindings,result.Types,result.Diagnostics,result.ReflectionWarnings,cancelled)) {translateDiagnostics();return false;}
+    result.Modules.clear();
+    if(!ScriptBindingsGenerator::Generate(normalized,sourceRoot,probe,bindings,result.Types,result.Modules,result.Diagnostics,result.ReflectionWarnings,cancelled)) {translateDiagnostics();return false;}
     aggregate+=bindings;
     // The build identity lives in the tiny build-stamp TU, keeping helper-only
     // edits incremental while the module and pure schema stay paired.
@@ -214,7 +215,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     if(!QFileInfo(library).isFile() || QFileInfo(library).size()==0) {result.Diagnostics+="\nCompiler did not produce GameLogic library";return false;}
     const QString libraryHash=ScriptBuildStorage::FileHash(library,result.Diagnostics);
     if(libraryHash.isEmpty()) return false;
-    const QByteArray newSchema=ScriptSchemaDocument::Serialize(result.Fingerprint,result.Types);
+    const QByteArray newSchema=ScriptSchemaDocument::Serialize(result.Fingerprint,result.Types,result.Modules);
     if(!Write(schemaPath,newSchema,result.Diagnostics))return false;
     result.SchemaPath=schemaPath.toStdString();result.SchemaHash=QCryptographicHash::hash(newSchema,QCryptographicHash::Sha256).toHex().toStdString();
     const QJsonObject success{{"Version",2},{"Fingerprint",QString::fromStdString(result.Fingerprint)},{"ToolchainFingerprint",toolchainHash},{"LibraryHash",libraryHash},{"SchemaHash",QString::fromStdString(result.SchemaHash)},{"ReflectionWarnings",QString::fromStdString(result.ReflectionWarnings)},{"Snapshot",snapshot},{"Inputs",inputs}};

@@ -89,6 +89,9 @@ public:
     bool RemoveBuiltinComponent(IGameObject*,const std::string&,std::string&) override;
     bool RegisterScriptType(const ScriptTypeRegistration&,std::string&) override;
     bool ReplaceScriptTypes(const std::vector<std::string>&,const std::vector<ScriptTypeRegistration>&,std::string&) override;
+    bool ReplaceGameLogicTypes(const std::vector<std::string>&,const std::vector<ScriptTypeRegistration>&,
+        const std::vector<GameModuleRegistration>&,std::string&) override;
+    IModule* FindModule(const std::string&) override;
     bool UnregisterScriptType(const std::string&,std::string&) override;
     std::vector<ScriptTypeInfo> GetScriptTypes() const override;
     bool BindSceneObjectIdentity(IGameObject*,std::uint64_t,std::string&) override;
@@ -227,6 +230,13 @@ private:
     void RecoverCallbackConstruction(FrameComponent&,IComponent&,std::size_t expectedDepth);
     void TickComponentPhase(std::vector<FrameComponent>&,std::uint8_t,float);
     void TickAnimationPhase(std::vector<FrameComponent>&,float);
+    bool ReplaceTypeCatalog(const std::vector<std::string>&,const std::vector<ScriptTypeRegistration>&,
+        const std::vector<GameModuleRegistration>*,std::string&);
+    bool SetScriptExecutionState(bool,std::string&);
+    bool StartGameModules(std::string&);
+    void StopGameModules() noexcept;
+    void TickGameModulePhase(std::uint8_t phase,float deltaSeconds);
+    void NotifyGameModuleError(const std::string& module,const char* phase,const char* error) noexcept;
     void FinishTickNotifications();
     void StepPhysics(float deltaSeconds);
     bool InitializePendingComponents(std::string& error,bool allowScripts);
@@ -291,6 +301,13 @@ private:
     Vector2 _UIRenderSize;
     std::uint64_t _UIPressedObjectID = 0, _UIPressedComponentID = 0;
     std::map<std::string,ScriptTypeRegistration> _ScriptTypes;
+    std::map<std::string,GameModuleRegistration> _GameModuleTypes;
+    struct ActiveGameModule {
+        const GameModuleRegistration* Registration;
+        IModule* Instance=nullptr;
+        bool ReleaseNeeded=false,Faulted=false;
+    };
+    std::vector<ActiveGameModule> _ActiveGameModules;
     struct ObjectIdentity {std::uint64_t SceneID=0,FileID=0;};
     std::map<std::uint64_t,ObjectIdentity> _ObjectFileIDs;
     std::map<std::pair<std::uint64_t,std::uint64_t>,std::uint64_t> _SceneObjectIDs;

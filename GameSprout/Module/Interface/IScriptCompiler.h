@@ -34,6 +34,7 @@ struct ScriptCompileResult {
     std::string ReflectionWarnings;
     // Pure value metadata; available without loading/executing GameLogic.
     std::vector<GameSproutRuntime::ScriptTypeInfo> Types;
+    std::vector<GameSproutRuntime::GameModuleTypeInfo> Modules;
     std::string SchemaPath;
     std::string SchemaHash;
     bool CacheHit = false;

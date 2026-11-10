@@ -18,7 +18,8 @@ private:
     bool Launch(GameSproutEditor::GameSproutViewApi*)override;
     void Release(GameSproutEditor::GameSproutViewApi*)override;
     static void CreateScriptMenu();
-    void OpenCreateDialog();
+    static void CreateModuleMenu();
+    void OpenCreateDialog(bool isModule);
     bool OpenSourceAsset(const ProjectAssetSelection&);
     IInspectorUI* _Inspector=nullptr;
     IProjectAssetsUI* _ProjectAssets=nullptr;

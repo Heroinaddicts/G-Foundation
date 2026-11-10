@@ -105,16 +105,20 @@ void Runtime::AdvanceFrame(float deltaSeconds,std::uint32_t fixedStepCount,float
     InitializePendingComponents(error,deltaSeconds>0||fixedStepCount>0);
     auto batch=SnapshotFrameComponents(false);
     DispatchUIPointer();
+    TickGameModulePhase(EarlyTick,deltaSeconds);
     TickComponentPhase(batch,EarlyTick,deltaSeconds);
     for(std::uint32_t step=0;step<fixedStepCount&&!_ConstructionDepth;++step) {
+        TickGameModulePhase(FixedTick,fixedDeltaSeconds);
         TickComponentPhase(batch,FixedTick,fixedDeltaSeconds);
         if(!_ConstructionDepth)StepPhysics(fixedDeltaSeconds);
     }
+    TickGameModulePhase(UpdateTick,deltaSeconds);
     TickComponentPhase(batch,UpdateTick,deltaSeconds);
     TickAnimationPhase(batch,deltaSeconds);
     // Root motion and animation notifications finish before follow-camera and
     // other LateUpdate consumers observe this frame's final animated pose.
     DispatchAnimationEvents();
+    TickGameModulePhase(LateTick,deltaSeconds);
     TickComponentPhase(batch,LateTick,deltaSeconds);
     // Additions made by any phase may initialize now, but are outside the frozen
     // batch and cannot receive just the latter half of their first frame.
@@ -133,6 +137,7 @@ void Runtime::FixedUpdate(float fixedDeltaSeconds) {
     std::string error;
     InitializePendingComponents(error,true);
     auto batch=SnapshotFrameComponents(true);
+    TickGameModulePhase(FixedTick,fixedDeltaSeconds);
     TickComponentPhase(batch,FixedTick,fixedDeltaSeconds);
     if(!_ConstructionDepth)StepPhysics(fixedDeltaSeconds);
     DispatchAnimationEvents();

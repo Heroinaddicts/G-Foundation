@@ -8,6 +8,12 @@
 
 namespace GameSproutRuntime {
 Runtime::~Runtime() {
+    if(!_ActiveGameModules.empty()) {
+        try {
+            std::string error;
+            EndExecution(error);
+        } catch(...) {}
+    }
     ResetPhysics(true);
     _ShuttingDown=true;
     _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
@@ -19,6 +25,7 @@ Runtime::~Runtime() {
     }
     // 包括尚未挂载的创建请求，保证异常/关闭时没有遗留对象。
     while (!_Nodes.empty()) DestroyNow(*_Nodes.begin()->second);
+    StopGameModules();
     ReleaseGraphics();
 }
 std::uint64_t Runtime::NextID() {

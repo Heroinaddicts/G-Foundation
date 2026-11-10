@@ -25,6 +25,7 @@ public:
     bool RegisterScriptListener(IScriptEditorListener*) override;
     void UnregisterScriptListener(IScriptEditorListener*) override;
     bool CreateScript(const std::string&,const std::string&,std::string&,std::string&) override;
+    bool CreateModule(const std::string&,const std::string&,std::string&,std::string&) override;
     bool RequestCompile(std::string&) override;
     bool SetReloadBlocked(bool,std::string&) override;
     bool ReadFields(uint64_t,uint64_t,ScriptPropertySnapshot&,std::string&) const override;
@@ -49,6 +50,8 @@ public:
     void OnAssetModify(const AssetEvent&) override;
     void OnAssetRemove(const AssetEvent&) override;
 private:
+    bool CreateSource(const std::string& relativeDirectory,const std::string& name,const char* templatePath,
+                      std::string& relativePath,std::string& error);
     void BeforeInitialize(GameSproutEditor::GameSproutModuleApi*) override;
     bool Initialize(GameSproutEditor::GameSproutModuleApi*) override;
     bool Launch(GameSproutEditor::GameSproutModuleApi*) override;
@@ -92,6 +95,7 @@ private:
     std::map<uint64_t,IScriptEditorListener*> _Listeners;
     std::vector<EditorScriptType> _Types;
     std::vector<GameSproutRuntime::ScriptTypeRegistration> _Registrations;
+    std::vector<GameSproutRuntime::GameModuleTypeInfo> _ModuleTypes;
     // Both active and unsuccessfully retired modules retain their handles.
     QLibrary* _SlotLibraries[2] = {nullptr,nullptr};
     bool _SlotEverLoaded[2] = {false,false};

@@ -10,6 +10,7 @@ public:
     static bool Generate(const ScriptCompileRequest& request,const QString& sourceRoot,
                          const QString& probePath,QByteArray& generated,
                          std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
+                         std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules,
                          std::string& diagnostics,std::string& warnings,
                          const std::function<bool()>& cancelled);
 };

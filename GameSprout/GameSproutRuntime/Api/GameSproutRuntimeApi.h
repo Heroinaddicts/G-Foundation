@@ -44,6 +44,7 @@ namespace GameSproutRuntime {
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IScriptComponent;
     struct ScriptTypeRegistration;
     struct ScriptTypeInfo;
+    struct GameModuleRegistration;
     struct BuiltinComponentInfo;
     struct PhysicsQuerySettings;
     struct PhysicsRaycastHit;
@@ -104,6 +105,26 @@ namespace GameSproutRuntime {
     public:
         virtual ~IScript() {}
         using IComponent::IComponent;
+    };
+
+    class GAMESPROUT_RUNTIME_PUBLIC_TYPE IModule {
+    public:
+        virtual ~IModule() {}
+
+    protected:
+        virtual bool Initialize(IGameSproutRuntime * const runtime) = 0;
+        virtual bool Launch(IGameSproutRuntime * const runtime) = 0;
+        virtual void LaunchFinished(IGameSproutRuntime * const runtime) {}
+
+        virtual void EarlyUpdate(IGameSproutRuntime * const runtime, float deltaSeconds) {}
+        virtual void Update(IGameSproutRuntime * const runtime, float deltaSeconds) {}
+        virtual void LateUpdate(IGameSproutRuntime * const runtime, float deltaSeconds) {}
+        virtual void FixedUpdate(IGameSproutRuntime * const runtime, float fixedDeltaSeconds) {}
+
+        virtual void Release(IGameSproutRuntime * const runtime) {}
+
+    private:
+        friend class Runtime;
     };
 
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameObject : IObject {
@@ -574,9 +595,24 @@ namespace GameSproutRuntime {
         // A valid render mesh may have no usable triangle mesh or convex hull.
         // Unsupported shape types leave their corresponding output empty.
         virtual MeshCollisionCooker GetMeshCollisionCooker() const { return {}; }
+        // Owner thread. A live gameplay module is borrowed until its Release
+        // finishes. All instances are discoverable before any Initialize runs.
+        virtual IModule* FindModule(const std::string&) { return nullptr; }
+        template<typename ModuleType>
+        ModuleType* FindModule(const std::string& name) {
+            static_assert(std::is_base_of_v<IModule,ModuleType>);
+            return dynamic_cast<ModuleType*>(FindModule(name));
+        }
+        // Idle host-thread publication. Replaces the specified script types
+        // and the complete project module catalog in one transaction.
+        virtual bool ReplaceGameLogicTypes(const std::vector<std::string>& removeScriptTypes,
+            const std::vector<ScriptTypeRegistration>& scripts,
+            const std::vector<GameModuleRegistration>& modules,std::string& error);
     };
 
 }
+
+#define GET_MODULE(runtime, value, Name) ((value)=(runtime)->template FindModule<I##Name>(#Name))
 
 #include "RuntimeAnimationApi.h"
 #include "RuntimeScriptApi.h"

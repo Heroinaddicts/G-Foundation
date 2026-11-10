@@ -10,9 +10,19 @@
 
 bool ScriptEditor::CreateScript(const std::string& relativeDirectory,const std::string& name,
                                 std::string& relativePath,std::string& error) {
+    return CreateSource(relativeDirectory,name,":/GameSprout/Script/Script.hpp.template",relativePath,error);
+}
+
+bool ScriptEditor::CreateModule(const std::string& relativeDirectory,const std::string& name,
+                                std::string& relativePath,std::string& error) {
+    return CreateSource(relativeDirectory,name,":/GameSprout/Script/Module.hpp.template",relativePath,error);
+}
+
+bool ScriptEditor::CreateSource(const std::string& relativeDirectory,const std::string& name,const char* templatePath,
+                                std::string& relativePath,std::string& error) {
     relativePath.clear();error.clear();
     const QString identifier=QString::fromStdString(name);
-    static const QRegularExpression valid("^[A-Za-z][A-Za-z0-9_]*$");
+    static const QRegularExpression valid("\\A[A-Za-z][A-Za-z0-9_]*\\z");
     static const std::set<std::string> reserved={"class","struct","namespace","int","float","double","bool","void","return","if","else","for","while","switch","case","default","public","protected","private","virtual","override","final","new","delete","operator","template","typename","using","auto","const","static","enum","union","this","true","false","nullptr","try","catch","throw","export","import","module","concept","requires","co_await","co_yield","co_return","alignas","alignof","asm","break","char","char8_t","char16_t","char32_t","consteval","constexpr","constinit","continue","decltype","do","dynamic_cast","explicit","extern","friend","goto","inline","long","mutable","noexcept","register","reinterpret_cast","short","signed","sizeof","static_assert","static_cast","thread_local","typeid","typedef","unsigned","volatile","wchar_t","and","and_eq","bitand","bitor","compl","not","not_eq","or","or_eq","xor","xor_eq"};
     if(!valid.match(identifier).hasMatch() || name.find("__")!=std::string::npos || reserved.contains(name)) {error="名称必须是有效且非保留的 C++ 类名";return false;}
     const QString assets=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
@@ -23,10 +33,10 @@ bool ScriptEditor::CreateScript(const std::string& relativeDirectory,const std::
        QDir::isAbsolutePath(relative) || (directory!=root && !directory.startsWith(root+'/'))) {error="创建目录必须在项目 Assets 内";return false;}
     const QString filename=identifier+".hpp";
     for(const QString& existing:QDir(directory).entryList(QDir::AllEntries|QDir::Hidden|QDir::NoDotAndDotDot)) {
-        if(existing.compare(filename,Qt::CaseInsensitive)==0 || existing.compare(filename+".meta",Qt::CaseInsensitive)==0) {error="同名脚本或 .meta 已存在，禁止覆盖";return false;}
+        if(existing.compare(filename,Qt::CaseInsensitive)==0 || existing.compare(filename+".meta",Qt::CaseInsensitive)==0) {error="同名源码或 .meta 已存在，禁止覆盖";return false;}
     }
-    QFile source(":/GameSprout/Script/Script.hpp.template");
-    if(!source.open(QIODevice::ReadOnly)) {error="脚本模板无法读取";return false;}
+    QFile source(QString::fromLatin1(templatePath));
+    if(!source.open(QIODevice::ReadOnly)) {error="源码模板无法读取";return false;}
     QByteArray text=source.readAll();
     text.replace("#CLASSNAME#",identifier.toUtf8());
     const QString destination=QDir(directory).filePath(filename);

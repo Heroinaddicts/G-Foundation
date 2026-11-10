@@ -4,6 +4,12 @@
 
 用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`EarlyUpdate`、`Update`、`LateUpdate`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，七个生命周期统一放在 protected，并使用 `override` 检查签名，由 Runtime 调用；不要求构造函数、构造继承、UUID 或字段注册表。
 
+## 游戏模块
+
+`Create → Module.hpp` 生成模块接口、继承该接口的实现类和 `GAMESPROUT_REGIST_MODULE(Type)` 标记。它与 `Script.hpp` 使用同一套源码导入和 GameLogic 构建，编译结果分别提供模块和组件脚本的注册表。
+
+模块的名称是实现类的完整 C++ 名称，源文件仍由 `.meta` GUID 标识。例如 `runtime->FindModule<ITestModule>("TestModule")` 返回游戏会话内的借用指针。Runtime 先登记全部模块实例，然后依次调用全部 `Initialize`、`Launch`、`LaunchFinished`，再初始化对象脚本。各帧阶段先调用模块，再调用该阶段的组件。Stop 先释放对象脚本，再逆序释放模块。
+
 - `GAMESPROUT_SCRIPT(Type)` 只生成编译期类型标记，不执行注册和用户构造。默认构造时的 GameObject 归属由 SDK 内部注入。
 - 游戏代码通过 `_GameObject->AddComponent<T>()`、`GetComponent<T>()`、`RemoveComponent<T>()` 使用脚本。每个对象同类脚本最多一个，重复添加返回 `nullptr`；`OnCreate` 中查询自身返回当前真实实例，也可以查询或创建内置组件。内置组件重复添加仍返回已有组件。
 - 实例在 `OnCreate` 前已经登记并恢复作者字段。Runtime 完成本批节点、组件、字段与引用的装配，并提交 `OnCreate` 产生的结构修改后，调用一次 `OnInitialized`，之后才允许 `EarlyUpdate`、`Update`、`LateUpdate` 和 `FixedUpdate`。此时可以访问同批其他组件及其数据，但不保证其他组件已经执行完自己的 `OnInitialized`；后续新增组件不会重新初始化已有组件。宿主通过 `Runtime.AdvanceFrame(deltaSeconds, fixedStepCount, fixedDeltaSeconds)` 推进完整帧：全体 `EarlyUpdate` → 零到多次（全体 `FixedUpdate` → 物理）→ 全体 `Update` → 独立动画求值及相关通知 → 全体 `LateUpdate`。`EarlyUpdate` 是 GameSprout 自定义的脚本前置阶段，用于本帧输入锁存；Unity 的同名 PlayerLoop 阶段并非 MonoBehaviour 回调。`Runtime.Update(deltaSeconds)` 推进不含固定步的完整变量帧；`Runtime.FixedUpdate(fixedDeltaSeconds)` 保留为低层单固定步入口，完整游戏循环优先使用 `AdvanceFrame`。停止执行或移除组件时调用 `OnRelease`，回调中的移除延迟到安全边界处理。

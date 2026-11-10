@@ -99,6 +99,111 @@ void CheckParkedAuthoringScenes(GameSproutRuntime::IGameSproutRuntime& runtime) 
     Check(runtime.DestroyScene(second)&&runtime.DestroyScene(first),"Cannot release the authoring fixtures");
 }
 
+std::vector<std::string> ModuleCalls;
+bool RejectModuleLaunch=false, ThrowModuleUpdate=false, ReleaseSawPeer=false;
+int NextModuleInstance=0;
+class IPhaseModule : public GameSproutRuntime::IModule {
+public:
+    virtual int InstanceNumber() const = 0;
+};
+class IOtherModule : public GameSproutRuntime::IModule {};
+
+template<char Letter> class PhaseModule final : public IPhaseModule {
+public:
+    PhaseModule() : _Instance(++NextModuleInstance) {Record("Create");}
+    ~PhaseModule() override {Record("Destroy");}
+    int InstanceNumber() const override {return _Instance;}
+protected:
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        Check(runtime->FindModule<IPhaseModule>("A")&&runtime->FindModule<IPhaseModule>("B"),
+            "Module peer lookup must be available before Initialize");
+        Record("Initialize");
+        return true;
+    }
+    bool Launch(GameSproutRuntime::IGameSproutRuntime*) override {
+        Record("Launch");
+        return Letter!='B'||!RejectModuleLaunch;
+    }
+    void LaunchFinished(GameSproutRuntime::IGameSproutRuntime*) override {Record("Ready");}
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {Record("Early");}
+    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {Record("Fixed");}
+    void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {
+        Record("Update");
+        if(Letter=='B'&&ThrowModuleUpdate)throw std::runtime_error("Rejected Update fixture");
+    }
+    void LateUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {Record("Late");}
+    void Release(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        if(Letter=='B')ReleaseSawPeer=runtime->FindModule("A")!=nullptr;
+        Record("Release");
+    }
+private:
+    static void Record(const char* callback) {ModuleCalls.push_back(std::string(callback)+Letter);}
+    int _Instance;
+};
+template<char Letter> GameSproutRuntime::GameModuleRegistration PhaseRegistration() {
+    return {std::string(1,Letter),std::string("fixture-")+Letter,__FILE__,
+        []()->GameSproutRuntime::IModule* {return new PhaseModule<Letter>();},
+        [](GameSproutRuntime::IModule* module) {delete static_cast<PhaseModule<Letter>*>(module);}};
+}
+class ModuleEvents final : public GameSproutRuntime::IRuntimeListener {
+public:
+    void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) override {
+        if(event.Type==GameSproutRuntime::SceneNodeEventType::OperationFailed&&event.Name=="B")Error=event.Error;
+    }
+    std::string Error;
+};
+void CheckGameModules(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    const auto a=PhaseRegistration<'A'>(),b=PhaseRegistration<'B'>();
+    std::string error;
+    Check(runtime.ReplaceGameLogicTypes({}, {}, {b,a}, error),error);
+    Check(!runtime.ReplaceGameLogicTypes({}, {}, {a,a}, error),"Duplicate modules changed the catalog");
+    Check(!runtime.ReplaceGameLogicTypes({"missing-script"}, {}, {}, error),"Missing script accepted during catalog replacement");
+    Check(runtime.ReplaceScriptTypes({}, {}, error),error);
+    runtime.AdvanceFrame(.1f,1,.02f);
+    Check(ModuleCalls.empty()&&!runtime.FindModule("A"),"Editor preview instantiated modules");
+    Check(runtime.BeginExecution(error),error);
+    const std::vector<std::string> startup={"CreateA","CreateB","InitializeA","InitializeB","LaunchA","LaunchB","ReadyA","ReadyB"};
+    Check(ModuleCalls==startup,"Module startup skipped or mixed lifecycle phases");
+    auto* first=runtime.FindModule<IPhaseModule>("A");
+    Check(first&&!runtime.FindModule<IOtherModule>("A")&&!runtime.FindModule("missing"),"Typed module lookup accepted the wrong module");
+    const auto firstInstance=first->InstanceNumber();
+    Check(!runtime.ReplaceGameLogicTypes({}, {}, {}, error),"Live module catalog was replaced");
+    runtime.ProcessPendingEvents();
+    Check(ModuleCalls==startup,"Paused event delivery ticked modules");
+    ModuleCalls.clear();
+    runtime.AdvanceFrame(.1f,2,.02f);
+    runtime.FixedUpdate(.02f);
+    Check(ModuleCalls==std::vector<std::string>{"EarlyA","EarlyB","FixedA","FixedB","FixedA","FixedB",
+        "UpdateA","UpdateB","LateA","LateB","FixedA","FixedB"},"Module frame phases were incomplete or out of order");
+    ModuleCalls.clear();
+    Check(runtime.EndExecution(error),error);
+    const std::vector<std::string> stop={"ReleaseB","DestroyB","ReleaseA","DestroyA"};
+    Check(ModuleCalls==stop&&ReleaseSawPeer&&!runtime.FindModule("A"),"Stop did not release modules in reverse order");
+
+    ModuleCalls.clear();
+    RejectModuleLaunch=true;
+    Check(!runtime.BeginExecution(error)&&error.find("Game module B Launch")!=std::string::npos,
+        "Module launch failure was not reported");
+    std::vector<std::string> failed={"CreateA","CreateB","InitializeA","InitializeB","LaunchA","LaunchB"};
+    failed.insert(failed.end(),stop.begin(),stop.end());
+    Check(ModuleCalls==failed&&!runtime.IsScriptExecutionEnabled()&&!runtime.FindModule("A"),
+        "Failed startup leaked module state or launched callbacks");
+    RejectModuleLaunch=false;
+    Check(runtime.BeginExecution(error),error);
+    first=runtime.FindModule<IPhaseModule>("A");
+    Check(first&&first->InstanceNumber()!=firstInstance,"Replay reused the previous module instance");
+    ModuleEvents events;
+    Check(runtime.RegisterListener(&events),"Cannot listen for module callback failure");
+    ModuleCalls.clear();
+    ThrowModuleUpdate=true;
+    runtime.Update(.1f);
+    ThrowModuleUpdate=false;
+    runtime.Update(.1f);
+    runtime.UnregisterListener(&events);
+    Check(ModuleCalls==std::vector<std::string>{"EarlyA","EarlyB","UpdateA","UpdateB","LateA","EarlyA","UpdateA","LateA"}
+        &&events.Error.find("Rejected Update fixture")!=std::string::npos,"Module tick failure was not isolated or reported");
+    Check(runtime.EndExecution(error)&&runtime.ReplaceGameLogicTypes({}, {}, {}, error),error);
+}
 }
 int main(int argc,char** argv){
     if(argc!=2)return 2;
@@ -134,7 +239,8 @@ int main(int argc,char** argv){
         Check(runtime->DestroyScene(scene),"Cannot close startup fixture before scene simulation check");
         CheckSceneSimulation(*runtime);
         CheckParkedAuthoringScenes(*runtime);
+        CheckGameModules(*runtime);
         delete runtime;runtime=nullptr;
-        std::cout<<"PASS staged native startup, restored peer fields, event-only pause, fixed dispatch, release and failed-begin retry\n";return 0;
+        std::cout<<"PASS staged native startup, restored peer fields, paused events, module phases and failed-begin retry\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete runtime;return 1;}
 }

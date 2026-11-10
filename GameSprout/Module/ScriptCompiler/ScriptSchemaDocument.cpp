@@ -1,4 +1,7 @@
 #include "ScriptSchemaDocument.h"
+#include "IGuidCreator.h"
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -108,19 +111,26 @@ bool ParseField(const QJsonObject& data,GameSproutRuntime::ScriptFieldInfo& fiel
 }
 }
 namespace ScriptSchemaDocument {
-QByteArray Serialize(const std::string& buildID,const std::vector<GameSproutRuntime::ScriptTypeInfo>& types) {
-    QJsonArray entries;
+QByteArray Serialize(const std::string& buildID,const std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
+                     const std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules) {
+    QJsonArray entries,moduleEntries;
     for(const auto& type:types) {
         QJsonArray fields;for(const auto& field:type.Fields)fields.append(Field(field));
         entries.append(QJsonObject{{"TypeID",QString::fromStdString(type.TypeID)},{"Name",QString::fromStdString(type.Name)},
             {"SourceFile",QString::fromStdString(type.SourceFile)},{"Fields",fields}});
     }
-    return QJsonDocument(QJsonObject{{"Version",2},{"BuildID",QString::fromStdString(buildID)},{"Types",entries}}).toJson(QJsonDocument::Compact);
+    for(const auto& module:modules)
+        moduleEntries.append(QJsonObject{{"Name",QString::fromStdString(module.Name)},
+            {"SourceGuid",QString::fromStdString(module.SourceGuid)},{"SourceFile",QString::fromStdString(module.SourceFile)}});
+    return QJsonDocument(QJsonObject{{"Version",3},{"BuildID",QString::fromStdString(buildID)},
+        {"Types",entries},{"Modules",moduleEntries}}).toJson(QJsonDocument::Compact);
 }
-bool Parse(const QByteArray& bytes,const std::string& buildID,std::vector<GameSproutRuntime::ScriptTypeInfo>& types,std::string& error) {
+bool Parse(const QByteArray& bytes,const std::string& buildID,std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
+           std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules,std::string& error) {
     QJsonParseError parse;const auto document=QJsonDocument::fromJson(bytes,&parse);const auto root=document.object();
-    if(parse.error!=QJsonParseError::NoError||!document.isObject()||root.value("Version").toInt()!=2||
-       root.value("BuildID").toString()!=QString::fromStdString(buildID)||!root.value("Types").isArray()) {error="Invalid or mismatched GameLogic schema";return false;}
+    if(parse.error!=QJsonParseError::NoError||!document.isObject()||root.value("Version").toInt()!=3||
+       root.value("BuildID").toString()!=QString::fromStdString(buildID)||!root.value("Types").isArray()||
+       !root.value("Modules").isArray()) {error="Invalid or mismatched GameLogic schema";return false;}
     std::vector<GameSproutRuntime::ScriptTypeInfo> candidate;std::set<std::string> identities;
     for(const auto& entry:root.value("Types").toArray()) {
         const auto data=entry.toObject();GameSproutRuntime::ScriptTypeInfo type;
@@ -134,6 +144,27 @@ bool Parse(const QByteArray& bytes,const std::string& buildID,std::vector<GameSp
         }
         candidate.push_back(std::move(type));
     }
-    types.swap(candidate);error.clear();return true;
+    std::vector<GameSproutRuntime::GameModuleTypeInfo> candidateModules;
+    std::set<std::string> moduleNames;
+    std::set<Guid> moduleGuids;
+    for(const auto& entry:root.value("Modules").toArray()) {
+        const auto data=entry.toObject();
+        const auto name=data.value("Name").toString();
+        const auto guid=data.value("SourceGuid").toString();
+        const auto source=data.value("SourceFile").toString();
+        const Guid sourceGuid(guid.toStdString());
+        if(name.isEmpty()||name.contains(QChar(0))||!sourceGuid.IsValid()||source.isEmpty()||source.contains(QChar(0))||
+           QDir::isAbsolutePath(source)||QDir::cleanPath(source)!=source||source.startsWith("../")||
+           QFileInfo(source).suffix().toLower()!="hpp"||!moduleNames.insert(name.toStdString()).second||
+           !moduleGuids.insert(sourceGuid).second) {
+            error="Invalid GameLogic schema module";
+            return false;
+        }
+        candidateModules.push_back({name.toStdString(),guid.toStdString(),source.toStdString()});
+    }
+    types.swap(candidate);
+    modules.swap(candidateModules);
+    error.clear();
+    return true;
 }
 }

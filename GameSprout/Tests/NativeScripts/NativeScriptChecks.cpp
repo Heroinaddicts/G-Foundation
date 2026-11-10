@@ -91,6 +91,32 @@ int main(int argc,char** argv){
         Require(!editor.CreateScript("Code","Mover",path,error),"Duplicate source must fail");
         Require(!editor.CreateScript("../","Escaped",path,error),"Escape must fail");
         Require(!editor.CreateScript("Code","class",path,error),"C++ keyword must fail");
+        Require(editor.CreateModule("Code","SessionModule",path,error),"Create Module: "+error);
+        Require(path=="Code/SessionModule.hpp","Relative module path");
+        const auto moduleTemplate=Read(code+"/SessionModule.hpp");
+        Require(moduleTemplate.contains("class ISessionModule")&&
+            moduleTemplate.contains("GAMESPROUT_REGIST_MODULE(SessionModule)"),"Created module is missing its interface or marker");
+        Require(!editor.CreateScript("Code","SessionModule",path,error),"Script creation overwrote a module");
+        Write(code+"/SessionModule.hpp",R"(#pragma once
+#include "RuntimeScriptModule.h"
+class ISessionModule : public GameSproutRuntime::IModule {
+public:
+    virtual int Ticks() const = 0;
+};
+class SessionModule final : public ISessionModule {
+public:
+    int Ticks() const override { return _Ticks; }
+protected:
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        return runtime->FindModule<ISessionModule>("SessionModule") == this;
+    }
+    bool Launch(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
+    void Update(GameSproutRuntime::IGameSproutRuntime*, float) override { ++_Ticks; }
+private:
+    int _Ticks = 0;
+};
+GAMESPROUT_REGIST_MODULE(SessionModule)
+)");
         Write(code+"/Mover.hpp",R"(#pragma once
 #include "RuntimeScriptModule.h"
 #include <vector>
@@ -121,10 +147,13 @@ GAMESPROUT_SCRIPT(Mover)
         // persistent ID, ScriptFields method or handwritten reflection code.
         Write(code+"/Test.hpp",R"(#pragma once
 #include "RuntimeScriptModule.h"
+#include "SessionModule.hpp"
 #include <stdexcept>
 class Test : public GameSproutRuntime::ScriptBehaviour {
 public:
-    void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {
+    void OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        auto* module=runtime->FindModule<ISessionModule>("SessionModule");
+        if(!module||module->Ticks()!=0)throw std::runtime_error("Gameplay module was not ready before script creation");
         if(_GameObject->AddComponent<Test>()!=nullptr)throw std::runtime_error("duplicate self add succeeded");
         if(_GameObject->GetComponent<Test>()!=this)throw std::runtime_error("GetComponent<Test> did not return this");
         auto* mesh=_GameObject->GetComponent<GameSproutRuntime::IMeshComponent>();
@@ -137,9 +166,16 @@ public:
         if(!_GameObject->RemoveComponent<GameSproutRuntime::IImageComponent>())throw std::runtime_error("Hidden game DLL cannot remove a builtin Image");
     }
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=2;_GameObject->GetTransform()->SetLocalPosition(p);}
-    void Update(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.X+=delta;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void Update(GameSproutRuntime::IGameSproutRuntime* runtime,float delta) override {
+        const auto* module=runtime->FindModule<ISessionModule>("SessionModule");
+        if(!module||module->Ticks()==0)throw std::runtime_error("Module Update did not run before script Update");
+        auto p=_GameObject->GetTransform()->GetLocalPosition();p.X+=delta;_GameObject->GetTransform()->SetLocalPosition(p);
+    }
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=delta;_GameObject->GetTransform()->SetLocalPosition(p);}
-    void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=3;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void OnRelease(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        if(!runtime->FindModule<ISessionModule>("SessionModule"))throw std::runtime_error("Module released before the script");
+        auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=3;_GameObject->GetTransform()->SetLocalPosition(p);
+    }
 };
 GAMESPROUT_SCRIPT(Test)
 )");
@@ -156,9 +192,13 @@ GAMESPROUT_SCRIPT(Test)
             {"Code/Helper.cpp","11112233445566778899aabbccddeeff"},
             {"Code/OnlyInsideClass.inl","21112233445566778899aabbccddeeff"},
             {"Code/Test.hpp","41112233445566778899aabbccddeeff"},
-            {"Code/Aux/Independent.cpp","51112233445566778899aabbccddeeff"}};
+            {"Code/Aux/Independent.cpp","51112233445566778899aabbccddeeff"},
+            {"Code/SessionModule.hpp","71112233445566778899aabbccddeeff"}};
         ScriptCompileResult result;
         Require(compiler.Compile(request,result,[]{return false;}),"Compile: "+result.Diagnostics);
+        Require(result.Modules.size()==1&&result.Modules.front().Name=="SessionModule"&&
+            result.Modules.front().SourceFile=="Code/SessionModule.hpp"&&
+            result.Modules.front().SourceGuid==request.Sources.back().SourceGuid,"Gameplay module metadata");
         CheckFixedWorkspace(request,result);
         const auto outputRepairObject=ObjectFile(request,"Independent.cpp");
         const auto outputRepairStamp=Stamp(outputRepairObject);
@@ -171,6 +211,7 @@ GAMESPROUT_SCRIPT(Test)
         result=repaired;CheckFixedWorkspace(request,result);
         Require(result.ReflectionWarnings.find("RuntimeOnly")!=std::string::npos,"Unsupported public field has no reflection warning");
         Require(editor.Load(request,result,error),"Load: "+error);
+        Require(editor._Runtime->FindModule("SessionModule")==nullptr,"Loading GameLogic created a gameplay instance in edit mode");
         CheckLoadedSlot(editor,request,result);Require(editor._CurrentSlot==0,"First game module did not use SlotA");
         Require(editor.SetReloadBlocked(true,error),error);
         Require(editor.GetBuildState().ReloadBlocked&&!editor.Load(request,result,error)&&editor._CurrentSlot==0,
@@ -197,7 +238,9 @@ GAMESPROUT_SCRIPT(Test)
         Require(plainObject->AddComponent<GameSproutRuntime::IMeshComponent>()!=nullptr,"Host failed to create Mesh for cross-DLL typed lookup");
         auto* plain=editor._Runtime->AddScriptComponent(plainObject,testType.Type.TypeID,testType.Source,0,error);Require(plain,error);
         Require(!editor._Runtime->AddScriptComponent(object,moverType.Type.TypeID,moverType.Source,0,error),"Duplicate script class attached to one object");
-        Require(editor._Runtime->SetScriptExecutionEnabled(true,error),error);editor._Runtime->Update(.016f);
+        Require(editor._Runtime->BeginExecution(error),error);
+        Require(editor._Runtime->FindModule("SessionModule")!=nullptr,"Play did not create the registered module");
+        editor._Runtime->Update(.016f);
         Require(plain->GetScriptError().empty()&&plainObject->GetTransform()->GetLocalPosition().Y==2,"Plain Test self-add/Get<this> or lifecycle failed: "+plain->GetScriptError());
         Require(plainObject->GetTransform()->GetLocalPosition().Z==0,"Variable Update called FixedUpdate");
         editor._Runtime->FixedUpdate(.25f);
@@ -207,7 +250,8 @@ GAMESPROUT_SCRIPT(Test)
         const auto executionArtifact=Read(artifact),executionSlotBytes=Read(SlotFile(request,result,executionSlot));
         Require(!editor.Load(request,attemptedReload,error)&&script->IsScriptTypeAvailable(),"Execution-time reload removed the active module");
         Require(editor._CurrentSlot==executionSlot&&Read(artifact)==executionArtifact&&Read(SlotFile(request,result,executionSlot))==executionSlotBytes,"Rejected execution-time reload modified a slot or published Artifact");
-        Require(editor._Runtime->SetScriptExecutionEnabled(false,error),error);
+        Require(editor._Runtime->EndExecution(error),error);
+        Require(editor._Runtime->FindModule("SessionModule")==nullptr,"Stop retained a live gameplay module");
         Require(plainObject->GetTransform()->GetLocalPosition().Y==3,"Plain user OnRelease was not invoked");
         ScriptCompileResult cached;Require(compiler.Compile(request,cached,[]{return false;})&&cached.CacheHit,"Cache hit");
         Require(Stamp(independentObject)==firstIndependentStamp&&Stamp(mirrorRoot+"/Code/Test.hpp")==firstMirrorStamp,"Identical input rewrote source mirrors or rebuilt a helper object");
@@ -268,12 +312,12 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
         CheckLoadedSlot(editor,request,renamedResult);
         const auto playVersion=[&](int version) {
             object->GetTransform()->SetLocalPosition({});
-            Require(editor._Runtime->SetScriptExecutionEnabled(true,error),error);
+            Require(editor._Runtime->BeginExecution(error),error);
             editor._Runtime->Update(.25f);
             const float expected=.75f*version;
             const float actual=object->GetTransform()->GetLocalPosition().X;
             Require(script->GetScriptError().empty()&&actual==expected,"Reused library slot executed stale gameplay code instead of version "+std::to_string(version)+": expected "+std::to_string(expected)+", actual "+std::to_string(actual)+", "+script->GetScriptError());
-            Require(editor._Runtime->SetScriptExecutionEnabled(false,error),error);
+            Require(editor._Runtime->EndExecution(error),error);
             Require(script->GetFields().at("RenamedMover::Speed").Number==3&&script->GetFields().at("RenamedMover::Added").Number==4,"Code version load changed authored fields");
         };
         int codeVersion=1;
