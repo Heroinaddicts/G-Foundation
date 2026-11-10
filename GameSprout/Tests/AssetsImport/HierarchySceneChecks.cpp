@@ -66,6 +66,10 @@ int main(int argc,char** argv) {
     IRuntimeHost* host=nullptr;
     IAnimationPreview* preview=nullptr;
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
+    const auto releasePropertyModules=[&] {
+        for(const std::string name:{"ObjectEditing","PlayMode","ScriptEditor","ScriptCompiler"})
+            if(editor.Modules.contains(name))GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules.at(name),api);
+    };
     try {
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create scene project");
         QDir root(temporary.path());Check(root.mkpath("Assets/Scenes")&&root.mkpath("Assets/Other"),"Cannot create scene directories");
@@ -78,7 +82,7 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation startup failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"}) editor.Modules[name]=LoadModule(name);
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager","ObjectEditing","PlayMode","ScriptCompiler","ScriptEditor"}) editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module initialize failed: "+entry.first);
         for(const auto& entry:editor.Modules) if(entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Module launch failed: "+entry.first);
@@ -190,7 +194,7 @@ int main(int argc,char** argv) {
         Check(QFileInfo::exists(createdFile)&&scenes->GetActiveScene()->GetInstanceID()==originalSceneID,"Creation auto-opened scene or wrote wrong directory");
         Json::Value source;
         const QByteArray originalBytes=ReadFile(createdFile);
-        Check(AssetArtifactIO::Parse(originalBytes.toStdString(),source)&&source["Version"].asUInt()==1&&source["MainCameraID"].asUInt64()==1,"New scene source document invalid");
+        Check(AssetArtifactIO::Parse(originalBytes.toStdString(),source)&&source["Version"].asUInt()==GameSproutRuntime::SceneDocumentVersion&&source["MainCameraID"].asUInt64()==1,"New scene source document invalid");
         stage="created scene asset import/selection";
         pump([&]{return FindRow(assetTree,"Created In Folder.scene").isValid()&&idle();});
         auto selection=projectView->GetSelection();
@@ -260,7 +264,7 @@ int main(int argc,char** argv) {
             Check(AssetArtifactIO::Write(root.filePath("Assets/Bad.scene"),QByteArray::fromStdString(AssetArtifactIO::JsonText(bad)),error),error);
             Check(!scenes->OpenScene("Bad.scene",error)&&!error.empty()&&scenes->GetActiveScene()->GetInstanceID()==activeID&&runtime->GetSceneCount()==count,message);
         };
-        Json::Value bad=source;bad["Version"]=2;rejectDocument(bad,"Unsupported version replaced scene");
+        Json::Value bad=source;bad["Version"]=GameSproutRuntime::SceneDocumentVersion+1;rejectDocument(bad,"Unsupported version replaced scene");
         bad=source;bad["Objects"].append(source["Objects"][0]);rejectDocument(bad,"Duplicate scene IDs accepted");
         bad=source;bad["Objects"][0]["ParentID"]=Json::UInt64(1);rejectDocument(bad,"Parent cycle accepted");
         bad=source;bad["MainCameraID"]=Json::UInt64(999);rejectDocument(bad,"Missing main camera accepted");
@@ -279,6 +283,7 @@ int main(int argc,char** argv) {
         GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);inspector=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(projectView,&editor);projectView=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,&editor);hierarchy=nullptr;
+        releasePropertyModules();
         GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules["SelectionManager"],api);
         GameSproutEditor::GameSproutEditorFinal::Release(preview,api);preview=nullptr;
         GameSproutEditor::GameSproutEditorFinal::Release(scenes,api);scenes=nullptr;
@@ -298,6 +303,7 @@ int main(int argc,char** argv) {
         if(inspector)GameSproutEditor::GameSproutEditorFinal::Release(inspector,&editor);
         if(projectView)GameSproutEditor::GameSproutEditorFinal::Release(projectView,&editor);
         if(hierarchy)GameSproutEditor::GameSproutEditorFinal::Release(hierarchy,&editor);
+        releasePropertyModules();
         if(preview)GameSproutEditor::GameSproutEditorFinal::Release(preview,api);
         if(scenes)GameSproutEditor::GameSproutEditorFinal::Release(scenes,api);
         if(host)GameSproutEditor::GameSproutEditorFinal::Release(host,api);

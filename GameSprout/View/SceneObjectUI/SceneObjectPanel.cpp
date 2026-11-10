@@ -57,6 +57,10 @@ QWidget* SceneObjectPanel::SceneObjectHeaderHost() const {return _Ui->objectInsp
 void SceneObjectPanel::SetLocked(bool locked) { _Ui->objectInspector->SetLocked(locked); }
 void SceneObjectPanel::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) { _Ui->objectInspector->OnAnimationEvent(event); }
 
+bool SceneObjectPanel::RefreshObjectProperties(const InspectorObjectChanges& changes) {
+    return _Ui->objectInspector->RefreshProperties(changes);
+}
+
 void SceneObjectPanel::OnPlayModeStateChanged(const PlayModeState& state) {
     _ReadOnly=state.State!=EditorPlayState::Edit&&state.State!=EditorPlayState::Playing&&state.State!=EditorPlayState::Paused;
     _StructureReadOnly=state.State!=EditorPlayState::Edit;

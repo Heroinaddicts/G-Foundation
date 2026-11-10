@@ -4,19 +4,13 @@
 class QDialog;
 namespace Ui {class PrefabInstanceSectionForm;class PrefabOverridesPopup;}
 
-class PrefabInstanceSection final : public InspectorSection, public IPrefabListener,
-    public IAssetListener, public ISceneListener, public IPlayModeListener {
+class PrefabInstanceSection final : public InspectorSection, public IPrefabListener, public IPlayModeListener {
 public:
     PrefabInstanceSection(const InspectorServices&,QWidget*);
     ~PrefabInstanceSection() override;
     bool Load(const InspectorTarget&,bool,std::string&) override;
     void Deactivate() override;
     void OnPrefabStateChanged() override;
-    void OnAssetCreate(const AssetEvent&) override;
-    void OnAssetModify(const AssetEvent&) override;
-    void OnAssetRemove(const AssetEvent&) override;
-    void OnActiveSceneChanged() override;
-    void OnSceneStateChanged() override;
     void OnPlayModeStateChanged(const PlayModeState&) override;
 private:
     void resizeEvent(QResizeEvent*) override;
@@ -25,6 +19,7 @@ private:
     bool Read(PrefabInstanceInfo&,std::string&) const;
     bool CanAuthor() const;
     bool Refresh(std::string&);
+    void Present(const PrefabInstanceInfo&,bool showOverrides);
     void QueueRefresh();
     void OpenOverrides();
     void ApplyAll();
@@ -39,6 +34,6 @@ private:
     IPlayMode* _Play=nullptr;
     InspectorTarget _Target;
     QString _SourceName;
-    bool _PrefabSubscribed=false,_AssetSubscribed=false,_SceneSubscribed=false,_PlaySubscribed=false;
+    bool _PrefabSubscribed=false,_PlaySubscribed=false;
     bool _Queued=false;
 };

@@ -17,6 +17,12 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     pump([&]{return inspectorDock->findChild<QToolButton*>("objectLockButton")!=nullptr;});
     auto* lock=inspectorDock->findChild<QToolButton*>("objectLockButton");
     Check(lock,"Inspector lock control missing");
+    QAction* normalMode=nullptr;QAction* debugMode=nullptr;
+    for (QMenu* menu:inspectorDock->findChildren<QMenu*>()) for (QAction* action:menu->actions()) {
+        if(action->text()==QStringLiteral("普通模式"))normalMode=action;
+        if(action->text()==QStringLiteral("调试模式"))debugMode=action;
+    }
+    Check(normalMode&&debugMode&&debugMode->isEnabled()&&!normalMode->isEnabled(),"Inspector mode menu missing or wrong default");
     const auto inspectedID=[&]() -> std::uint64_t {
         QWidget* form=inspectorDock->findChild<QWidget*>("objectInspector");
         if(!form||!form->isVisible())return 0;
@@ -24,6 +30,9 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
         return field?field->text().toULongLong():0;
     };
     const auto property=[&](const std::string& component,const QString& key) {
+        const bool restoreNormal=debugMode->isEnabled();
+        if(restoreNormal)debugMode->trigger();
+        struct RestoreMode {QAction* Action;~RestoreMode(){if(Action)Action->trigger();}} mode{restoreNormal?normalMode:nullptr};
         QTreeWidget* tree=inspectorDock->findChild<QTreeWidget*>(QString::fromStdString("componentProperties.GameSproutRuntime."+component));
         Check(tree,"Missing component details: "+component);
         if(auto* section=tree->parentWidget()->parentWidget())if(auto* details=section->findChild<QToolButton*>("detailsButton"))details->setChecked(true);
@@ -134,8 +143,10 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     Check(activeSelf&&activeSelf->isChecked()&&!inspectorDock->findChild<QLineEdit*>("hierarchyActiveEdit"),
         "Compact Inspector lost local active state or retained a derived-state row");
     const QString previousWorldRow=property("Transform","WorldMatrix.Row0");
+    debugMode->trigger();
     parent->GetTransform()->SetLocalPosition({5,6,7});
     pump([&]{return property("Transform","WorldMatrix.Row0")!=previousWorldRow;});
+    normalMode->trigger();
     parent->SetActive(true);selectNode(parent->GetInstanceID());
     auto* added=parent->AddComponent<GameSproutRuntime::IImageComponent>();Check(added,"Cannot add Image component");
     pump([&]{return inspectorDock->findChild<QTreeWidget*>("componentProperties.GameSproutRuntime.Image")!=nullptr;});
@@ -220,12 +231,6 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     Check(scene->DestroyGameObject(runtime->QueryGameObject(roots[1])),"Cannot delete selected node");
     pump([&]{return selection->GetSceneObjectSelection()==SceneObjectSelection{}&&inspectedID()==0&&hierarchy->GetSelectedObjectID()==0;});
     selectNode(roots[2]);
-    QAction* normalMode=nullptr;QAction* debugMode=nullptr;
-    for (QMenu* menu:inspectorDock->findChildren<QMenu*>()) for (QAction* action:menu->actions()) {
-        if(action->text()==QStringLiteral("普通模式"))normalMode=action;
-        if(action->text()==QStringLiteral("调试模式"))debugMode=action;
-    }
-    Check(normalMode&&debugMode&&debugMode->isEnabled()&&!normalMode->isEnabled(),"Inspector mode menu missing or wrong default");
     debugMode->trigger();QCoreApplication::processEvents();
     Check(inspectorDock->findChild<QWidget*>("diagnosticsHost")->isVisible(),"Debug mode did not expose object identity");
     normalMode->trigger();QCoreApplication::processEvents();

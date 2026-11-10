@@ -126,9 +126,14 @@ void ResourceField::RefreshPicker() {
     else {std::string error;AssetReferenceResolver::Candidates(_Assets,_Library,{_PickerSourceGuid,0,false},_Expected,candidates,error);}
     _Picker->SetCandidates(candidates,_Expected);
 }
-void ResourceField::OnAssetCreate(const AssetEvent&){Refresh();RefreshPicker();}
-void ResourceField::OnAssetModify(const AssetEvent&){Refresh();RefreshPicker();}
-void ResourceField::OnAssetRemove(const AssetEvent&){Refresh();RefreshPicker();}
+void ResourceField::OnAssetChanged(const AssetEvent& event) {
+    const auto& guid=event.GuidValue.GetGuidString();
+    if(_Value.Guid==guid)Refresh();
+    if(_Picker&&(_PickerSourceGuid.empty()||_PickerSourceGuid==guid))RefreshPicker();
+}
+void ResourceField::OnAssetCreate(const AssetEvent& event){OnAssetChanged(event);}
+void ResourceField::OnAssetModify(const AssetEvent& event){OnAssetChanged(event);}
+void ResourceField::OnAssetRemove(const AssetEvent& event){OnAssetChanged(event);}
 bool ResourceField::CanDrop(const QMimeData* mime,std::string& error) {
     std::vector<ProjectAssetSelection> values;
     if(!AssetDragPayload::Decode(mime,values) || values.size()!=1){error="请一次拖入一个源文件或子资源。";return false;}

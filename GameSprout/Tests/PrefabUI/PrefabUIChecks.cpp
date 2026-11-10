@@ -331,9 +331,12 @@ int main(int argc,char** argv){QApplication application(argc,argv);try {
     inspector.Inspect(root);auto* section=inspector.Section;Check(section&&!section->isHidden(),"Missing Prefab instance section");
     auto* overrides=Find<QToolButton>(section,"overridesButton");auto* select=Find<QToolButton>(section,"selectSourceButton");
     auto* popup=Find<QDialog>(section,"PrefabOverridesPopup");auto* apply=Find<QPushButton>(popup,"applyAllButton");auto* revert=Find<QPushButton>(popup,"revertAllButton");
+    Check(Find<QTreeWidget>(popup,"overridesTree")->topLevelItemCount()==0,"Hidden override popup eagerly allocated rows");
+    overrides->click();
     Check(apply->isEnabled()&&Find<QTreeWidget>(popup,"overridesTree")->topLevelItemCount()==1,"Missing initial override snapshot");
     auto* overrideRow=Find<QTreeWidget>(popup,"overridesTree")->topLevelItem(0);
     Check(overrideRow->text(1)=="Hero / Transform"&&overrideRow->text(2)=="Position"&&overrideRow->toolTip(1).contains("SourceObjectID"),"Override list does not expose readable object/component names");
+    popup->hide();
     inspector.Locked=true;selection.SetSceneObjectSelection({10,200});apply->click();revert->click();
     Check(prefabs.Applies==1&&prefabs.Reverts==1&&prefabs.LastObject==100,"Apply/Revert followed global selection instead of the locked Inspector target");Pump();
     select->click();Check(inspector.Locked&&inspector.Target.Scene.ObjectID==100&&selection.Assets.size()==1,"Select source changed the locked target");

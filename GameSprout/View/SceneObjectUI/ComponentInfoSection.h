@@ -30,6 +30,8 @@ private:
     void Resource(const QString& key, const QString& label, const GameSproutRuntime::ResourceReference& resource);
     void UpdateHeight();
     void UpdateDebugVisibility();
+    void RefreshVisibleDetails();
+    void LoadDetails(GameSproutRuntime::IComponent&);
     Ui::ComponentInfoSectionForm* _Ui = nullptr;
     ComponentEditContext _Context;
     ComponentEditor* _Editor = nullptr;

@@ -31,6 +31,7 @@ private:
     void ClosePicker();
     void OpenPicker(const std::vector<AssetReferenceCandidate>& candidates,const std::string& sourceGuid={});
     void RefreshPicker();
+    void OnAssetChanged(const AssetEvent&);
     bool AssignReference(const GameSproutRuntime::ResourceReference&,std::string& error);
     bool CanDrop(const QMimeData*,std::string& error);
     Ui::ResourceFieldForm* _Ui=nullptr;

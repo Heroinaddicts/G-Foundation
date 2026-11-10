@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QMetaObject>
 #include <algorithm>
+#include <utility>
 InspectorUI::~InspectorUI() { Release(nullptr); }
 void InspectorUI::BeforeInitialize(GameSproutEditor::GameSproutViewApi* editor) {
     g_Self = this; g_GameSproutEditor = editor; _Services.Editor = editor;
@@ -62,18 +63,65 @@ bool InspectorUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     _EditingSubscribed=_Editing&&_Editing->RegisterEditingListener(this);
     return (!_Services.Scenes || _SceneSubscribed) && (!_Runtime || _RuntimeSubscribed);
 }
-void InspectorUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*) { _Launched = true; Refresh(); }
+void InspectorUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*) {
+    _Launched = true;
+    _FullRefreshRequested=true;
+    RefreshPending();
+}
 void InspectorUI::RequestRefresh() {
+    _FullRefreshRequested = true;
+    QueueRefresh();
+}
+void InspectorUI::QueueRefresh() {
     if (!_Launched || !_Dispatch || !_Window || _RefreshQueued) return;
     _RefreshQueued = true;
     QMetaObject::invokeMethod(_Dispatch, [this] {
         _RefreshQueued = false;
         if (_ResolvingSelection) { _RefreshDeferred = true; return; }
-        if (_Window) Refresh();
+        if (_Window) RefreshPending();
     }, Qt::QueuedConnection);
 }
 void InspectorUI::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
-    if(_Target.Scene.SceneID&&event.SceneID==_Target.Scene.SceneID&&(event.ObjectID==_Target.Scene.ObjectID||event.ObjectID==_Target.Scene.SceneID))RequestRefresh();
+    using GameSproutRuntime::SceneNodeEventType;
+    if(!_Target.Scene.ObjectID||event.SceneID!=_Target.Scene.SceneID)return;
+    if(event.Type==SceneNodeEventType::MainCameraChanged) {
+        _ObjectChanges.ComponentTypes.insert("GameSproutRuntime.Camera");
+    } else if(event.ObjectID==_Target.Scene.ObjectID) {
+        switch(event.Type) {
+        case SceneNodeEventType::ComponentChanged:
+            if(event.ComponentType.empty()) {RequestRefresh();return;}
+            _ObjectChanges.ComponentTypes.insert(event.ComponentType);
+            break;
+        case SceneNodeEventType::Rename:
+        case SceneNodeEventType::ActiveChanged:
+        case SceneNodeEventType::TagChanged:
+        case SceneNodeEventType::LayerChanged:
+        case SceneNodeEventType::StaticFlagsChanged:
+            _ObjectChanges.Header=true;
+            break;
+        default: RequestRefresh();return;
+        }
+    } else {
+        const bool pathChanged=event.Type==SceneNodeEventType::Rename||event.Type==SceneNodeEventType::Reparent;
+        const bool worldChanged=_DebugMode&&event.Type==SceneNodeEventType::ComponentChanged&&
+            event.ComponentType=="GameSproutRuntime.Transform";
+        if(!pathChanged&&!worldChanged)return;
+        auto* selected=_Runtime?_Runtime->QueryGameObject(_Target.Scene.ObjectID):nullptr;
+        auto* ancestor=selected?selected->Parent():nullptr;
+        while(ancestor&&ancestor->GetInstanceID()!=event.ObjectID)ancestor=ancestor->Parent();
+        if(!ancestor)return;
+        if(pathChanged)_ObjectChanges.Header=true;
+        if(worldChanged||event.Type==SceneNodeEventType::Reparent)
+            _ObjectChanges.ComponentTypes.insert("GameSproutRuntime.Transform");
+    }
+    QueueRefresh();
+}
+void InspectorUI::OnAssetChanged(const AssetEvent& event) {
+    if(_Target.Assets.empty())return;
+    const auto& guid=event.GuidValue.GetGuidString();
+    if(!_ActivePanel||_ActivePanel->TracksAsset(guid)||
+       std::any_of(_Target.Assets.begin(),_Target.Assets.end(),[&](const auto& asset){return asset.GuidString==guid;}))
+        RequestRefresh();
 }
 void InspectorUI::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
     if (_ActivePanel) _ActivePanel->OnAnimationEvent(event);
@@ -88,6 +136,7 @@ void InspectorUI::UnregisterExtension(IInspectorExtension* extension) {
     const auto found = std::find(_Extensions.begin(), _Extensions.end(), extension);
     if (found == _Extensions.end()) return;
     _Extensions.erase(found);
+    _SectionsToRefresh.erase(extension);
     const auto section=_SceneSections.find(extension);
     if(section!=_SceneSections.end()) {
         if(section->second.Section){section->second.Section->Deactivate();delete section->second.Section.data();}
@@ -136,6 +185,7 @@ void InspectorUI::Release(GameSproutEditor::GameSproutViewApi*) {
     _NormalModeMenu = nullptr; _DebugModeMenu = nullptr;
     delete _Ui; _Ui = nullptr;
     _Services = {}; _Runtime = nullptr; _Target = {}; _RefreshQueued = false; _RefreshDeferred = false;
+    _FullRefreshRequested=false;_SectionsToRefresh.clear();_ObservedPropertiesPending=false;_ObjectChanges={};
     _LockedSceneMissing = false; _OperationError.clear();
     if (g_Self == this) g_Self = nullptr;
 }
@@ -147,8 +197,14 @@ void InspectorUI::ObserveObject(std::uint64_t objectID) {
     if(_Runtime&&objectID&&_Runtime->RegisterObjectPropertyObserver(objectID,this))_ObservedObjectID=objectID;
 }
 void InspectorUI::OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) {
-    if(_Target.Scene.SceneID==sceneID&&_Target.Scene.ObjectID==objectID)RequestRefresh();
+    if(_Target.Scene.SceneID==sceneID&&_Target.Scene.ObjectID==objectID) {
+        _ObservedPropertiesPending=true;
+        QueueRefresh();
+    }
 }
 void InspectorUI::OnObjectPropertiesChanged(const ObjectEditEvent& event) {
-    if(_Target.Scene.SceneID==event.Target.SceneID&&_Target.Scene.ObjectID==event.Target.ObjectID)RequestRefresh();
+    if(_Target.Scene.SceneID!=event.Target.SceneID||_Target.Scene.ObjectID!=event.Target.ObjectID)return;
+    if(event.Target.ComponentID)_ObjectChanges.ComponentIDs.insert(event.Target.ComponentID);
+    else _ObservedPropertiesPending=true;
+    QueueRefresh();
 }

@@ -27,14 +27,13 @@ public:
     void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>&) override { RequestRefresh(); }
     void OnSceneObjectSelectionChanged(const SceneObjectSelection&) override { RequestRefresh(); }
     void OnActiveSceneChanged() override { RequestRefresh(); }
-    void OnSceneStateChanged() override { RequestRefresh(); }
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override;
     void OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) override;
     void OnObjectPropertiesChanged(const ObjectEditEvent&) override;
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) override;
-    void OnAssetCreate(const AssetEvent&) override { RequestRefresh(); }
-    void OnAssetModify(const AssetEvent&) override { RequestRefresh(); }
-    void OnAssetRemove(const AssetEvent&) override { RequestRefresh(); }
+    void OnAssetCreate(const AssetEvent& event) override { OnAssetChanged(event); }
+    void OnAssetModify(const AssetEvent& event) override { OnAssetChanged(event); }
+    void OnAssetRemove(const AssetEvent& event) override { OnAssetChanged(event); }
 private:
     void BeforeInitialize(GameSproutEditor::GameSproutViewApi*) override;
     bool Initialize(GameSproutEditor::GameSproutViewApi*) override;
@@ -43,6 +42,9 @@ private:
     void Update(GameSproutEditor::GameSproutViewApi*) override {}
     void Release(GameSproutEditor::GameSproutViewApi*) override;
     void RequestRefresh();
+    void QueueRefresh();
+    void OnAssetChanged(const AssetEvent&);
+    void RefreshPending();
     void ObserveObject(std::uint64_t objectID);
     void Refresh();
     void UpdateButtons();
@@ -51,7 +53,7 @@ private:
     bool ResolvePendingChanges();
     void Clear(const QString&);
     bool SceneTargetExists(const SceneObjectSelection&) const;
-    void RefreshSceneSections(const InspectorTarget&,bool changed);
+    void RefreshSceneSections(const InspectorTarget&,bool changed,const std::set<IInspectorExtension*>* only=nullptr);
     void DeactivateSceneSections();
     QWidget* _Window = nullptr;
     QObject* _Dispatch = nullptr;
@@ -81,6 +83,10 @@ private:
     bool _RuntimeSubscribed = false;
     bool _SceneSubscribed = false;
     bool _RefreshQueued = false;
+    bool _FullRefreshRequested = false;
+    std::set<IInspectorExtension*> _SectionsToRefresh;
+    bool _ObservedPropertiesPending = false;
+    InspectorObjectChanges _ObjectChanges;
     bool _RefreshDeferred = false;
     bool _ResolvingSelection = false;
     bool _LockedSceneMissing = false;

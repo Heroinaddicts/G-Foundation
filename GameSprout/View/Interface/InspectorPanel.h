@@ -4,6 +4,7 @@
 #include <JsonCpp/json.hpp>
 #include <QWidget>
 #include <functional>
+#include <set>
 #include <typeinfo>
 
 class IAssetsManager;
@@ -26,6 +27,13 @@ struct InspectorServices {
 struct InspectorTarget {
     std::vector<ProjectAssetSelection> Assets;
     SceneObjectSelection Scene;
+};
+
+struct InspectorObjectChanges {
+    bool Header = false;
+    std::set<std::uint64_t> ComponentIDs;
+    std::set<std::string> ComponentTypes;
+    bool Empty() const {return !Header&&ComponentIDs.empty()&&ComponentTypes.empty();}
 };
 
 struct InspectorPresentation {
@@ -59,6 +67,8 @@ public:
     // Optional .ui-defined slot for additive object-header controls.
     virtual QWidget* SceneObjectHeaderHost() const {return nullptr;}
     virtual void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) {}
+    virtual bool RefreshObjectProperties(const InspectorObjectChanges&) {return false;}
+    virtual bool TracksAsset(const std::string&) const {return false;}
     std::function<void()> Changed;
     std::function<void(const std::string&)> ReportError;
     std::function<void(const ProjectAssetSelection&)> RequestSelection;

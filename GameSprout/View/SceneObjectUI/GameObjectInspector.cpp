@@ -4,6 +4,7 @@
 #include "IScriptEditor.h"
 #include "IObjectEditing.h"
 #include "IAssetsManager.h"
+#include "InspectorPanel.h"
 #include "../Shared/AssetDragPayload.h"
 #include "ui_GameObjectInspector.h"
 #include "ui_LayerChildrenDialog.h"
@@ -58,6 +59,36 @@ void GameObjectInspector::Clear() {
     SetDebugMode(_DebugMode);
     _Loading=false;
 }
+
+void GameObjectInspector::LoadHeader(GameSproutRuntime::IGameObject& object) {
+    if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified()) {
+        const auto name=QString::fromStdString(object.GetName());
+        if(_Ui->objectNameEdit->text()!=name)_Ui->objectNameEdit->setText(name);
+        if(QApplication::focusWidget()!=_Ui->objectNameEdit)_Ui->objectNameEdit->setCursorPosition(0);
+        _Ui->objectNameEdit->setToolTip(name);
+    }
+    RefreshClassification();
+    _Ui->objectActiveCheck->setVisible(!_SceneRoot);
+    _Ui->objectActiveCheck->setChecked(object.IsActiveSelf());
+}
+
+bool GameObjectInspector::RefreshProperties(const InspectorObjectChanges& changes) {
+    auto* object=_Context.Resolve();
+    if(!object||object->GetInstanceID()!=_LoadedID||object->GetComponentCount()!=_Sections.size())return false;
+    _Loading=true;
+    struct Guard {bool& Value;~Guard(){Value=false;}} guard{_Loading};
+    if(changes.Header)LoadHeader(*object);
+    for(std::size_t index=0;index<_Sections.size();++index) {
+        auto* component=object->GetComponentAt(index);
+        if(!component||component->GetComponentInstanceID()!=_Sections[index]->GetComponentInstanceID())return false;
+        const auto* type=component->GetTypeName();
+        if(changes.ComponentIDs.contains(component->GetComponentInstanceID())||
+           (type&&changes.ComponentTypes.contains(type)))
+            _Sections[index]->Load(*component);
+    }
+    return true;
+}
+
 void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
     std::map<std::uint64_t,bool> expanded;
     if(_LoadedID==object.GetInstanceID())for(auto* section:_Sections)
@@ -65,17 +96,10 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
     if (_LoadedID!=object.GetInstanceID() && _AddPopup) delete _AddPopup;
     _Loading=true;setEnabled(true);
     struct Guard { bool& Value;~Guard(){Value=false;} } guard{_Loading};
-    if (_LoadedID!=object.GetInstanceID() || QApplication::focusWidget()!=_Ui->objectNameEdit || !_Ui->objectNameEdit->isModified()) {
-        _Ui->objectNameEdit->setText(QString::fromStdString(object.GetName()));
-        if(QApplication::focusWidget()!=_Ui->objectNameEdit)_Ui->objectNameEdit->setCursorPosition(0);
-        _Ui->objectNameEdit->setToolTip(QString::fromStdString(object.GetName()));
-    }
-    _LoadedID=object.GetInstanceID();
     _SceneRoot=object.GetScene()==&object;
+    LoadHeader(object);
+    _LoadedID=object.GetInstanceID();
     SetDebugMode(_DebugMode);
-    RefreshClassification();
-    _Ui->objectActiveCheck->setVisible(!_SceneRoot);
-    _Ui->objectActiveCheck->setChecked(object.IsActiveSelf());
     while(_Sections.size()>object.GetComponentCount()) {delete _Sections.back();_Sections.pop_back();}
     for(std::size_t index=0;index<object.GetComponentCount();++index) {
         auto* component=object.GetComponentAt(index);
@@ -88,13 +112,13 @@ void GameObjectInspector::Load(GameSproutRuntime::IGameObject& object) {
         auto componentContext=_Context;
         componentContext.ComponentID=component->GetComponentInstanceID();
         _Sections[index]->Bind(componentContext);
+        _Sections[index]->SetDebugMode(_DebugMode);
         _Sections[index]->Load(*component);
         if(componentContext.ComponentID) {
             const auto previous=expanded.find(componentContext.ComponentID);
             _Sections[index]->SetExpanded(previous==expanded.end()?true:previous->second);
         }
         _Sections[index]->SetEditability(!_ReadOnly,!_StructureReadOnly);
-        _Sections[index]->SetDebugMode(_DebugMode);
         _Sections[index]->setVisible(!_SceneRoot || _DebugMode);
     }
 }

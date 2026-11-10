@@ -14,6 +14,7 @@ public:
     bool Revert(std::string&) override;
     void Deactivate() override;
     void SetDebugMode(bool) override;
+    bool TracksAsset(const std::string& guid) const override {return _AssetDependencies.contains(guid);}
 private:
     void SelectSource(const std::string& guid);
     Ui::MaterialInspectorPanelForm* _Ui=nullptr;
@@ -21,5 +22,6 @@ private:
     InspectorPresentation _Presentation;
     std::string _BaselineSettings;
     std::string _BaselineSource;
+    std::set<std::string> _AssetDependencies;
     bool _Loaded=false;
 };

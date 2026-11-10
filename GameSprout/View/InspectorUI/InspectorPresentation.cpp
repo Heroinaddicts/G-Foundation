@@ -17,7 +17,8 @@ void InspectorUI::UpdatePresentation() {
     _Ui->guidEdit->setText(description.Guid); _Ui->localIDEdit->setText(description.LocalID);
     _Ui->diagnosticsHost->setVisible(_DebugMode && target);
     _Ui->infoHost->setVisible(_DebugMode && target && !description.SceneObject);
-    if (_Info) _Info->Load(QStringLiteral("资源诊断信息"), description.Diagnostics);
+    if (_Info && _DebugMode && target && !description.SceneObject)
+        _Info->Load(QStringLiteral("资源诊断信息"), description.Diagnostics);
     if (_ActivePanel) { _ActivePanel->SetDebugMode(_DebugMode); _ActivePanel->SetLocked(_Ui->lockButton->isChecked()); }
     if (_NormalModeMenu) _NormalModeMenu->SetEnabled(_DebugMode);
     if (_DebugModeMenu) _DebugModeMenu->SetEnabled(!_DebugMode);

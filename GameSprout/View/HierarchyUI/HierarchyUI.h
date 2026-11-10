@@ -65,6 +65,8 @@ private:
     void QueueRefresh(bool rebuild = true);
     void Refresh();
     void RefreshPresentation();
+    void RefreshRoot();
+    void RestoreExpansion();
     void UpdateStatus();
     void InstallContextCapture();
     void RefreshHeaderVisibility();
@@ -113,6 +115,8 @@ private:
     bool _RebuildRequested = false;
     bool _Rebuilding = false;
     std::uint64_t _SceneID = 0;
+    std::uint64_t _ContentRootID = 0;
+    std::uint64_t _ScrollToObjectID = 0;
     std::uint64_t _DragSessionID = 0;
     std::uint64_t _SelectedID = 0;
     std::uint64_t _ContextSceneID = 0;
@@ -120,5 +124,9 @@ private:
     bool _ContextCaptured = false;
     std::array<std::string, static_cast<std::size_t>(NodeKind::Count)> _NodeNames;
     std::set<std::uint64_t> _ExpandedIDs;
+    std::set<std::uint64_t> _PendingStructure;
+    std::set<std::uint64_t> _PendingNames;
+    std::set<std::uint64_t> _PendingActivation;
+    QString _AppliedFilter;
 };
 #endif //__HierarchyUI_h__

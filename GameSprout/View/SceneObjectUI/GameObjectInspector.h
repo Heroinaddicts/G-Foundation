@@ -12,6 +12,7 @@ class QMimeData;
 class QDragEnterEvent;
 class QDragMoveEvent;
 class QDropEvent;
+struct InspectorObjectChanges;
 
 class GameObjectInspector final : public QWidget {
 public:
@@ -20,6 +21,7 @@ public:
     GameObjectInspector(const GameObjectInspector&) = delete;
     GameObjectInspector& operator=(const GameObjectInspector&) = delete;
     void Load(GameSproutRuntime::IGameObject& object);
+    bool RefreshProperties(const InspectorObjectChanges&);
     void Clear();
     void SetLocked(bool locked);
     QWidget* HeaderExtensionsHost() const;
@@ -38,6 +40,7 @@ private:
     void dragMoveEvent(QDragMoveEvent*) override;
     void dropEvent(QDropEvent*) override;
     void CommitName();
+    void LoadHeader(GameSproutRuntime::IGameObject&);
     void RefreshClassification();
     void CommitTag(int);
     void CommitLayer(int);

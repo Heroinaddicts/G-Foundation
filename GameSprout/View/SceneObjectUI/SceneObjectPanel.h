@@ -16,6 +16,7 @@ public:
     void SetLocked(bool) override;
     QWidget* SceneObjectHeaderHost() const override;
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) override;
+    bool RefreshObjectProperties(const InspectorObjectChanges&) override;
 private:
     Ui::SceneObjectPanelForm* _Ui = nullptr;
     InspectorTarget _Target;

@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <set>
+#include <utility>
 
 MaterialInspectorPanel::MaterialInspectorPanel(const InspectorServices& services,QWidget* parent)
     : InspectorPanel(services,parent),_Ui(new Ui::MaterialInspectorPanelForm()) {
@@ -37,6 +38,7 @@ bool MaterialInspectorPanel::Load(const InspectorTarget& target,bool changed,std
         error="材质资源已删除或尚未完成导入。";return false;
     }
     const bool embedded=meta->_ImporterType!=eAssetImporterType::Material;
+    _AssetDependencies.clear();
     std::string source;Json::Value document;
     if(embedded) {
         if(!MaterialDefinition::ReadPreparedMaterial(_Services.Library,meta->_Guid,localID,document,error))return false;
@@ -45,14 +47,19 @@ bool MaterialInspectorPanel::Load(const InspectorTarget& target,bool changed,std
         while(document["ExternalMaterial"].isObject()) {
             const auto reference=document["ExternalMaterial"];
             if(!MaterialDefinition::Reference(reference)){error="材质外部映射包含无效的 GUID 或 LocalID。";return false;}
-            const auto key=reference["Guid"].asString()+":"+std::to_string(reference["LocalID"].asUInt64());
+            const auto guid=reference["Guid"].asString();
+            _AssetDependencies.insert(guid);
+            const auto key=guid+":"+std::to_string(reference["LocalID"].asUInt64());
             if(!visited.insert(key).second||visited.size()>16){error="材质外部映射存在循环。";return false;}
-            if(!MaterialDefinition::ReadPreparedMaterial(_Services.Library,Guid(reference["Guid"].asString()),reference["LocalID"].asUInt64(),document,error))return false;
+            if(!MaterialDefinition::ReadPreparedMaterial(_Services.Library,Guid(guid),reference["LocalID"].asUInt64(),document,error))return false;
         }
         if(external.isObject())document["ExternalMaterial"]=external;
     } else if(!_Services.Assets->LoadMaterialSource(meta->_Guid,source,error)||!AssetArtifactIO::Parse(source,document)) {
         if(error.empty())error="无法读取材质源文件。";return false;
     }
+    const auto& shader=std::as_const(document)["Shader"];
+    if(shader.isObject()&&shader["Guid"].isString())
+        _AssetDependencies.insert(shader["Guid"].asString());
     const bool reload=changed||!_Loaded||target.Assets!=_Target.Assets||!HasPendingChanges();
     if(reload) {
         auto* inspector=_Ui->materialInspector;
@@ -121,6 +128,6 @@ bool MaterialInspectorPanel::Revert(std::string& error) {
 }
 void MaterialInspectorPanel::Deactivate() {
     _Ui->materialInspector->Deactivate();
-    _Loaded=false;_Target={};_Presentation={};_BaselineSettings.clear();_BaselineSource.clear();
+    _Loaded=false;_Target={};_Presentation={};_BaselineSettings.clear();_BaselineSource.clear();_AssetDependencies.clear();
 }
 void MaterialInspectorPanel::SetDebugMode(bool debug){_Ui->materialInspector->SetDebugMode(debug);}

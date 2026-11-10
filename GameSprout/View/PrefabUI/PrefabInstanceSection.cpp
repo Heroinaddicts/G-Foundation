@@ -30,8 +30,6 @@ PrefabInstanceSection::PrefabInstanceSection(const InspectorServices& services,Q
     _Prefabs=services.Editor?services.Editor->GetGameSproutModule<IPrefabManager>("PrefabManager"):nullptr;
     _Play=services.Editor?services.Editor->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
     if(_Prefabs)_PrefabSubscribed=_Prefabs->RegisterPrefabListener(this);
-    if(services.Assets)_AssetSubscribed=services.Assets->RegisterAssetListener(this);
-    if(services.Scenes)_SceneSubscribed=services.Scenes->RegisterSceneListener(this);
     if(_Play)_PlaySubscribed=_Play->RegisterPlayModeListener(this);
     QObject::connect(_Ui->overridesButton,&QToolButton::clicked,this,[this]{OpenOverrides();});
     QObject::connect(_Ui->openSourceButton,&QToolButton::clicked,this,[this]{OpenSource();});
@@ -41,16 +39,15 @@ PrefabInstanceSection::PrefabInstanceSection(const InspectorServices& services,Q
 }
 PrefabInstanceSection::~PrefabInstanceSection() {
     if(_PrefabSubscribed)_Prefabs->UnregisterPrefabListener(this);
-    if(_AssetSubscribed)_Services.Assets->UnregisterAssetListener(this);
-    if(_SceneSubscribed)_Services.Scenes->UnregisterSceneListener(this);
     if(_PlaySubscribed)_Play->UnregisterPlayModeListener(this);
     delete _Popup;delete _PopupUi;delete _Ui;
 }
 bool PrefabInstanceSection::Load(const InspectorTarget& target,bool changed,std::string& error) {
-    if(changed)_Popup->hide();
+    _Queued=false;
+    if(changed||_Target.Scene!=target.Scene)_Popup->hide();
     _Target=target;return Refresh(error);
 }
-void PrefabInstanceSection::Deactivate(){_Target={};_Popup->hide();}
+void PrefabInstanceSection::Deactivate(){_Target={};_Queued=false;_Popup->hide();}
 bool PrefabInstanceSection::CanAuthor() const {
     return _Services.Scenes&&!_Services.Scenes->IsPlaySessionActive()
         &&(!_Play||_Play->GetState().State==EditorPlayState::Edit);
@@ -65,6 +62,10 @@ bool PrefabInstanceSection::Read(PrefabInstanceInfo& info,std::string& error) co
 bool PrefabInstanceSection::Refresh(std::string& error) {
     error.clear();PrefabInstanceInfo info;std::string readError;
     if(!Read(info,readError)){_Popup->hide();return false;}
+    Present(info,_Popup->isVisible());
+    return true;
+}
+void PrefabInstanceSection::Present(const PrefabInstanceInfo& info,bool showOverrides) {
     const QString path=QString::fromStdString(info.SourcePath);
     _SourceName=path.isEmpty()?QStringLiteral("来源不可用"):QFileInfo(path).fileName();UpdateSourceName();
     _Ui->sourceLabel->setToolTip(path);
@@ -81,6 +82,7 @@ bool PrefabInstanceSection::Refresh(std::string& error) {
     else if(!CanAuthor())state=QStringLiteral("播放期间不能应用或恢复覆盖。");
     _Ui->stateLabel->setText(state);_Ui->stateLabel->setVisible(!state.isEmpty());
     _PopupUi->messageLabel->setText(state.isEmpty()&&!info.HasOverrides?QStringLiteral("实例与来源一致。"):state);
+    if(!showOverrides)return;
     _PopupUi->overridesTree->clear();
     for(const auto& item:info.Overrides) {
         const QString values=QString::fromStdString(item.SourceValueJson)+QStringLiteral(" → ")+QString::fromStdString(item.InstanceValueJson);
@@ -90,11 +92,16 @@ bool PrefabInstanceSection::Refresh(std::string& error) {
             QString::fromStdString(item.PropertyPath),values});
         row->setToolTip(1,QStringLiteral("SourceObjectID: %1\nComponentID: %2").arg(item.SourceObjectID).arg(item.ComponentID));row->setToolTip(3,values);
     }
-    return true;
 }
 void PrefabInstanceSection::QueueRefresh(){
-    if(_Queued)return;_Queued=true;
-    QMetaObject::invokeMethod(this,[this]{_Queued=false;if(RequestRefresh)RequestRefresh();else {std::string ignored;setVisible(Refresh(ignored));}},Qt::QueuedConnection);
+    if(_Queued||!_Target.Scene.ObjectID)return;
+    _Queued=true;
+    QMetaObject::invokeMethod(this,[this]{
+        if(!_Queued)return;
+        _Queued=false;
+        if(RequestRefresh)RequestRefresh();
+        else {std::string ignored;setVisible(Refresh(ignored));}
+    },Qt::QueuedConnection);
 }
 void PrefabInstanceSection::UpdateSourceName(){_Ui->sourceLabel->setText(_Ui->sourceLabel->fontMetrics().elidedText(_SourceName,Qt::ElideRight,_Ui->sourceLabel->width()));}
 void PrefabInstanceSection::resizeEvent(QResizeEvent* event){InspectorSection::resizeEvent(event);UpdateSourceName();}
@@ -109,7 +116,7 @@ void PrefabInstanceSection::Error(const std::string& error){
 void PrefabInstanceSection::OpenOverrides(){
     std::string error;PrefabInstanceInfo info;
     if(!Read(info,error)||_Target.Scene.ObjectID!=info.RootObjectID)return;
-    Refresh(error);_Popup->move(_Ui->overridesButton->mapToGlobal(QPoint(0,_Ui->overridesButton->height())));_Popup->show();
+    Present(info,true);_Popup->move(_Ui->overridesButton->mapToGlobal(QPoint(0,_Ui->overridesButton->height())));_Popup->show();
 }
 void PrefabInstanceSection::ApplyAll(){
     if(!CanAuthor()){Error("播放期间不能 Apply Prefab。");return;}
@@ -136,9 +143,4 @@ void PrefabInstanceSection::SelectSource(){
     if(RequestSelection)RequestSelection({info.Source.Guid,0,false});
 }
 void PrefabInstanceSection::OnPrefabStateChanged(){QueueRefresh();}
-void PrefabInstanceSection::OnAssetCreate(const AssetEvent&){QueueRefresh();}
-void PrefabInstanceSection::OnAssetModify(const AssetEvent&){QueueRefresh();}
-void PrefabInstanceSection::OnAssetRemove(const AssetEvent&){QueueRefresh();}
-void PrefabInstanceSection::OnActiveSceneChanged(){_Popup->hide();QueueRefresh();}
-void PrefabInstanceSection::OnSceneStateChanged(){QueueRefresh();}
 void PrefabInstanceSection::OnPlayModeStateChanged(const PlayModeState&){_Popup->hide();QueueRefresh();}

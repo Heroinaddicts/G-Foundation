@@ -1,6 +1,7 @@
 #include "InspectorUI.h"
 #include "ui_InspectorUI.h"
 #include <QLayout>
+#include <utility>
 void InspectorUI::Clear(const QString& message) {
     ObserveObject(0);
     DeactivateSceneSections();
@@ -15,6 +16,27 @@ bool InspectorUI::SceneTargetExists(const SceneObjectSelection& target) const {
     auto* object = _Runtime ? _Runtime->QueryGameObject(target.ObjectID) : nullptr;
     return scene && scene->GetInstanceID() == target.SceneID && object && object->GetScene() == scene;
 }
+void InspectorUI::RefreshPending() {
+    const bool full=std::exchange(_FullRefreshRequested,false);
+    auto sections=std::exchange(_SectionsToRefresh,std::set<IInspectorExtension*>{});
+    const bool observed=std::exchange(_ObservedPropertiesPending,false);
+    const auto changes=std::exchange(_ObjectChanges,InspectorObjectChanges{});
+    if(full||!_ActivePanel||!_Target.Scene.ObjectID||!SceneTargetExists(_Target.Scene)) {
+        Refresh();
+        return;
+    }
+    if(observed||!changes.Empty()) {
+        const bool refreshWholePanel=changes.Empty()||
+            (observed&&_Services.Scenes&&_Services.Scenes->IsPlaySessionActive());
+        if(refreshWholePanel||!_ActivePanel->RefreshObjectProperties(changes)) {
+            std::string error;
+            if(!_ActivePanel->Load(_Target,false,error)){Clear(QString::fromStdString(error));return;}
+            _OperationError=QString::fromStdString(error);
+        }
+    }
+    if(!sections.empty())RefreshSceneSections(_Target,false,&sections);
+    UpdateButtons();
+}
 void InspectorUI::Refresh() {
     if (!_Window || _ResolvingSelection || !_Services.Selection) return;
     if (_Ui->lockButton->isChecked() && _LockedSceneMissing) { Clear(QStringLiteral("锁定的节点已删除或场景已切换。解锁后可查看其他选择。")); return; }
@@ -23,9 +45,9 @@ void InspectorUI::Refresh() {
     if (_Ui->lockButton->isChecked()) desired = _Target;
     if (desired.Scene.ObjectID) desired.Assets.clear();
     const bool changed = desired.Assets != _Target.Assets || desired.Scene != _Target.Scene;
-    const bool previousExists = _Target.Scene.ObjectID ? SceneTargetExists(_Target.Scene)
-        : (_Target.Assets.size() == 1 && _Services.Assets->QueryAsset(Guid(_Target.Assets.front().GuidString)));
-    if (changed && previousExists && !ResolvePendingChanges()) {
+    const bool previousExists = changed && (_Target.Scene.ObjectID ? SceneTargetExists(_Target.Scene)
+        : (_Target.Assets.size() == 1 && _Services.Assets->QueryAsset(Guid(_Target.Assets.front().GuidString))));
+    if (previousExists && !ResolvePendingChanges()) {
         if (_Target.Scene.ObjectID) _Services.Selection->SetSceneObjectSelection(_Target.Scene);
         else _Services.Selection->SetAssetSelection(_Target.Assets);
         return;
@@ -70,7 +92,7 @@ void InspectorUI::DeactivateSceneSections() {
     if(_ActivePanel)if(auto* header=_ActivePanel->SceneObjectHeaderHost())header->hide();
     if(_Window)_Ui->sceneSectionsHost->hide();
 }
-void InspectorUI::RefreshSceneSections(const InspectorTarget& target,bool changed) {
+void InspectorUI::RefreshSceneSections(const InspectorTarget& target,bool changed,const std::set<IInspectorExtension*>* only) {
     if(!target.Scene.ObjectID){DeactivateSceneSections();return;}
     QWidget* header=_ActivePanel?_ActivePanel->SceneObjectHeaderHost():nullptr;
     bool bodyVisible=false,headerVisible=false;
@@ -90,16 +112,19 @@ void InspectorUI::RefreshSceneSections(const InspectorTarget& target,bool change
             if(auto* section=entry.Section.data()) {
                 parent->layout()->addWidget(section);
                 section->ReportError=[this](const std::string& error){_OperationError=QString::fromStdString(error);UpdateButtons();};
-                section->RequestRefresh=[this]{RequestRefresh();};
+                section->RequestRefresh=[this,extension]{_SectionsToRefresh.insert(extension);QueueRefresh();};
                 section->RequestSelection=[this](const ProjectAssetSelection& asset){_Services.Selection->SetAssetSelection({asset});};
             }
         }
         if(auto* section=entry.Section.data()) {
-            std::string error;
-            const bool applicable=section->Load(target,changed,error);
-            section->setVisible(applicable);
+            bool applicable=!section->isHidden();
+            if(!only||only->contains(extension)) {
+                std::string error;
+                applicable=section->Load(target,changed,error);
+                section->setVisible(applicable);
+                if(!error.empty())_OperationError=QString::fromStdString(error);
+            }
             if(inHeader)headerVisible=headerVisible||applicable;else bodyVisible=bodyVisible||applicable;
-            if(!error.empty())_OperationError=QString::fromStdString(error);
         }
     }
     if(header)header->setVisible(headerVisible);

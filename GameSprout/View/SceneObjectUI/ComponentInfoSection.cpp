@@ -28,7 +28,10 @@ ComponentInfoSection::ComponentInfoSection(QWidget* parent) : QWidget(parent), _
     _Ui->componentProperties->header()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
     _Ui->componentProperties->header()->setSectionResizeMode(1,QHeaderView::Stretch);
     QObject::connect(_Ui->componentHeaderButton,&QToolButton::toggled,this,[this](bool expanded) { SetExpanded(expanded); });
-    QObject::connect(_Ui->detailsButton,&QToolButton::toggled,this,[this] { UpdateDebugVisibility(); });
+    QObject::connect(_Ui->detailsButton,&QToolButton::toggled,this,[this] {
+        UpdateDebugVisibility();
+        RefreshVisibleDetails();
+    });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemExpanded,this,[this] { UpdateHeight(); });
     QObject::connect(_Ui->componentProperties,&QTreeWidget::itemCollapsed,this,[this] { UpdateHeight(); });
     QObject::connect(_Ui->removeComponentButton,&QToolButton::clicked,this,[this] {
@@ -49,13 +52,19 @@ void ComponentInfoSection::SetExpanded(bool expanded) {
     _Ui->sectionBody->setVisible(expanded);
 }
 void ComponentInfoSection::SetDebugMode(bool debug) {
+    if(_DebugMode==debug)return;
     _DebugMode=debug;
     UpdateDebugVisibility();
+    RefreshVisibleDetails();
 }
 void ComponentInfoSection::UpdateDebugVisibility() {
     _Ui->detailsButton->setVisible(_DebugMode);
     _Ui->componentProperties->setVisible(_DebugMode && _Ui->detailsButton->isChecked());
     _Ui->unavailableEditorLabel->setVisible(!_Editor && !_DebugMode);
+}
+void ComponentInfoSection::RefreshVisibleDetails() {
+    if(!_DebugMode||!_Ui->detailsButton->isChecked())return;
+    if(auto* component=_Context.ResolveComponent())LoadDetails(*component);
 }
 void ComponentInfoSection::Add(const QString& key,const QString& label,const QString& value,QTreeWidgetItem* parent) {
     auto* item=new QTreeWidgetItem();
@@ -79,13 +88,23 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
     const QString type=TypeName(component);
     const auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(&component);
     _BuiltinType.clear();
-    if (!script && _Context.Runtime) for(const auto& info:_Context.Runtime->GetBuiltinComponentTypes())
-        if(!info.Intrinsic && info.TypeID==type.toStdString()) {_BuiltinType=info.TypeID;break;}
+    QString caption=type;
+    if(script) {
+        caption=QStringLiteral("Script");
+        if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetScriptTypes())
+            if(info.TypeID==script->GetScriptTypeID()){caption=QString::fromStdString(info.Name);break;}
+    } else if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetBuiltinComponentTypes()) {
+        if(info.TypeID!=type.toStdString())continue;
+        caption=QString::fromStdString(info.Name);
+        if(!info.Intrinsic)_BuiltinType=info.TypeID;
+        break;
+    }
     auto* owner=component.GetGameObject();
     _Ui->removeComponentButton->setVisible(!_BuiltinType.empty() && owner && owner!=owner->GetScene());
     const std::string editorKey=type.toStdString()+"#"+std::to_string(_Context.ComponentID)+
         (script?"/"+std::to_string(script->GetScriptInstanceID()):std::string());
     if (_EditorType != editorKey) {
+        _Ui->componentProperties->clear();
         delete _Editor;
         _Editor = _Context.Inspector ? _Context.Inspector->CreateComponentEditor(component.GetComponentType(),_Ui->editorHost) : nullptr;
         _EditorType = editorKey;
@@ -94,6 +113,17 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         _Ui->detailsButton->setChecked(_Editor == nullptr);
     }
     if (_Editor) { _Editor->Bind(_Context); _Editor->Load(component); }
+    setObjectName("GameObjectComponentSection."+type);
+    _Ui->componentProperties->setObjectName("componentProperties."+type);
+    _Ui->componentHeaderButton->setText(caption);
+    _Ui->componentHeaderButton->setToolTip(type);
+    _Ui->componentHeaderButton->setAccessibleName(caption+QStringLiteral("：展开或折叠组件"));
+    if(_DebugMode&&_Ui->detailsButton->isChecked())LoadDetails(component);
+    UpdateDebugVisibility();
+}
+void ComponentInfoSection::LoadDetails(GameSproutRuntime::IComponent& component) {
+    const auto type=TypeName(component);
+    const auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(&component);
     QStringList expanded;
     if (_Ui->componentProperties->objectName()=="componentProperties."+type) {
         for (int index=0;index<_Ui->componentProperties->topLevelItemCount();++index) {
@@ -101,15 +131,9 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
             if (item->isExpanded()) expanded.push_back(item->data(0,Qt::UserRole).toString());
         }
     }
-    setObjectName("GameObjectComponentSection."+type);
-    _Ui->componentProperties->setObjectName("componentProperties."+type);
     _Ui->componentProperties->clear();
-    QString caption=type;
-    if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetBuiltinComponentTypes())
-        if(info.TypeID==type.toStdString()){caption=QString::fromStdString(info.Name);break;}
     Add("TypeName",QStringLiteral("类型标识"),type);
     if(auto* value=dynamic_cast<GameSproutRuntime::ITransformComponent*>(&component)) {
-        caption="Transform";
         Add("LocalPosition",QStringLiteral("局部位置（米）"),Vector(value->GetLocalPosition()));
         const auto rotation=value->GetLocalRotation();
         Add("LocalRotation",QStringLiteral("局部旋转（四元数 XYZW）"),QStringLiteral("%1   %2   %3   %4").arg(Number(rotation.X),Number(rotation.Y),Number(rotation.Z),Number(rotation.W)));
@@ -117,30 +141,27 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         Matrix("LocalMatrix",QStringLiteral("局部矩阵"),value->GetLocalMatrix());
         Matrix("WorldMatrix",QStringLiteral("世界矩阵"),value->GetWorldMatrix());
     } else if(auto* value=dynamic_cast<GameSproutRuntime::IRectTransformComponent*>(&component)) {
-        caption="Rect Transform";
         Add("AnchorMin",QStringLiteral("锚点最小值"),Vector(value->GetAnchorMin()));
         Add("AnchorMax",QStringLiteral("锚点最大值"),Vector(value->GetAnchorMax()));
         Add("Pivot",QStringLiteral("枢轴"),Vector(value->GetPivot()));
         Add("AnchoredPosition",QStringLiteral("锚定位置"),Vector(value->GetAnchoredPosition()));
         Add("SizeDelta",QStringLiteral("尺寸增量"),Vector(value->GetSizeDelta()));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::IImageComponent*>(&component)) {
-        caption="Image";Resource("Texture",QStringLiteral("纹理"),value->GetTexture());
+        Resource("Texture",QStringLiteral("纹理"),value->GetTexture());
         const auto color=value->GetColor();
         Add("Color",QStringLiteral("颜色（线性 RGBA）"),QStringLiteral("%1   %2   %3   %4").arg(Number(color.R),Number(color.G),Number(color.B),Number(color.A)));
         const auto uv=value->GetUVRect();
         Add("UVPosition",QStringLiteral("UV 起点"),Vector(uv.Position));Add("UVSize",QStringLiteral("UV 尺寸"),Vector(uv.Size));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::ICanvasComponent*>(&component)) {
-        caption="Canvas";
         Add("RenderMode",QStringLiteral("渲染模式"),value->GetRenderMode()==GameSproutRuntime::CanvasRenderMode::WorldSpace?"World Space":"Screen Space");
         Add("ReferenceResolution",QStringLiteral("参考分辨率"),Vector(value->GetReferenceResolution()));
         Add("PixelsPerUnit",QStringLiteral("布局单位 / 米"),Number(value->GetPixelsPerUnit()));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::IMeshComponent*>(&component)) {
-        caption="Mesh";Resource("Mesh",QStringLiteral("网格"),value->GetMesh());
+        Resource("Mesh",QStringLiteral("网格"),value->GetMesh());
         const auto bounds=value->GetLocalBounds();
         Add("BoundsCenter",QStringLiteral("局部包围盒中心"),Vector(bounds.Center));
         Add("BoundsExtents",QStringLiteral("局部包围盒半尺寸"),Vector(bounds.Extents));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::IMeshRendererComponent*>(&component)) {
-        caption="Mesh Renderer";
         Add("Visible",QStringLiteral("可见"),Yes(value->IsVisible()));
         Add("MaterialCount",QStringLiteral("材质槽数量"),QString::number(value->GetMaterialCount()));
         for(std::size_t slot=0;slot<value->GetMaterialCount();++slot) {
@@ -149,7 +170,6 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
             Add(QStringLiteral("Material.%1.LocalID").arg(slot),QStringLiteral("材质 %1 LocalID").arg(slot),resource.Guid.empty()?QStringLiteral("—"):QString::number(resource.LocalID));
         }
     } else if(auto* value=dynamic_cast<GameSproutRuntime::ICameraComponent*>(&component)) {
-        caption="Camera";
         const auto settings=value->GetSettings();
         Add("Projection",QStringLiteral("投影方式"),settings.Projection==GameSproutRuntime::CameraProjection::Orthographic?"Orthographic":"Perspective");
         Add("VerticalFovDegrees",QStringLiteral("垂直视野角（度）"),QString::number(GameSproutRuntime::RadiansToDegrees(settings.VerticalFovRadians),'f',2));
@@ -160,27 +180,20 @@ void ComponentInfoSection::Load(GameSproutRuntime::IComponent& component) {
         auto* object=value->GetGameObject();
         Add("MainCamera",QStringLiteral("场景主相机"),Yes(object && object->GetScene() && object->GetScene()->GetMainCamera()==value));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::IAnimatorComponent*>(&component)) {
-        caption="Animator";Resource("Controller",QStringLiteral("Controller"),value->GetController());
+        Resource("Controller",QStringLiteral("Controller"),value->GetController());
         Resource("Skeleton",QStringLiteral("骨架"),value->GetSkeleton());
         Add("NodeBindings",QStringLiteral("节点绑定"),QString::number(value->GetNodeBindings().size()));
     } else if(auto* value=dynamic_cast<GameSproutRuntime::ISkinnedMeshRendererComponent*>(&component)) {
-        caption="Skinned Mesh Renderer";
         Add("AnimatorObjectID",QStringLiteral("Animator 节点 ID"),QString::number(value->GetAnimatorObjectID()));
     } else if(script) {
-        caption="Script";
-        if(_Context.Runtime)for(const auto& info:_Context.Runtime->GetScriptTypes())if(info.TypeID==script->GetScriptTypeID()){caption=QString::fromStdString(info.Name);break;}
         Add("ScriptTypeID",QStringLiteral("脚本类型"),QString::fromStdString(script->GetScriptTypeID()));
         Add("ScriptInstanceID",QStringLiteral("脚本实例 ID"),QString::number(script->GetScriptInstanceID()));
     } else Add("Unknown",QStringLiteral("组件信息"),QStringLiteral("当前版本尚无此组件的专用属性面板。"));
-    _Ui->componentHeaderButton->setText(caption);
-    _Ui->componentHeaderButton->setToolTip(type);
-    _Ui->componentHeaderButton->setAccessibleName(caption+QStringLiteral("：展开或折叠组件"));
     for (int index=0;index<_Ui->componentProperties->topLevelItemCount();++index) {
         auto * item=_Ui->componentProperties->topLevelItem(index);
         item->setExpanded(expanded.contains(item->data(0,Qt::UserRole).toString()));
     }
     UpdateHeight();
-    UpdateDebugVisibility();
 }
 void ComponentInfoSection::UpdateHeight() {
     int count=0;
