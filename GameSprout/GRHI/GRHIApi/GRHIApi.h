@@ -488,6 +488,12 @@ namespace GRHI {
         // 取得任何有效帧后必须 Submit，不能 Cancel；对应 Surface 须存活至提交。
         virtual AcquireFrameResult AcquireFrame(
             ICommandBuffer* command, SurfaceFrame& frame) = 0;
+
+        // 尝试获取画面，后端可在呈现队列繁忙时立即返回 Unavailable。
+        virtual AcquireFrameResult TryAcquireFrame(
+            ICommandBuffer* command, SurfaceFrame& frame) {
+            return AcquireFrame(command, frame);
+        }
     };
 
     // 某张显卡上的渲染设备；后端由 SDL 自动选择，可创建多个 Surface 和资源。

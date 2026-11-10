@@ -57,6 +57,12 @@ bool SurfaceSDL::Draw(ITexture* texture, const Color& clearColor) {
     return _Renderer->Draw(*this, texture, clearColor);
 }
 AcquireFrameResult SurfaceSDL::AcquireFrame(ICommandBuffer* value, SurfaceFrame& frame) {
+    return AcquireFrame(value,frame,true);
+}
+AcquireFrameResult SurfaceSDL::TryAcquireFrame(ICommandBuffer* value, SurfaceFrame& frame) {
+    return AcquireFrame(value,frame,false);
+}
+AcquireFrameResult SurfaceSDL::AcquireFrame(ICommandBuffer* value, SurfaceFrame& frame, bool waitForFrame) {
     frame = {};
     _Device->ClearError();
     auto* command = _Device->GetCommand(value);
@@ -79,7 +85,10 @@ AcquireFrameResult SurfaceSDL::AcquireFrame(ICommandBuffer* value, SurfaceFrame&
     catch (...) { command->Surfaces.erase(this); throw; }
     SDL_GPUTexture* texture = nullptr;
     uint32_t width = 0, height = 0;
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(command->Native, _Window, &texture, &width, &height)) {
+    const bool acquired = waitForFrame
+        ? SDL_WaitAndAcquireGPUSwapchainTexture(command->Native, _Window, &texture, &width, &height)
+        : SDL_AcquireGPUSwapchainTexture(command->Native, _Window, &texture, &width, &height);
+    if (!acquired) {
         _Device->RemoveTarget(token); command->Surfaces.erase(this);
         command->Fail(SDL_GetError()); return AcquireFrameResult::Failed;
     }

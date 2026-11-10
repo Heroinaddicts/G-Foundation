@@ -19,20 +19,31 @@ bool Renderer::GetWorldBounds(IScene* scene,std::uint64_t objectID,Bounds& bound
     try {
         SyncRevision();IGameObject* object=nullptr;MeshGPU* mesh=nullptr;Mat4 model;
         if(!QueryObject(scene,objectID,object,mesh,model)) return false;
-        std::vector<Vector3> positions;
-        if(!PosedPositions(*object,*mesh,positions)) return false;
-        PickingMath::Vector localMinimum,localMaximum;bool first=true;
+        Vector3 localMinimum,localMaximum;
         // 先求被section引用顶点的本地AABB，不信任源产物的bounds。
         // 再变换盒子而非每个三角形顶点，使Center始终为M*localCenter，旋转非对称网格时不漂移。
-        for(const auto& section:mesh->Data.Sections) for(std::uint32_t index=0;index<section.IndexCount;++index) {
-            const PickingMath::Vector point(positions[mesh->Indices[section.FirstIndex+index]]);
-            if(first) {localMinimum=localMaximum=point;first=false;}
-            else {
-                localMinimum={std::min(localMinimum.X,point.X),std::min(localMinimum.Y,point.Y),std::min(localMinimum.Z,point.Z)};
-                localMaximum={std::max(localMaximum.X,point.X),std::max(localMaximum.Y,point.Y),std::max(localMaximum.Z,point.Z)};
+        const bool skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
+        if(!skinned&&mesh->ReferencedBoundsKnown) {
+            localMinimum=mesh->ReferencedMinimum;localMaximum=mesh->ReferencedMaximum;
+        } else {
+            std::vector<Vector3> posedPositions;
+            if(skinned&&!PosedPositions(*object,*mesh,posedPositions))return false;
+            const auto& positions=skinned?posedPositions:mesh->Positions;
+            bool first=true;
+            for(const auto& section:mesh->Data.Sections) for(std::uint32_t index=0;index<section.IndexCount;++index) {
+                const auto& point=positions[mesh->Indices[section.FirstIndex+index]];
+                if(first) {localMinimum=localMaximum=point;first=false;}
+                else {
+                    localMinimum={std::min(localMinimum.X,point.X),std::min(localMinimum.Y,point.Y),std::min(localMinimum.Z,point.Z)};
+                    localMaximum={std::max(localMaximum.X,point.X),std::max(localMaximum.Y,point.Y),std::max(localMaximum.Z,point.Z)};
+                }
+            }
+            if(first)return Fail("World mesh bounds are empty");
+            if(!skinned) {
+                mesh->ReferencedMinimum=localMinimum;mesh->ReferencedMaximum=localMaximum;
+                mesh->ReferencedBoundsKnown=true;
             }
         }
-        if(first) return Fail("World mesh bounds are empty");
         PickingMath::Vector minimum,maximum;
         for(int corner=0;corner<8;++corner) {
             const PickingMath::Vector local{corner&1?localMaximum.X:localMinimum.X,
@@ -60,25 +71,36 @@ bool Renderer::AppendSelectionOutline(IScene* scene,std::uint64_t objectID,Debug
     try {
         SyncRevision();IGameObject* object=nullptr;MeshGPU* mesh=nullptr;Mat4 model;
         if(!QueryObject(scene,objectID,object,mesh,model)) return false;
-        std::vector<Vector3> positions;
-        if(!PosedPositions(*object,*mesh,positions)) return false;
+        const bool skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
+        std::vector<Vector3> posedPositions;
+        if(skinned&&!PosedPositions(*object,*mesh,posedPositions))return false;
+        const auto& positions=skinned?posedPositions:mesh->Positions;
         constexpr std::size_t limit=1048576;
         if(draw.Lines.size()>limit/2 || draw.Triangles.size()>limit/3 || draw.Lines.size()*2+draw.Triangles.size()*3>limit)
             return Fail("Existing debug draw exceeds vertex limit");
         const std::size_t available=(limit-draw.Lines.size()*2-draw.Triangles.size()*3)/2;
-        std::set<std::pair<std::uint32_t,std::uint32_t>> edges;
-        std::vector<DebugLine> lines;
-        for(const auto& section:mesh->Data.Sections) for(std::uint32_t offset=0;offset<section.IndexCount;offset+=3) {
-            const std::uint32_t indices[]={mesh->Indices[section.FirstIndex+offset],mesh->Indices[section.FirstIndex+offset+1],mesh->Indices[section.FirstIndex+offset+2]};
-            for(int edge=0;edge<3;++edge) {
-                const auto a=std::min(indices[edge],indices[(edge+1)%3]),b=std::max(indices[edge],indices[(edge+1)%3]);
-                if(a==b || !edges.emplace(a,b).second) continue;
-                if(lines.size()>=available) return Fail("Selection outline exceeds debug vertex limit");
-                Vector3 from,to;
-                if(!PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[a]),1),from) ||
-                   !PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[b]),1),to)) return Fail("Selection outline has nonfinite world positions");
-                lines.push_back({from,to,tint,depthTest});
+        if(_OutlinedMesh!=mesh) {
+            std::set<std::pair<std::uint32_t,std::uint32_t>> seen;
+            std::vector<std::pair<std::uint32_t,std::uint32_t>> edges;
+            for(const auto& section:mesh->Data.Sections) for(std::uint32_t offset=0;offset<section.IndexCount;offset+=3) {
+                const auto* indices=mesh->Indices.data()+section.FirstIndex+offset;
+                for(int edge=0;edge<3;++edge) {
+                    const auto a=std::min(indices[edge],indices[(edge+1)%3]),b=std::max(indices[edge],indices[(edge+1)%3]);
+                    if(a==b||!seen.emplace(a,b).second)continue;
+                    if(edges.size()>=limit/2)return Fail("Selection outline exceeds debug vertex limit");
+                    edges.emplace_back(a,b);
+                }
             }
+            _OutlineEdges.swap(edges);_OutlinedMesh=mesh;
+        }
+        if(_OutlineEdges.size()>available)return Fail("Selection outline exceeds debug vertex limit");
+        std::vector<DebugLine> lines;
+        lines.reserve(_OutlineEdges.size());
+        for(const auto& [a,b]:_OutlineEdges) {
+            Vector3 from,to;
+            if(!PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[a]),1),from) ||
+               !PickingMath::ToVector3(PickingMath::Transform(model,PickingMath::Vector(positions[b]),1),to)) return Fail("Selection outline has nonfinite world positions");
+            lines.push_back({from,to,tint,depthTest});
         }
         // reserve/insert只会复制无抛出的值类型；分配失败时已有列表保持不变。
         draw.Lines.reserve(draw.Lines.size()+lines.size());draw.Lines.insert(draw.Lines.end(),lines.begin(),lines.end());return true;

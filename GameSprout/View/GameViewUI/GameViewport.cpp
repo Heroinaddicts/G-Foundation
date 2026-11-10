@@ -129,6 +129,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
     _NeedsRender=false;
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=false;
+    view.WaitForSurface=false;
     std::string diagnostic;
     auto* camera=scene?scene->GetMainCamera():nullptr;
     if(!scene)diagnostic="尚无活动场景。";
@@ -146,9 +147,13 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
     _Rendering=true;
     struct Scope{bool& Flag;~Scope(){Flag=false;}} scope{_Rendering};
     if (!_Renderer->Render(view)) {_AnimatedMaterials=false;Status(_Renderer->GetLastError());return;}
-    _AnimatedMaterials=_Renderer->GetStatistics().RequiresContinuousRendering;
-    if(!diagnostic.empty()){Status(diagnostic);return;}
     const auto& statistics=_Renderer->GetStatistics();
+    if(!statistics.Width||!statistics.Height) {
+        RequestRender();
+        return;
+    }
+    _AnimatedMaterials=statistics.RequiresContinuousRendering;
+    if(!diagnostic.empty()){Status(diagnostic);return;}
     std::string status=std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+
         std::to_string(statistics.DrawCalls)+" draws · "+std::to_string(statistics.Triangles)+" triangles";
     if(statistics.InstancedDrawCalls)status+=" · instanced "+std::to_string(statistics.InstancedInstances)+" · saved "+std::to_string(statistics.SavedDrawCalls)+" draws";

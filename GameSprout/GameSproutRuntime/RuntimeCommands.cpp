@@ -3,6 +3,7 @@
 #include "Scene.h"
 #include "RuntimeMath.h"
 #include "Components/ComponentFactory.h"
+#include "Components/TransformComponent.h"
 #include <algorithm>
 
 namespace GameSproutRuntime {
@@ -71,6 +72,8 @@ bool Runtime::ReparentNow(GameObjectState& child,GameObjectState* parent,bool ke
     }
     if(parent) parent->Children.push_back(&child);
     child.Parent=parent;child.PendingAttach=false;child.Initializing=false;
+    if(auto* transform=dynamic_cast<TransformComponent*>(child.Object->GetTransform()))
+        transform->_WorldMatrixChangeEpoch=0;
     InvalidateTransforms();
     for(auto* node:subtree) {
         node->SceneOwner=newScene;

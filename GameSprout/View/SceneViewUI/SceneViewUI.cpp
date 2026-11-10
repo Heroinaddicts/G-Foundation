@@ -53,6 +53,8 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     QObject::connect(_Ui->focusSelectionButton,&QToolButton::clicked,_Dispatch,[this]{FocusSelection();});
     QObject::connect(_Ui->retryRenderButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
     QObject::connect(_Ui->allCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowAllColliders(checked);});
+    QObject::connect(_Ui->childCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowChildColliders(checked);});
+    QObject::connect(_Ui->materialPreviewCheck,&QCheckBox::toggled,_Dispatch,[this]{_Viewport->RequestRender();});
     QObject::connect(_Ui->gridCheck,&QCheckBox::toggled,_Dispatch,[this](bool){if(_Viewport)_Viewport->RequestRender();});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
@@ -88,7 +90,7 @@ void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     // Editor camera navigation continues while simulation is paused.
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    const bool animateMaterials=!event.GameplayActive||!event.GameplayPaused||event.DeltaSeconds>0;
+    const bool animateMaterials=!event.GameplayActive&&_Ui&&_Ui->materialPreviewCheck->isChecked();
     if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous,animateMaterials);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
@@ -190,6 +192,7 @@ void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
     if(!_Window||!_Ui)return;
     if(_Viewport)_Viewport->Editing().SetReadOnly(!_CanEdit);
     if(_Chrome)_Chrome->SetEditingEnabled(_CanEdit);
+    _Ui->materialPreviewCheck->setEnabled(_CanEdit);
     QWidget* controls[]={_Ui->moveToolButton,_Ui->rotateToolButton,_Ui->scaleToolButton,_Ui->spaceCombo,_Ui->pivotCombo};
     for(QWidget* control:controls)control->setEnabled(_CanEdit);
 }

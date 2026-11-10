@@ -306,10 +306,30 @@
           </sizepolicy>
          </property>
          <property name="toolTip">
-          <string>默认显示所选对象及其子节点的碰撞形状。勾选后显示整个场景中活动且启用的碰撞体；不影响 Game 视图或物理模拟。</string>
+          <string>默认显示所选对象的碰撞体。勾选后显示整个场景中活动且启用的碰撞体。</string>
          </property>
          <property name="text">
-          <string>碰撞体</string>
+          <string>全部碰撞体</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="childCollidersCheck">
+         <property name="toolTip">
+          <string>显示所选对象的后代碰撞体。</string>
+         </property>
+         <property name="text">
+          <string>子碰撞体</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="materialPreviewCheck">
+         <property name="toolTip">
+          <string>在编辑模式中连续预览水面等动态材质。</string>
+         </property>
+         <property name="text">
+          <string>材质动画</string>
          </property>
         </widget>
        </item>

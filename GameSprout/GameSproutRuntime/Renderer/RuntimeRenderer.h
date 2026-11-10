@@ -50,6 +50,8 @@ private:
         // Does not replace the provider's authored/queried LocalBounds contract.
         Vector3 CullMinimum,CullMaximum;
         bool CullBoundsKnown=false;
+        Vector3 ReferencedMinimum,ReferencedMaximum;
+        bool ReferencedBoundsKnown=false;
         std::string Error;
     };
     struct TextureGPU {std::uint64_t ResourceRevision=0;GRHI::ITexture* Texture=nullptr;GRHI::ISampler* Sampler=nullptr;bool SRGB=false;std::string Error;};
@@ -234,6 +236,8 @@ private:
     RenderResourceLease _ResourceLease;
     RenderResourceCache& _ResourceCache;
     std::map<ResourceKey,MeshGPU>& _Meshes;
+    const MeshGPU* _OutlinedMesh=nullptr;
+    std::vector<std::pair<std::uint32_t,std::uint32_t>> _OutlineEdges;
     std::map<std::pair<std::uint64_t,std::uint64_t>,ColliderMeshWire> _ColliderMeshes;
     std::map<ResourceKey,TextureGPU>& _Textures;
     std::map<ResourceKey,Material>& _Materials;

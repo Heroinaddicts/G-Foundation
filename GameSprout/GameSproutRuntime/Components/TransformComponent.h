@@ -42,6 +42,8 @@ private:
     mutable bool _LocalMatrixKnown=false;
     mutable Mat4 _LocalMatrixCache,_WorldMatrixCache;
     mutable std::uint64_t _WorldMatrixEpoch=0;
+    mutable std::uint64_t _WorldMatrixChangeEpoch=0;
+    mutable std::uint64_t _ParentMatrixChangeEpoch=0;
     Vector3 _Position;
     Quaternion _Rotation;
     Vector3 _Scale{1.0f, 1.0f, 1.0f};

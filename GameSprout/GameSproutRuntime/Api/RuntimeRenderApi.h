@@ -58,6 +58,8 @@ struct RenderView {
     // Runtime 自动归组；关闭可用于逐对象绘制对照，不改变资源或场景数据。
     // 材质也必须允许实例化，且 Shader/绘制顺序满足合批条件。
     bool EnableGPUInstancing = true;
+    // 交互宿主可在呈现队列繁忙时跳过本帧，并在下一个宿主帧重试。
+    bool WaitForSurface = true;
 };
 
 struct SceneRaycastHit {
@@ -96,7 +98,7 @@ struct RenderStatistics {
     std::uint32_t ShadowMapUpdates = 0;
     std::uint32_t ShadowCascadeCount = 0;
     // A successfully drawn visible user Shader consumes GameSproutFrame.
-    // Hosts cache this result to animate editor water without polling modules.
+    // Hosts can use this result when the user enables material animation preview.
     bool RequiresContinuousRendering = false;
 };
 

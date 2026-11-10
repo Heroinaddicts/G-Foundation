@@ -38,6 +38,7 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
         OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
     });
     QObject::connect(_Ui->retryButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
+    QObject::connect(_Ui->materialPreviewButton,&QToolButton::toggled,_Dispatch,[this]{if(_Viewport)_Viewport->RequestRender();});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
 }
@@ -65,7 +66,7 @@ void GameViewUI::Hide(){if(_Window)_Window->hide();}
 void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    const bool animateMaterials=!event.GameplayActive||!event.GameplayPaused||event.DeltaSeconds>0;
+    const bool animateMaterials=!event.GameplayActive&&_Ui&&_Ui->materialPreviewButton->isChecked();
     if(!_Loading && _DockerContentVisible && _Viewport && _Window && _Viewport->isVisible())_Viewport->RenderGame(_ActiveScene,continuous,animateMaterials);
 }
 void GameViewUI::OnActiveSceneChanged() {
@@ -106,5 +107,6 @@ void GameViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
     _CanEdit=state.State==EditorPlayState::Edit;
     if(!_Window||!_Ui)return;
     _Ui->playButton->setEnabled(_CanEdit);_Ui->stopButton->setEnabled(_CanEdit);
+    _Ui->materialPreviewButton->setEnabled(_CanEdit);
     if(_Viewport)_Viewport->SetGameplayInputEnabled(state.State==EditorPlayState::Playing);
 }

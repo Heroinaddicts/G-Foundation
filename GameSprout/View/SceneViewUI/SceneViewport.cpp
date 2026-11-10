@@ -49,6 +49,7 @@ void SceneViewport::DestroyGpu() {
     // 先摘空成员，SDL 释放外来窗口时若同步触发原生 Qt 事件，重复清理仍然安全。
     auto* renderer=_Renderer;_Renderer=nullptr;
     _AnimatedMaterials=false;
+    _PresentedCamera={};
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
     RequestRender();
@@ -67,6 +68,10 @@ void SceneViewport::Shutdown() {
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}
 void SceneViewport::OnSceneVisualChanged(std::uint64_t sceneID) {if(sceneID==_SceneID)RequestRender();}
+bool SceneViewport::GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const {
+    camera=_ViewportChanged ? GameSproutRuntime::RenderedCamera{} : _PresentedCamera;
+    return camera.SceneID!=0;
+}
 void SceneViewport::ObserveNativeWindow() {
     QWindow* native=windowHandle();
     if(native!=_NativeWindow) {
@@ -148,7 +153,7 @@ bool SceneViewport::EnsureRendering() {
 }
 void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();}
+    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};RequestRender();}
     if(_Drag!=DragMode::None)AdvanceInput(dt);
     if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials)&&_Drag==DragMode::None)return;
     if(_Rendering||!CanRender())return;
@@ -158,6 +163,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     struct Guard{bool& Value;~Guard(){Value=false;}} guard{_Rendering};
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=grid;
+    view.WaitForSurface=false;
     view.DrawScene=scene!=nullptr;
     view.Camera.View=_Camera.ViewMatrix();view.Camera.Position=_Camera.GetState().Position;
     const auto& camera=_Camera.GetState();
@@ -169,13 +175,22 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     if(!_ViewportChanged)_Tools->Draw(scene,debug);
     view.DebugDraw=&debug;
     // Runtime Renderer 从 SurfaceFrame 实际像素尺寸算投影，包含 resize / Retina DPI。
-    if(!_Renderer->Render(view)){_AnimatedMaterials=false;SetStatus(_Renderer->GetLastError(),true);return;}
+    if(!_Renderer->Render(view)){
+        _AnimatedMaterials=false;_PresentedCamera={};SetStatus(_Renderer->GetLastError(),true);return;
+    }
+    const auto& info=_Renderer->GetStatistics();
+    if(!info.Width||!info.Height) {
+        // The previous image still occupies the surface. Keep its picking
+        // camera and retry the pending frame at the next host tick.
+        RequestRender();
+        return;
+    }
+    _Renderer->GetRenderedCamera(_PresentedCamera);
     const bool refreshOverlays=_ViewportChanged;
     _ViewportChanged=false;
     // Initial/changed pixel dimensions need one follow-up to build gizmos from
     // the first successfully presented camera. Later idle frames do no work.
     if(refreshOverlays)RequestRender();
-    const auto& info=_Renderer->GetStatistics();
     _AnimatedMaterials=info.RequiresContinuousRendering;
     if(info.Width&&info.Height) {
         std::string message=std::to_string(info.Width)+" × "+std::to_string(info.Height)+" px · "+std::to_string(info.DrawCalls)+" draws · "+std::to_string(info.Triangles)+" triangles · skipped "+std::to_string(info.SkippedObjects);

@@ -18,7 +18,7 @@ public:
     ~SceneViewport() override;
     // 也可借用宿主资源提供者；其生命周期须覆盖本 viewport 的渲染生命周期。
     void Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources);
-    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false,bool animateMaterials=true);
+    void RenderScene(GameSproutRuntime::IScene* scene,bool grid,float deltaSeconds,bool continuous=false,bool animateMaterials=false);
     void RequestRender(){_NeedsRender=true;}
     bool NeedsRender() const{return _NeedsRender;}
     void OnSceneVisualChanged(std::uint64_t sceneID) override;
@@ -32,7 +32,7 @@ public:
     SceneToolRouter& Tools(){return *_Tools;}
     void BindEditingServices(ISceneManager* scenes,ISelectionManager* selection);
     GameSproutRuntime::IRuntimeRenderer* Renderer() const{return _Renderer;}
-    bool GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const{return !_ViewportChanged&&_Renderer&&_Renderer->GetRenderedCamera(camera);}
+    bool GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const;
     void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error,true);}
     void ClearEditingError(){_EditingError.clear();}
     void SetColliderDebugError(const std::string& error){_ColliderDebugError=error;}
@@ -84,6 +84,7 @@ private:
     bool _ViewportChanged=true;
     bool _NeedsRender=true,_RuntimeSubscribed=false;
     bool _AnimatedMaterials=false;
+    GameSproutRuntime::RenderedCamera _PresentedCamera;
     std::uint64_t _SceneID=0;
     std::string _EditingError;
     std::string _ColliderDebugError;

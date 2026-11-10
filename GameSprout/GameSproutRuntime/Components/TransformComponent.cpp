@@ -2,6 +2,7 @@
 #include "ComponentFactory.h"
 #include "RuntimeMath.h"
 #include "GameObject.h"
+#include <array>
 #include <limits>
 #include <vector>
 
@@ -26,6 +27,7 @@ TransformComponent::TransformComponent(IGameObject* owner)
 
 void TransformComponent::InvalidateLocalMatrix() {
     _LocalMatrixKnown=false;
+    _WorldMatrixChangeEpoch=0;
     if(_Runtime)_Runtime->InvalidateTransforms();
 }
 
@@ -109,22 +111,42 @@ Mat4 TransformComponent::GetWorldMatrix() const {
     }
     const auto epoch=_Runtime->GetTransformEpoch();
     if(_WorldMatrixEpoch==epoch)return _WorldMatrixCache;
-    // Resolve a cold/changed ancestor chain iteratively. Cache every visited
-    // parent, so a scene traversal computes each unchanged world matrix once.
-    std::vector<const TransformComponent*> chain;
+    // A new epoch asks for verification. Only a local change or a changed
+    // parent matrix requires recomputing the cached result.
+    std::array<const TransformComponent*,16> chain;
+    std::vector<const TransformComponent*> deepChain;
+    std::size_t count=0;
     const TransformComponent* current=this;
     Mat4 world;
+    std::uint64_t parentChange=0;
     while(current) {
-        if(current->_WorldMatrixEpoch==epoch){world=current->_WorldMatrixCache;break;}
-        chain.push_back(current);
+        if(current->_WorldMatrixEpoch==epoch) {
+            world=current->_WorldMatrixCache;
+            parentChange=current->_WorldMatrixChangeEpoch;
+            break;
+        }
+        if(count<chain.size())chain[count]=current;
+        else deepChain.push_back(current);
+        ++count;
         auto* parent=current->_GameObject->Parent();
         auto* parentTransform=parent?parent->GetTransform():nullptr;
         current=dynamic_cast<const TransformComponent*>(parentTransform);
-        if(parentTransform&&!current){world=parentTransform->GetWorldMatrix();break;}
+        if(parentTransform&&!current) {
+            world=parentTransform->GetWorldMatrix();
+            parentChange=epoch;
+        }
     }
-    for(auto item=chain.rbegin();item!=chain.rend();++item) {
-        world=world*(*item)->GetLocalMatrix();
-        (*item)->_WorldMatrixCache=world;(*item)->_WorldMatrixEpoch=epoch;
+    while(count>0) {
+        --count;
+        const auto* item=count<chain.size()?chain[count]:deepChain[count-chain.size()];
+        if(!item->_WorldMatrixChangeEpoch||item->_ParentMatrixChangeEpoch!=parentChange) {
+            item->_WorldMatrixCache=world*item->GetLocalMatrix();
+            item->_WorldMatrixChangeEpoch=epoch;
+            item->_ParentMatrixChangeEpoch=parentChange;
+        }
+        item->_WorldMatrixEpoch=epoch;
+        world=item->_WorldMatrixCache;
+        parentChange=item->_WorldMatrixChangeEpoch;
     }
     return _WorldMatrixCache;
 }

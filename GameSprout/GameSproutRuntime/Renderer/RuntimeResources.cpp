@@ -107,6 +107,7 @@ void Renderer::ClearResources() {
     _ExtractionDiagnostic.clear();_LightDiagnostic.clear();
     ClearInstanceBuffers();
     _ColliderMeshes.clear();
+    _OutlinedMesh=nullptr;_OutlineEdges.clear();
 }
 void Renderer::SyncRevision() {
     _ResourceCache.Synchronize();

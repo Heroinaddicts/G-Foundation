@@ -13,7 +13,9 @@ public:
     TextureFormat GetColorFormat() const override;
     bool Draw(ITexture*, const Color&) override;
     AcquireFrameResult AcquireFrame(ICommandBuffer*, SurfaceFrame&) override;
+    AcquireFrameResult TryAcquireFrame(ICommandBuffer*, SurfaceFrame&) override;
 private:
+    AcquireFrameResult AcquireFrame(ICommandBuffer*, SurfaceFrame&, bool waitForFrame);
     SurfaceSDL(DeviceSDL* device, SDL_Window* window,GRHIWindowHandle handle) : _Device(device), _Window(window),_HostHandle(handle) {}
     DeviceSDL* const _Device;
     SDL_Window* _Window;

@@ -42,7 +42,9 @@ void SceneViewportEditing::OnActiveSceneChanged(){
     _Viewport.RequestRender();
 }
 void SceneViewportEditing::OnSceneStateChanged(){
-    _TransformEditActive=_Scenes && _Scenes->HasTransformEdit();
+    const bool editing=_Scenes && _Scenes->HasTransformEdit();
+    if(_TransformEditActive==editing)return;
+    _TransformEditActive=editing;
     _Viewport.RequestRender();
 }
 void SceneViewportEditing::OnAssetSelectionChanged(const std::vector<ProjectAssetSelection>& selection){
@@ -100,6 +102,7 @@ void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSprout
         GameSproutRuntime::ColliderDebugOptions options;
         options.SelectedObjectID=object?object->GetInstanceID():0;
         options.DrawAll=_ShowAllColliders;
+        options.IncludeChildren=_ShowChildColliders;
         renderer->AppendColliderWireframes(scene,options,draw);
         _Viewport.SetColliderDebugError(renderer->GetLastError());
     }
@@ -201,4 +204,5 @@ void SceneViewportEditing::SetPivot(SceneGizmoPivot value){Cancel();_Viewport.Cl
 void SceneViewportEditing::SetSnap(bool enabled,float move,float rotation,float scale){Cancel();_Viewport.ClearEditingError();_Snap=enabled;_Settings.TranslationSnap=move;_Settings.RotationSnapDegrees=rotation;_Settings.ScaleSnap=scale;_Viewport.RequestRender();}
 void SceneViewportEditing::SetReadOnly(bool value){if(_ReadOnly!=value){Cancel();_ReadOnly=value;_Ready=false;_Viewport.RequestRender();}}
 void SceneViewportEditing::SetShowAllColliders(bool enabled){if(_ShowAllColliders!=enabled){_ShowAllColliders=enabled;_Viewport.RequestRender();}}
+void SceneViewportEditing::SetShowChildColliders(bool enabled){if(_ShowChildColliders!=enabled){_ShowChildColliders=enabled;_Viewport.RequestRender();}}
 void SceneViewportEditing::SetExternalToolActive(bool value){_ExternalToolActive=value;_Ready=false;_Viewport.RequestRender();}

@@ -79,6 +79,10 @@ int main(int argc,char** argv){
         Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&provider.MeshLoads==meshLoads&&provider.MaterialLoads==materialLoads,
             "Idle rendering rebuilt source snapshots or reloaded shared resources");
         Check(stats.VisibleObjects==1&&stats.DrawCalls==1&&Pixel(*viewport)[0]>100,"Reusing prepared draws lost statistics or source pixels");
+        object->SetName("Renamed triangle");
+        stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&Pixel(*viewport)[0]>100,
+            "Author metadata invalidated render snapshots");
         auto clearOnly=view;clearOnly.DrawScene=false;clearOnly.ClearColor={0,0,1,1};
         stats=Render(*viewport,clearOnly);Check(stats.DrawCalls==0&&Pixel(*viewport)[2]>100,"Clear-only render reused stale prepared geometry");
         stats=Render(*viewport,view);Check(stats.DrawCalls==1&&Pixel(*viewport)[0]>100,"Clear-only frame damaged the retained scene preparation");

@@ -32,6 +32,7 @@ public:
     void SetPivot(SceneGizmoPivot pivot);
     void SetSnap(bool enabled,float move,float rotation,float scale);
     void SetShowAllColliders(bool enabled);
+    void SetShowChildColliders(bool enabled);
     bool ShowAllColliders() const {return _ShowAllColliders;}
     void SetExternalToolActive(bool value);
     std::function<void(SceneEditingTool)> ToolChanged;
@@ -55,5 +56,6 @@ private:
     bool _HasHover=false;
     bool _Ready=false,_Snap=false,_ReadOnly=false;
     bool _ShowAllColliders=false;
+    bool _ShowChildColliders=false;
     bool _ExternalToolActive=false;
 };

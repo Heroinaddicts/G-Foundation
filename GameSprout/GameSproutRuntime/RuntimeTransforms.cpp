@@ -9,7 +9,9 @@ void Runtime::InvalidateTransforms() {
     // an ancient cache entry. Only the wrap path touches all registered nodes.
     _TransformEpoch=1;
     for(const auto& entry:_Nodes)
-        if(auto* transform=dynamic_cast<TransformComponent*>(entry.second->Object->GetTransform()))
+        if(auto* transform=dynamic_cast<TransformComponent*>(entry.second->Object->GetTransform())) {
             transform->_WorldMatrixEpoch=0;
+            transform->_WorldMatrixChangeEpoch=0;
+        }
 }
 }

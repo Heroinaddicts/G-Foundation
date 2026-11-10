@@ -65,7 +65,8 @@ bool Renderer::Render(const RenderView& view) {
         std::uint32_t width=0,height=0;
         if(_Surface) {
             GRHI::SurfaceFrame frame;
-            const auto result=_Surface->AcquireFrame(command.Command,frame);
+            const auto result=view.WaitForSurface ? _Surface->AcquireFrame(command.Command,frame)
+                : _Surface->TryAcquireFrame(command.Command,frame);
             if(result==GRHI::AcquireFrameResult::Unavailable) {
                 const bool cancelled=_Device.Cancel(command.Command);
                 if(cancelled) command.Command=nullptr;
