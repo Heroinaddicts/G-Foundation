@@ -1,6 +1,7 @@
 #include "AssetImportJob.h"
 #include "PrefabDocument.h"
 #include "../../Module/Shared/AssetMetaFormat.h"
+#include "../../Module/Shared/AssetValueBinary.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <algorithm>
@@ -15,8 +16,9 @@ const std::string ScriptGuid="234567890abcdef1234567890abcdef1";
 const std::string SceneGuid="34567890abcdef1234567890abcdef12";
 class Context final:public Foundation::ITaskContext {
 public:
+    bool Cancel=false;
     UInt64 GetTaskId()const override{return 1;}
-    bool IsCancellationRequested()const override{return false;}
+    bool IsCancellationRequested()const override{return Cancel;}
     void* GetContext()const override{return nullptr;}
     bool SetOwnedContext(void*,Foundation::fTaskOwnedContextRelease)override{return false;}
 };
@@ -100,6 +102,68 @@ Json::Value SceneNode(std::uint64_t id,std::uint64_t parent,const char* name,std
 const Json::Value& NamedNode(const Json::Value& data,const char* name) {
     for(const auto& node:data["Objects"])if(node["Name"]==name)return node;
     throw std::runtime_error(std::string("Missing imported scene node: ")+name);
+}
+void CheckDependencyMemoization() {
+    Fixture fixture;AssetFileFingerprintCache cache;cache.Open();
+    AssetImportRequest request;request.AssetsRoot=fixture.Root.filePath("Assets").toStdString();
+    request.GuidString=SceneGuid;request.Fingerprints=&cache;
+    AssetImportJob job(request);job.Context=&fixture.Task;
+    Check(job.AddDependency("Shape.mesh"),job.Result.Error);
+    const auto first=cache.GetStatistics();
+    for(unsigned index=0;index<2048;++index)Check(job.AddDependency("Shape.mesh"),job.Result.Error);
+    Check(cache.GetStatistics().Requests==first.Requests&&job.Result.Manifest.Dependencies.size()==1,
+          "Repeated dependency reopened or reparsed its captured source/Meta");
+    QByteArray bytes;
+    Check(job.AddDependency("Shape.mesh",&bytes)&&bytes=="mesh-dependency-snapshot",
+          "Memoized dependency did not supply requested source bytes");
+    const auto hash=job.Result.Manifest.Dependencies[0].Hash;
+    Check(job.AddDependency("Shape.mesh",nullptr,true)&&job.Result.Manifest.Dependencies.size()==1&&
+          job.Result.Manifest.Dependencies[0].Hash==hash,"Final dependency revalidation changed a stable manifest");
+    fixture.Task.Cancel=true;
+    Check(!job.AddDependency("Shape.mesh")&&job.Result.Error=="Import cancelled","Memoized dependency ignored cancellation");
+    fixture.Task.Cancel=false;
+
+    AssetImportJob changedSource(request);Check(changedSource.AddDependency("Shape.mesh"),changedSource.Result.Error);
+    Write(fixture.Root.filePath("Assets/Shape.mesh"),"other-source-snapshot");
+    Check(!changedSource.AddDependency("Shape.mesh")&&changedSource.Result.Superseded&&changedSource.Result.Retry,
+          "Dependency memo hid a source replacement");
+
+    AssetImportJob changedMeta(request);Check(changedMeta.AddDependency("Shape.mesh"),changedMeta.Result.Error);
+    Write(fixture.Root.filePath("Assets/Shape.mesh.meta"),"{}\n");
+    Check(!changedMeta.AddDependency("Shape.mesh",nullptr,true)&&changedMeta.Result.Superseded&&changedMeta.Result.Retry,
+          "Final dependency validation hid a Meta change");
+}
+void CheckRepeatedSceneReferences() {
+    Fixture fixture;
+    const auto import=[&](unsigned count) {
+        AssetFileFingerprintCache cache;cache.Open();
+        auto source=Source()["Data"];source["Objects"]=Json::Value(Json::arrayValue);
+        source["NextObjectID"]=Json::UInt64(std::uint64_t(count)*3+1);
+        source["Annotations"]["PrefabInstances"]=Json::Value(Json::arrayValue);
+        for(unsigned index=0;index<count;++index) {
+            const auto identity=std::uint64_t(index)*3+1;
+            auto node=SceneNode(identity,0,"Repeated Mesh",identity+1);
+            Json::Value mesh;mesh["ID"]=Json::UInt64(identity+2);mesh["Type"]="GameSproutRuntime.Mesh";
+            mesh["Mesh"]=Reference(MeshGuid,41);node["Components"].append(std::move(mesh));
+            source["Objects"].append(std::move(node));
+        }
+        Write(fixture.Root.filePath("Assets/World.scene"),QByteArray::fromStdString(AssetArtifactIO::JsonText(source)));
+        AssetImportRequest request;request.Fingerprints=&cache;request.GuidString=SceneGuid;
+        request.AssetsRoot=fixture.Root.filePath("Assets").toStdString();request.LibraryRoot=fixture.Root.filePath("Library").toStdString();
+        request.SourcePath="World.scene";request.Importer=eAssetImporterType::Scene;
+        request.MetaJson=AssetArtifactIO::JsonText(Meta(SceneGuid,"World.scene","Scene"));request.SourcePaths=fixture.SourcePaths;
+        AssetImportJob job(request);Check(RunAssetImport(job,fixture.Task),job.Result.Error);
+        Check(job.Result.Manifest.Dependencies.size()==1&&job.Result.Manifest.ReferencedGuids.size()==1,
+              "Repeated scene references duplicated manifest edges");
+        QFile file(QDir(QString::fromStdString(job.Stage)).filePath(QString::fromStdString(job.Result.Manifest.Assets[0].Path)));
+        Check(file.open(QIODevice::ReadOnly),"Cannot read repeated-reference scene artifact");
+        Json::Value wrapper;Check(AssetValueBinary::Decode(file.readAll(),wrapper),"Invalid repeated-reference binary");
+        source.removeMember("Annotations");
+        Check(AssetArtifactIO::JsonText(wrapper["Data"])==AssetArtifactIO::JsonText(source),
+              "Scene fast path changed Runtime graph or retained author-only annotations");
+        return cache.GetStatistics().Requests;
+    };
+    Check(import(1)==import(2048),"Dependency content reads grew with repeated scene references instead of unique resources");
 }
 void CheckMissingReferences() {
     Fixture fixture;std::string error;auto source=Source();
@@ -264,6 +328,8 @@ int main(int argc,char** argv) {
         Check(!failed.Success&&failed.Result.Error.find("stable IDs")!=std::string::npos,"Prefab source accepted a component without its stable source ID");
         CheckSceneRecomposition(fixture,artifact.LocalID);
         CheckMissingReferences();
+        CheckDependencyMemoization();
+        CheckRepeatedSceneReferences();
         std::cout<<"Prefab production import, Runtime binary codec, stable resource identity, dependency and rejection checks passed\n";return 0;
     }catch(const std::exception& exception){std::cerr<<exception.what()<<'\n';return 1;}
 }

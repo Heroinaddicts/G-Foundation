@@ -10,7 +10,18 @@
 #include <QProcess>
 
 namespace {
-bool References(AssetImportJob & job,const Json::Value & value) {
+bool ParseNativeDocument(const QByteArray& bytes,Json::Value& document) {
+    Json::CharReaderBuilder reader;
+    reader["rejectDupKeys"]=true;
+    reader["failIfExtra"]=true;
+    struct ReaderScope {
+        Json::CharReader* Reader;
+        ~ReaderScope() { delete Reader; }
+    } parser{reader.newCharReader()};
+    return parser.Reader->parse(bytes.constData(),bytes.constData()+bytes.size(),&document,nullptr);
+}
+
+bool References(AssetImportJob & job,const Json::Value & value,std::set<std::string>& seenGuids) {
     if (value.isObject()) {
         if (value.isMember("Guid") && value.isMember("LocalID")) {
             if (!value["Guid"].isString() || !Guid(value["Guid"].asString()).IsValid()
@@ -19,7 +30,7 @@ bool References(AssetImportJob & job,const Json::Value & value) {
             const GameSproutRuntime::ResourceReference reference{guid,value["LocalID"].asUInt64()};
             if(GameSproutRuntime::IsBuiltinResource(reference)) {
                 if(!GameSproutRuntime::GetBuiltinMeshName(reference))return job.Fail("Unknown built-in mesh reference");
-            } else if (guid!=job.Request.GuidString) {
+            } else if (guid!=job.Request.GuidString && seenGuids.insert(guid).second) {
                 const std::string path=job.TrackGuidReference(guid);
                 if(path.empty()) {
                     if(job.Request.Importer!=eAssetImporterType::Scene&&job.Request.Importer!=eAssetImporterType::Prefab)
@@ -29,8 +40,8 @@ bool References(AssetImportJob & job,const Json::Value & value) {
                 } else if (!job.AddDependency(path)) return false;
             }
         }
-        for (const auto & child : value) if (!References(job,child)) return false;
-    } else if (value.isArray()) for (const auto & child : value) if (!References(job,child)) return false;
+        for (const auto & child : value) if (!References(job,child,seenGuids)) return false;
+    } else if (value.isArray()) for (const auto & child : value) if (!References(job,child,seenGuids)) return false;
     return true;
 }
 
@@ -198,14 +209,15 @@ bool ImportDocument(AssetImportJob & job) {
     if (type==eAssetType::Material && job.SourceBytes.size()>MaterialDefinition::MaxDocumentBytes)
         return job.Fail("Material source exceeds the 16 MiB authoring limit");
     Json::Value document;
-    if (!AssetArtifactIO::Parse(job.SourceBytes.toStdString(),document) || !document.isObject()) return job.Fail("Native resource must be a JSON object in GameSprout format");
+    if (!ParseNativeDocument(job.SourceBytes,document) || !document.isObject()) return job.Fail("Native resource must be a JSON object in GameSprout format");
     const unsigned sourceVersion=type==eAssetType::Scene?GameSproutRuntime::SceneDocumentVersion:1u;
     if (!document["Version"].isUInt() || document["Version"].asUInt()!=sourceVersion)
         return job.Fail("Native resource Version must be "+std::to_string(sourceVersion));
     // Recompose from current source snapshots before removing authoring records.
     if(type==eAssetType::Scene&&!ResolveScenePrefabInstances(job,document))return false;
     if (type==eAssetType::Material && !MaterialValues(job,document)) return false;
-    if (!References(job,document)) return false;
+    std::set<std::string> referencedGuids;
+    if (!References(job,document,referencedGuids)) return false;
     // The current native format has one main object. Preserve an explicitly assigned ID.
     const Json::Value requested = job.Settings.get("MainObjectID", Json::UInt64(0));
     if (!requested.isUInt64()) return job.Fail("MainObjectID must be an unsigned integer");
@@ -238,6 +250,6 @@ bool ImportDocument(AssetImportJob & job) {
         if(!PrefabDefinition::Validate(document,data,error))return job.Fail(error);
         metadata=Json::Value(Json::objectValue);
         metadata["Format"]="GameSproutPrefab";metadata["Data"]=std::move(data);
-    } else {metadata["Format"]="GameSproutDocument";metadata["Data"]=document;}
-    return job.Emit(type,"main",name,metadata);
+    } else {metadata["Format"]="GameSproutDocument";metadata["Data"]=std::move(document);}
+    return job.Emit(type,"main",name,std::move(metadata));
 }

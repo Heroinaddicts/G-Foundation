@@ -158,6 +158,54 @@ int main(int argc, char** argv) {
             Check(ReadBytes(root.filePath("Assets/" + QString::fromStdString(fixture.first) + ".meta")) == fixture.second,
                 "Unsupported Meta was rewritten: " + fixture.first);
         Check(ide.Count == 0 && ide.Loads == ide.Unloads, "Current-format checks left Loading active");
+
+        stage = "background scene save and publication";
+        const Guid sceneGuid(51, 52, 53, 54);
+        TestMeta scene(eAssetImporterType::Scene, sceneGuid, "Background.scene");
+        Check(scene.SerializeMeta(json) && AssetArtifactIO::Write(root.filePath("Assets/Background.scene.meta"),
+            QByteArray::fromStdString(json), error), error);
+        const int beforeSceneLoads = ide.Loads;
+        const auto beforeScenePlans = ide.ImportBegins.size();
+        foundation.Tasks.ExpectLoading = false;
+        Json::Value document;
+        document["Version"] = GameSproutRuntime::SceneDocumentVersion;
+        document["Name"] = "Background first";
+        document["Objects"] = Json::Value(Json::arrayValue);
+        const auto save = [&](const Json::Value& source, eAssetImportState expected, const std::string& previousGeneration) {
+            bool observedPending = false;
+            foundation.Tasks.BeforeSubmission = [&] {
+                const auto* meta = assets->QueryAsset(sceneGuid);
+                Check(meta && meta->GetImportState() == eAssetImportState::Pending, "Scene did not publish Pending before background submission");
+                AssetImportManifest previous;
+                if (!previousGeneration.empty()) {
+                    Check(library->GetManifest(sceneGuid, previous) && previous.Generation == previousGeneration,
+                        "Pending scene lost its previously published artifact");
+                }
+                observedPending = true;
+            };
+            Check(AssetArtifactIO::Write(root.filePath("Assets/Background.scene"),
+                QByteArray::fromStdString(AssetArtifactIO::JsonText(source)), error), error);
+            pump([&] {
+                const auto* meta = assets->QueryAsset(sceneGuid);
+                return observedPending && meta && meta->GetImportState() == expected;
+            });
+            foundation.Tasks.BeforeSubmission = {};
+            Check(ide.Count == 0 && ide.Loads == beforeSceneLoads && ide.ImportBegins.size() == beforeScenePlans,
+                "Scene watcher import registered modal progress");
+            AssetImportManifest published;
+            Check(library->GetManifest(sceneGuid, published), "Background scene is missing its published artifact");
+            return published;
+        };
+        const auto firstScene = save(document, eAssetImportState::Ready, {});
+        document["Name"] = "Background latest";
+        const auto latestScene = save(document, eAssetImportState::Ready, firstScene.Generation);
+        Check(latestScene.Generation != firstScene.Generation && latestScene.Assets.size() == 1
+            && latestScene.Assets.front().LocalID == firstScene.Assets.front().LocalID,
+            "Background save failed to publish a new generation with stable identity");
+        document["Objects"] = false;
+        const auto afterSceneFailure = save(document, eAssetImportState::Failed, latestScene.Generation);
+        Check(afterSceneFailure.Generation == latestScene.Generation && !assets->QueryAsset(sceneGuid)->GetImportError().empty(),
+            "Background scene failure lost the last valid artifact or diagnostic");
         cleanup();
         std::cout << "PASS current Meta/defaults, obsolete field/version rejection without rewrite, and no source-inventory migration\n";
         return 0;

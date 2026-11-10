@@ -93,6 +93,25 @@ QIcon Icon(const QString & type) {
     else if (type == "Audio" || type == "Video" || type == "AnimationClip") name = "media";
     return QIcon(":/ProjectAssets/" + name + ".svg");
 }
+
+QString ImportStatus(eAssetImportState state, bool folder) {
+    if (state == eAssetImportState::Pending) return QStringLiteral("待导入");
+    if (state == eAssetImportState::Ready) return QStringLiteral("就绪");
+    if (state == eAssetImportState::Failed) return QStringLiteral("导入失败");
+    return folder ? QString() : QStringLiteral("未启用");
+}
+
+void SetSourceStatus(QStandardItem& source, QStandardItem& status, eAssetImportState state,
+    const QString& error, const QColor& errorColor, const QColor& pendingColor) {
+    source.setToolTip(source.data(ProjectAssetsModel::PathRole).toString() + '\n' + error);
+    source.setData(state == eAssetImportState::Failed ? QVariant(QBrush(errorColor)) : QVariant(), Qt::ForegroundRole);
+    status.setText(ImportStatus(state, source.data(ProjectAssetsModel::FolderRole).toBool()));
+    status.setToolTip(error);
+    QVariant color;
+    if (state == eAssetImportState::Failed) color = QVariant(QBrush(errorColor));
+    else if (state == eAssetImportState::Pending) color = QVariant(QBrush(pendingColor));
+    status.setData(color, Qt::ForegroundRole);
+}
 }
 
 ProjectAssetsModel::ProjectAssetsModel(QObject * parent) : QStandardItemModel(parent) {}
@@ -151,30 +170,34 @@ QStandardItem * ProjectAssetsModel::SourceItem(IAssetMeta * meta) {
     auto * item=new QStandardItem(Icon(ImporterName(meta->_ImporterType)),QFileInfo(path).fileName());
     item->setEditable(false);item->setData(guid,GuidRole);item->setData(guid,KeyRole);item->setData(path,PathRole);
     item->setData(meta->_ImporterType==eAssetImporterType::Folder,FolderRole);item->setData(false,SubAssetRole);
-    item->setToolTip(path+"\n"+QString::fromStdString(meta->GetImportError()));
     return item;
 }
 
 void ProjectAssetsModel::BuildAssets(const std::vector<IAssetMeta *> & metas) {
+    _Sources.clear();
     clear();setHorizontalHeaderLabels({"名称","类型","状态"});
     for (IAssetMeta * meta:metas) {
         auto * item=SourceItem(meta);
         auto * type=new QStandardItem(ImporterName(meta->_ImporterType));type->setEditable(false);
-        QString status;
-        const auto state=meta->GetImportState();
-        if (state==eAssetImportState::Pending) status="待导入";
-        else if (state==eAssetImportState::Ready) status="就绪";
-        else if (state==eAssetImportState::Failed) status="导入失败";
-        else if(meta->_ImporterType!=eAssetImporterType::Folder) status="未启用";
-        auto * stateItem=new QStandardItem(status);stateItem->setEditable(false);stateItem->setToolTip(QString::fromStdString(meta->GetImportError()));
-        if(state==eAssetImportState::Failed) {item->setForeground(ErrorColor);stateItem->setForeground(ErrorColor);}
-        else if(state==eAssetImportState::Pending) stateItem->setForeground(PendingColor);
+        auto * stateItem=new QStandardItem();stateItem->setEditable(false);
+        SetSourceStatus(*item, *stateItem, meta->GetImportState(), QString::fromStdString(meta->GetImportError()), ErrorColor, PendingColor);
+        _Sources.insert(item->data(GuidRole).toString(), item);
         appendRow({item,type,stateItem});
         if (!meta->GetSubAssets().empty()) {
             auto * placeholder=new QStandardItem();placeholder->setData(true,PlaceholderRole);placeholder->setEditable(false);
             item->appendRow(placeholder);
         }
     }
+}
+
+bool ProjectAssetsModel::UpdateSceneStatus(const AssetEvent& event) {
+    QStandardItem* source = _Sources.value(QString::fromStdString(event.GuidValue.GetGuidString()));
+    if (!source || source->hasChildren() || source->data(PathRole).toString() != QString::fromStdString(event.Path)) return false;
+    QStandardItem* type = item(source->row(), 1);
+    QStandardItem* status = item(source->row(), 2);
+    if (!type || type->text() != ImporterName(eAssetImporterType::Scene) || !status) return false;
+    SetSourceStatus(*source, *status, event.State, QString::fromStdString(event.Error), ErrorColor, PendingColor);
+    return true;
 }
 
 void ProjectAssetsModel::LoadSubAssets(const QModelIndex & index,IAssetsManager * assets) {

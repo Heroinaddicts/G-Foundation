@@ -47,9 +47,9 @@ void AssetsPipeline::Release(GameSproutModuleApi *) {
     _Owner = Foundation::InvalidTaskOwnerId;
     _Fingerprints.Close(); // 对象继续存活，晚到的 worker 不能发布缓存条目。
     if (_IDE) ClearImportProgress();
-    for (const auto & task : _Running) { (void)task; if (_IDE) _IDE->Unloading(); }
+    for (const auto & task : _Running) if (_IDE && task.second.Batch) _IDE->Unloading();
     _Running.clear();
-    for(const auto& entry:_DeferredAnimationImports)if(_IDE)_IDE->Unloading();
+    for(const auto& entry:_DeferredAnimationImports)if(_IDE&&entry.second.Batch)_IDE->Unloading();
     _DeferredAnimationImports.clear();
     _DeclaredAnimationDependencies.clear();
     _Revisions.clear();
@@ -61,7 +61,7 @@ void AssetsPipeline::Invalidate(const Guid & guid) {
     const auto deferred=_DeferredAnimationImports.find(key);
     if(deferred!=_DeferredAnimationImports.end()) {
         auto entry=std::move(deferred->second);_DeferredAnimationImports.erase(deferred);
-        ImportCompletion completion{this,entry.Batch,entry.Path,true};
+        ImportCompletion completion{this,entry.Batch,entry.Path,entry.Batch!=0};
         AssetImportResult result;result.Superseded=true;result.Error="Import superseded";
         if(entry.Callback)entry.Callback(result);
     }
@@ -74,8 +74,11 @@ void AssetsPipeline::ImportAsset(IAssetMeta* meta,const fImportCallback& callbac
 void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallback & callback, bool force,uint64_t existingBatch,bool resumed) {
     AssetImportRequest request;
     const std::string path = meta ? meta->GetPath() : "无效资源";
-    const uint64_t batch = resumed?existingBatch:(_IDE ? RegisterImportProgress(path) : 0);
-    ImportCompletion admission{this, batch, path, resumed};
+    // Watcher-driven scene saves publish Pending/Ready/Failed through
+    // AssetsManager. Bulk startup still owns its modal progress batch.
+    const bool modal = _IDE && (!meta || meta->_ImporterType != eAssetImporterType::Scene || !_BatchRegistration.empty());
+    const uint64_t batch = resumed ? existingBatch : (modal ? RegisterImportProgress(path) : 0);
+    ImportCompletion admission{this, batch, path, resumed && batch != 0};
     if (!meta || !_Tasks || _Owner == Foundation::InvalidTaskOwnerId || !meta->SerializeMeta(request.MetaJson)) {
         AssetImportResult failed; failed.Error = "Invalid Meta or unavailable pipeline";
         if (callback) callback(failed);
@@ -135,13 +138,13 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
     }
     Foundation::TaskSubmitOptions options;
     options._OwnerId = _Owner;
-    if(!resumed)_IDE->Loading("资源导入", request.SourcePath);
-    admission.Loading = true;
+    if (batch && !resumed) _IDE->Loading("资源导入", request.SourcePath);
+    admission.Loading = batch != 0;
     const auto previousDeferred=_DeferredAnimationImports.find(request.GuidString);
     if(previousDeferred!=_DeferredAnimationImports.end()) {
         auto previous=std::move(previousDeferred->second);_DeferredAnimationImports.erase(previousDeferred);
         {
-            ImportCompletion retirement{this,previous.Batch,previous.Path,true};
+            ImportCompletion retirement{this,previous.Batch,previous.Path,previous.Batch!=0};
             AssetImportResult superseded;superseded.Superseded=true;superseded.Error="Import superseded";
             if(previous.Callback)previous.Callback(superseded);
         }
@@ -158,29 +161,31 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
             admission.Active=false;return;
         }
     }
+    const std::string guid = request.GuidString;
+    const uint64_t submittedRevision = request.Revision;
     const auto submission = _Tasks->SubmitTask(options,
-        [request](Int64 & code, Foundation::ITaskContext & context) -> bool {
+        [request=std::move(request)](Int64 & code, Foundation::ITaskContext & context) mutable -> bool {
             // Allocate in the worker: a task cancelled before execution owns no raw allocation.
-            AssetImportJob * job = new AssetImportJob(request);
+            AssetImportJob * job = new AssetImportJob(std::move(request));
             if (!context.SetOwned(job)) { delete job; code = -1; return false; }
             try { const bool success = RunAssetImport(*job, context); code = success ? 0 : -1; return success; }
             catch (const std::exception & error) { job->Fail(error.what()); code = -1; return false; }
             catch (...) { job->Fail("Unexpected import exception"); code = -1; return false; }
         },
-        [this, request, callback, batch](const Foundation::TaskCompletion & completion, bool succeeded,
+        [this, guid, path, submittedRevision, callback, batch](const Foundation::TaskCompletion & completion, bool succeeded,
                                  const Foundation::ITaskContext & context) {
             // Release 可能已经取消并结算本项，迟到回调不能再次推进进度或解除遮罩。
             const auto running = _Running.find(completion._TaskId);
             if (running == _Running.end()) return;
             _Running.erase(running);
-            ImportCompletion balance{this, batch, request.SourcePath, true};
+            ImportCompletion balance{this, batch, path, batch != 0};
             AssetImportJob * job = context.Get<AssetImportJob>();
             AssetImportResult result;
-            if (job) result = job->Result;
+            if (job) result = std::move(job->Result);
             result.Success = succeeded && job && result.Success;
             if(job)ResolveAnimationSnapshotMismatch(*job,_Assets,_Library,result);
-            const auto revision = _Revisions.find(request.GuidString);
-            if (revision == _Revisions.end() || revision->second != request.Revision) {
+            const auto revision = _Revisions.find(guid);
+            if (revision == _Revisions.end() || revision->second != submittedRevision) {
                 result.Success = false; result.Superseded = true; result.Retry = false; result.Error = "Import superseded";
             }
             if (result.Success) {
@@ -192,14 +197,14 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
                     }
                 }
             }
-            if(result.Success&&!ModelTextureSearchesCurrent(request,result.Manifest,&job->SearchDirectoryVersions,&job->ValidationAvailable)) {
+            if(result.Success&&!ModelTextureSearchesCurrent(job->Request,result.Manifest,&job->SearchDirectoryVersions,&job->ValidationAvailable)) {
                 result.Success=false;result.Superseded=true;result.Retry=true;result.Error="Texture lookup changed before commit";
             }
-            if(result.Success&&!AssetGuidSourcesCurrent(result.Manifest,_Assets,request.AssetsRoot)) {
+            if(result.Success&&!AssetGuidSourcesCurrent(result.Manifest,_Assets,job->Request.AssetsRoot)) {
                 result.Success=false;result.Superseded=true;result.Retry=true;result.Error="Referenced source identity changed before commit";
             }
             if (result.Success) {
-                QFileInfo current(QString::fromStdString(request.AssetsRoot + "/" + request.SourcePath));
+                QFileInfo current(QString::fromStdString(job->Request.AssetsRoot + "/" + path));
                 if (!current.isFile() || current.size() != job->SourceSize || current.lastModified() != job->SourceModified) {
                     result.Success = false; result.Superseded = true; result.Retry = true; result.Error = "Source changed before commit";
                 } else if (!result.Cached) {
@@ -211,13 +216,13 @@ void AssetsPipeline::ImportAssetInternal(IAssetMeta * meta, const fImportCallbac
             // Completion runs on Foundation::Update, including Library/LMDB and UI operations.
             if (callback) callback(result);
             // 回调先完成 SubAssets/Meta 保存，再记录最终身份。工作线程的版本仍须匹配。
-            const auto currentRevision = _Revisions.find(request.GuidString);
-            if (result.Success && currentRevision != _Revisions.end() && currentRevision->second == request.Revision)
+            const auto currentRevision = _Revisions.find(guid);
+            if (result.Success && currentRevision != _Revisions.end() && currentRevision->second == submittedRevision)
                 SaveImportValidation(*job, result);
             ResumeAnimationImports();
         });
     if (submission.Accepted()) {
-        try { _Running.emplace(submission._TaskId, RunningImport{request.GuidString, batch}); }
+        try { _Running.emplace(submission._TaskId, RunningImport{guid, batch}); }
         catch (...) { _Tasks->CancelTask(submission._TaskId); throw; }
         admission.Active = false;
     } else {

@@ -35,7 +35,7 @@ public:
     ProjectAssetActionContext GetActionContext() const override;
     void NotifyAssetCreated(const std::string& relativePath) override;
     void OnAssetCreate(const AssetEvent &) override { QueueRefresh(); }
-    void OnAssetModify(const AssetEvent &) override { QueueRefresh(); }
+    void OnAssetModify(const AssetEvent & event) override;
     void OnAssetRemove(const AssetEvent &) override { QueueRefresh(); }
     void OnAssetSelectionChanged(const std::vector<ProjectAssetSelection> & selection) override;
 private:

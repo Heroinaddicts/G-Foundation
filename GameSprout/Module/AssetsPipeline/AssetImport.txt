@@ -16,8 +16,9 @@ QueryAsset(guid, localID) 返回 Library 持有的产物描述，不创建 GPU �
 
 线程与生命周期
 所有模块接口、Meta、LMDB、Loading/Unloading 和结果回调都在编辑器主线程使用。
-主线程先 Loading，再 SubmitTask；Foundation::Update 派发完成后 Unloading。
-拒绝提交、失败、取消、模块释放均配对 Unloading。
+需要阻塞的批次和非场景导入先 Loading，再 SubmitTask；Foundation::Update 派发完成后 Unloading。
+单独提交的场景导入在后台执行，Project 资源状态显示 Pending、Ready 或 Failed。
+拒绝提交、失败、取消、模块释放均配对已持有的 Loading 引用。
 AssetsManager::Launch 另外持有一层启动 Loading，覆盖扫描结果的主线程处理、
 同步扫描、数据库对比和本轮已提交导入的完成回调，全部结束后才允许编辑器操作。
 实际扫描在所有模块 Launch 完成、Project/Library 就绪后的 LaunchFinished 同步执行。

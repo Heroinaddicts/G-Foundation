@@ -89,10 +89,37 @@ bool AssetImportJob::ReadFile(const std::string & path, QByteArray * bytes, std:
     return true;
 }
 
-bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray * output) {
+bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray * output, bool recheck) {
+    if (Cancelled()) return false;
     if (!AssetArtifactIO::RelativePath(relativePath)) return Fail("Invalid dependency path: " + relativePath);
     const QDir root(QString::fromStdString(Request.AssetsRoot));
     const QFileInfo info(root.filePath(QString::fromStdString(relativePath)));
+    const auto known=DependencyIndices.find(relativePath);
+    if (known!=DependencyIndices.end()) {
+        // Keep repeated callers sensitive to concurrent replacement/deletion,
+        // while reusing the Meta parse/hash already captured by this job.
+        if (recheck) {
+            const QString canonicalRoot=root.canonicalPath();
+            if (canonicalRoot.isEmpty() || !info.canonicalFilePath().startsWith(canonicalRoot + "/")) {
+                Result.Superseded=true;Result.Retry=true;
+                return Fail("Dependency moved outside Assets during import: " + relativePath);
+            }
+        }
+        const std::string sourcePath=info.absoluteFilePath().toStdString();
+        for (const auto& observedPath : {sourcePath,sourcePath+".meta"}) {
+            AssetFileStamp current;
+            const auto observed=ReadVersions.find(observedPath);
+            if (observed==ReadVersions.end() || !ReadAssetFileStamp(observedPath,current) || current!=observed->second) {
+                Result.Superseded=true;Result.Retry=true;
+                return Fail("Dependency changed during import: " + relativePath);
+            }
+        }
+        if (output) {
+            std::string hash;
+            if (!ReadFile(sourcePath,output,hash)) return false;
+        }
+        return true;
+    }
     const auto retryDisappearedReference=[&] {
         const QFileInfo current(info.absoluteFilePath());
         if(current.exists()||current.isSymLink())return;
@@ -135,10 +162,7 @@ bool AssetImportJob::AddDependency(const std::string & relativePath, QByteArray 
         ReadVersions[metaPath.toStdString()] = metaVersion;
     }
     const std::string hash = AssetArtifactIO::Hash(fingerprint);
-    for (const auto & existing : Result.Manifest.Dependencies) if (existing.Path == relativePath) {
-        if (existing.Hash != hash) { Result.Superseded = true; Result.Retry = true; return Fail("Dependency changed during import: " + relativePath); }
-        return true;
-    }
+    DependencyIndices.emplace(relativePath,Result.Manifest.Dependencies.size());
     Result.Manifest.Dependencies.push_back({relativePath, hash});
     return true;
 }
@@ -239,7 +263,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     }
     if (cached) {
         for (const auto & dependency : job.Request.Previous.Dependencies) {
-            if (!job.AddDependency(dependency.Path) || job.Result.Manifest.Dependencies.back().Hash != dependency.Hash) { cached = false; break; }
+            if (!job.AddDependency(dependency.Path) || job.Result.Manifest.Dependencies.at(job.DependencyIndices.at(dependency.Path)).Hash != dependency.Hash) { cached = false; break; }
         }
         for (const auto & asset : job.Request.Previous.Assets) {
             std::string hash;
@@ -251,6 +275,7 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if (job.Result.Superseded) return false;
     job.Result.Error.clear();
     manifest.Dependencies.clear();
+    job.DependencyIndices.clear();
     if (!cached) { job.ReadVersions = sourceVersions; job.SearchDirectoryVersions.clear(); }
     if (cached) { job.Result.Manifest = job.Request.Previous; job.Result.Diagnostics=job.Request.Previous.Diagnostics; job.Result.Success = true; job.Result.Cached = true; return true; }
     if (mayReuse) {
@@ -277,10 +302,9 @@ bool RunAssetImport(AssetImportJob & job, Foundation::ITaskContext & context) {
     if (!success || context.IsCancellationRequested()) return job.Fail(job.Result.Error.empty() ? "Import cancelled or failed" : job.Result.Error);
     QFileInfo current(source.absoluteFilePath());
     if (!current.isFile() || current.size() != job.SourceSize || current.lastModified() != job.SourceModified) {job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Source changed during import");}
-    // Re-read dependencies before publishing; a newly discovered dependency may not
+    // Recheck exact dependency file versions before publishing; a newly discovered dependency may not
     // yet be present in the main-thread reverse index while this first import runs.
-    const auto dependencies = manifest.Dependencies;
-    for (const auto & dependency : dependencies) if (!job.AddDependency(dependency.Path)) return false;
+    for (const auto & dependency : manifest.Dependencies) if (!job.AddDependency(dependency.Path,nullptr,true)) return false;
     if(!ModelTextureSearchesCurrent(job.Request,manifest,&job.SearchDirectoryVersions,&job.ValidationAvailable)) {
         job.Result.Superseded=true;job.Result.Retry=true;return job.Fail("Texture lookup changed during import");
     }

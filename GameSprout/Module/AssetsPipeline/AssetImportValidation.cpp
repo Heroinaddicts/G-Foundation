@@ -183,10 +183,13 @@ void AssetsPipeline::RestoreFileFingerprints(const AssetImportManifest & manifes
     for (const auto & artifact : manifest.Assets)
         hashes.emplace("1:" + manifest.Directory + "/" + artifact.Path, artifact.Hash);
     for (const auto & entry : validation["Files"]) {
+        if (!entry.isObject() || !entry["Root"].isUInt() || !entry["Path"].isString()) continue;
+        const auto hash = hashes.find(std::to_string(entry["Root"].asUInt()) + ":" + entry["Path"].asString());
+        // Only the source and produced artifacts have reusable standalone hashes.
+        // Dependency observations are checked by the job before publication.
+        if (hash == hashes.end()) continue;
         std::string key;
         if (!Observe(entry, assets, library, false, key)) continue;
-        const auto hash = hashes.find(key);
-        if (hash == hashes.end()) continue;
         AssetFileStamp version;
         if (!ReadStampJson(entry["Stamp"], version)) continue;
         const QDir & root = entry["Root"].asUInt() == 0 ? assets : library;

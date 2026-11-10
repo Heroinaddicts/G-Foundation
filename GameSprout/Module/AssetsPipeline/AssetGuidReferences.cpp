@@ -1,6 +1,5 @@
 #include "AssetImportJob.h"
 #include "IAssetsManager.h"
-#include <algorithm>
 
 namespace {
 std::string ExistingPath(const std::string& assetsRoot,const std::string& path) {
@@ -19,10 +18,9 @@ std::string AssetGuidSourcePath(const AssetImportRequest& request,const std::str
 std::string AssetImportJob::TrackGuidReference(const std::string& guid) {
     if(guid==Request.GuidString)return Request.SourcePath;
     auto& manifest=Result.Manifest;
-    if(std::find(manifest.ReferencedGuids.begin(),manifest.ReferencedGuids.end(),guid)==manifest.ReferencedGuids.end())
-        manifest.ReferencedGuids.push_back(guid);
     const std::string path=AssetGuidSourcePath(Request,guid);
-    manifest.GuidSourcePaths.insert_or_assign(guid,path);
+    const auto inserted=manifest.GuidSourcePaths.insert_or_assign(guid,path).second;
+    if(inserted)manifest.ReferencedGuids.push_back(guid);
     return path;
 }
 bool AssetGuidSourcesCurrent(const AssetImportRequest& request,const AssetImportManifest& manifest) {

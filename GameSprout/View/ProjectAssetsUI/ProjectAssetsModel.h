@@ -3,6 +3,7 @@
 #include "IAssetsPipeline.h"
 #include <QStandardItemModel>
 #include <QColor>
+#include <QHash>
 
 class ProjectAssetsModel : public QStandardItemModel {
 public:
@@ -14,6 +15,7 @@ public:
     Qt::DropActions supportedDragActions() const override;
     void BuildFolders(const std::vector<IAssetMeta *> & metas);
     void BuildAssets(const std::vector<IAssetMeta *> & metas);
+    bool UpdateSceneStatus(const AssetEvent& event);
     void LoadSubAssets(const QModelIndex & index, IAssetsManager * assets);
     QModelIndex FindKey(const QString & key, const QModelIndex & parent = {}) const;
     QColor ErrorColor;
@@ -22,4 +24,5 @@ private:
     QStandardItem * EnsureFolder(const QString & path);
     QStandardItem * SourceItem(IAssetMeta * meta);
     QMap<QString, QStandardItem *> _Folders;
+    QHash<QString, QStandardItem *> _Sources;
 };

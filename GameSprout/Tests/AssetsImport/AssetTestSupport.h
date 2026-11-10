@@ -135,6 +135,7 @@ public:
     Foundation::ITaskApi * Real=nullptr;
     TestIDE * IDE=nullptr;
     bool Reject=false;
+    bool ExpectLoading=true;
     int Submissions=0;
     std::function<void()> BeforeSubmission;
     std::function<void()> BeforeCompletion;
@@ -142,7 +143,7 @@ public:
     void UnregisterTaskOwner(UInt64 owner) override {Real->UnregisterTaskOwner(owner);}
     bool CancelTask(UInt64 task) override {return Real->CancelTask(task);}
     Foundation::TaskSubmitResult SubmitTask(const Foundation::TaskSubmitOptions & options,Foundation::fTask task,Foundation::fTaskCompleted completed) override {
-        Check(IDE->Count>0,"Task submitted before Loading");
+        Check((IDE->Count>0)==ExpectLoading,"Task submitted with unexpected Loading state");
         ++Submissions;
         if (BeforeSubmission) BeforeSubmission();
         if (Reject) return {};

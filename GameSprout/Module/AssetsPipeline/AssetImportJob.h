@@ -51,7 +51,7 @@ struct AssetImportRequest {
 };
 
 struct AssetImportJob {
-    explicit AssetImportJob(const AssetImportRequest & request) : Request(request) {
+    explicit AssetImportJob(AssetImportRequest request) : Request(std::move(request)) {
         if (!Request.Fingerprints) { _LocalFingerprints.Open(); Request.Fingerprints = &_LocalFingerprints; }
     }
     ~AssetImportJob();
@@ -69,6 +69,8 @@ struct AssetImportJob {
     // 原生文件版本与内容读取绑定；完成回调和快速启动都检查同一版本。
     std::map<std::string, AssetFileStamp> ReadVersions;
     std::map<std::string, AssetFileStamp> SearchDirectoryVersions;
+    // 与 Manifest.Dependencies 同步清空；重复引用复用已验证身份，不重复解析 Meta。
+    std::map<std::string, std::size_t> DependencyIndices;
     bool ValidationAvailable = true;
     std::string MismatchedPreparedResource; // internal key; main-thread completion resolves replacement vs stable corruption.
     Foundation::ITaskContext * Context = nullptr;
@@ -78,7 +80,7 @@ struct AssetImportJob {
     uint64_t ID(eAssetType type, const std::string & key, const std::string & name);
     bool Emit(eAssetType type, const std::string & key, const std::string & name,
         Json::Value metadata, const QByteArray & payload = {});
-    bool AddDependency(const std::string & relativePath, QByteArray * bytes = nullptr);
+    bool AddDependency(const std::string & relativePath, QByteArray * bytes = nullptr, bool recheck = false);
     std::string TrackGuidReference(const std::string& guid);
     bool ReadFile(const std::string & path, QByteArray * bytes, std::string & hash);
 private:

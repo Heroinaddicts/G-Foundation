@@ -1,6 +1,8 @@
 #include "ProjectViewTestSupport.h"
 #include "../../GameSproutRuntime/Api/ResourceReference.h"
+#include "../../ObjectDocument/SceneDocument.h"
 #include <QMetaObject>
+#include <QPersistentModelIndex>
 struct AvatarOpenProbe { GameSproutRuntime::ResourceReference Opened; };
 
 int main(int argc,char **argv) {
@@ -16,6 +18,15 @@ int main(int argc,char **argv) {
         std::string error;
         Check(AssetArtifactIO::Write(root.filePath("Assets/Readme.txt"),"Project assets test",error),error);
         Check(AssetArtifactIO::Write(root.filePath("Assets/Art/Triangle.obj"),"o Triangle\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n",error),error);
+        Json::Value scene;
+        scene["Version"] = GameSproutRuntime::SceneDocumentVersion;
+        scene["Name"] = "World";
+        scene["Objects"] = Json::Value(Json::arrayValue);
+        const auto writeScene = [&](const QString& path) {
+            Check(AssetArtifactIO::Write(root.filePath(path),
+                QByteArray::fromStdString(AssetArtifactIO::JsonText(scene)), error), error);
+        };
+        writeScene("Assets/Art/Startup.scene");
         if(avatarFixture)Check(QFile::copy(QString::fromLocal8Bit(argv[2]),root.filePath("Assets/Art/AvatarModel.fbx")),"Cannot copy Avatar model fixture");
         real=Foundation::GetFoundationApi(TEST_BINARY_ROOT);Check(real&&real->Initialize(argc,argv)&&real->Launch(),"Foundation startup failed");
         TestProject project;project.Root=temporary.path().toStdString();TestConsole console;
@@ -62,6 +73,8 @@ int main(int argc,char **argv) {
         Check(tree&&search&&breadcrumb,"Designer controls missing");
         pump([&]{return FindRow(tree,"Art").isValid()&&FindRow(tree,"Root.png").isValid()&&tree->model()->rowCount()==3;});
         Check(ui->NavigateToDirectory("Art"),"Cannot enter folder");QCoreApplication::processEvents();
+        Check(FindRow(tree, "Startup.scene").siblingAtColumn(2).data().toString() == "就绪",
+            "Scene in the startup batch did not finish with modal task submission");
         const QModelIndex source=FindRow(tree,"Triangle.obj");Check(source.isValid(),"Folder query did not populate resources");
         tree->expand(source);QCoreApplication::processEvents();
         Check(tree->model()->rowCount(source)>=1,"Model subresources did not expand");
@@ -120,6 +133,32 @@ int main(int argc,char **argv) {
         stage="failure recovery";
         Check(image.save(root.filePath("Assets/Root.png")),"Cannot repair image");
         pump([&]{const auto index=FindRow(tree,"Root.png");return index.isValid()&&index.siblingAtColumn(2).data().toString()=="就绪"&&ide.Counter.Count==0;});
+        stage = "background scene status in place";
+        foundation.Tasks.ExpectLoading = false;
+        const auto sceneStatus = [&] { return FindRow(tree, "World.scene").siblingAtColumn(2).data().toString(); };
+        writeScene("Assets/World.scene");
+        pump([&] { return sceneStatus() == "就绪"; });
+        search->setText("World");
+        QCoreApplication::processEvents();
+        const QPersistentModelIndex selectedScene(FindRow(tree, "World.scene"));
+        const QPersistentModelIndex selectedSceneStatus(FindRow(tree, "World.scene").siblingAtColumn(2));
+        Check(selectedScene.isValid() && tree->model()->rowCount() == 1, "Scene search did not yield the expected row");
+        tree->selectionModel()->setCurrentIndex(selectedScene, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        const auto sceneSelection = ui->GetSelection();
+        Check(sceneSelection.size() == 1, "Cannot select the scene before reimport");
+        scene["Objects"] = false;
+        writeScene("Assets/World.scene");
+        pump([&] { return sceneStatus() == "导入失败"; });
+        Check(selectedScene.isValid() && ui->GetSelection() == sceneSelection &&
+            selectedSceneStatus.data(Qt::ToolTipRole).toString().contains("Objects"),
+            "Failed scene import reset selection or omitted the row diagnostic");
+        scene["Objects"] = Json::Value(Json::arrayValue);
+        writeScene("Assets/World.scene");
+        pump([&] { return sceneStatus() == "就绪"; });
+        Check(selectedScene.isValid() && ui->GetSelection() == sceneSelection &&
+            !selectedScene.data(Qt::ForegroundRole).isValid() && selectedSceneStatus.data(Qt::ToolTipRole).toString().isEmpty(),
+            "Successful scene reimport reset selection or retained the failed appearance");
+        foundation.Tasks.ExpectLoading = true;
         manager->UnregisterAssetListener(&recorder);
         const auto count=recorder.Events.size();
         stage="listener unregister";

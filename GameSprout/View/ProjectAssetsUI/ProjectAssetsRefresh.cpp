@@ -66,6 +66,22 @@ void ProjectAssetsUI::OnAssetSelectionChanged(const std::vector<ProjectAssetSele
     QueueRefresh();
 }
 
+void ProjectAssetsUI::OnAssetModify(const AssetEvent& event) {
+    if (!_Launched || !_Window || _RefreshQueued || _RefreshDeferred) return;
+    // A scene import emits a single main resource. With the source path unchanged,
+    // neither directory membership nor a name search changes with import status.
+    if (event.Importer == eAssetImporterType::Scene && event.OldPath.empty() &&
+        !_Ui->assetTree->isSortingEnabled()) {
+        const QString path = QString::fromStdString(event.Path);
+        const QString search = _Ui->searchEdit->text().trimmed();
+        const bool visible = search.isEmpty()
+            ? QFileInfo(path).path() == (_CurrentPath.isEmpty() ? QStringLiteral(".") : _CurrentPath)
+            : (_CurrentPath.isEmpty() || path.startsWith(_CurrentPath + '/')) && path.contains(search, Qt::CaseInsensitive);
+        if (!visible || _AssetModel->UpdateSceneStatus(event)) return;
+    }
+    QueueRefresh();
+}
+
 void ProjectAssetsUI::QueueRefresh() {
     if(!_Dispatch||!_Window||!_Launched||_RefreshQueued)return;
     _RefreshQueued=true;
