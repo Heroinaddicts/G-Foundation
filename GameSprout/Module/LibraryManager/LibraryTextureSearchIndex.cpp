@@ -24,6 +24,8 @@ bool LibraryManager::BuildTextureSearchIndexOperations(const AssetImportManifest
     auto* table=_LDBSession->GetTable("ModelTextureDependents");
     if(!table)return names.empty();
     for(const auto& name:names) {
+        const bool wasReferenced=before.count(name)!=0,isReferenced=after.count(name)!=0;
+        if(wasReferenced==isReferenced)continue;
         const std::string key=AssetArtifactIO::Hash(QByteArray::fromStdString(name));
         std::vector<uint8_t> bytes;Json::Value value(Json::objectValue);std::set<std::string> owners;
         if(table->Get(key,bytes)) {
@@ -31,7 +33,7 @@ bool LibraryManager::BuildTextureSearchIndexOperations(const AssetImportManifest
                 ||value["Filename"]!=name||!value["Guids"].isArray())return false;
             for(const auto& owner:value["Guids"]) {if(!owner.isString())return false;owners.insert(owner.asString());}
         }
-        owners.erase(guid);if(after.count(name))owners.insert(guid);
+        if(isReferenced)owners.insert(guid);else owners.erase(guid);
         if(owners.empty())operations.push_back({"ModelTextureDependents",key,{},true});
         else {
             value["Filename"]=name;value["Guids"]=Json::Value(Json::arrayValue);

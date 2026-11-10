@@ -20,18 +20,19 @@ bool ReadOwners(ILDBTable* table,const std::string& guid,std::set<std::string>& 
 
 bool LibraryManager::BuildGuidReferenceIndexOperations(const AssetImportManifest* oldManifest,
     const AssetImportManifest* newManifest,std::vector<LDBWriteOperation>& operations) {
-    std::set<std::string> referenced;
-    if(oldManifest)referenced.insert(oldManifest->ReferencedGuids.begin(),oldManifest->ReferencedGuids.end());
-    if(newManifest)referenced.insert(newManifest->ReferencedGuids.begin(),newManifest->ReferencedGuids.end());
-    const std::string owner=newManifest?newManifest->GuidString:oldManifest->GuidString;
-    const std::set<std::string> current=newManifest?
+    const std::set<std::string> before=oldManifest?
+        std::set<std::string>(oldManifest->ReferencedGuids.begin(),oldManifest->ReferencedGuids.end()):std::set<std::string>{};
+    const std::set<std::string> after=newManifest?
         std::set<std::string>(newManifest->ReferencedGuids.begin(),newManifest->ReferencedGuids.end()):std::set<std::string>{};
+    auto referenced=before;referenced.insert(after.begin(),after.end());
+    const std::string owner=newManifest?newManifest->GuidString:oldManifest->GuidString;
     for(const auto& guid:referenced) {
         if(!Guid(guid).IsValid())return false;
+        const bool wasReferenced=before.count(guid)!=0,isReferenced=after.count(guid)!=0;
+        if(wasReferenced==isReferenced)continue;
         std::set<std::string> owners;
         if(!ReadOwners(_LDBSession->GetTable("Dependents"),guid,owners))return false;
-        owners.erase(owner);
-        if(current.count(guid))owners.insert(owner);
+        if(isReferenced)owners.insert(owner);else owners.erase(owner);
         if(owners.empty())operations.push_back({"Dependents",Key(guid),{},true});
         else {
             Json::Value value;value["Guid"]=guid;value["Guids"]=Json::Value(Json::arrayValue);

@@ -131,14 +131,24 @@ bool LibraryManager::GetManifest(const Guid & guid, AssetImportManifest & manife
 
 bool LibraryManager::BuildIndexOperations(const AssetImportManifest * oldManifest,
     const AssetImportManifest * newManifest, std::vector<LDBWriteOperation> & operations) {
-    std::set<std::string> paths;
-    if (oldManifest) for (const auto & dependency : oldManifest->Dependencies) paths.insert(dependency.Path);
-    if (newManifest) for (const auto & dependency : newManifest->Dependencies) paths.insert(dependency.Path);
+    if (!_LDBSession || (!oldManifest && !newManifest) ||
+        (oldManifest && newManifest && oldManifest->GuidString != newManifest->GuidString)) return false;
+    std::set<std::string> before, after;
+    if (oldManifest) for (const auto & dependency : oldManifest->Dependencies) before.insert(dependency.Path);
+    if (newManifest) for (const auto & dependency : newManifest->Dependencies) after.insert(dependency.Path);
+    auto paths = before;
+    paths.insert(after.begin(), after.end());
     const std::string guid = newManifest ? newManifest->GuidString : oldManifest->GuidString;
     for (const std::string & path : paths) {
+        const bool wasReferenced = before.count(path) != 0;
+        const bool isReferenced = after.count(path) != 0;
+        // An artifact/hash change does not change reverse ownership. In
+        // particular, saving a scene must not read/rewrite every shared edge.
+        if (wasReferenced == isReferenced) continue;
         // LMDB keys are bounded; hash the path, and store/validate its full value.
         const std::string key = AssetArtifactIO::Hash(QByteArray::fromStdString(path));
         ILDBTable * table = _LDBSession->GetTable("Dependents");
+        if (!table) return false;
         std::vector<uint8_t> bytes;
         Json::Value value(Json::objectValue);
         std::set<std::string> owners;
@@ -150,10 +160,8 @@ bool LibraryManager::BuildIndexOperations(const AssetImportManifest * oldManifes
                 owners.insert(owner.asString());
             }
         }
-        owners.erase(guid);
-        if (newManifest) for (const auto & dependency : newManifest->Dependencies) {
-            if (dependency.Path == path) owners.insert(guid);
-        }
+        if (isReferenced) owners.insert(guid);
+        else owners.erase(guid);
         if (owners.empty()) operations.push_back({"Dependents", key, {}, true});
         else {
             value["Path"] = path;
