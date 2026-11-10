@@ -4,7 +4,6 @@
 namespace GameSproutRuntime {
 // Authored declarations for separate precomputation systems. These values do
 // not freeze Transform, disable scripts, or select a physics motion type.
-// No static optimization consumer is implemented in the current Runtime.
 enum class StaticFlags : std::uint32_t {
     None = 0,
     ContributeGI = 1u << 0,
@@ -14,7 +13,8 @@ enum class StaticFlags : std::uint32_t {
     OccludeeStatic = 1u << 4,
     OffMeshLinkGeneration = 1u << 5,
     ReflectionProbeStatic = 1u << 6,
-    Everything = (1u << 7) - 1u
+    ShadowCasterStatic = 1u << 7,
+    Everything = (1u << 8) - 1u
 };
 constexpr StaticFlags operator|(StaticFlags a,StaticFlags b) noexcept {
     return static_cast<StaticFlags>(static_cast<std::uint32_t>(a)|static_cast<std::uint32_t>(b));
@@ -25,7 +25,7 @@ constexpr StaticFlags operator&(StaticFlags a,StaticFlags b) noexcept {
 constexpr StaticFlags operator^(StaticFlags a,StaticFlags b) noexcept {
     return static_cast<StaticFlags>(static_cast<std::uint32_t>(a)^static_cast<std::uint32_t>(b));
 }
-// Complement only the defined seven bits. It never invents reserved flags.
+// Complement only the defined flags.
 constexpr StaticFlags operator~(StaticFlags value) noexcept {
     return static_cast<StaticFlags>((~static_cast<std::uint32_t>(value))&static_cast<std::uint32_t>(StaticFlags::Everything));
 }

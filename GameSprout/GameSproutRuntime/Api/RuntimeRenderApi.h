@@ -60,6 +60,14 @@ struct RenderView {
     bool EnableGPUInstancing = true;
     // 交互宿主可在呈现队列繁忙时跳过本帧，并在下一个宿主帧重试。
     bool WaitForSurface = true;
+    // 宿主可在镜头导航期间复用此 viewport 上次成功提交的阴影图及其采样坐标。
+    // 场景、光源、投影和宽高比须匹配。分层时，动态投影物移动会更新动态层，静态层可继续复用。
+    // 旧图覆盖外的区域可能暂时无阴影。
+    // 导航结束后以 false 提交一帧，按当前镜头更新阴影。
+    bool ReuseShadowsWhileNavigating = false;
+    // Optional object subtree being transformed interactively in this view.
+    // Its shadows update separately. Pass zero when the interaction ends.
+    std::uint64_t TransformPreviewObjectID = 0;
 };
 
 struct SceneRaycastHit {
@@ -100,6 +108,13 @@ struct RenderStatistics {
     // A successfully drawn visible user Shader consumes GameSproutFrame.
     // Hosts can use this result when the user enables material animation preview.
     bool RequiresContinuousRendering = false;
+    // These counters are populated when using authored or interactive shadow layers.
+    // ShadowMapUpdates and ShadowDrawCalls sum both layers in that mode.
+    bool LayeredShadows = false;
+    std::uint32_t StaticShadowMapUpdates = 0;
+    std::uint32_t DynamicShadowMapUpdates = 0;
+    std::uint32_t StaticShadowDrawCalls = 0;
+    std::uint32_t DynamicShadowDrawCalls = 0;
 };
 
 class IRuntimeRenderer {

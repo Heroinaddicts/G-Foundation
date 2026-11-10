@@ -76,6 +76,9 @@ struct LightShadowSettings {
     float DepthBias = .5f;
     float NormalBias = 1;
     bool Soft = true;
+    // Cache rigid meshes marked ShadowCasterStatic separately. Other meshes
+    // and skinned meshes update the dynamic atlas as the scene/view changes.
+    bool CacheStaticCasters = false;
     bool operator==(const LightShadowSettings&) const = default;
 };
 

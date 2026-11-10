@@ -13,21 +13,22 @@
 #include <algorithm>
 
 namespace {
-constexpr std::array<GameSproutRuntime::StaticFlags,7> Flags{
+constexpr std::array<GameSproutRuntime::StaticFlags,8> Flags{
     GameSproutRuntime::StaticFlags::ContributeGI,
     GameSproutRuntime::StaticFlags::OccluderStatic,
     GameSproutRuntime::StaticFlags::BatchingStatic,
     GameSproutRuntime::StaticFlags::NavigationStatic,
     GameSproutRuntime::StaticFlags::OccludeeStatic,
     GameSproutRuntime::StaticFlags::OffMeshLinkGeneration,
-    GameSproutRuntime::StaticFlags::ReflectionProbeStatic};
+    GameSproutRuntime::StaticFlags::ReflectionProbeStatic,
+    GameSproutRuntime::StaticFlags::ShadowCasterStatic};
 std::uint32_t Bits(GameSproutRuntime::StaticFlags value){return static_cast<std::uint32_t>(value);}
 }
 StaticFlagsSection::StaticFlagsSection(const InspectorServices& services,QWidget* parent)
     :InspectorSection(services,parent),_Ui(new Ui::CompactStaticHeaderForm()),_MenuUi(new Ui::StaticFlagsMenuForm()) {
     _Ui->setupUi(this);_Menu=new QMenu(this);_MenuUi->setupUi(_Menu);_Ui->staticMenuButton->setMenu(_Menu);
     _Options={_MenuUi->contributeGIAction,_MenuUi->occluderAction,_MenuUi->batchingAction,_MenuUi->navigationAction,
-        _MenuUi->occludeeAction,_MenuUi->offMeshLinkAction,_MenuUi->reflectionAction};
+        _MenuUi->occludeeAction,_MenuUi->offMeshLinkAction,_MenuUi->reflectionAction,_MenuUi->shadowCasterAction};
     _Authoring=services.Editor?services.Editor->GetGameSproutModule<IStaticAuthoring>("StaticAuthoring"):nullptr;
     _Play=services.Editor?services.Editor->GetGameSproutModule<IPlayMode>("PlayMode"):nullptr;
     if(_Play){_PlaySubscribed=_Play->RegisterPlayModeListener(this);_Editable=_Play->GetState().State==EditorPlayState::Edit;}

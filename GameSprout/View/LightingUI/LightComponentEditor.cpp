@@ -21,6 +21,7 @@ LightComponentEditor::LightComponentEditor(QWidget* parent,ILightingAuthoring* a
         QObject::connect(edit,&QLineEdit::editingFinished,this,[this,edit]{CommitValues(edit);});
     QObject::connect(_Ui->shadowGroup,&QGroupBox::clicked,this,[this]{CommitValues(_Ui->shadowGroup);});
     QObject::connect(_Ui->softShadowsCheck,&QCheckBox::clicked,this,[this]{CommitValues(_Ui->softShadowsCheck);});
+    QObject::connect(_Ui->cacheStaticCastersCheck,&QCheckBox::clicked,this,[this]{CommitValues(_Ui->cacheStaticCastersCheck);});
     for(auto* combo:{_Ui->shadowResolutionCombo,_Ui->shadowCascadesCombo})
         QObject::connect(combo,qOverload<int>(&QComboBox::currentIndexChanged),this,[this,combo](int){CommitValues(combo);});
     _Ui->maskCombo->MaskChanged=[this](std::uint32_t){if(!_Loading)CommitValues(_Ui->maskCombo);};
@@ -34,6 +35,7 @@ void LightComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) 
     if(_Context.Runtime)_Ui->maskCombo->SetLayers(_Context.Runtime->GetProjectSettings().LayerNames);
     _Ui->maskCombo->SetMask(settings.CullingMask);UpdateColor();
     _Ui->shadowGroup->setChecked(settings.Shadows.Enabled);_Ui->softShadowsCheck->setChecked(settings.Shadows.Soft);
+    _Ui->cacheStaticCastersCheck->setChecked(settings.Shadows.CacheStaticCasters);
     ShowNumbers({_Ui->shadowStrengthEdit,_Ui->shadowDistanceEdit,_Ui->shadowDepthBiasEdit,_Ui->shadowNormalBiasEdit},
         {settings.Shadows.Strength,settings.Shadows.Distance,settings.Shadows.DepthBias,settings.Shadows.NormalBias});
     unsigned resolution=256;int resolutionIndex=0;
@@ -62,6 +64,7 @@ void LightComponentEditor::CommitValues(QWidget* changed) {
         if(changed==edit&&!ReadNumber(edit,*number)){Fail("阴影参数须为有限数值。");return;}
     if(changed==_Ui->shadowGroup)value.Shadows.Enabled=_Ui->shadowGroup->isChecked();
     if(changed==_Ui->softShadowsCheck)value.Shadows.Soft=_Ui->softShadowsCheck->isChecked();
+    if(changed==_Ui->cacheStaticCastersCheck)value.Shadows.CacheStaticCasters=_Ui->cacheStaticCastersCheck->isChecked();
     if(changed==_Ui->shadowResolutionCombo)value.Shadows.Resolution=256u<<_Ui->shadowResolutionCombo->currentIndex();
     if(changed==_Ui->shadowCascadesCombo)value.Shadows.CascadeCount=1u<<_Ui->shadowCascadesCombo->currentIndex();
     FinishInput();if(!_Authoring->SetLight(target,value,error)){Fail(error);return;}Reload();

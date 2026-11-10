@@ -42,6 +42,7 @@
      <item row="5" column="0"><widget class="QLabel" name="shadowNormalBiasLabel"><property name="text"><string>法线偏移</string></property></widget></item>
      <item row="5" column="1"><widget class="QLineEdit" name="shadowNormalBiasEdit"><property name="toolTip"><string>0 到 10 个阴影纹素，沿接收表面法线偏移阴影查询位置。过大可能造成漏光。</string></property></widget></item>
      <item row="6" column="1"><widget class="QCheckBox" name="softShadowsCheck"><property name="text"><string>软阴影</string></property><property name="toolTip"><string>使用邻近深度样本平滑阴影边缘，会增加采样成本。</string></property></widget></item>
+     <item row="7" column="1"><widget class="QCheckBox" name="cacheStaticCastersCheck"><property name="text"><string>缓存静态阴影</string></property><property name="toolTip"><string>复用在 Static 菜单标记为 Shadow Caster Static 的物体阴影，其余物体的阴影单独实时更新。</string></property></widget></item>
     </layout>
    </widget></item>
   </layout>

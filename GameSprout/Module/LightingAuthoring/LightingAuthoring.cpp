@@ -27,6 +27,7 @@ Json::Value LightDocument(const std::string& name) {
     shadowData["Enabled"]=shadows.Enabled;shadowData["Strength"]=shadows.Strength;shadowData["Distance"]=shadows.Distance;
     shadowData["Resolution"]=Json::UInt(shadows.Resolution);shadowData["CascadeCount"]=Json::UInt(shadows.CascadeCount);
     shadowData["DepthBias"]=shadows.DepthBias;shadowData["NormalBias"]=shadows.NormalBias;shadowData["Soft"]=shadows.Soft;
+    shadowData["CacheStaticCasters"]=shadows.CacheStaticCasters;
     node["Components"].append(std::move(transform));node["Components"].append(std::move(light));
     document["Objects"].append(std::move(node));return document;
 }

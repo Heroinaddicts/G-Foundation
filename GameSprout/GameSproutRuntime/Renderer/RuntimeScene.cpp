@@ -100,6 +100,8 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         }
         DrawObject data;data.ObjectID=object->GetInstanceID();data.Layer=object->GetLayer();data.Name=object->GetName();
         data.Skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
+        data.StaticShadowCaster=!data.Skinned&&
+            (object->GetStaticFlags()&StaticFlags::ShadowCasterStatic)!=StaticFlags::None;
         _SnapshotHasSkin|=data.Skinned;
         if(!SetDrawTransform(data,object->GetTransform()->GetWorldMatrix())) {
             _SceneObjectIndices.emplace(data.ObjectID,InvalidTransformIndex);

@@ -26,6 +26,7 @@ int main(int argc,char** argv) {
         auto* object=scene->CreateGameObject("Sun");auto* light=object->AddComponent<GameSproutRuntime::ILightComponent>();
         Check(light&&light->GetSettings().Type==GameSproutRuntime::LightType::Directional&&light->IsEnabled()&&
             light->GetIntensity()==1&&light->GetCullingMask()==0xffffffffu&&!light->GetShadows().Enabled&&
+            !light->GetShadows().CacheStaticCasters&&
             light->GetShadows().Resolution==2048&&light->GetShadows().CascadeCount==4&&
             light->GetShadows().DepthBias==.5f&&light->GetShadows().NormalBias==1,"Wrong default light contract");
         Check(object->AddComponent<GameSproutRuntime::ILightComponent>()==light,"Duplicate light was allocated");
@@ -62,6 +63,9 @@ int main(int argc,char** argv) {
             Check(!light->SetSettings(invalid)&&light->IsEnabled()&&light->GetShadows()==settings.Shadows,"Invalid shadow settings partially changed light");
         }
         runtime->ProcessPendingEvents();Check(listener.Changes==1,"Rejected setting emitted events");
+        settings.Shadows.CacheStaticCasters=true;
+        Check(light->SetShadows(settings.Shadows)&&light->GetShadows().CacheStaticCasters,"Public API did not enable static shadow caching");
+        runtime->ProcessPendingEvents();Check(listener.Changes==2,"Layering-only edit did not emit one component notification");
         runtime->UnregisterListener(&listener);
 
         SceneDocument::ObjectIDs identities;Json::Value document;std::string error;
@@ -89,8 +93,18 @@ int main(int argc,char** argv) {
         Check(!SceneDocument::Validate(bad,error),"Unsupported shadow resolution accepted");
         bad=document;bad["Objects"][0]["Components"][1]["Settings"]["Shadows"]["Enabled"]=1;
         Check(!SceneDocument::Validate(bad,error),"Numeric shadow enabled accepted");
+        bad=document;bad["Objects"][0]["Components"][1]["Settings"]["Shadows"]["CacheStaticCasters"]=1;
+        Check(!SceneDocument::Validate(bad,error)&&error.find("CacheStaticCasters")!=std::string::npos,"Numeric static shadow caching accepted");
         bad=document;bad["Objects"][0]["Components"][1]["Settings"]["Shadows"]["Unexpected"]=true;
         Check(!SceneDocument::Validate(bad,error)&&error.find("Unexpected")!=std::string::npos,"Unknown shadow field accepted");
+
+        auto defaultShadows=document;
+        defaultShadows["Objects"][0]["Components"][1]["Settings"]["Shadows"].removeMember("CacheStaticCasters");
+        GameSproutRuntime::IScene* defaultScene=nullptr;SceneDocument::ObjectIDs defaultIDs;
+        Check(SceneDocument::Instantiate(defaultShadows,*runtime,defaultScene,defaultIDs,error),error);
+        auto* defaultLight=defaultScene->FindChild("Sun")->GetComponent<GameSproutRuntime::ILightComponent>();
+        Check(defaultLight&&defaultLight->GetShadows().Enabled&&!defaultLight->GetShadows().CacheStaticCasters,"Omitted caching setting changed the default shadow policy");
+        Check(runtime->DestroyScene(defaultScene),"Cannot destroy default shadow fixture");
 
         // Prefab has the same object-document component contract, with fresh
         // live identities for each instance and stable authored component IDs.

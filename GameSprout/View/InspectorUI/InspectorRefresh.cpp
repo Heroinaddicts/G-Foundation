@@ -34,6 +34,12 @@ void InspectorUI::RefreshPending() {
             _OperationError=QString::fromStdString(error);
         }
     }
+    if(changes.Header) {
+        for(auto* extension:_Extensions) {
+            if(extension->SceneObjectSectionPlacement()==InspectorSectionPlacement::ObjectHeader)
+                sections.insert(extension);
+        }
+    }
     if(!sections.empty())RefreshSceneSections(_Target,false,&sections);
     UpdateButtons();
 }

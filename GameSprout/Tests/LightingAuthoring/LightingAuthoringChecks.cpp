@@ -209,7 +209,9 @@ int main(int argc,char** argv) {
         auto* shadows=panel->findChild<QGroupBox*>("shadowGroup");auto* shadowDistance=panel->findChild<QLineEdit*>("shadowDistanceEdit");
         auto* shadowResolution=panel->findChild<QComboBox*>("shadowResolutionCombo");auto* shadowCascades=panel->findChild<QComboBox*>("shadowCascadesCombo");
         auto* shadowSoft=panel->findChild<QCheckBox*>("softShadowsCheck");
-        Check(shadows&&shadowDistance&&shadowResolution&&shadowCascades&&shadowSoft,"Designer shadow controls missing");
+        auto* cacheStaticCasters=panel->findChild<QCheckBox*>("cacheStaticCastersCheck");
+        Check(shadows&&shadowDistance&&shadowResolution&&shadowCascades&&shadowSoft&&cacheStaticCasters,"Designer shadow controls missing");
+        Check(!cacheStaticCasters->isChecked(),"Static shadow caching was unexpectedly enabled by default");
         QTest::mouseClick(shadows,Qt::LeftButton,Qt::NoModifier,QPoint(8,12));
         Check(light->GetShadows().Enabled,"Shadow enable did not reach authoring transaction");
         shadowDistance->setText("75");QMetaObject::invokeMethod(shadowDistance,"editingFinished");
@@ -219,6 +221,10 @@ int main(int argc,char** argv) {
             !light->GetShadows().Soft,"Inspector shadow values did not reach authoring transaction");
         Check(scenes.Undo(error)&&light->GetShadows().Soft,"Shadow edit Undo failed: "+error);
         Check(scenes.Redo(error)&&!light->GetShadows().Soft,"Shadow edit Redo failed: "+error);
+        cacheStaticCasters->click();
+        Check(light->GetShadows().CacheStaticCasters,"Inspector static shadow caching edit did not reach authoring transaction");
+        Check(scenes.Undo(error)&&!light->GetShadows().CacheStaticCasters,"Static shadow caching Undo failed: "+error);
+        Check(scenes.Redo(error)&&light->GetShadows().CacheStaticCasters,"Static shadow caching Redo failed: "+error);
         QTest::mouseClick(enabled,Qt::LeftButton,Qt::NoModifier,QPoint(8,enabled->height()/2));Check(!light->GetSettings().Enabled,"Inspector enabled toggle failed");
         delete panel;Check(scenes.SaveScene(error),error);const auto source=Read(temporary.path()+"/Assets/Light.scene");
         const auto objectFile=scenes.GetObjectFileID(object->GetInstanceID()),componentFile=scenes.GetComponentFileID(object->GetInstanceID(),light->GetComponentInstanceID());
@@ -239,7 +245,8 @@ int main(int argc,char** argv) {
         Check(lighting.ReadEnvironment(environment,error)&&environment.Settings.Mode==GameSproutRuntime::AmbientLightMode::Gradient&&environment.Settings.SkyColor.R==2,"Saved scene lost environment");
         Check(object&&object->GetComponent<GameSproutRuntime::ILightComponent>()->GetSettings().Color.B==.8f,"Saved light round-trip failed");
         const auto savedShadows=object->GetComponent<GameSproutRuntime::ILightComponent>()->GetShadows();
-        Check(savedShadows.Enabled&&savedShadows.Distance==75&&savedShadows.Resolution==1024&&savedShadows.CascadeCount==2&&!savedShadows.Soft,
+        Check(savedShadows.Enabled&&savedShadows.Distance==75&&savedShadows.Resolution==1024&&savedShadows.CascadeCount==2&&
+            !savedShadows.Soft&&savedShadows.CacheStaticCasters,
             "Saved light lost Inspector shadow settings");
         Json::StreamWriterBuilder environmentWriter;SceneDocumentSessionRequest prefabSession;
         prefabSession.DocumentJson=Json::writeString(environmentWriter,SceneDocument::CreateDefault("Environment Prefab Stage"));prefabSession.ContentRootFileID=1;

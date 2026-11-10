@@ -48,8 +48,9 @@ GameSproutRuntime::LightSettings Read(const Json::Value& component,const std::st
     }
     if(settings.isMember("Shadows")) {
         const auto& shadows=settings["Shadows"];const std::string shadowKey=key+".Shadows";
-        Keys(shadows,shadowKey,{"Enabled","Strength","Distance","Resolution","CascadeCount","DepthBias","NormalBias","Soft"});
-        for(const auto& [name,target]:{std::pair<const char*,bool*>{"Enabled",&result.Shadows.Enabled},{"Soft",&result.Shadows.Soft}})
+        Keys(shadows,shadowKey,{"Enabled","Strength","Distance","Resolution","CascadeCount","DepthBias","NormalBias","Soft","CacheStaticCasters"});
+        for(const auto& [name,target]:{std::pair<const char*,bool*>{"Enabled",&result.Shadows.Enabled},
+            {"Soft",&result.Shadows.Soft},{"CacheStaticCasters",&result.Shadows.CacheStaticCasters}})
             if(shadows.isMember(name)) {
                 if(!shadows[name].isBool())Fail(shadowKey+"."+name,"expected bool");
                 *target=shadows[name].asBool();
@@ -92,6 +93,7 @@ Json::Value Serialize(GameSproutRuntime::IComponent& component) {
     shadows["Distance"]=settings.Shadows.Distance;shadows["Resolution"]=Json::UInt(settings.Shadows.Resolution);
     shadows["CascadeCount"]=Json::UInt(settings.Shadows.CascadeCount);shadows["DepthBias"]=settings.Shadows.DepthBias;
     shadows["NormalBias"]=settings.Shadows.NormalBias;shadows["Soft"]=settings.Shadows.Soft;
+    shadows["CacheStaticCasters"]=settings.Shadows.CacheStaticCasters;
     Validate(result,"Light");
     return result;
 }

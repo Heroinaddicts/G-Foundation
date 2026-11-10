@@ -14,6 +14,7 @@
   <addaction name="occludeeAction"/>
   <addaction name="offMeshLinkAction"/>
   <addaction name="reflectionAction"/>
+  <addaction name="shadowCasterAction"/>
   <action name="nothingAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Nothing</string></property></action>
   <action name="everythingAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Everything</string></property></action>
   <action name="contributeGIAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Contribute GI</string></property></action>
@@ -23,6 +24,7 @@
   <action name="occludeeAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Occludee Static</string></property></action>
   <action name="offMeshLinkAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Off Mesh Link Generation</string></property></action>
   <action name="reflectionAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Reflection Probe Static</string></property></action>
+  <action name="shadowCasterAction"><property name="checkable"><bool>true</bool></property><property name="text"><string>Shadow Caster Static</string></property></action>
  </widget>
  <resources/><connections/>
 </ui>

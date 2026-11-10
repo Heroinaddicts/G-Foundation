@@ -195,11 +195,25 @@ cbuffer ShadowUniform : register(b2, space3)
     float4x4 ShadowCameraView;
     float4 CascadeSplits;
     float4 ShadowInfo;
-    float4 CascadeBias[4];
+    float4 CascadeBias[4]; // Depth bias, normal bias, soft filtering. Entry 0 W enables dynamic sampling.
     float4 CascadeAtlas[4];
+    float4 DynamicDepth[4]; // Clip Z row for each dynamic cascade.
+    float4 DynamicDepthBias;
 };
 Texture2D<float> ShadowTexture : register(t2, space2);
 SamplerState ShadowSampler : register(s2, space2);
+Texture2D<float> DynamicShadowTexture : register(t3, space2);
+SamplerState DynamicShadowSampler : register(s3, space2);
+
+float SampleShadowVisibility(float2 uv, float2 reference, bool sampleDynamic)
+{
+    // The layers share a tile but normalize Z independently. A tap is lit
+    // only if neither depth test is occluded, before averaging PCF taps.
+    float visibility = reference.x <= ShadowTexture.SampleLevel(ShadowSampler, uv, 0).r ? 1.0 : 0.0;
+    if (sampleDynamic)
+        visibility *= reference.y <= DynamicShadowTexture.SampleLevel(DynamicShadowSampler, uv, 0).r ? 1.0 : 0.0;
+    return visibility;
+}
 
 float DirectionalShadow(float3 worldPosition, float3 normal)
 {
@@ -213,25 +227,38 @@ float DirectionalShadow(float3 worldPosition, float3 normal)
     if (depth > CascadeSplits.z && ShadowInfo.x > 3.5) cascade = 3;
     cascade = min(cascade, (int)ShadowInfo.x - 1);
     float3 query = worldPosition + normal * CascadeBias[cascade].y;
-    float4 clip = mul(WorldToShadow[cascade], float4(query, 1.0));
+    float4 worldQuery = float4(query, 1.0);
+    float4 clip = mul(WorldToShadow[cascade], worldQuery);
     float3 ndc = clip.xyz / clip.w;
     float2 localUV = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
-    if (any(localUV < 0.0) || any(localUV > 1.0) || ndc.z < 0.0 || ndc.z > 1.0) return 1.0;
+    if (any(localUV < 0.0) || any(localUV > 1.0)) return 1.0;
+    bool sampleStatic = ndc.z >= 0.0 && ndc.z <= 1.0;
+    float dynamicZ = 0.0;
+    bool sampleDynamic = CascadeBias[0].w > 0.5;
+    if (sampleDynamic)
+    {
+        dynamicZ = dot(DynamicDepth[cascade], worldQuery) / clip.w;
+        sampleDynamic = dynamicZ >= 0.0 && dynamicZ <= 1.0;
+    }
+    if (!sampleStatic && !sampleDynamic) return 1.0;
     uint width, height; ShadowTexture.GetDimensions(width, height);
     float2 texel = 1.0 / float2(width, height);
     float4 tile = CascadeAtlas[cascade];
     float2 uv = localUV * tile.xy + tile.zw;
-    float reference = ndc.z - CascadeBias[cascade].x;
+    // A zero reference is always lit for a depth texture. This disables the
+    // static test outside its fitted depth range without rejecting dynamic Z.
+    float2 reference = float2(sampleStatic ? ndc.z - CascadeBias[cascade].x : 0.0,
+                              dynamicZ - DynamicDepthBias[cascade]);
     float visibility = 0.0;
     if (CascadeBias[cascade].z < 0.5)
-        visibility = reference <= ShadowTexture.SampleLevel(ShadowSampler, uv, 0).r ? 1.0 : 0.0;
+        visibility = SampleShadowVisibility(uv, reference, sampleDynamic);
     else
     {
         [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
         {
             float2 tap = clamp(uv + float2(x, y) * texel, tile.zw + texel * 0.5, tile.zw + tile.xy - texel * 0.5);
-            visibility += reference <= ShadowTexture.SampleLevel(ShadowSampler, tap, 0).r ? 1.0 : 0.0;
+            visibility += SampleShadowVisibility(tap, reference, sampleDynamic);
         }
         visibility /= 9.0;
     }

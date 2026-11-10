@@ -19,10 +19,10 @@ void CheckStorageAndEvents(GameSproutRuntime::IGameSproutRuntime& runtime) {
     runtime.ProcessPendingEvents();Events events;events.ObjectID=child->GetInstanceID();
     Check(runtime.RegisterListener(&events),"Cannot subscribe to StaticFlags events");
     const auto selected=GameSproutRuntime::StaticFlags::ContributeGI|GameSproutRuntime::StaticFlags::BatchingStatic|
-        GameSproutRuntime::StaticFlags::ReflectionProbeStatic;
+        GameSproutRuntime::StaticFlags::ReflectionProbeStatic|GameSproutRuntime::StaticFlags::ShadowCasterStatic;
     Check(child->SetStaticFlags(selected)&&child->GetStaticFlags()==selected&&child->IsStatic(),"Cannot preserve independently selected StaticFlags");
     Check(child->SetStaticFlags(selected),"Idempotent assignment failed");
-    const auto invalid=static_cast<GameSproutRuntime::StaticFlags>(0x80u|static_cast<std::uint32_t>(selected));
+    const auto invalid=static_cast<GameSproutRuntime::StaticFlags>(0x100u|static_cast<std::uint32_t>(selected));
     Check(!child->SetStaticFlags(invalid)&&child->GetStaticFlags()==selected,"Unknown static bits changed the declaration");
     runtime.ProcessPendingEvents();Check(events.Changes==1,"Static change event was missing or repeated for idempotent/invalid writes");
     Check(parent->SetStaticFlags(GameSproutRuntime::StaticFlags::Everything)&&child->GetStaticFlags()==selected,"Static flags inherited automatically to child");
@@ -64,9 +64,9 @@ void CheckPhysicsIndependence(GameSproutRuntime::IGameSproutRuntime& runtime) {
 int main(int argc,char** argv) {
     static_assert(sizeof(GameSproutRuntime::StaticFlags)==sizeof(std::uint32_t));
     static_assert(GameSproutRuntime::IsValidStaticFlags(GameSproutRuntime::StaticFlags::Everything));
-    static_assert(!GameSproutRuntime::IsValidStaticFlags(static_cast<GameSproutRuntime::StaticFlags>(128)));
+    static_assert(!GameSproutRuntime::IsValidStaticFlags(static_cast<GameSproutRuntime::StaticFlags>(256)));
     static_assert(~GameSproutRuntime::StaticFlags::Everything==GameSproutRuntime::StaticFlags::None);
-    static_assert(~static_cast<GameSproutRuntime::StaticFlags>(128)==GameSproutRuntime::StaticFlags::Everything);
+    static_assert(~static_cast<GameSproutRuntime::StaticFlags>(256)==GameSproutRuntime::StaticFlags::Everything);
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
     try {
         Check(argc==2,"Pass the Runtime library directory");runtime=Export(argv[1]);Check(runtime,"Cannot load Runtime");

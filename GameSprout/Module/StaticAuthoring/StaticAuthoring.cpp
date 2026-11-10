@@ -14,8 +14,7 @@ void StaticAuthoring::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Scenes=nullptr;_Play=nullptr;_Runtime=nullptr;_Busy=false;
 }
 GameSproutRuntime::StaticFlags StaticAuthoring::GetSupportedFlags() const {
-    // No baking consumer has been implemented yet. Never advertise data storage as an optimization.
-    return GameSproutRuntime::StaticFlags::None;
+    return GameSproutRuntime::StaticFlags::ShadowCasterStatic;
 }
 std::vector<StaticFlagDefinition> StaticAuthoring::GetFlagDefinitions() const {
     using GameSproutRuntime::StaticFlags;
@@ -26,7 +25,8 @@ std::vector<StaticFlagDefinition> StaticAuthoring::GetFlagDefinitions() const {
         {StaticFlags::NavigationStatic,"Navigation Static","参与导航网格烘焙；当前尚未实现导航烘焙。",false},
         {StaticFlags::OccludeeStatic,"Occludee Static","作为可被遮挡的静态对象参与预计算；当前尚未实现遮挡烘焙。",false},
         {StaticFlags::OffMeshLinkGeneration,"Off Mesh Link Generation","允许生成导航跨越连接；当前尚未实现导航烘焙。",false},
-        {StaticFlags::ReflectionProbeStatic,"Reflection Probe Static","参与反射探针烘焙；当前尚未实现反射探针烘焙。",false}
+        {StaticFlags::ReflectionProbeStatic,"Reflection Probe Static","参与反射探针烘焙；当前尚未实现反射探针烘焙。",false},
+        {StaticFlags::ShadowCasterStatic,"Shadow Caster Static","适用于建筑、地形等静止投影物。方向光开启缓存静态阴影后，可跨帧复用其阴影。",true}
     };
 }
 bool StaticAuthoring::SetFlags(std::uint64_t objectID,GameSproutRuntime::StaticFlags values,
@@ -43,7 +43,7 @@ bool StaticAuthoring::SetFlags(std::uint64_t objectID,GameSproutRuntime::StaticF
     while(!pending.empty()) {
         auto* target=pending.back();pending.pop_back();
         if(requested&~static_cast<std::uint32_t>(target->GetStaticFlags())&~supported) {
-            error="对应的静态预处理系统尚未实现，不能启用此标志；已有标志可以清除。";return false;
+            error="对应的静态功能尚未实现，不能启用此标志；已有标志可以清除。";return false;
         }
         if(includeChildren)for(std::size_t index=0;index<target->GetChildCount();++index)pending.push_back(target->GetChild(index));
     }

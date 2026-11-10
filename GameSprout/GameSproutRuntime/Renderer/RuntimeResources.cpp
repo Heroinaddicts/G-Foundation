@@ -94,12 +94,13 @@ Renderer::Renderer(Runtime& runtime,GRHI::IDevice& device,IRuntimeResourceProvid
 Renderer::~Renderer() {
     ClearResources();
     for(auto& entry:_Depths) delete entry.second.Texture;
-    delete _ShadowAtlas;delete _ShadowSampler;
+    delete _ShadowAtlas;delete _DynamicShadowAtlas;delete _ShadowSampler;
+    delete _ShadowRepairVertices;
     delete _ColorTarget;
     if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
-    _ShadowValid=false;_ShadowUniform.Info={};
+    _ShadowValid=false;_ShadowUniform.Info={};_StaticShadowCasters.clear();_PrimaryShadowCasterBounds.clear();
     _PreparedDraws.clear();_SceneObjects.clear();_SceneObjectIndices.clear();_SceneLights.clear();_LightTransformSources.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;
     _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;

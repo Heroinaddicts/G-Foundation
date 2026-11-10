@@ -6,10 +6,11 @@ ObjectDocument persists node `StaticFlags` and `RootStaticFlags` in Scene/Prefab
 The flags are independent bits, not a physics motion mode, Transform lock, script gate,
 or a declaration that any baking result already exists.
 
-The API defines seven known uses, but currently reports no supported baking
-consumers. StaticUI omits unavailable uses from its menu and hides the entire Static
-header control when none are available. When consumers become available, Nothing,
-Everything and the checkbox operate only on the available subset, preserving other
+`Shadow Caster Static` marks meshes such as buildings or terrain for reuse in the
+static shadow layer when the directional light has `CacheStaticCasters` enabled.
+StaticUI omits unavailable uses from its menu and hides the entire Static header
+control when none are available. Nothing, Everything and the checkbox operate
+only on the available subset, preserving other
 stored bits. The authoring API allows clearing stored declarations; preserving
 already-set bits is a no-op, and enabling an unsupported bit on any descendant rejects
 the complete operation before a scene transaction starts.
@@ -25,8 +26,8 @@ one Undo/Redo entry for a subtree. Runtime/Scene/source callbacks do not retain 
 pointers. Play and reentrant Runtime calls are rejected. Views submit identities and
 values; they never parse or modify scene JSON for this operation.
 
-The current source schema accepts only uint32 values within the defined seven-bit
-mask (0..127); omitted fields use the normal default zero. Undefined bits fail before
+The current source schema accepts only uint32 values within the defined eight-bit
+mask (0..255); omitted fields use the normal default zero. Undefined bits fail before
 object construction. There are no legacy names, version migration or old-data readers.
 The existing Prefab property machinery tracks StaticFlags, including save,
 instantiation, source propagation, Override, Apply/Revert and deletion restoration.

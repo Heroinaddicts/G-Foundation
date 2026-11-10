@@ -12,7 +12,7 @@ static void CheckStaticFlagEditing(SceneManager& manager,GameSproutRuntime::IGam
         "Subtree static edit was not one Undo transaction");
     Check(manager.Redo(error)&&child->GetStaticFlags()==(StaticFlags::ReflectionProbeStatic|StaticFlags::OccluderStatic),error);
     const auto before=parent->GetStaticFlags();
-    Check(!manager.SetObjectStaticFlags(parentID,static_cast<StaticFlags>(128),StaticFlags::Everything,true,error)&&parent->GetStaticFlags()==before,
+    Check(!manager.SetObjectStaticFlags(parentID,static_cast<StaticFlags>(256),StaticFlags::Everything,true,error)&&parent->GetStaticFlags()==before,
         "Invalid static edit mutated objects");
     Check(manager.SetObjectStaticFlags(childID,StaticFlags::None,StaticFlags::OccluderStatic,false,error)&&child->GetStaticFlags()==StaticFlags::ReflectionProbeStatic,
         "Clearing one flag changed unrelated bits");

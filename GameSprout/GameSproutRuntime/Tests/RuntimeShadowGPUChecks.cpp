@@ -94,6 +94,211 @@ IGameObject* MeshObject(IScene& scene,const char* name,std::uint64_t mesh){
     return object;
 }
 Quaternion Yaw(float degrees){const float half=DegreesToRadians(degrees)*.5f;return {0,std::sin(half),0,std::cos(half)};}
+
+void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
+    std::string error;
+    Check(viewport.Resize(256,256,error),error);
+    provider.CubeHalfSize=.4f;
+    ++provider.Revision;
+    auto* scene=runtime.CreateScene("Layered directional shadow GPU checks");
+    Check(scene,"Cannot create the layered shadow scene");
+    auto* receiver=MeshObject(*scene,"Static receiving plane",1);
+    auto* building=MeshObject(*scene,"Static casting cube",2);
+    auto* character=MeshObject(*scene,"Dynamic casting cube",2);
+    Check(receiver->SetStaticFlags(StaticFlags::ShadowCasterStatic)&&building->SetStaticFlags(StaticFlags::ShadowCasterStatic),
+        "Cannot mark static shadow casters");
+    // Only the receiver is visible to the camera. The two silhouettes fall on
+    // different parts of it, so moving/removing a caster changes only shadows.
+    building->GetTransform()->SetLocalPosition({2.7f,.9f,2});
+    character->GetTransform()->SetLocalPosition({2.7f,-.65f,2});
+    auto* sunObject=scene->CreateGameObject("Layered sun");
+    Check(sunObject,"Cannot create layered light object");
+    auto* sun=sunObject->AddComponent<ILightComponent>();
+    Check(sun&&sunObject->GetTransform()->SetLocalRotation(Yaw(225)),"Cannot create/aim layered shadow light");
+    auto settings=sun->GetSettings();
+    settings.Intensity=.5f;
+    settings.Shadows.Enabled=false;
+    settings.Shadows.Resolution=512;
+    settings.Shadows.Distance=20;
+    settings.Shadows.CascadeCount=1;
+    settings.Shadows.Strength=1;
+    settings.Shadows.DepthBias=.5f;
+    settings.Shadows.NormalBias=1;
+    settings.Shadows.Soft=true;
+    Check(sun->SetSettings(settings),"Cannot configure layered shadow fixture");
+    EnvironmentLightingSettings environment;
+    environment.Mode=AmbientLightMode::Color;
+    environment.AmbientColor={.04f,.04f,.04f,1};
+    Check(scene->SetEnvironmentLighting(environment),"Cannot set layered shadow-test ambient");
+
+    RenderView view;
+    view.Scene=scene;
+    view.DrawGrid=false;
+    view.Camera.Position={0,0,5};
+    view.Camera.Projection.Projection=CameraProjection::Orthographic;
+    view.Camera.Projection.OrthographicHeight=4;
+    view.Camera.Projection.NearPlane=.1f;
+    view.Camera.Projection.FarPlane=30;
+    Check(TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Cannot aim layered shadow camera");
+    const auto unshadowed=Render(viewport,view);
+    Check(unshadowed.Statistics.VisibleObjects==1,"Layered shadow fixture must show only the receiver");
+    settings.Shadows.Enabled=true;
+    Check(sun->SetSettings(settings),"Cannot enable unified shadows");
+    const auto unified=Render(viewport,view);
+    EffectiveShadow(unshadowed,unified,"Unified reference for layered PCF");
+    Check(unified.Statistics.ShadowMapUpdates==1&&unified.Statistics.StaticShadowMapUpdates==0&&
+        unified.Statistics.DynamicShadowMapUpdates==0,"Unified shadows unexpectedly used the split atlases");
+
+    settings.Shadows.CacheStaticCasters=true;
+    Check(sun->SetSettings(settings),"Cannot enable static caster caching");
+    const auto layered=Render(viewport,view);
+    Check(layered.Statistics.StaticShadowMapUpdates==1&&layered.Statistics.DynamicShadowMapUpdates==1&&
+        layered.Statistics.StaticShadowDrawCalls>0&&layered.Statistics.DynamicShadowDrawCalls>0,
+        "Layered shadows must initialize both populated atlases");
+    EffectiveShadow(unshadowed,layered,"Combined static/dynamic PCF");
+    Check(Darkened(unified,layered).Count<100&&Darkened(layered,unified).Count<100,
+        "Combined PCF lost or introduced a significant shadow compared with unified rendering");
+
+    character->GetTransform()->SetLocalPosition({2.7f,-1.35f,2});
+    const auto dynamicMoved=Render(viewport,view);
+    Check(dynamicMoved.Statistics.StaticShadowMapUpdates==0&&dynamicMoved.Statistics.StaticShadowDrawCalls==0&&
+        dynamicMoved.Statistics.DynamicShadowMapUpdates==1&&dynamicMoved.Statistics.DynamicShadowDrawCalls>0,
+        "Moving a dynamic caster should update only the dynamic atlas");
+    Check(Darkened(layered,dynamicMoved).Count>100&&Darkened(dynamicMoved,layered).Count>100,
+        "Moving the dynamic caster did not add its new shadow and clear its old shadow");
+
+    const auto fixedCamera=view.Camera;
+    view.Camera.Position={.25f,0,5};
+    Check(TryMakeLookAt(view.Camera.Position,{.25f,0,0},{0,1,0},view.Camera.View),"Cannot move layered shadow camera");
+    view.ReuseShadowsWhileNavigating=true;
+    character->GetTransform()->SetLocalPosition({2.7f,-.65f,2});
+    const auto navigating=Render(viewport,view);
+    Check(navigating.Statistics.StaticShadowMapUpdates==0&&navigating.Statistics.DynamicShadowMapUpdates==1,
+        "Navigation should reuse the static fit and keep moving casters current");
+    view.ReuseShadowsWhileNavigating=false;
+    const auto settled=Render(viewport,view);
+    Check(settled.Statistics.StaticShadowMapUpdates==1&&settled.Statistics.DynamicShadowMapUpdates==1,
+        "Ending navigation should refit both shadow layers to the final camera");
+
+    view.Camera=fixedCamera;
+    const auto beforeStaticMove=Render(viewport,view);
+    building->GetTransform()->SetLocalPosition({2.7f,1.35f,2});
+    const auto staticMoved=Render(viewport,view);
+    Check(staticMoved.Statistics.StaticShadowMapUpdates==1&&staticMoved.Statistics.StaticShadowDrawCalls>0&&
+        Difference(beforeStaticMove,staticMoved)>100,"Editing a static caster left stale cached depth");
+
+    // Moving along the light ray leaves the footprint on the receiver fixed,
+    // but puts the dynamic cube far outside the static atlas's light depth range.
+    character->GetTransform()->SetLocalPosition({42.7f,-.65f,42});
+    const auto distantDynamic=Render(viewport,view);
+    Check(distantDynamic.Statistics.StaticShadowMapUpdates==0&&distantDynamic.Statistics.DynamicShadowDrawCalls>0,
+        "A distant dynamic caster forced a static depth refit or was clipped before drawing");
+    Check(Darkened(staticMoved,distantDynamic).Count<100&&Darkened(distantDynamic,staticMoved).Count<100,
+        "The dynamic shadow shifted when the caster moved along the light ray");
+
+    settings.Shadows.CacheStaticCasters=false;
+    Check(sun->SetSettings(settings),"Cannot select unified shadows for distant caster reference");
+    const auto distantUnified=Render(viewport,view);
+    Check(Darkened(distantUnified,distantDynamic).Count<100&&Darkened(distantDynamic,distantUnified).Count<100,
+        "Combined shadow sampling lost the distant dynamic caster under a different depth projection");
+    settings.Shadows.CacheStaticCasters=true;
+    Check(sun->SetSettings(settings),"Cannot restore layered shadows after the distant caster reference");
+    Render(viewport,view);
+
+    Check(scene->DestroyGameObject(character),"Cannot remove the dynamic shadow caster");
+    const auto staticOnly=Render(viewport,view);
+    Check(staticOnly.Statistics.StaticShadowMapUpdates==0&&staticOnly.Statistics.DynamicShadowDrawCalls==0,
+        "Removing the dynamic caster should keep the static atlas and draw no dynamic geometry");
+    Check(Darkened(staticOnly,distantDynamic).Count>100,"The distant dynamic shadow was missing or stayed after caster removal");
+    EffectiveShadow(unshadowed,staticOnly,"Remaining static shadow");
+
+    settings.Shadows.CacheStaticCasters=false;
+    Check(sun->SetSettings(settings),"Cannot restore unified shadows");
+    const auto restored=Render(viewport,view);
+    Check(restored.Statistics.ShadowMapUpdates==1&&restored.Statistics.StaticShadowMapUpdates==0&&
+        restored.Statistics.DynamicShadowMapUpdates==0&&Darkened(staticOnly,restored).Count<100&&
+        Darkened(restored,staticOnly).Count<100,"Disabling layered shadows left split atlas state in the unified pass");
+
+    auto* group=scene->CreateGameObject("Edited parent");
+    Check(group&&building->SetParent(group),"Cannot group the static shadow caster");
+    for(bool configuredLayers:{false,true}) {
+        settings.Shadows.CacheStaticCasters=configuredLayers;
+        Check(sun->SetSettings(settings),"Cannot set authored layer policy for preview");
+        view.TransformPreviewObjectID=group->GetInstanceID();
+        const auto started=Render(viewport,view);
+        Check(started.Statistics.StaticShadowMapUpdates==1&&started.Statistics.DynamicShadowDrawCalls>0,
+            "Interactive parent did not move its static descendant into the dynamic layer");
+        auto* transform=group->GetTransform();
+        transform->SetLocalPosition(transform->GetLocalPosition()+Vector3{0,-.55f,0});
+        const auto moved=Render(viewport,view);
+        Check(moved.Statistics.StaticShadowMapUpdates==0&&moved.Statistics.DynamicShadowMapUpdates==1&&
+            Darkened(started,moved).Count>100&&Darkened(moved,started).Count>100,
+            "Drag preview retained stale shadows or redrew the cached surroundings");
+        view.TransformPreviewObjectID=0;
+        const auto committed=Render(viewport,view);
+        Check(committed.Statistics.ShadowMapUpdates==0&&
+            Darkened(committed,moved).Count<100&&Darkened(moved,committed).Count<100,
+            "Ending the preview did not retain the exact submitted shadow silhouette");
+        transform->SetLocalPosition(transform->GetLocalPosition()+Vector3{0,.1f,0});
+        const auto invalidated=Render(viewport,view);
+        Check(invalidated.Statistics.LayeredShadows==configuredLayers&&invalidated.Statistics.ShadowMapUpdates==1,
+            "The next scene change did not restore the authored shadow policy");
+    }
+
+    // Start with a unified atlas. The selected caster moves before the first
+    // preview frame, so the repair must use its previously submitted bounds.
+    settings.Shadows.CacheStaticCasters=false;
+    Check(sun->SetSettings(settings),"Cannot warm the unified repair reference");
+    auto* groupTransform=group->GetTransform();
+    groupTransform->SetLocalPosition({});
+    building->GetTransform()->SetLocalPosition({2.7f,.1f,2});
+    auto* crossing=MeshObject(*scene,"Overlapping static shadow",2);
+    crossing->GetTransform()->SetLocalPosition({2.7f,.5f,2});
+    auto* other=MeshObject(*scene,"Second selected caster",2);
+    other->GetTransform()->SetLocalPosition({2.7f,1.45f,2});
+    std::vector<IGameObject*> background{crossing,other};
+    for(float y:{-6.f,-5.f,-4.f,4.f,5.f,6.f}) {
+        auto* unchanged=MeshObject(*scene,"Unchanged caster outside the repair",2);
+        unchanged->GetTransform()->SetLocalPosition({2.7f,y,2});
+        background.push_back(unchanged);
+    }
+    view.EnableGPUInstancing=false;
+    const auto warm=Render(viewport,view);
+    const auto checkRepair=[&](const Frame& patched,const char* message) {
+        struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
+        const OwnedViewport fresh{runtime.CreateOffscreenRenderer(256,256,&provider,error)};
+        Check(fresh.Pointer,error);
+        const auto rebuilt=Render(*fresh.Pointer,view);
+        Check(patched.Statistics.StaticShadowMapUpdates==1&&patched.Statistics.DynamicShadowMapUpdates==1&&
+            patched.Statistics.StaticShadowDrawCalls<rebuilt.Statistics.StaticShadowDrawCalls,
+            std::string(message)+": repair redrew the whole static atlas");
+        Check(Difference(patched,rebuilt,8)<100,std::string(message)+": repair changed the rebuilt shadow silhouette");
+    };
+    view.TransformPreviewObjectID=group->GetInstanceID();
+    groupTransform->SetLocalPosition({0,-.95f,0});
+    const auto firstMotion=Render(viewport,view);
+    Check(Darkened(warm,firstMotion).Count>100&&Darkened(firstMotion,warm).Count>100,
+        "First motion must replace the old caster footprint immediately");
+    checkRepair(firstMotion,"First motion from unified atlas");
+
+    view.TransformPreviewObjectID=0;
+    Check(Render(viewport,view).Statistics.ShadowMapUpdates==0,"Selection release invalidated unchanged depth");
+    view.TransformPreviewObjectID=other->GetInstanceID();
+    other->GetTransform()->SetLocalPosition({2.7f,1.9f,2});
+    checkRepair(Render(viewport,view),"Changing the preview caster");
+    view.TransformPreviewObjectID=0;
+    view.EnableGPUInstancing=true;
+    for(auto* object:background)Check(scene->DestroyGameObject(object),"Cannot remove repair fixture caster");
+
+    Check(receiver->SetParent(group),"Cannot group the final static shadow candidate");
+    settings.Shadows.CacheStaticCasters=false;
+    Check(sun->SetSettings(settings),"Cannot restore unified shadows before previewing every caster");
+    Render(viewport,view);
+    view.TransformPreviewObjectID=group->GetInstanceID();
+    const auto allMoving=Render(viewport,view);
+    Check(allMoving.Statistics.StaticShadowMapUpdates==1&&allMoving.Statistics.StaticShadowDrawCalls==0&&
+        allMoving.Statistics.DynamicShadowDrawCalls>0,"An empty static layer retained unified depth from its previous contents");
+}
 }
 
 int main(int argc,char** argv){
@@ -183,13 +388,27 @@ int main(int argc,char** argv){
             "Caster transform mutation did not update the atlas and projected shadow");
 
         view.Camera.Position={.25f,0,5};Check(TryMakeLookAt(view.Camera.Position,{.25f,0,0},{0,1,0},view.Camera.View),"Cannot move shadow camera");
+        view.ReuseShadowsWhileNavigating=true;
+        const auto navigating=Render(*viewport,view);
+        Check(navigating.Statistics.ShadowMapUpdates==0&&navigating.Statistics.ShadowDrawCalls==0,
+            "Interactive camera movement rebuilt an otherwise valid shadow atlas");
+        EffectiveShadow(baseline,navigating,"Shadow atlas during camera navigation");
+        view.ReuseShadowsWhileNavigating=false;
         const auto cameraChanged=Render(*viewport,view);
-        Check(cameraChanged.Statistics.ShadowMapUpdates>0,"Camera mutation retained the old cascade atlas");
+        Check(cameraChanged.Statistics.ShadowMapUpdates>0,"Ending navigation retained the old cascade fit");
+        view.ReuseShadowsWhileNavigating=true;
+        view.Camera.Projection.OrthographicHeight=4.25f;
+        const auto projectionChanged=Render(*viewport,view);
+        Check(projectionChanged.Statistics.ShadowMapUpdates>0,"Navigation reused shadows after a projection change");
+        caster->GetTransform()->SetLocalPosition({2.8f,0,2});
+        const auto casterChanged=Render(*viewport,view);
+        Check(casterChanged.Statistics.ShadowMapUpdates>0,"Navigation reused shadows after a caster change");
         Check(viewport->Resize(192,256,error),error);const auto resized=Render(*viewport,view);
         Check(resized.Statistics.ShadowMapUpdates>0,"Aspect mutation retained the old cascade fit");
 
+        CheckLayeredShadows(*runtime,*viewport,provider);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS directional shadows GPU: off-camera casters, hard/PCF 1/2/4 cascades, strength/toggle/layers, parent rotation, resource and transform revisions, camera/aspect and atlas reuse\n";
+        std::cout<<"PASS directional shadows GPU: off-camera casters, hard/PCF 1/2/4 cascades, strength/toggle/layers, parent rotation, resource and transform revisions, camera/aspect, and static/dynamic atlas reuse\n";
         return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete viewport;delete runtime;return 1;}
 }

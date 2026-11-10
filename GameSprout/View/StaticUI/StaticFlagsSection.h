@@ -28,7 +28,7 @@ private:
     Ui::CompactStaticHeaderForm* _Ui=nullptr;
     Ui::StaticFlagsMenuForm* _MenuUi=nullptr;
     QMenu* _Menu=nullptr;
-    std::array<QAction*,7> _Options{};
+    std::array<QAction*,8> _Options{};
     IStaticAuthoring* _Authoring=nullptr;
     IPlayMode* _Play=nullptr;
     InspectorTarget _Target;

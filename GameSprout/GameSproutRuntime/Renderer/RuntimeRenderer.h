@@ -12,6 +12,7 @@
 namespace GameSproutRuntime {
 class Runtime;
 class RenderResourceCache;
+namespace RuntimeShadowMath { struct CascadeSet; }
 class Renderer final : public IRuntimeViewport {
 public:
     Renderer(Runtime& runtime,GRHI::IDevice& device,IRuntimeResourceProvider& resources);
@@ -119,6 +120,7 @@ private:
         std::string Name;
         std::vector<Mat4> SkinMatrices;
         bool Skinned=false;
+        bool StaticShadowCaster=false;
         bool Negative=false;
         std::uint8_t Layer=0;
     };
@@ -144,9 +146,12 @@ private:
         Mat4 CameraView;
         Vector4 Splits;
         Vector4 Info; // Cascade count, strength, max distance, fade start.
-        Vector4 Bias[4]; // Normalized depth bias, world normal bias, soft PCF, padding.
+        Vector4 Bias[4]; // Static depth bias, world normal bias, soft PCF, dynamic atlas valid (first entry).
         Vector4 Atlas[4]; // UV scale XY and top-first tile origin ZW.
+        Vector4 DynamicDepth[4]; // Clip-space Z row per cascade. XY matches the static atlas.
+        Vector4 DynamicDepthBias;
     };
+    static_assert(sizeof(ShadowUniform)==560,"Shadow fragment block must match HLSL packing");
     bool RenderShadows(GRHI::ICommandBuffer&,const RenderView&,float aspect);
     bool DrawShadow(GRHI::IRenderPass&,const PreparedDraw&,const Mat4&,GRHI::IBuffer*,std::uint32_t);
     struct PreparedDraw {
@@ -163,6 +168,29 @@ private:
         float DistanceSquared=0;
         std::uint64_t SectionOrdinal=0;
     };
+    struct ShadowCandidate { PreparedDraw Draw; Bounds World; };
+    struct StaticShadowCasterKey {
+        std::uint64_t ObjectID;
+        const MeshGPU* Mesh;
+        Mat4 Model;
+        Bounds World;
+        std::uint32_t FirstIndex,IndexCount;
+        bool DoubleSided;
+        bool operator==(const StaticShadowCasterKey&) const;
+    };
+    struct ShadowRegion {
+        std::uint32_t Cascade;
+        GRHI::Viewport Viewport;
+        Mat4 Projection;
+    };
+    bool DrawShadowAtlas(GRHI::ICommandBuffer&,GRHI::ITexture&,const RenderView&,
+        const RuntimeShadowMath::CascadeSet&,std::uint32_t tile,std::uint32_t columns,
+        std::vector<ShadowCandidate>&,std::uint32_t passOffset,const std::vector<ShadowRegion>* repair=nullptr);
+    static bool BuildShadowRepairRegions(const Mat4*,const std::vector<Bounds>& removedBounds,
+        const std::vector<Bounds>& addedBounds,std::uint32_t tile,std::uint32_t columns,std::uint32_t count,std::vector<ShadowRegion>&);
+    GRHI::IGraphicsPipeline* PrepareShadowRepair();
+    bool ClearShadowRegion(GRHI::IRenderPass&);
+    GRHI::IBuffer* _ShadowRepairVertices=nullptr;
     struct InstanceVertex {Mat4 Model,Normal;};
     struct InstanceBatchKey {
         std::uint64_t SceneID=0,FirstObjectID=0,GroupOrdinal=0;
@@ -268,11 +296,18 @@ private:
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
     GRHI::IShader* (&_Shaders)[19];
     GRHI::ITexture* _ShadowAtlas=nullptr;
+    GRHI::ITexture* _DynamicShadowAtlas=nullptr;
     GRHI::ISampler* _ShadowSampler=nullptr;
     std::uint32_t _ShadowResolution=0;
     std::size_t _ShadowLightIndex=static_cast<std::size_t>(-1);
     ShadowUniform _ShadowUniform;
     RenderCamera _ShadowCamera;
+    LightShadowSettings _ShadowSettings;
+    Vector3 _ShadowDirection;
+    std::uint32_t _ShadowLightMask=0;
+    std::uint64_t _ShadowPreviewObjectID=0;
+    std::vector<StaticShadowCasterKey> _StaticShadowCasters;
+    std::vector<std::pair<std::uint64_t,Bounds>> _PrimaryShadowCasterBounds;
     float _ShadowAspect=0;
     std::uint64_t _ShadowSceneID=0,_ShadowSceneRevision=0;
     bool _ShadowValid=false,_ShadowRecorded=false;

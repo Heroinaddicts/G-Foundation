@@ -64,20 +64,22 @@ int main() {
         GameSproutEditor::GameSproutModuleApi api(nullptr,&editor);StaticAuthoring author;
         GameSproutEditor::GameSproutEditorFinal::Before(author,api);Check(GameSproutEditor::GameSproutEditorFinal::Initialize(author,api),"Cannot initialize authoring");
         const auto definitions=author.GetFlagDefinitions();std::uint32_t bits=0;
-        Check(definitions.size()==7&&author.GetSupportedFlags()==StaticFlags::None,"Storage was advertised as a working baking system");
-        for(const auto& definition:definitions){Check(!definition.Supported&&!definition.Name.empty()&&!definition.Description.empty(),"Incomplete/incorrect capability");bits|=static_cast<std::uint32_t>(definition.Flag);}
-        Check(bits==127,"Incomplete static declaration list");std::string error;
+        Check(definitions.size()==8&&author.GetSupportedFlags()==StaticFlags::ShadowCasterStatic,"Static authoring did not expose exactly the supported shadow capability");
+        for(const auto& definition:definitions){Check(definition.Supported==(definition.Flag==StaticFlags::ShadowCasterStatic)&&!definition.Name.empty()&&!definition.Description.empty(),"Incomplete/incorrect capability");bits|=static_cast<std::uint32_t>(definition.Flag);}
+        Check(bits==255,"Incomplete static declaration list");std::string error;
         Check(!author.SetFlags(parent->GetInstanceID(),StaticFlags::ContributeGI,StaticFlags::ContributeGI,false,error)&&scenes.Writes==0&&!error.empty(),"Unimplemented optimization was enabled");
         Check(parent->SetStaticFlags(StaticFlags::ContributeGI|StaticFlags::BatchingStatic)&&child->SetStaticFlags(StaticFlags::ReflectionProbeStatic),"Cannot seed stored declarations");
         Check(author.SetFlags(parent->GetInstanceID(),StaticFlags::None,StaticFlags::BatchingStatic,true,error)&&scenes.Writes==1&&
               scenes.LastObject==parent->GetInstanceID()&&scenes.LastMask==StaticFlags::BatchingStatic&&scenes.LastChildren,"Clear did not route through public scene transaction");
         Check(author.SetFlags(parent->GetInstanceID(),StaticFlags::ContributeGI,StaticFlags::ContributeGI,false,error)&&scenes.Writes==2,"Keeping an existing declaration should be a valid no-op");
         Check(!author.SetFlags(parent->GetInstanceID(),StaticFlags::ContributeGI,StaticFlags::ContributeGI,true,error)&&scenes.Writes==2,"Unsupported enable on a descendant changed part of the subtree");
-        Check(!author.SetFlags(parent->GetInstanceID(),static_cast<StaticFlags>(128),StaticFlags::Everything,false,error)&&scenes.Writes==2,"Unknown static bits were accepted");
+        Check(!author.SetFlags(parent->GetInstanceID(),static_cast<StaticFlags>(256),StaticFlags::Everything,false,error)&&scenes.Writes==2,"Unknown static bits were accepted");
         play.State.State=EditorPlayState::Playing;
         Check(!author.SetFlags(parent->GetInstanceID(),StaticFlags::None,StaticFlags::Everything,false,error)&&scenes.Writes==2,"Play accepted authoring mutation");play.State.State=EditorPlayState::Edit;
         bool rejected=false;parent->ForeachChild([&](GameSproutRuntime::IGameObject*){rejected=!author.SetFlags(parent->GetInstanceID(),StaticFlags::None,StaticFlags::Everything,false,error);});
         Check(rejected&&scenes.Writes==2,"Runtime callback allowed authoring reentrancy");
+        Check(author.SetFlags(parent->GetInstanceID(),StaticFlags::ShadowCasterStatic,StaticFlags::ShadowCasterStatic,true,error)&&scenes.Writes==3&&
+              scenes.LastMask==StaticFlags::ShadowCasterStatic&&scenes.LastChildren,"Static shadow casters did not route through subtree transaction");
         GameSproutEditor::GameSproutEditorFinal::Release(author,api);
         Check(!author.SetFlags(parent->GetInstanceID(),StaticFlags::None,StaticFlags::Everything,false,error),"Released service retained providers");
         delete runtime;std::cout<<"PASS static authoring capabilities, unsupported enable, clear, subtree preflight, Play and callback guards\n";return 0;
