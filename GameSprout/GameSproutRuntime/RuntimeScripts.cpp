@@ -199,14 +199,19 @@ bool Runtime::SetScriptExecutionEnabled(bool enabled,std::string& error) {
     if(_ScriptExecutionEnabled==enabled) return true;
     RuntimeOperation operation(*this);
     std::vector<ScriptComponent*> scripts;
-    for(const auto& node:_Nodes) for(const auto& entry:node.second->Components)
-        if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer)) scripts.push_back(script);
+    for(auto current=_ScriptIdentities.begin();current!=_ScriptIdentities.end();) {
+        const auto objectID=current->first;
+        if(auto* node=Find(objectID);node&&!IsParked(node))for(const auto& entry:node->Components)
+            if(auto* script=dynamic_cast<ScriptComponent*>(entry.Pointer)) scripts.push_back(script);
+        current=_ScriptIdentities.upper_bound({objectID,std::numeric_limits<std::uint64_t>::max()});
+    }
     // Resolve native cross-references while every instance is still alive.
     // OnRelease ordering must never expose a peer that has already been freed.
     if(!enabled)for(auto* script:scripts)InvalidateNativeScriptReferences(script);
     _ScriptExecutionEnabled=enabled;
+    for(auto* script:scripts)script->Stop();
     for(auto* script:scripts) {
-        script->Stop();script->BindDefaults();
+        script->BindDefaults();
         QueueScriptInitialization(*script);
     }
     return true;

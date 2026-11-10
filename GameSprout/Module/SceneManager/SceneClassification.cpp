@@ -49,6 +49,9 @@ std::vector<std::uint64_t> SceneManager::GetReferencedTagIDs() const {
     };
     history(_History);CollectTags(_Annotations,tags);
     if(_DocumentSession){history(_DocumentSession->Main.History);CollectTags(_DocumentSession->Main.Annotations,tags);}
-    if(_PlaySession){history(_PlaySession->History);for(const auto& scene:_PlaySession->Scenes)CollectTags(scene.Document,tags);}
+    if(_PlaySession) {
+        history(_PlaySession->Author.History);CollectTags(_PlaySession->Author.Annotations,tags);
+        tags.insert(_PlaySession->SceneTags.begin(),_PlaySession->SceneTags.end());
+    }
     return {tags.begin(),tags.end()};
 }

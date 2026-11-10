@@ -36,7 +36,7 @@ bool SceneManager::Capture(Json::Value& document,std::string& error) const {
     catch (...) {error="无法生成场景数据。";return false;}
 }
 bool SceneManager::HasUnsavedChanges() const {
-    if (_PlaySession) return _PlaySession->Unsaved;
+    if (_PlaySession) return _PlaySession->Author.Unsaved;
     if (!GetActiveScene()) return false;
     if (Runtime()->IsExecuting()) return _Unsaved;
     std::string error;SynchronizeDirtyState(error);

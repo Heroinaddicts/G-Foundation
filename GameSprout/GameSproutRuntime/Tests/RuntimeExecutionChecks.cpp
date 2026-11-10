@@ -64,6 +64,41 @@ void CheckSceneSimulation(GameSproutRuntime::IGameSproutRuntime& runtime) {
         "Restoring scene simulation did not resume both component tick paths");
     Check(runtime.EndExecution(error),error);Check(runtime.DestroyScene(suspended)&&runtime.DestroyScene(preview),"Simulation scene cleanup failed");
 }
+void CheckParkedAuthoringScenes(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    std::string error;
+    auto* first=runtime.CreateScene("First authoring scene");
+    auto* second=runtime.CreateScene("Second authoring scene");
+    auto* play=runtime.CreateScene("Gameplay scene");
+    Check(first&&second&&play,"Cannot create authoring-scene parking fixture");
+    auto* authored=first->CreateGameObject("Authoring object");
+    auto* playing=play->CreateGameObject("Gameplay object");
+    Check(authored&&playing,"Cannot create authoring-scene parking objects");
+    Check(runtime.BindSceneObjectIdentity(authored,1,error),error);
+    Check(runtime.AddScriptComponent(authored,"simulation-fixture",{"simulation",1},0,error)&&
+          runtime.AddScriptComponent(playing,"simulation-fixture",{"simulation",1},0,error),error);
+    const auto authorID=authored->GetInstanceID();
+    first->SetSimulationEnabled(false);
+    Check(!runtime.ParkAuthoringScenes({first->GetInstanceID(),first->GetInstanceID()},error)&&
+        runtime.GetSceneCount()==3&&runtime.QueryGameObject(authorID)==authored,"Duplicate parking changed Runtime state");
+    Check(runtime.ParkAuthoringScenes({second->GetInstanceID(),first->GetInstanceID()},error),error);
+    Check(runtime.GetSceneCount()==1&&runtime.GetScene(0)==play&&!runtime.QueryGameObject(authorID)&&
+        !runtime.QuerySceneObjectByFileID(first,1)&&runtime.FindGameObjectWithTag("Untagged")==playing,
+        "Authoring objects leaked into the gameplay lookup scope");
+    Check(!first->CreateGameObject("Leaked mutation")&&!runtime.DestroyScene(first),"Parked scenes accepted a structural mutation");
+    Check(runtime.BeginExecution(error),error);
+    Check(playing->GetComponent<SimulationScript>()&&!authored->GetComponent<SimulationScript>()&&
+        !runtime.RestoreAuthoringScenes(error),"Gameplay initialized a parked script or exposed a parked scene");
+    Check(runtime.EndExecution(error)&&runtime.RestoreAuthoringScenes(error),error);
+    Check(runtime.GetSceneCount()==3&&runtime.GetScene(0)==first&&runtime.GetScene(1)==second&&runtime.GetScene(2)==play&&
+        runtime.QueryGameObject(authorID)==authored&&runtime.QuerySceneObjectByFileID(first,1)==authored&&
+        !first->IsSimulationEnabled(),"Authoring restore changed original identities, order or simulation settings");
+    Check(runtime.DestroyScene(play),"Cannot release the gameplay fixture");
+    first->SetSimulationEnabled(true);
+    Check(runtime.BeginExecution(error)&&authored->GetComponent<SimulationScript>()&&runtime.EndExecution(error),
+        "Restored authoring script could not initialize after parking: "+error);
+    Check(runtime.DestroyScene(second)&&runtime.DestroyScene(first),"Cannot release the authoring fixtures");
+}
+
 }
 int main(int argc,char** argv){
     if(argc!=2)return 2;
@@ -98,6 +133,7 @@ int main(int argc,char** argv){
         Check(Released==2&&Destroyed==2,"Retry after failed start did not recover");
         Check(runtime->DestroyScene(scene),"Cannot close startup fixture before scene simulation check");
         CheckSceneSimulation(*runtime);
+        CheckParkedAuthoringScenes(*runtime);
         delete runtime;runtime=nullptr;
         std::cout<<"PASS staged native startup, restored peer fields, event-only pause, fixed dispatch, release and failed-begin retry\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete runtime;return 1;}

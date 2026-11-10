@@ -13,6 +13,10 @@ Runtime::~Runtime() {
     _Listeners.clear(); _Commands.clear(); _Events.clear(); _PendingInitializations.clear();
     _PropertyObservations.clear();
     while (!_Scenes.empty()) DestroyNow(_Scenes.back()->State());
+    while (!_ParkedScenes.empty()) {
+        auto* scene=_ParkedScenes.back();_ParkedScenes.pop_back();
+        DestroyNow(scene->State());
+    }
     // 包括尚未挂载的创建请求，保证异常/关闭时没有遗留对象。
     while (!_Nodes.empty()) DestroyNow(*_Nodes.begin()->second);
     ReleaseGraphics();
@@ -34,16 +38,19 @@ GameObjectState* Runtime::Find(IGameObject* object) const {
     const auto found=_ByPointer.find(object);return found==_ByPointer.end()?nullptr:found->second;
 }
 IGameObject* Runtime::QueryGameObject(std::uint64_t id) const {
-    GameObjectState* state=Find(id);return state?state->Object:nullptr;
+    GameObjectState* state=Find(id);return state&&!IsParked(state)?state->Object:nullptr;
 }
 IScene* Runtime::GetScene(std::size_t index) const { return index<_Scenes.size()?_Scenes[index]:nullptr; }
+bool Runtime::IsParked(const GameObjectState* object) const {
+    return object&&object->SceneOwner&&object->SceneOwner->IsParkedForPlay();
+}
 bool Runtime::IsUsable(const GameObjectState* object) const {
-    if (_ShuttingDown || !object || object->Destroying) return false;
+    if (_ShuttingDown || !object || object->Destroying || IsParked(object)) return false;
     for (const GameObjectState* node=object;node;node=node->Parent) if(node->PendingDestroy) return false;
     return !object->SceneOwner || !object->SceneOwner->State().PendingDestroy;
 }
 bool Runtime::IsInScene(const GameObjectState* object) const {
-    if(_ShuttingDown||!object||&object->Owner!=this||!object->SceneOwner)return false;
+    if(_ShuttingDown||!object||&object->Owner!=this||!object->SceneOwner||IsParked(object))return false;
     const GameObjectState* root=object;
     for(;;) {
         if(root->PendingAttach || root->Destroying || root->PendingDestroy) return false;

@@ -63,7 +63,7 @@ static void CheckPlaySceneSelection(SceneManager& manager,GameSproutEditor::Game
     selection.SetSceneObjectSelection({manager.GetActiveScene()->GetInstanceID(),runtimeOnly->GetInstanceID()});
     Check(manager.EndPlaySession(error),error);
     mapped=manager.QueryObjectByFileID(authorFileID);
-    Check(mapped&&mapped->GetInstanceID()!=playID&&mapped->GetInstanceID()!=originalID&&selection.GetSceneObjectSelection()==
+    Check(mapped&&mapped->GetInstanceID()!=playID&&mapped->GetInstanceID()==originalID&&selection.GetSceneObjectSelection()==
           SceneObjectSelection{manager.GetActiveScene()->GetInstanceID(),mapped->GetInstanceID()},
           "Stop did not restore original author selection after Play deletion/temporary selection");
     runtime->Update(0);GameSproutEditor::GameSproutEditorFinal::Update(selection,api);

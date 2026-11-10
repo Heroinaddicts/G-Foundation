@@ -97,7 +97,7 @@ IGameObject* Runtime::QuerySceneObjectByFileID(const IScene* scene,std::uint64_t
 bool Runtime::GetSceneObjectFileID(const IGameObject* object,std::uint64_t& fileID) const {
     auto* node=Find(const_cast<IGameObject*>(object));
     // Bound identity remains readable during destruction so fixups retain Missing IDs.
-    if(!node||!node->SceneOwner) return false;
+    if(!node||!node->SceneOwner||IsParked(node)) return false;
     const auto found=_ObjectFileIDs.find(node->ID);
     if(found==_ObjectFileIDs.end() || found->second.SceneID!=node->SceneOwner->GetInstanceID()) return false;
     fileID=found->second.FileID;return true;

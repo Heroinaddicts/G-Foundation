@@ -11,6 +11,7 @@ public:
     bool DestroyGameObject(IGameObject* object) override;
     void SetSimulationEnabled(bool enabled) override;
     bool IsSimulationEnabled() const override;
+    bool IsParkedForPlay() const {return _ParkedForPlay;}
     bool SetMainCamera(ICameraComponent* camera) override;
     ICameraComponent* GetMainCamera() const override;
     const EnvironmentLightingSettings& GetEnvironmentLighting() const override { return _EnvironmentLighting; }
@@ -59,8 +60,10 @@ public:
         return State().Owner.BindAuthoringIdentities(this,objects,components,error);
     }
 private:
+    friend class Runtime;
     std::uint64_t _MainCameraID = 0;
     bool _SimulationEnabled = true;
+    bool _ParkedForPlay = false;
     EnvironmentLightingSettings _EnvironmentLighting;
     std::uint64_t _RenderRevision=1;
     std::uint64_t _UIRevision=1;

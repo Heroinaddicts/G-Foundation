@@ -44,7 +44,7 @@ std::vector<std::pair<std::uint64_t,std::uint64_t>> Runtime::SnapshotScriptIdent
         const auto objectID=current->first;
         // Keep the existing node/component order, including explicit component
         // reordering, without searching unrelated static scene objects.
-        if(auto* node=Find(objectID))for(const auto& entry:node->Components)
+        if(auto* node=Find(objectID);node&&!IsParked(node))for(const auto& entry:node->Components)
             if(auto* script=dynamic_cast<IScriptComponent*>(entry.Pointer))
                 result.emplace_back(objectID,script->GetScriptInstanceID());
         current=_ScriptIdentities.upper_bound({objectID,std::numeric_limits<std::uint64_t>::max()});

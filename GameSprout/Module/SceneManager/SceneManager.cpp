@@ -67,6 +67,10 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _PropertyPreview=false;
     if(_RuntimeSubscribed && Runtime()) Runtime()->UnregisterListener(this);
     _RuntimeSubscribed=false;
+    if(_PlaySession) {
+        std::string error;
+        if(!EndPlaySession(error))qWarning().noquote()<<QString::fromStdString(error);
+    }
     delete _PlaySession;_PlaySession=nullptr;
     if(_DocumentSession) {
         if(auto* main=GetMainScene())main->SetSimulationEnabled(_DocumentSession->MainSimulationEnabled);

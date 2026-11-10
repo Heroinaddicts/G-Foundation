@@ -215,6 +215,7 @@ int main(int argc,char** argv) {
         CheckDocumentSession(manager,api,root,editor._Runtime);
         CheckIncrementalSceneState(manager,editor._Runtime);
         CheckSceneSaveSnapshot(manager,root,editor._Runtime);
+        CheckLargePlaySnapshot(manager,root);
         manager.UnregisterSceneListener(&listener);
         auto* retainedRuntime=editor._Runtime;
         Check(manager.BeginDocumentSession(TemporaryDocument(),error),"Cannot prepare document release regression: "+error);

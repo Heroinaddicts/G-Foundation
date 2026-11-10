@@ -135,8 +135,10 @@ bool Runtime::InitializePendingComponents(std::string& error,bool allowScripts) 
                         fail(record,message.empty()?"Cannot construct native script: "+script->GetScriptTypeID():message);
                         continue;
                     }
+                    // Only scripts have serialized fields and a separate
+                    // creation callback. All components still initialize below.
+                    prepared.push_back(record);
                 }
-                prepared.push_back(record);
                 ready.push_back(record);
             }
             // Constructors for every peer finish before resolving component

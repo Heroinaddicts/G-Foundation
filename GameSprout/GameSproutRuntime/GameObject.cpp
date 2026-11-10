@@ -54,7 +54,7 @@ void GameObjectState::SetActive(bool active) {
     Owner.Notify(*this,SceneNodeEventType::ActiveChanged);
 }
 bool GameObjectState::IsActiveInHierarchy() const {
-    if(Owner.IsShuttingDown()||!SceneOwner)return false;
+    if(Owner.IsShuttingDown()||!SceneOwner||SceneOwner->IsParkedForPlay())return false;
     const GameObjectState* root=this;
     for(;;) {
         if(!root->Active||root->PendingDestroy||root->PendingAttach||root->Destroying)return false;

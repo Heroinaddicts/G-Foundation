@@ -8,6 +8,8 @@
 #include "RuntimeUIApi.h"
 
 #include <algorithm>
+#include <array>
+#include <bitset>
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
@@ -15,6 +17,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -44,9 +47,13 @@ void FinishConstructionRollback(GameSproutRuntime::IGameSproutRuntime& runtime,
 }
 void Members(const Json::Value& value, const std::string& path, std::initializer_list<const char*> allowed) {
     if (!value.isObject()) Fail(path,"expected object");
-    for (const std::string& key : value.getMemberNames()) {
+    const auto last=value.end();
+    for(auto member=value.begin();member!=last;++member) {
+        const char* end=nullptr;
+        const char* begin=member.memberName(&end);
+        const std::string_view key(begin,static_cast<std::size_t>(end-begin));
         if (std::none_of(allowed.begin(),allowed.end(),[&](const char* name){return key==name;}))
-            Fail(path + "." + key,"unknown field");
+            Fail(path + "." + std::string(key),"unknown field");
     }
 }
 std::uint64_t Unsigned(const Json::Value& value, const std::string& path) {
@@ -83,24 +90,24 @@ bool BoolMember(const Json::Value& value, const char* name, bool fallback, const
     if (!value[name].isBool()) Fail(path+"."+name,"expected bool");
     return value[name].asBool();
 }
-std::vector<float> Numbers(const Json::Value& value, std::size_t count, const std::string& path) {
-    if (!value.isArray() || value.size()!=count) Fail(path,"unexpected numeric array length");
-    std::vector<float> result;
-    result.reserve(count);
+template<std::size_t Count>
+std::array<float,Count> Numbers(const Json::Value& value, const std::string& path) {
+    if (!value.isArray() || value.size()!=Count) Fail(path,"unexpected numeric array length");
+    std::array<float,Count> result;
     for (Json::ArrayIndex index=0;index<value.size();++index)
-        result.push_back(Number(value[index],path+"["+std::to_string(index)+"]"));
+        result[index]=Number(value[index],path+"["+std::to_string(index)+"]");
     return result;
 }
 GameSproutRuntime::Vector2 Vector2Member(const Json::Value& value, const char* name,
                                        GameSproutRuntime::Vector2 fallback, const std::string& path) {
     if (!value.isMember(name)) return fallback;
-    const auto data=Numbers(value[name],2,path+"."+name);
+    const auto data=Numbers<2>(value[name],path+"."+name);
     return {data[0],data[1]};
 }
 GameSproutRuntime::Vector3 Vector3Member(const Json::Value& value, const char* name,
                                        GameSproutRuntime::Vector3 fallback, const std::string& path) {
     if (!value.isMember(name)) return fallback;
-    const auto data=Numbers(value[name],3,path+"."+name);
+    const auto data=Numbers<3>(value[name],path+"."+name);
     return {data[0],data[1],data[2]};
 }
 bool Normalized(GameSproutRuntime::Vector2 value) {
@@ -147,7 +154,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         const auto scale=Vector3Member(value,"Scale",{1,1,1},path);
         GameSproutRuntime::Quaternion rotation;
         if (value.isMember("Rotation")) {
-            const auto data=Numbers(value["Rotation"],4,path+".Rotation");
+            const auto data=Numbers<4>(value["Rotation"],path+".Rotation");
             rotation={data[0],data[1],data[2],data[3]};
             GameSproutRuntime::Quaternion checked;
             // 校验不重写输入；Runtime统一归一化，已经保存的单位旋转保持原始float分量。
@@ -179,7 +186,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         const auto texture=Resource(value["Texture"],path+".Texture");
         GameSproutRuntime::Color color;
         if (value.isMember("Color")) {
-            const auto data=Numbers(value["Color"],4,path+".Color");
+            const auto data=Numbers<4>(value["Color"],path+".Color");
             color={data[0],data[1],data[2],data[3]};
             if (color.R<0 || color.G<0 || color.B<0 || color.A<0 || color.A>1) Fail(path+".Color","invalid color range");
         }
@@ -222,7 +229,7 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         const auto font=Resource(value["Font"],path+".Font");
         GameSproutRuntime::Color color;
         if (value.isMember("Color")) {
-            const auto data=Numbers(value["Color"],4,path+".Color");
+            const auto data=Numbers<4>(value["Color"],path+".Color");
             color={data[0],data[1],data[2],data[3]};
             if (color.R<0 || color.G<0 || color.B<0 || color.A<0 || color.A>1) Fail(path+".Color","invalid color range");
         }
@@ -261,8 +268,8 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         SceneLightingDocument::Validate(value,path);
         if(object)SceneLightingDocument::Create(value,*object);
     } else if (ScenePhysicsDocument::Handles(type)) {
-        ScenePhysicsDocument::Validate(value,path);
         if(object)ScenePhysicsDocument::Create(value,*object);
+        else ScenePhysicsDocument::Validate(value,path);
     } else if (SceneAnimationDocument::Handles(type)) {
         SceneAnimationDocument::Validate(value,path);
         if (object) SceneAnimationDocument::Create(value,*object);
@@ -339,20 +346,24 @@ void ValidateProjectTags(const Plan& plan,const GameSproutRuntime::IGameSproutRu
     for(const auto& node:plan.Nodes)if(!defined(node.TagID))
         Fail("Object "+std::to_string(node.ID)+".TagID","undefined project Tag identity");
 }
-void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject& object,SceneDocument::ObjectIDs& ids) {
-    std::set<const Json::Value*> consumed;
+void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject& object,SceneDocument::ObjectIDs& ids,
+    std::vector<GameSproutRuntime::SceneComponentBinding>* bindings=nullptr) {
+    std::bitset<MaximumComponents> consumed;
     for(std::size_t index=0;index<object.GetComponentCount();++index) {
         auto* component=object.GetComponentAt(index);
         if(!component)Fail("Component.ID","invalid Runtime component");
-        if(ids.FindComponentFileID(component))continue;
         std::uint64_t id=0;
-        if(data)for(const auto& fields:*data) {
-            if(consumed.count(&fields))continue;
-            if(fields["Type"].asString()!=component->GetTypeName())continue;
+        if(data)for(Json::ArrayIndex entry=0;entry<data->size();++entry) {
+            if(consumed[entry])continue;
+            const auto& fields=(*data)[entry];
+            const char* begin=nullptr;
+            const char* end=nullptr;
+            if(!fields["Type"].getString(&begin,&end) ||
+               std::string_view(begin,static_cast<std::size_t>(end-begin))!=component->GetTypeName())continue;
             if(auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(component))
                 if(fields["InstanceID"].asUInt64()!=script->GetScriptInstanceID())continue;
             if(fields.isMember("ID"))id=fields["ID"].asUInt64();
-            consumed.insert(&fields);
+            consumed.set(entry);
             break;
         }
         if(!id) {
@@ -360,6 +371,7 @@ void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject&
             id=ids.Next;ids.Next=id==std::numeric_limits<std::uint64_t>::max()?0:id+1;
         }
         ids.BindComponentFileID(component,id);
+        if(bindings)bindings->push_back({object.GetInstanceID(),component->GetComponentInstanceID(),id});
     }
 }
 // Publish once after every component exists, before any native script callback.
@@ -418,7 +430,7 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
                 const auto s=Vector3Member(component,"Scale",{1,1,1},path);
                 GameSproutRuntime::Quaternion r;
                 if (component.isMember("Rotation")) {
-                    const auto values=Numbers(component["Rotation"],4,path+".Rotation");
+                    const auto values=Numbers<4>(component["Rotation"],path+".Rotation");
                     GameSproutRuntime::Quaternion(values[0],values[1],values[2],values[3]).TryNormalize(r);
                 }
                 if (p.X || p.Y || p.Z || s.X!=1 || s.Y!=1 || s.Z!=1 || r.X || r.Y || r.Z)
@@ -736,7 +748,9 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         }
         // Source identities are values; Runtime alone resolves them to native
         // pointers once the complete assembly is ready for script callbacks.
-        std::vector<GameSproutRuntime::SceneObjectIdentity> identities{{candidate->GetInstanceID(),0}};
+        std::vector<GameSproutRuntime::SceneObjectIdentity> identities;
+        identities.reserve(plan.Nodes.size()+1);
+        identities.push_back({candidate->GetInstanceID(),0});
         for(const auto& node:plan.Nodes)identities.push_back({objects.at(node.ID)->GetInstanceID(),node.ID});
         if(!runtime.BindSceneObjectIdentities(candidate,identities,error))Fail("Scene.Identity",error);
         for (const auto& node:plan.Nodes) {
@@ -750,9 +764,11 @@ bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRunt
         }
         if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
             ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]",&runtime);
-        ComponentIdentities(plan.RootComponents,*candidate,candidateIDs);
-        for(const auto& node:plan.Nodes)ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs);
-        PublishComponentIdentities(*candidate,candidateIDs,runtime);
+        std::vector<GameSproutRuntime::SceneComponentBinding> componentBindings;
+        ComponentIdentities(plan.RootComponents,*candidate,candidateIDs,&componentBindings);
+        for(const auto& node:plan.Nodes)
+            ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs,&componentBindings);
+        if(!candidate->BindAuthoringIdentities({},componentBindings,error))Fail("Component.Identity",error);
         SceneAnimationDocument::Bind(document,*candidate,objects);
         if(!candidate->SetLayer(plan.RootLayer)||!candidate->SetTagID(plan.RootTagID))
             Fail("Scene.TagLayer","Runtime rejected root Layer or undefined TagID");
@@ -966,11 +982,7 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
                 Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
             if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
-            ComponentIdentities(node.Components,*object,candidateIDs);
-            for(std::size_t i=0;i<object->GetComponentCount();++i) {
-                auto* component=object->GetComponentAt(i);
-                componentBindings.push_back({object->GetInstanceID(),component->GetComponentInstanceID(),candidateIDs.FindComponentFileID(component)});
-            }
+            ComponentIdentities(node.Components,*object,candidateIDs,&componentBindings);
         }
         if(!scene.BindAuthoringIdentities({},componentBindings,error))Fail("Subtree.Identity",error);
         SceneAnimationDocument::Bind(document,scene,objects);

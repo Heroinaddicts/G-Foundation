@@ -1,8 +1,11 @@
 #include "SceneManager.h"
-#include "../Shared/AssetArtifactIO.h"
+#include "SceneSaveSnapshot.h"
 #include <QDebug>
+#include <algorithm>
 #include <exception>
+#include <future>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 class SwitchingScope {
@@ -15,6 +18,44 @@ private:
 void DestroyCandidates(GameSproutRuntime::IGameSproutRuntime& runtime,
                        const std::vector<GameSproutRuntime::IScene*>& scenes) noexcept {
     for(auto* scene:scenes) try {runtime.DestroyScene(scene);} catch(...) {}
+}
+Json::Value ReadPlayDocument(const SceneDirtyState& state) {
+    if(!state.Known)throw std::runtime_error("Scene save snapshot is unavailable");
+    const auto count=state.CurrentOrder.size();
+    std::vector<Json::Value> rows(count);
+    const auto readRows=[&](std::size_t first,std::size_t end) {
+        Json::CharReaderBuilder builder;
+        builder["rejectDupKeys"]=true;
+        builder["failIfExtra"]=true;
+        struct Parser {
+            Json::CharReader* Reader;
+            ~Parser(){delete Reader;}
+        } parser{builder.newCharReader()};
+        std::string error;
+        for(auto index=first;index<end;++index) {
+            const auto& row=SceneSaveSnapshot::CurrentRow(state,state.CurrentOrder[index]);
+            if(!parser.Reader->parse(row.data(),row.data()+row.size(),&rows[index],&error))
+                throw std::runtime_error(error.empty()?"Invalid authored scene row":error);
+        }
+    };
+    // Decode independent saved rows in bounded batches. Workers borrow only
+    // immutable snapshot data and finish before touching Runtime or publishing.
+    const auto batches=std::max(std::size_t{1},std::min({std::size_t{4},count/1024,
+        static_cast<std::size_t>(std::thread::hardware_concurrency())}));
+    std::vector<std::future<void>> workers;
+    workers.reserve(batches-1);
+    for(std::size_t batch=1;batch<batches;++batch) {
+        const auto first=count*batch/batches,end=count*(batch+1)/batches;
+        try { workers.push_back(std::async(std::launch::async,readRows,first,end)); }
+        catch(const std::system_error&) { readRows(first,end); }
+    }
+    if(count)readRows(0,count/batches);
+    for(auto& worker:workers)worker.get();
+    Json::Value document=state.CurrentRoot;
+    auto& objects=document["Objects"];
+    objects=Json::Value(Json::arrayValue);
+    for(auto& row:rows)objects.append(std::move(row));
+    return document;
 }
 }
 
@@ -38,35 +79,51 @@ bool SceneManager::BeginPlaySession(std::string& error) {
     if(!Ready(error)) return false;
     if(Runtime()->IsScriptExecutionEnabled()) {error="捕获场景前必须先停止脚本执行。";return false;}
     if(!SynchronizeDirtyState(error))return false;
+    const auto authorUnsaved=DirtyFromSnapshot();
     SwitchingScope switching(_Switching);
     PlaySession* snapshot=nullptr;
-    std::vector<GameSproutRuntime::IScene*> candidates,previous;
-    std::vector<SceneDocument::ObjectIDs> candidateIDs;
+    std::vector<GameSproutRuntime::IScene*> candidates;
+    std::vector<std::uint64_t> authorIDs;
+    DocumentContext playing;
     bool prepared=false;
     try {
         snapshot=new PlaySession();
-        snapshot->Path=_ActivePath;
-        snapshot->DiskHash=_DiskHash;
-        snapshot->HistoryPosition=_HistoryPosition;
-        snapshot->Annotations=_Annotations;
+        playing.Path=_ActivePath;
+        playing.DiskHash=_DiskHash;
+        playing.Annotations=_Annotations;
+        playing.Unsaved=authorUnsaved;
         const auto count=Runtime()->GetSceneCount();
-        snapshot->Scenes.reserve(count);previous.reserve(count);candidates.reserve(count);candidateIDs.reserve(count);
+        authorIDs.reserve(count);
+        candidates.reserve(count);
         for(std::size_t index=0;index<count;++index) {
             auto* scene=Runtime()->GetScene(index);
             if(!scene) throw std::runtime_error("编辑场景已经失效。");
-            previous.push_back(scene);
-            PlaySession::SceneSnapshot item;
-            if(scene->GetInstanceID()==_ActiveID) {snapshot->ActiveIndex=index;item.IDs=_ObjectIDs;}
-            if(!SceneDocument::Serialize(*scene,item.IDs,item.Document,error)) throw std::runtime_error(error);
-            if(scene->GetInstanceID()==_ActiveID&&!_Annotations.empty())item.Document["Annotations"]=_Annotations;
-            snapshot->Scenes.push_back(std::move(item));
+            authorIDs.push_back(scene->GetInstanceID());
+            const bool active=scene->GetInstanceID()==_ActiveID;
+            Json::Value document;
+            if(active) {
+                document=ReadPlayDocument(_DirtyState);
+                if(_Annotations.empty())document.removeMember("Annotations");
+                else document["Annotations"]=_Annotations;
+            } else {
+                SceneDocument::ObjectIDs ids;
+                if(!SceneDocument::Serialize(*scene,ids,document,error))throw std::runtime_error(error);
+            }
+            // Runtime keeps live tags on the parked objects. The editor also
+            // retains a value snapshot for queries that include source references.
+            snapshot->SceneTags.insert(document.get("RootTagID",Json::UInt64(0)).asUInt64());
+            for(const auto& node:document["Objects"])
+                if(node.isMember("TagID"))snapshot->SceneTags.insert(node["TagID"].asUInt64());
+            GameSproutRuntime::IScene* candidate=nullptr;
+            SceneDocument::ObjectIDs ids;
+            if(!SceneDocument::Instantiate(document,*Runtime(),candidate,ids,error))throw std::runtime_error(error);
+            candidates.push_back(candidate);
+            if(active) {
+                playing.ActiveID=candidate->GetInstanceID();
+                playing.IDs=std::move(ids);
+            }
         }
-        snapshot->Unsaved=DirtyFromSnapshot();
-        for(const auto& item:snapshot->Scenes) {
-            GameSproutRuntime::IScene* candidate=nullptr;SceneDocument::ObjectIDs ids;
-            if(!SceneDocument::Instantiate(item.Document,*Runtime(),candidate,ids,error)) throw std::runtime_error(error);
-            candidates.push_back(candidate);candidateIDs.push_back(std::move(ids));
-        }
+        if(!playing.ActiveID)throw std::runtime_error("无法找到编辑场景的运行副本。");
         prepared=true;
     } catch(const std::exception& exception) {error=exception.what();}
       catch(...) {error="无法准备运行场景，编辑内容保持不变。";}
@@ -74,16 +131,18 @@ bool SceneManager::BeginPlaySession(std::string& error) {
         if(error.empty())error="无法准备运行场景，编辑内容保持不变。";
         DestroyCandidates(*Runtime(),candidates);delete snapshot;return false;
     }
-    // 所有可能失败的文档读取与节点分配在发布之前完成。旧树仍可用于选择快照。
+    // Resolve selection against the authoring world before it becomes hidden.
     NotifyPlaySession(true,true);
-    snapshot->History.swap(_History);_HistoryPosition=0;
-    snapshot->DirtyState=std::move(_DirtyState);
+    if(!Runtime()->ParkAuthoringScenes(authorIDs,error)) {
+        NotifyPlaySession(false,false);
+        DestroyCandidates(*Runtime(),candidates);delete snapshot;return false;
+    }
+    SwapDocumentContext(snapshot->Author);
+    snapshot->Author.Unsaved=authorUnsaved;
+    snapshot->Author.StatePending=false;
+    SwapDocumentContext(playing);
     _PlaySession=snapshot;
-    _ActiveID=candidates[snapshot->ActiveIndex]->GetInstanceID();
-    _ObjectIDs=std::move(candidateIDs[snapshot->ActiveIndex]);
-    _StatePending=false;
     NotifySceneChanged();
-    DestroyCandidates(*Runtime(),previous);
     NotifyPlaySession(false,true);
     NotifyStateChanged();
     return true;
@@ -97,39 +156,16 @@ bool SceneManager::EndPlaySession(std::string& error) {
     }
     if(Runtime()->IsScriptExecutionEnabled()) {error="请先停止游戏脚本，再恢复编辑场景。";return false;}
     SwitchingScope switching(_Switching);
-    std::vector<GameSproutRuntime::IScene*> candidates,previous;
-    std::vector<SceneDocument::ObjectIDs> candidateIDs;
-    bool prepared=false;
+    std::vector<GameSproutRuntime::IScene*> previous;
     try {
         const auto count=Runtime()->GetSceneCount();previous.reserve(count);
         for(std::size_t index=0;index<count;++index) previous.push_back(Runtime()->GetScene(index));
-        candidates.reserve(_PlaySession->Scenes.size());candidateIDs.reserve(_PlaySession->Scenes.size());
-        for(const auto& item:_PlaySession->Scenes) {
-            GameSproutRuntime::IScene* candidate=nullptr;SceneDocument::ObjectIDs ids;
-            if(!SceneDocument::Instantiate(item.Document,*Runtime(),candidate,ids,error)) throw std::runtime_error(error);
-            // 已删除的历史对象仍占用过 FileID，不能在退出后重新分配给其他对象。
-            ids.Next=item.IDs.Next;
-            candidates.push_back(candidate);candidateIDs.push_back(std::move(ids));
-        }
-        prepared=true;
-    } catch(const std::exception& exception) {error=exception.what();}
-      catch(...) {error="无法恢复编辑场景，可以保留当前会话后重试停止。";}
-    if(!prepared) {
-        if(error.empty())error="无法恢复编辑场景，可以保留当前会话后重试停止。";
-        DestroyCandidates(*Runtime(),candidates);return false;
-    }
+    } catch(const std::exception& exception) {error=exception.what();return false;}
+      catch(...) {error="无法恢复编辑场景，可以保留当前会话后重试停止。";return false;}
     NotifyPlaySession(true,false);
+    if(!Runtime()->RestoreAuthoringScenes(error))return false;
     PlaySession* snapshot=_PlaySession;
-    _ActiveID=candidates[snapshot->ActiveIndex]->GetInstanceID();
-    _ObjectIDs=std::move(candidateIDs[snapshot->ActiveIndex]);
-    _ActivePath.swap(snapshot->Path);
-    _DiskHash.swap(snapshot->DiskHash);
-    _History.swap(snapshot->History);_HistoryPosition=snapshot->HistoryPosition;
-    _Unsaved=snapshot->Unsaved;_StatePending=false;
-    _Annotations.swap(snapshot->Annotations);
-    _DirtyState=std::move(snapshot->DirtyState);
-    _DirtyState.SceneID=_ActiveID;
-    _DirtyState.Revision=GetActiveScene()->GetAuthoringRevision();
+    SwapDocumentContext(snapshot->Author);
     _DirtyState.NotifiedRevision=_DirtyState.Revision;_DirtyState.NotifiedDirty=_Unsaved;
     _PlaySession=nullptr;
     NotifySceneChanged();

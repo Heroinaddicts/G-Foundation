@@ -556,6 +556,19 @@ namespace GameSproutRuntime {
         // Geometry uses the same render-target pixel coordinates and layout as PickUIScreenPreview.
         virtual bool GetUIScreenPreviewGeometry(IScene*, std::uint64_t, Vector2, UIScreenPreviewGeometry&,
                                                 Vector2 gameViewportSize = {}) const { return false; }
+        // Host-only Play transition, outside Runtime callbacks and execution.
+        // Parked authoring scenes retain object/component identities but are hidden from gameplay.
+        // Previously borrowed authoring handles are unavailable until restoration.
+        virtual bool ParkAuthoringScenes(const std::vector<std::uint64_t>&, std::string& error) {
+            error = "Runtime does not support parking authoring scenes";
+            return false;
+        }
+        // Restores authoring scenes in their previous relative order, ahead of any
+        // remaining gameplay scenes. The host still owns gameplay-scene cleanup.
+        virtual bool RestoreAuthoringScenes(std::string& error) {
+            error = "Runtime does not support restoring authoring scenes";
+            return false;
+        }
         // Thread-safe offline cooker. The function uses no instance state and
         // stays callable while the Runtime module remains loaded.
         // A valid render mesh may have no usable triangle mesh or convex hull.

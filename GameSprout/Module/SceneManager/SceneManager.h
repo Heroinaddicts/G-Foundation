@@ -110,18 +110,6 @@ private:
         bool ComponentWasMainCamera=false;
         Json::Value DocumentBefore,DocumentAfter,AnnotationsBefore,AnnotationsAfter;
     };
-    struct PlaySession {
-        struct SceneSnapshot {Json::Value Document;SceneDocument::ObjectIDs IDs;};
-        std::vector<SceneSnapshot> Scenes;
-        std::size_t ActiveIndex=0;
-        std::string Path,DiskHash;
-        std::vector<Edit> History;
-        std::size_t HistoryPosition=0;
-        bool Unsaved=false;
-        Json::Value Annotations;
-        SceneDirtyState DirtyState;
-    };
-    PlaySession* _PlaySession=nullptr;
     struct DocumentContext {
         uint64_t ActiveID=0;
         SceneDocument::ObjectIDs IDs;
@@ -132,6 +120,11 @@ private:
         bool Unsaved=true,StatePending=false;
         SceneDirtyState DirtyState;
     };
+    struct PlaySession {
+        DocumentContext Author;
+        std::set<std::uint64_t> SceneTags;
+    };
+    PlaySession* _PlaySession=nullptr;
     struct DocumentSession {DocumentContext Main;uint64_t ContentRootFileID=0;bool MainSimulationEnabled=true;};
     DocumentSession* _DocumentSession=nullptr;
     bool _EditingSuspended=false;

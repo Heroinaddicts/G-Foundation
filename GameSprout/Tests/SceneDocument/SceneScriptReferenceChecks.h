@@ -43,12 +43,23 @@ static void CheckScriptReferences(SceneManager& manager,const QDir& root,GameSpr
     target=manager.QueryObjectByFileID(targetFileID);
     Check(target&&runtime->QuerySceneObjectByFileID(scene,targetFileID)==target&&owner->GetInstanceID()==reopenedOwnerID&&
           script->GetFields().at("Test::_Test")==reference,"Undo deletion did not preserve/rebind object identity");
+    auto* authoredScene=scene;
+    auto* authoredOwner=owner;
+    auto* authoredTarget=target;
+    auto* authoredScript=script;
+    auto* authoredTransform=target->GetTransform();
+    std::uint64_t transformFileID=0;
+    Check(runtime->GetSceneComponentFileID(authoredTransform,transformFileID),"Author target Transform is missing its stable component identity");
     Check(manager.BeginPlaySession(error),error);
     scene=manager.GetActiveScene();owner=manager.QueryObjectByFileID(ownerFileID);target=manager.QueryObjectByFileID(targetFileID);
     script=owner?ScriptAt(*owner,0):nullptr;
     Check(script&&target&&owner->GetInstanceID()!=reopenedOwnerID&&runtime->QuerySceneObjectByFileID(scene,targetFileID)==target&&
           script->GetFields().at("Test::_Test")==reference,"Play cloning reused editing pointers or lost FileID references");
-    Check(manager.EndPlaySession(error),error);
+    Check(manager.EndPlaySession(error)&&manager.GetActiveScene()==authoredScene&&
+          manager.QueryObjectByFileID(ownerFileID)==authoredOwner&&manager.QueryObjectByFileID(targetFileID)==authoredTarget&&
+          ScriptAt(*authoredOwner,0)==authoredScript&&authoredScript->GetFields().at("Test::_Test")==reference&&
+          runtime->QuerySceneComponentByFileID(authoredScene,transformFileID)==authoredTransform,
+          "Stop did not restore the original script, object, and component identities: "+error);
     auto invalid=document;
     for(auto& item:invalid["Objects"])if(item["Name"]=="Script owner")
         for(auto& component:item["Components"])if(component["Type"]=="GameSproutRuntime.ScriptComponent")

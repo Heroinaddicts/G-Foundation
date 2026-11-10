@@ -19,4 +19,10 @@ add_library(ObjectDocument::ObjectDocument ALIAS ObjectDocument)
 target_include_directories(ObjectDocument PUBLIC "${CMAKE_CURRENT_LIST_DIR}")
 target_link_libraries(ObjectDocument PUBLIC ObjectDocumentJson GameSproutRuntime::GameSproutRuntimeApi)
 set_target_properties(ObjectDocument PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Keep Debug symbols and checks while optimizing the document codec and
+# validation path, which handle tens of thousands of records on Play.
+if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    target_compile_options(ObjectDocumentJson PRIVATE "$<$<CONFIG:Debug>:-O2>")
+    target_compile_options(ObjectDocument PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${object_document_files})

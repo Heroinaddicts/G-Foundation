@@ -78,7 +78,7 @@ public:
     virtual bool EditSuspendedDocument(const std::function<bool(std::string&)>&,std::string& error) {error="当前没有挂起的主文档。";return false;}
     virtual bool OpenScene(const std::string& relativePath, std::string& error) = 0;
     // 主线程、Runtime 回调之外、脚本执行关闭时调用。捕获完整内存编辑会话，
-    // 运行使用重建的临时世界；停止恢复未保存内容、文件身份与编辑历史，不写 .scene。
+    // 运行使用隔离的临时世界；停止切回原编辑场景，恢复未保存内容、身份与编辑历史。
     virtual bool BeginPlaySession(std::string& error) {error="场景服务不支持运行会话。";return false;}
     virtual bool EndPlaySession(std::string& error) {error="场景服务不支持运行会话。";return false;}
     virtual bool IsPlaySessionActive() const {return false;}

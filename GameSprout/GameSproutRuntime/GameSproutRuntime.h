@@ -31,6 +31,8 @@ public:
     IScene* CreateScene(const std::string& name) override;
     IGameObject* CreateGameObject(const std::string& name,IGameObject* parent=nullptr) override;
     bool DestroyScene(IScene* scene) override;
+    bool ParkAuthoringScenes(const std::vector<std::uint64_t>&,std::string&) override;
+    bool RestoreAuthoringScenes(std::string&) override;
     std::size_t GetSceneCount() const override { return _Scenes.size(); }
     IScene* GetScene(std::size_t index) const override;
     IGameObject* QueryGameObject(std::uint64_t id) const override;
@@ -166,6 +168,7 @@ public:
     bool RequestRemoveComponent(GameObjectState* object, IComponent* component, std::uint64_t serial);
     bool IsUsable(const GameObjectState* object) const;
     bool IsInScene(const GameObjectState* object) const;
+    bool IsParked(const GameObjectState* object) const;
     void QueueComponentInitialization(GameObjectState&,std::uint64_t serial);
     void QueueObjectInitialization(GameObjectState&,bool recursive);
     void QueueScriptInitialization(ScriptComponent&);
@@ -229,6 +232,7 @@ private:
     bool InitializePendingComponents(std::string& error,bool allowScripts);
     void NotifyInitializationError(GameObjectState&,IComponent&,const std::string&);
     std::vector<Scene*> _Scenes;
+    std::vector<Scene*> _ParkedScenes;
     std::map<std::uint64_t,GameObjectState*> _Nodes;
     struct TickCounts {std::size_t Variable=0,Fixed=0,Early=0,Late=0;};
     std::map<std::uint64_t,TickCounts> _TickObjects;
@@ -243,6 +247,7 @@ private:
     std::set<std::uint64_t> _DetachedObjects;
     std::deque<Command> _Commands;
     std::deque<InitializationRecord> _PendingInitializations;
+    std::deque<InitializationRecord> _ParkedInitializations;
     std::deque<EventRecord> _Events;
     std::deque<AnimationRecord> _AnimationEvents;
     std::uint64_t _AnimationSequence=0;

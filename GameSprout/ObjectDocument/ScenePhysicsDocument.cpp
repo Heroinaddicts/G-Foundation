@@ -3,14 +3,19 @@
 #include <initializer_list>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 [[noreturn]] void Fail(const std::string& path,const std::string& reason){throw std::runtime_error(path+": "+reason);}
 void Keys(const Json::Value& value,const std::string& path,std::initializer_list<const char*> allowed) {
     if(!value.isObject())Fail(path,"expected object");
-    for(const auto& key:value.getMemberNames()) {
+    const auto last=value.end();
+    for(auto member=value.begin();member!=last;++member) {
+        const char* end=nullptr;
+        const char* begin=member.memberName(&end);
+        const std::string_view key(begin,static_cast<std::size_t>(end-begin));
         bool found=false;for(const char* name:allowed)if(key==name){found=true;break;}
-        if(!found)Fail(path+"."+key,"unknown field");
+        if(!found)Fail(path+"."+std::string(key),"unknown field");
     }
 }
 float Number(const Json::Value& value,const std::string& path) {
@@ -125,13 +130,7 @@ Settings Read(const Json::Value& value,const std::string& path) {
     }
     return result;
 }
-}
-namespace ScenePhysicsDocument {
-bool IsCollider(const std::string& type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider"||type=="GameSproutRuntime.MeshCollider";}
-bool Handles(const std::string& type) {return type=="GameSproutRuntime.Rigidbody"||IsCollider(type);}
-void Validate(const Json::Value& value,const std::string& path){Read(value,path);}
-void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
-    const auto settings=Read(value,"PhysicsComponent");const std::string type=value["Type"].asString();
+void ApplySettings(const Settings& settings,const std::string& type,GameSproutRuntime::IComponent& component) {
     if(type!=component.GetTypeName())Fail("PhysicsComponent","component type mismatch");
     if(type=="GameSproutRuntime.Rigidbody") {
         auto* body=dynamic_cast<GameSproutRuntime::IRigidbodyComponent*>(&component);
@@ -157,8 +156,18 @@ void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
     }
     if(!collider->SetColliderSettings(settings.Collider))Fail("PhysicsComponent","Runtime rejected Collider settings");
 }
+}
+namespace ScenePhysicsDocument {
+bool IsCollider(const std::string& type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider"||type=="GameSproutRuntime.MeshCollider";}
+bool Handles(const std::string& type) {return type=="GameSproutRuntime.Rigidbody"||IsCollider(type);}
+void Validate(const Json::Value& value,const std::string& path){Read(value,path);}
+void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
+    const auto settings=Read(value,"PhysicsComponent");
+    ApplySettings(settings,value["Type"].asString(),component);
+}
 GameSproutRuntime::IComponent* Create(const Json::Value& value,GameSproutRuntime::IGameObject& object) {
-    Validate(value,"PhysicsComponent");const std::string type=value["Type"].asString();
+    const auto settings=Read(value,"PhysicsComponent");
+    const std::string type=value["Type"].asString();
     GameSproutRuntime::IComponent* component=nullptr;
     if(type=="GameSproutRuntime.Rigidbody")component=object.AddComponent<GameSproutRuntime::IRigidbodyComponent>();
     else if(type=="GameSproutRuntime.BoxCollider")component=object.AddComponent<GameSproutRuntime::IBoxColliderComponent>();
@@ -166,7 +175,7 @@ GameSproutRuntime::IComponent* Create(const Json::Value& value,GameSproutRuntime
     else if(type=="GameSproutRuntime.MeshCollider")component=object.AddComponent<GameSproutRuntime::IMeshColliderComponent>();
     else component=object.AddComponent<GameSproutRuntime::ICapsuleColliderComponent>();
     if(!component)Fail("PhysicsComponent","Runtime rejected physics component creation");
-    Apply(value,*component);return component;
+    ApplySettings(settings,type,*component);return component;
 }
 Json::Value Serialize(GameSproutRuntime::IComponent& component) {
     Json::Value value(Json::objectValue);value["Type"]=component.GetTypeName();

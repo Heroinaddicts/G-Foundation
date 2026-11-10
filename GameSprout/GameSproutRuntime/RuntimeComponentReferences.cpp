@@ -8,10 +8,13 @@ IComponent* Runtime::NormalizeComponent(const IComponent* input) const {
     if(!input)return nullptr;
     // The input may be a stale address, so never call through it before finding
     // a live Runtime entry. Native script instances map to their authored wrapper.
-    for(const auto& [id,node]:_Nodes)for(const auto& entry:node->Components) {
-        if(entry.Pointer==input)return entry.Pointer;
-        if(const auto* script=dynamic_cast<const ScriptComponent*>(entry.Pointer);
-           script&&script->PeekNativeInstance()==input)return entry.Pointer;
+    for(const auto& [id,node]:_Nodes) {
+        if(IsParked(node))continue;
+        for(const auto& entry:node->Components) {
+            if(entry.Pointer==input)return entry.Pointer;
+            if(const auto* script=dynamic_cast<const ScriptComponent*>(entry.Pointer);
+               script&&script->PeekNativeInstance()==input)return entry.Pointer;
+        }
     }
     return nullptr;
 }
@@ -80,7 +83,7 @@ bool Runtime::GetSceneComponentFileID(const IComponent* input,std::uint64_t& fil
         found=_ComponentFileIDs.find(canonical);if(found==_ComponentFileIDs.end())return false;
     }
     auto* node=Find(found->second.ObjectID);
-    if(!node||!node->SceneOwner||node->SceneOwner->GetInstanceID()!=found->second.SceneID)return false;
+    if(!node||!node->SceneOwner||IsParked(node)||node->SceneOwner->GetInstanceID()!=found->second.SceneID)return false;
     bool live=false;
     for(const auto& entry:node->Components)if(entry.Pointer==found->first&&entry.Serial==found->second.InstanceID){live=true;break;}
     if(!live)return false;

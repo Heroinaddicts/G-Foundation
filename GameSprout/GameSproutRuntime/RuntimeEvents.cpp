@@ -137,12 +137,19 @@ void Runtime::DispatchEvents() {
     // 固定本轮批次；回调产生的新通知保留到下一次 Update，避免无限递归派发。
     std::deque<EventRecord> batch;
     batch.swap(_Events);
+    std::vector<std::uint64_t> nodeListeners;
+    if(!batch.empty()) {
+        nodeListeners.reserve(_Listeners.size());
+        for(const auto& entry:_Listeners)nodeListeners.push_back(entry.first);
+    }
     for(const auto& record:batch) {
-        std::vector<std::uint64_t> listeners;
-        listeners.reserve(_Listeners.size());
-        for(const auto& entry:_Listeners) listeners.push_back(entry.first);
+        if(std::any_of(_ParkedScenes.begin(),_ParkedScenes.end(),[&](const auto* scene) {
+            return scene->GetInstanceID()==record.Event.SceneID;
+        }))continue;
         RuntimeOperation operation(*this);
-        for(auto id:listeners) {
+        // A registration made by this batch starts after its newest sequence.
+        // Still resolve each ID because earlier callbacks may unregister it.
+        for(auto id:nodeListeners) {
             const auto found=_Listeners.find(id);
             if(found==_Listeners.end() || record.Sequence<=found->second.AfterSequence) continue;
             try {found->second.Pointer->OnSceneNodeEvent(record.Event);} catch (...) {}
