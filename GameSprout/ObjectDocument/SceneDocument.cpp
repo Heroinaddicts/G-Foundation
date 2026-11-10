@@ -298,6 +298,7 @@ struct Plan {
     const Json::Value* RootComponents=nullptr;
     std::uint64_t CameraID=0;
     std::uint64_t Next=1;
+    std::size_t Depth=0;
     std::vector<Node> Nodes;
     std::map<std::uint64_t,std::size_t> Indices;
 };
@@ -474,6 +475,7 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
         for (auto it=chain.rbegin();it!=chain.rend();++it) {
             depths[*it]=++depth; state[*it]=2;
             if (depth>MaximumDepth) Fail("Scene.Objects","hierarchy depth exceeds 1024");
+            plan.Depth=std::max(plan.Depth,depth);
         }
     }
     if (plan.CameraID) {
@@ -877,23 +879,43 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             if(root) Fail("Subtree","expected exactly one root");root=&node;
         }
         if(!root) Fail("Subtree","missing root");
-        ObjectIDs candidateIDs=ids;Json::Value combined;
-        if(!Serialize(scene,candidateIDs,combined,error))return false;
-        const auto parentID=&parent==&scene?0:candidateIDs.RuntimeToFile.at(parent.GetInstanceID());
-        for(const auto& data:document["Objects"]) {
-            Json::Value node=data;
-            if(node["ID"].asUInt64()==root->ID)node["ParentID"]=Json::UInt64(parentID);
-            combined["Objects"].append(std::move(node));
-        }
-        if(plan.CameraID) {combined["MainCameraID"]=Json::UInt64(plan.CameraID);combined["RootMainCamera"]=false;}
-        // 总节点数、真实父链深度、文件ID冲突等均在创建任何对象之前检查。
-        ValidatePlan(combined);
+        if(ids.RuntimeToFile.size()+plan.Nodes.size()>MaximumObjects)Fail("Subtree","combined scene exceeds object limit");
+        std::size_t parentDepth=0;
+        for(auto* object=&parent;object!=&scene;object=object->Parent())
+            if(!object||++parentDepth+plan.Depth>MaximumDepth)Fail("Subtree","combined hierarchy exceeds depth limit");
+        ObjectIDs candidateIDs;candidateIDs.Next=ids.Next;
         std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
-        for (const auto& entry:candidateIDs.RuntimeToFile)
-            if(auto* existing=runtime.QueryGameObject(entry.first))objects.emplace(entry.second,existing);
+        const auto checkIdentity=[&](std::uint64_t id) {
+            if((ids.Next&&id>=ids.Next)||runtime.QuerySceneObjectByFileID(&scene,id)||runtime.QuerySceneComponentByFileID(&scene,id))
+                Fail("Subtree.Identity","stable FileID is unavailable");
+        };
+        const auto checkTarget=[&](std::uint64_t id,bool needsAnimator) {
+            if(!id)return;
+            if(const auto internal=plan.Indices.find(id);internal!=plan.Indices.end()) {
+                const auto& components=*plan.Nodes[internal->second].Components;
+                if(needsAnimator&&std::none_of(components.begin(),components.end(),[](const auto& item){return item["Type"]=="GameSproutRuntime.Animator";}))
+                    Fail("Subtree.Animation","target must contain an Animator");
+                return;
+            }
+            auto* target=runtime.QuerySceneObjectByFileID(&scene,id);
+            if(!target||(needsAnimator&&!target->GetComponent<GameSproutRuntime::IAnimatorComponent>()))
+                Fail("Subtree.Animation","external binding is unavailable");
+            objects.emplace(id,target);
+        };
+        for(const auto& node:plan.Nodes) {
+            checkIdentity(node.ID);
+            for(const auto& component:*node.Components) {
+                if(component.isMember("ID"))checkIdentity(component["ID"].asUInt64());
+                if(component["Type"]=="GameSproutRuntime.Animator")
+                    for(const auto& binding:component["Bindings"])checkTarget(binding["ObjectFileID"].asUInt64(),false);
+                else if(component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer")
+                    checkTarget(component["AnimatorObjectFileID"].asUInt64(),true);
+            }
+        }
         created.reserve(plan.Nodes.size());
         if(!runtime.BeginConstruction(error))return false;
         constructionOpen=true;
+        std::vector<GameSproutRuntime::SceneComponentBinding> componentBindings;
         for(const auto& node:plan.Nodes) {
             auto* object=scene.CreateGameObject(node.Name);
             if(!object)Fail("Subtree","Runtime could not create object");
@@ -917,20 +939,28 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
             if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
             ComponentIdentities(node.Components,*object,candidateIDs);
+            for(std::size_t i=0;i<object->GetComponentCount();++i) {
+                auto* component=object->GetComponentAt(i);
+                componentBindings.push_back({object->GetInstanceID(),component->GetComponentInstanceID(),candidateIDs.FindComponentFileID(component)});
+            }
         }
-        PublishComponentIdentities(scene,candidateIDs,runtime);
+        if(!scene.BindAuthoringIdentities({},componentBindings,error))Fail("Subtree.Identity",error);
         SceneAnimationDocument::Bind(document,scene,objects);
         auto* restored=objects.at(root->ID);
         if(!restored->SetSiblingIndex(siblingIndex))Fail("Subtree","Runtime rejected restored sibling order");
         if(plan.CameraID && !scene.SetMainCamera(objects.at(plan.CameraID)->GetComponent<GameSproutRuntime::ICameraComponent>()))
             Fail("Subtree","Runtime rejected restored main camera");
-        Json::Value verified;
-        if(!Serialize(scene,candidateIDs,verified,error))throw std::runtime_error(error);
+        for(const auto id:created) {
+            auto* object=runtime.QueryGameObject(id);
+            if(!object)Fail("Subtree","restored node is unavailable");
+            for(const float value:object->GetTransform()->GetWorldMatrix().Data)
+                if(!std::isfinite(value))Fail("Subtree","world transform overflows");
+        }
         const auto restoredID=restored->GetInstanceID();
         constructionOpen=false;
         if(!runtime.EndConstruction(error))Fail("Subtree",error.empty()?"Runtime could not finish subtree initialization":error);
         if(runtime.QueryGameObject(restoredID)!=restored)Fail("Subtree","Restored root was destroyed during initialization");
-        ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.SwapComponentIdentities(candidateIDs);ids.Next=candidateIDs.Next;output=restored;return true;
+        ids.MergeNewIdentities(candidateIDs);output=restored;return true;
     } catch(const std::exception& exception) {error=exception.what();}
     catch(...) {error="Unexpected subtree restoration failure";}
     if(runtime.QueryGameObject(sceneID)==&scene) {

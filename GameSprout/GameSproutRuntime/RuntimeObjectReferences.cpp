@@ -24,34 +24,64 @@ bool Runtime::BindSceneObjectIdentity(IGameObject* object,std::uint64_t fileID,s
 }
 
 bool Runtime::BindSceneObjectIdentities(IScene* scene,const std::vector<SceneObjectIdentity>& identities,std::string& error) {
+    return BindAuthoringIdentities(scene,identities,{},error);
+}
+
+bool Runtime::BindAuthoringIdentities(IScene* scene,const std::vector<SceneObjectIdentity>& identities,
+    const std::vector<SceneComponentBinding>& components,std::string& error) {
     error.clear();
     auto* root=Find(scene);
     if(!IsInScene(root) || !root->IsSceneRoot() || _ShuttingDown || _Depth || _Updating || _Flushing) {
         error="Bind scene identities outside Runtime callbacks, on a live scene object";return false;
     }
-    auto byObject=_ObjectFileIDs;
-    auto byFile=_SceneObjectIDs;
-    bool changed=false;
+    decltype(_ObjectFileIDs) byObject;
+    decltype(_SceneObjectIDs) byFile;
+    decltype(_ComponentFileIDs) byComponent;
+    decltype(_SceneComponentIDs) componentFiles;
     for(const auto& identity:identities) {
         auto* node=Find(identity.ObjectID);
         if(!IsInScene(node) || node->SceneOwner!=scene) {error="Object belongs to another scene";return false;}
         if(node->IsSceneRoot()!=(identity.FileID==0)) {error="FileID 0 is reserved for the scene root";return false;}
         const auto key=std::make_pair(root->ID,identity.FileID);
         if(_SceneComponentIDs.contains(key)){error="Object FileID collides with a component";return false;}
-        const auto collision=byFile.find(key);
-        if(collision!=byFile.end() && collision->second!=node->ID) {error="Scene FileID is already bound";return false;}
-        const auto previous=byObject.find(node->ID);
-        if(previous!=byObject.end()) {
+        const auto collision=_SceneObjectIDs.find(key);
+        if((collision!=_SceneObjectIDs.end() && collision->second!=node->ID)||
+           (byFile.contains(key)&&byFile.at(key)!=node->ID)) {error="Scene FileID is already bound";return false;}
+        const auto previous=_ObjectFileIDs.find(node->ID);
+        if(previous!=_ObjectFileIDs.end()) {
             if(previous->second.SceneID==root->ID && previous->second.FileID==identity.FileID) continue;
             error="A live object's stable scene identity cannot be reassigned";return false;
         }
+        const auto [pending,inserted]=byObject.emplace(node->ID,ObjectIdentity{root->ID,identity.FileID});
+        if(!inserted&&pending->second.FileID!=identity.FileID){error="Conflicting object identities";return false;}
         byFile.emplace(key,node->ID);
-        byObject.emplace(node->ID,ObjectIdentity{root->ID,identity.FileID});changed=true;
     }
-    if(changed) {
-        _ObjectFileIDs.swap(byObject);_SceneObjectIDs.swap(byFile);
-        RefreshScriptObjectReferences();
+    for(const auto& identity:components) {
+        auto* node=Find(identity.ObjectID);
+        if(!IsInScene(node)||node->SceneOwner!=scene||!identity.FileID||!identity.ComponentInstanceID) {
+            error="Component identity requires a live owner and nonzero IDs";return false;
+        }
+        const IComponent* component=nullptr;
+        for(const auto& entry:node->Components)if(entry.Serial==identity.ComponentInstanceID&&!entry.PendingRemove){component=entry.Pointer;break;}
+        if(!component){error="Component identity requires a live component";return false;}
+        const auto key=std::make_pair(root->ID,identity.FileID);
+        if(_SceneObjectIDs.contains(key)||byFile.contains(key)) {error="Component FileID collides with a scene object";return false;}
+        const auto previous=_ComponentFileIDs.find(component);
+        if(previous!=_ComponentFileIDs.end()) {
+            const auto& value=previous->second;
+            if(value.SceneID==root->ID&&value.ObjectID==node->ID&&value.InstanceID==identity.ComponentInstanceID&&value.FileID==identity.FileID)continue;
+            error="A live component's stable identity cannot be reassigned";return false;
+        }
+        if(_SceneComponentIDs.contains(key)||componentFiles.contains(key)||byComponent.contains(component)) {
+            error="Duplicate component identity";return false;
+        }
+        componentFiles.emplace(key,std::make_pair(node->ID,identity.ComponentInstanceID));
+        byComponent.emplace(component,ComponentIdentity{root->ID,identity.FileID,node->ID,identity.ComponentInstanceID});
     }
+    const bool changed=!byObject.empty()||!byComponent.empty();
+    _ObjectFileIDs.merge(byObject);_SceneObjectIDs.merge(byFile);
+    _ComponentFileIDs.merge(byComponent);_SceneComponentIDs.merge(componentFiles);
+    if(changed)RefreshScriptObjectReferences();
     return true;
 }
 

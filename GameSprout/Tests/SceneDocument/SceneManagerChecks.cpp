@@ -97,6 +97,7 @@ static const Json::Value& Find(const Json::Value& document,const std::string& na
 #include "ScenePlaySelectionChecks.h"
 #include "SceneDocumentSessionChecks.h"
 #include "SceneIncrementalStateChecks.h"
+#include "SceneSaveSnapshotChecks.h"
 
 int main(int argc,char** argv) {
     QCoreApplication application(argc,argv);
@@ -213,6 +214,7 @@ int main(int argc,char** argv) {
         CheckPlaySceneSelection(manager,api,editor._Runtime);
         CheckDocumentSession(manager,api,root,editor._Runtime);
         CheckIncrementalSceneState(manager,editor._Runtime);
+        CheckSceneSaveSnapshot(manager,root,editor._Runtime);
         manager.UnregisterSceneListener(&listener);
         auto* retainedRuntime=editor._Runtime;
         Check(manager.BeginDocumentSession(TemporaryDocument(),error),"Cannot prepare document release regression: "+error);

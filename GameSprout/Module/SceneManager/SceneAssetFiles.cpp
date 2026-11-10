@@ -1,5 +1,6 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
+#include "SceneSaveSnapshot.h"
 #include "../Shared/AssetArtifactIO.h"
 #include "../Shared/AssetSourceIO.h"
 #include <QDir>
@@ -7,15 +8,30 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <limits>
+#if defined(__APPLE__)
+#include <CommonCrypto/CommonDigest.h>
+#endif
 
 namespace {
+std::string HashSceneBytes(const QByteArray& bytes) {
+#if defined(__APPLE__)
+    if(static_cast<std::uint64_t>(bytes.size())<=std::numeric_limits<CC_LONG>::max()) {
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+        CC_SHA256(bytes.constData(),static_cast<CC_LONG>(bytes.size()),digest);
+        return QByteArray::fromRawData(reinterpret_cast<const char*>(digest),sizeof(digest)).toHex().toStdString();
+    }
+#endif
+    return AssetArtifactIO::Hash(bytes);
+}
+
 bool DiskMatches(const QString& path,const std::string& expected,std::string& error) {
     QFile source(path);
     if(expected.empty() || !source.open(QIODevice::ReadOnly)) {
         error="磁盘场景已消失或无法核对，未覆盖。请重新打开场景或另存为新文件。";return false;
     }
     const QByteArray bytes=source.readAll();
-    if(source.error()!=QFileDevice::NoError || AssetArtifactIO::Hash(bytes)!=expected) {
+    if(source.error()!=QFileDevice::NoError || HashSceneBytes(bytes)!=expected) {
         error="场景文件已被外部修改，未覆盖。请重新打开场景或另存为新文件。";return false;
     }
     return true;
@@ -104,7 +120,7 @@ bool SceneManager::OpenScene(const std::string& path,std::string& error) {
         if(success) {
             const QString assetsPath=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
             const QDir assets(QFileInfo(assetsPath).canonicalFilePath());
-            Activate(candidate,assets.relativeFilePath(source).toStdString(),std::move(ids),AssetArtifactIO::Hash(bytes),
+            Activate(candidate,assets.relativeFilePath(source).toStdString(),std::move(ids),HashSceneBytes(bytes),
                      document.isMember("Annotations")?document["Annotations"]:Json::Value(Json::objectValue));
         }
     } catch(const std::exception& exception) {error=exception.what();success=false;}
@@ -144,12 +160,24 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     if (!allowNew && !exists) {error="磁盘场景已消失，未重新创建。请重新打开场景或另存为新文件。";return false;}
     if (exists && normalized!=_ActivePath) {error="目标场景已存在，不能静默覆盖另一个场景。";return false;}
     if (currentPath && !DiskMatches(target,_DiskHash,error)) return false;
-    Json::Value document;std::string text;
-    if (!Capture(document,text,error)) return false;
-    const QByteArray bytes=QByteArray::fromStdString(AssetSourceIO::JsonText(document));
+    if(!SynchronizeDirtyState(error))return false;
+    // Still check external edits on a clean scene, but do not replace its file
+    // or generate a watcher/import job when the authored values did not change.
+    if(currentPath&&!DirtyFromSnapshot()) {
+        const bool notify=_DirtyState.NotifiedDirty||_DirtyState.NotifiedRevision!=_DirtyState.Revision;
+        _Unsaved=false;_StatePending=false;
+        _DirtyState.NotifiedDirty=false;_DirtyState.NotifiedRevision=_DirtyState.Revision;
+        if(notify)NotifyStateChanged();
+        return true;
+    }
+    std::string encoded;
+    try {encoded=SceneSaveSnapshot::Encode(_DirtyState);}
+    catch(const std::exception& exception){error=exception.what();return false;}
+    const QByteArray bytes=QByteArray::fromRawData(encoded.data(),static_cast<qsizetype>(encoded.size()));
     // 在提交文件前准备所有拥有内存的状态，提交成功后的替换不再分配字符串。
-    std::string savedPath=normalized,savedBaseline=text,savedState=text,savedHash=AssetArtifactIO::Hash(bytes);
-    auto savedDirtyState=MakeDirtyBaseline(document);savedDirtyState.NotifiedDirty=false;
+    std::string savedPath=normalized,savedHash=HashSceneBytes(bytes);
+    Json::Value savedRoot=_DirtyState.CurrentRoot;
+    auto savedOrder=_DirtyState.CurrentOrder;
     QSaveFile file(target);
     file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly)) {error=file.errorString().toStdString();return false;}
@@ -163,9 +191,21 @@ bool SceneManager::SaveTo(const std::string& path,bool allowNew,std::string& err
     }
     if (currentPath && !DiskMatches(target,_DiskHash,error)) {file.cancelWriting();return false;}
     if (!file.commit()) {error=file.errorString().toStdString();return false;}
-    _ActivePath.swap(savedPath);_BaselineText.swap(savedBaseline);_LastStateText.swap(savedState);
+    _ActivePath.swap(savedPath);
     _DiskHash.swap(savedHash);
-    _DirtyState=std::move(savedDirtyState);
+    // Reuse unchanged saved rows. Node handles transfer newly-created rows
+    // without allocation after the atomic file commit; changed strings swap.
+    for(const auto id:_DirtyState.DifferentNodes)
+        if(!_DirtyState.ChangedNodes.count(id))_DirtyState.BaselineNodes.erase(id);
+    while(!_DirtyState.ChangedNodes.empty()) {
+        auto changed=_DirtyState.ChangedNodes.begin();
+        const auto saved=_DirtyState.BaselineNodes.find(changed->first);
+        if(saved==_DirtyState.BaselineNodes.end())_DirtyState.BaselineNodes.insert(_DirtyState.ChangedNodes.extract(changed));
+        else {saved->second.swap(changed->second);_DirtyState.ChangedNodes.erase(changed);}
+    }
+    _DirtyState.BaselineRoot.swap(savedRoot);_DirtyState.BaselineOrder.swap(savedOrder);
+    _DirtyState.DifferentNodes.clear();_DirtyState.RootDifferent=false;_DirtyState.OrderDifferent=false;
+    _DirtyState.NotifiedDirty=false;_DirtyState.NotifiedRevision=_DirtyState.Revision;
     _Unsaved=false;_StatePending=false;
     RememberActiveScene();
     NotifyStateChanged();

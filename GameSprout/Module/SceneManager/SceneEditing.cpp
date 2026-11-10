@@ -23,14 +23,14 @@ bool SceneManager::Ready(std::string& error) const {
     }
     return true;
 }
-bool SceneManager::Capture(Json::Value& document,std::string& text,std::string& error) const {
+bool SceneManager::Capture(Json::Value& document,std::string& error) const {
     auto* scene=GetActiveScene();
     if (!scene || !Runtime() || Runtime()->IsExecuting()) {error="场景不可用或 Runtime 正在执行回调。";return false;}
     try {
         if (!SceneDocument::Serialize(*scene,_ObjectIDs,document,error)) return false;
         if(!ValidateDocumentContent(document,error))return false;
         if(!_Annotations.empty())document["Annotations"]=_Annotations;
-        text=AssetArtifactIO::JsonText(document);return true;
+        return true;
     }
     catch (const std::exception& exception) {error=exception.what();return false;}
     catch (...) {error="无法生成场景数据。";return false;}

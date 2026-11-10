@@ -92,13 +92,41 @@ void FillResult(const Json::Value& subtree,const std::map<uint64_t,uint64_t>& so
 }
 
 std::string SceneManager::GetSceneAnnotationsJson() const {return AssetArtifactIO::JsonText(_Annotations);}
+bool SceneManager::CaptureSubtree(GameSproutRuntime::IGameObject& root,Json::Value& output,std::string& error) const {
+    if(!SynchronizeDirtyState(error))return false;
+    Json::Value subtree(Json::objectValue);
+    subtree["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);
+    subtree["Name"]="Object document";subtree["NextObjectID"]=Json::UInt64(_ObjectIDs.Next);
+    subtree["MainCameraID"]=Json::UInt64(0);subtree["Objects"]=Json::Value(Json::arrayValue);
+    const auto* mainCamera=GetActiveScene()->GetMainCamera();
+    std::vector<GameSproutRuntime::IGameObject*> pending{&root};
+    while(!pending.empty()) {
+        auto* node=pending.back();pending.pop_back();
+        Json::Value properties;
+        if(!SceneDocument::SerializeProperties(*node,_ObjectIDs,properties,error))return false;
+        if(node==&root)properties["ParentID"]=Json::UInt64(0);
+        if(mainCamera&&mainCamera->GetGameObject()==node)subtree["MainCameraID"]=properties["ID"];
+        subtree["Objects"].append(std::move(properties));
+        for(std::size_t i=node->GetChildCount();i>0;--i)pending.push_back(node->GetChild(i-1));
+    }
+    if(!SceneDocument::ValidateSubtree(subtree,error))return false;
+    output.swap(subtree);return true;
+}
+
 bool SceneManager::CaptureObjectDocument(uint64_t objectID,SceneSubtreeDocument& output,std::string& error) const {
     error.clear();auto* object=Runtime()?Runtime()->QueryGameObject(objectID):nullptr;
     if(!object||object==GetActiveScene()||object->GetScene()!=GetActiveScene()) {error="子树文档需要当前场景中的普通节点。";return false;}
-    if(IsPlaySessionActive()||_ExecutingEdit||_PropertyPreview) {error="场景事务、属性预览或运行期间不能捕获作者子树文档。";return false;}
-    Json::Value document;std::string text;if(!Capture(document,text,error))return false;
-    const auto subtree=Subtree(document,_ObjectIDs.RuntimeToFile.at(objectID));
-    SceneSubtreeDocument result;FillResult(subtree,{},_ObjectIDs,result);output=std::move(result);return true;
+    if(Runtime()->IsExecuting()||IsPlaySessionActive()||_ExecutingEdit||_PropertyPreview) {error="场景事务、属性预览或运行期间不能捕获作者子树文档。";return false;}
+    try {
+        Json::Value subtree;
+        if(!CaptureSubtree(*object,subtree,error))return false;
+        SceneDocument::ObjectIDs identities;
+        for(const auto& node:subtree["Objects"]) {
+            const auto file=node["ID"].asUInt64();
+            if(auto* live=QueryObjectByFileID(file))identities.RuntimeToFile.emplace(live->GetInstanceID(),file);
+        }
+        SceneSubtreeDocument result;FillResult(subtree,{},identities,result);output=std::move(result);return true;
+    } catch(const std::exception& exception){error=exception.what();return false;}
 }
 
 bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,SceneSubtreeDocument& output,std::string& error) {
@@ -106,7 +134,7 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
     DocumentEditingScope editing(_ExecutingEdit);
     try {
         Edit edit;edit.Type=Edit::Kind::Document;edit.Label=request.Label;
-        std::string text;if(!Capture(edit.DocumentBefore,text,error))return false;
+        if(!Capture(edit.DocumentBefore,error))return false;
         edit.DocumentAfter=edit.DocumentBefore;edit.AnnotationsBefore=_Annotations;edit.AnnotationsAfter=_Annotations;
         Json::Value subtree;std::map<uint64_t,uint64_t> mapping;uint64_t rootFile=0;
         if(!request.DocumentJson.empty()) {
@@ -175,8 +203,8 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
         if(edit.AnnotationsAfter.empty())edit.DocumentAfter.removeMember("Annotations");else edit.DocumentAfter["Annotations"]=edit.AnnotationsAfter;
         _History.reserve(_HistoryPosition+1);
         if(!RunDocumentEdit(edit,true,error)) {RefreshState(true);return false;}
-        Json::Value committed;std::string committedText;
-        if(!Capture(committed,committedText,error)) {
+        Json::Value committed;
+        if(!Capture(committed,error)) {
             std::string rollback;ApplyDocument(edit.DocumentAfter,edit.DocumentBefore,rollback);_Annotations=edit.AnnotationsBefore;
             if(!rollback.empty())error+=" 恢复原文档失败："+rollback;
             RefreshState(true);return false;
@@ -197,7 +225,7 @@ bool SceneManager::RunDocumentEdit(const Edit& edit,bool forward,std::string& er
     const auto& desired=forward?edit.DocumentAfter:edit.DocumentBefore;
     const auto& expectedAnnotations=forward?edit.AnnotationsBefore:edit.AnnotationsAfter;
     const auto& desiredAnnotations=forward?edit.AnnotationsAfter:edit.AnnotationsBefore;
-    Json::Value current;std::string text;if(!Capture(current,text,error))return false;
+    Json::Value current;if(!Capture(current,error))return false;
     if(_Annotations!=expectedAnnotations) {error="场景 annotations 已在事务之外变化，无法撤销/重做。";return false;}
     const auto oldNodes=Nodes(expected),newNodes=Nodes(desired),currentNodes=Nodes(current);
     std::set<uint64_t> changed;

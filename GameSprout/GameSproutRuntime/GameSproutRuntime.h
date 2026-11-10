@@ -92,6 +92,8 @@ public:
     bool GetSceneObjectFileID(const IGameObject*,std::uint64_t&) const override;
     bool BindSceneObjectIdentities(IScene*,const std::vector<SceneObjectIdentity>&,std::string&) override;
     bool SetSceneComponentIdentities(IScene*,const std::vector<SceneComponentIdentity>&,std::string&) override;
+    bool BindAuthoringIdentities(IScene*,const std::vector<SceneObjectIdentity>&,
+        const std::vector<SceneComponentBinding>&,std::string&);
     IComponent* QuerySceneComponentByFileID(const IScene*,std::uint64_t) const override;
     bool GetSceneComponentFileID(const IComponent*,std::uint64_t&) const override;
     bool IsComponentType(const IComponent*,const std::string&) const override;

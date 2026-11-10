@@ -14,10 +14,14 @@ struct SceneDirtyState {
     bool NotifiedDirty=false;
     std::string FullError;
     Json::Value BaselineRoot;
-    // Canonical row text retains exact saved-value comparison without keeping
-    // a second allocation-heavy Json object tree for every component field.
+    // The formatted source row is shared by exact dirty comparison and saving.
+    // Only changed rows need another value; unchanged rows are never re-encoded.
     std::map<std::uint64_t,std::string> BaselineNodes;
     std::vector<std::uint64_t> BaselineOrder;
+    Json::Value CurrentRoot;
+    std::vector<std::uint64_t> CurrentOrder;
+    std::map<std::uint64_t,std::string> ChangedNodes;
     std::set<std::uint64_t> DifferentNodes;
+    std::set<std::uint64_t> AnimationOwners;
     std::map<std::uint64_t,std::string> Errors;
 };

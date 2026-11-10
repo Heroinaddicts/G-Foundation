@@ -160,42 +160,27 @@ void ValidateReferences(const Json::Value& document) {
     validate(document["RootComponents"]);
     for (const auto& node:document["Objects"]) validate(node["Components"]);
 }
-Json::Value CaptureBindings(const Json::Value& document) {
-    Json::Value result(Json::arrayValue);
-    const auto capture=[&](std::uint64_t id,const Json::Value& components) {
-        for(const auto& component:components) if(Handles(component["Type"].asString())) {
-            Json::Value item(Json::objectValue);item["Owner"]=Json::UInt64(id);
-            item["Data"]=component;result.append(std::move(item));
-        }
-    };
-    capture(0,document["RootComponents"]);
-    for(const auto& node:document["Objects"])capture(node["ID"].asUInt64(),node["Components"]);
-    return result;
-}
 void RestoreBindings(const Json::Value& snapshot,GameSproutRuntime::IGameSproutRuntime& runtime,
-    GameSproutRuntime::IScene& scene,const SceneDocument::ObjectIDs& ids) {
-    std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects{{0,&scene}};
-    for(const auto& entry:ids.RuntimeToFile)if(auto* object=runtime.QueryGameObject(entry.first))objects.emplace(entry.second,object);
+    GameSproutRuntime::IScene& scene) {
+    const auto find=[&](std::uint64_t id){return id?runtime.QuerySceneObjectByFileID(&scene,id):nullptr;};
     for(const auto& item:snapshot) {
-        const auto found=objects.find(item["Owner"].asUInt64());if(found==objects.end())continue;
+        auto* owner=find(item["Owner"].asUInt64());if(!owner)continue;
         const auto& data=item["Data"];
         if(data["Type"]=="GameSproutRuntime.Animator") {
-            auto* animator=found->second->GetComponent<GameSproutRuntime::IAnimatorComponent>();if(!animator)continue;
+            auto* animator=owner->GetComponent<GameSproutRuntime::IAnimatorComponent>();if(!animator)continue;
             std::vector<GameSproutRuntime::AnimationNodeBinding> bindings;
             for(const auto& binding:data["Bindings"]) {
-                const auto targetID=binding["ObjectFileID"].asUInt64();
-                const auto target=objects.find(targetID);
-                bindings.push_back({binding["Path"].asString(),!targetID||target==objects.end()?0:target->second->GetInstanceID()});
+                auto* target=find(binding["ObjectFileID"].asUInt64());
+                bindings.push_back({binding["Path"].asString(),target?target->GetInstanceID():0});
             }
             if(!animator->SetNodeBindings(bindings))Reject("Undo animation binding","Runtime rejected restored bindings");
         }
     }
     for(const auto& item:snapshot)if(item["Data"]["Type"]=="GameSproutRuntime.SkinnedMeshRenderer") {
-        const auto owner=objects.find(item["Owner"].asUInt64());if(owner==objects.end())continue;
-        const auto targetID=item["Data"]["AnimatorObjectFileID"].asUInt64();
-        const auto target=objects.find(targetID);
-        if(auto* skin=owner->second->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>())
-            if(!skin->SetAnimatorObjectID(targetID&&target!=objects.end()?target->second->GetInstanceID():0))Reject("Undo skin binding","Runtime rejected restored Animator");
+        auto* owner=find(item["Owner"].asUInt64());if(!owner)continue;
+        auto* target=find(item["Data"]["AnimatorObjectFileID"].asUInt64());
+        if(auto* skin=owner->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>())
+            if(!skin->SetAnimatorObjectID(target?target->GetInstanceID():0))Reject("Undo skin binding","Runtime rejected restored Animator");
     }
 }
 void Bind(const Json::Value& document, GameSproutRuntime::IScene& scene,

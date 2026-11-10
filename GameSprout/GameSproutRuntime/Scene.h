@@ -49,6 +49,10 @@ public:
     bool BindObjectIdentities(const std::vector<SceneObjectIdentity>& identities,std::string& error) override {
         return State().Owner.BindSceneObjectIdentities(this,identities,error);
     }
+    bool BindAuthoringIdentities(const std::vector<SceneObjectIdentity>& objects,
+        const std::vector<SceneComponentBinding>& components,std::string& error) override {
+        return State().Owner.BindAuthoringIdentities(this,objects,components,error);
+    }
 private:
     std::uint64_t _MainCameraID = 0;
     bool _SimulationEnabled = true;

@@ -151,6 +151,9 @@ public:
     // 相对 Assets；首次保存可创建新文件，不静默覆盖另一个已存在场景。
     virtual bool SaveSceneAs(const std::string& relativePath, std::string& error) = 0;
     virtual bool HasUnsavedChanges() const = 0;
+    // For event-driven presentation. Commands that need the current authored
+    // revision must use HasUnsavedChanges instead.
+    virtual bool HasCachedUnsavedChanges() const {return HasUnsavedChanges();}
     // 在已存在的 Assets 子目录中创建，不覆盖已有文件；outPath 同样相对 Assets。
     virtual bool CreateSceneAsset(const std::string& directory, const std::string& name,
                                   std::string& outPath, std::string& error) = 0;

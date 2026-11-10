@@ -28,8 +28,8 @@ bool ContentGraph(const Json::Value& document,uint64_t root,std::string& error) 
 
 void SceneManager::SwapDocumentContext(DocumentContext& context) noexcept {
     std::swap(_ActiveID,context.ActiveID);std::swap(_ObjectIDs,context.IDs);
-    _ActivePath.swap(context.Path);_BaselineText.swap(context.BaselineText);
-    _DiskHash.swap(context.DiskHash);_LastStateText.swap(context.LastStateText);
+    _ActivePath.swap(context.Path);
+    _DiskHash.swap(context.DiskHash);
     _History.swap(context.History);std::swap(_HistoryPosition,context.HistoryPosition);
     _Annotations.swap(context.Annotations);std::swap(_Unsaved,context.Unsaved);std::swap(_StatePending,context.StatePending);
     std::swap(_DirtyState,context.DirtyState);
@@ -58,8 +58,8 @@ bool SceneManager::BeginDocumentSession(const SceneDocumentSessionRequest& reque
        !ContentGraph(document,request.ContentRootFileID,error)) {
         if(error.empty())error="临时文档无效。";return false;
     }
-    Json::Value previous;std::string previousText;
-    if(!Capture(previous,previousText,error))return false;
+    Json::Value previous;
+    if(!Capture(previous,error))return false;
     GameSproutRuntime::IScene* candidate=nullptr;SceneDocument::ObjectIDs ids;
     DocumentSession* session=nullptr;
     _Switching=true;
@@ -74,7 +74,7 @@ bool SceneManager::BeginDocumentSession(const SceneDocumentSessionRequest& reque
         Json::Value normalized;
         if(!SceneDocument::Serialize(*candidate,temporary.IDs,normalized,error))throw std::runtime_error(error);
         if(!temporary.Annotations.empty())normalized["Annotations"]=temporary.Annotations;
-        temporary.BaselineText=AssetArtifactIO::JsonText(normalized);temporary.LastStateText=temporary.BaselineText;temporary.Unsaved=false;
+        temporary.Unsaved=false;
         temporary.DirtyState=MakeDirtyBaseline(normalized);
         temporary.DirtyState.SceneID=candidate->GetInstanceID();temporary.DirtyState.Revision=candidate->GetAuthoringRevision();
         temporary.DirtyState.NotifiedRevision=temporary.DirtyState.Revision;temporary.DirtyState.NotifiedDirty=false;
@@ -101,9 +101,9 @@ bool SceneManager::EndDocumentSession(std::string& error) {
 bool SceneManager::MarkDocumentSessionSaved(std::string& error) {
     if(!IsTemporaryDocumentContext()){error="当前没有可保存的临时文档。";return false;}
     if(!Ready(error))return false;
-    Json::Value document;std::string text;if(!Capture(document,text,error))return false;
+    Json::Value document;if(!Capture(document,error))return false;
     auto dirtyState=MakeDirtyBaseline(document);dirtyState.NotifiedDirty=false;
-    std::string state=text;_BaselineText.swap(text);_LastStateText.swap(state);_Unsaved=false;_StatePending=false;
+    _Unsaved=false;_StatePending=false;
     _DirtyState=std::move(dirtyState);
     NotifyStateChanged();return true;
 }

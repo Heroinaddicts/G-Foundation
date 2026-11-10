@@ -207,6 +207,12 @@ namespace GameSproutRuntime {
         std::uint64_t FileID = 0; // Document-wide nonzero FileID, distinct from lifetime ID.
     };
 
+    struct SceneComponentBinding {
+        std::uint64_t ObjectID = 0;
+        std::uint64_t ComponentInstanceID = 0;
+        std::uint64_t FileID = 0;
+    };
+
     enum class SceneNodeEventType;
     struct SceneAuthoringChange {
         std::uint64_t ObjectID=0;
@@ -250,6 +256,12 @@ namespace GameSproutRuntime {
         // Independent readers. False means the bounded journal no longer covers
         // afterRevision; rebuild one snapshot. Values are committed before queued events.
         virtual bool GetAuthoringChanges(std::uint64_t,std::vector<SceneAuthoringChange>& changes) const {changes.clear();return false;}
+        // Publish just the identities introduced by an edit. Existing bindings
+        // are retained. Validation failure leaves both indexes unchanged.
+        virtual bool BindAuthoringIdentities(const std::vector<SceneObjectIdentity>&,
+            const std::vector<SceneComponentBinding>&,std::string& error) {
+            error="Incremental scene identities are unavailable";return false;
+        }
     };
 
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE ITransformComponent : public IComponent {

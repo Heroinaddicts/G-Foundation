@@ -11,8 +11,8 @@ uint64_t SceneManager::GetComponentFileID(uint64_t objectID,uint64_t componentIn
             // Explicit editor operations may reach a newly created Runtime
             // component before the next scene event flush. Publish its stable
             // document identity now so its Undo closure survives recreation.
-            Json::Value document;std::string text,error;
-            if(!Capture(document,text,error))return 0;
+            std::string error;
+            if(!SynchronizeDirtyState(error))return 0;
             found=_ObjectIDs.FindComponentFileID(component);
         }
         return found;

@@ -45,8 +45,8 @@ bool SceneManager::BeginPlaySession(std::string& error) {
     bool prepared=false;
     try {
         snapshot=new PlaySession();
-        snapshot->Path=_ActivePath;snapshot->BaselineText=_BaselineText;
-        snapshot->DiskHash=_DiskHash;snapshot->LastStateText=_LastStateText;
+        snapshot->Path=_ActivePath;
+        snapshot->DiskHash=_DiskHash;
         snapshot->HistoryPosition=_HistoryPosition;
         snapshot->Annotations=_Annotations;
         const auto count=Runtime()->GetSceneCount();
@@ -61,8 +61,7 @@ bool SceneManager::BeginPlaySession(std::string& error) {
             if(scene->GetInstanceID()==_ActiveID&&!_Annotations.empty())item.Document["Annotations"]=_Annotations;
             snapshot->Scenes.push_back(std::move(item));
         }
-        const auto& author=snapshot->Scenes.at(snapshot->ActiveIndex);
-        snapshot->Unsaved=_ActivePath.empty()||AssetArtifactIO::JsonText(author.Document)!=_BaselineText;
+        snapshot->Unsaved=DirtyFromSnapshot();
         for(const auto& item:snapshot->Scenes) {
             GameSproutRuntime::IScene* candidate=nullptr;SceneDocument::ObjectIDs ids;
             if(!SceneDocument::Instantiate(item.Document,*Runtime(),candidate,ids,error)) throw std::runtime_error(error);
@@ -123,8 +122,8 @@ bool SceneManager::EndPlaySession(std::string& error) {
     PlaySession* snapshot=_PlaySession;
     _ActiveID=candidates[snapshot->ActiveIndex]->GetInstanceID();
     _ObjectIDs=std::move(candidateIDs[snapshot->ActiveIndex]);
-    _ActivePath.swap(snapshot->Path);_BaselineText.swap(snapshot->BaselineText);
-    _DiskHash.swap(snapshot->DiskHash);_LastStateText.swap(snapshot->LastStateText);
+    _ActivePath.swap(snapshot->Path);
+    _DiskHash.swap(snapshot->DiskHash);
     _History.swap(snapshot->History);_HistoryPosition=snapshot->HistoryPosition;
     _Unsaved=snapshot->Unsaved;_StatePending=false;
     _Annotations.swap(snapshot->Annotations);

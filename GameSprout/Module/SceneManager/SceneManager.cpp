@@ -43,12 +43,10 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
     _ActiveID=scene?scene->GetInstanceID():0;
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
-    _ObjectIDs=std::move(ids);_Annotations.swap(annotations);_History.clear();_HistoryPosition=0;_BaselineText.clear();_LastStateText.clear();
+    _ObjectIDs=std::move(ids);_Annotations.swap(annotations);_History.clear();_HistoryPosition=0;
     _DirtyState={};
-    Json::Value document;std::string text,error;
-    if (Capture(document,text,error)) {
-        _LastStateText=text;
-        if (!_ActivePath.empty()) _BaselineText=text;
+    Json::Value document;std::string error;
+    if (Capture(document,error)) {
         _DirtyState=MakeDirtyBaseline(document);
     }
     _Unsaved=_ActivePath.empty();_StatePending=false;
@@ -80,7 +78,7 @@ void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     if(auto* scene=GetActiveScene())Runtime()->DestroyScene(scene);
     _Project=nullptr;_Host=nullptr;_Runtime=nullptr;_ActiveID=0;_ActivePath.clear();_EditingSuspended=false;
     _Switching=false;_Notifying=false;_NotifyAgain=false;_StateNotifyAgain=false;_ExecutingEdit=false;_StatePending=false;
-    _ObjectIDs={};_Annotations=Json::Value(Json::objectValue);_BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
+    _ObjectIDs={};_Annotations=Json::Value(Json::objectValue);_DiskHash.clear();_History.clear();_HistoryPosition=0;_Unsaved=true;
     _DirtyState={};
 }
 bool SceneManager::RegisterSceneListener(ISceneListener* listener) {
@@ -136,7 +134,7 @@ void SceneManager::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& eve
     if(event.Type==GameSproutRuntime::SceneNodeEventType::Destroy && event.ObjectID==_ActiveID) {
         _TransformEdit={};
         _ActiveID=0;_ActivePath.clear();_ObjectIDs={};_Annotations=Json::Value(Json::objectValue);_History.clear();_HistoryPosition=0;
-        _BaselineText.clear();_DiskHash.clear();_LastStateText.clear();_Unsaved=false;_StatePending=false;NotifySceneChanged();
+        _DiskHash.clear();_Unsaved=false;_StatePending=false;NotifySceneChanged();
         _DirtyState={};
     } else if(event.SceneID==_ActiveID && event.Type!=GameSproutRuntime::SceneNodeEventType::OperationFailed) _StatePending=true;
 }

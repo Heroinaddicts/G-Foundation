@@ -34,7 +34,17 @@ static void CheckIncrementalSceneState(SceneManager& manager,GameSproutRuntime::
     object->SetName(savedName);Check(!manager.HasUnsavedChanges(),"Direct restoration did not compare against the saved node values");
     auto* external=scene->CreateGameObject("External structure");
     Check(external&&manager.HasUnsavedChanges(),"External structure did not invalidate the authored snapshot");
+    Check(manager.AddBuiltinComponent(external->GetInstanceID(),"GameSproutRuntime.Camera",error),error);
     Check(manager.SaveScene(error),error);
+    const auto externalFile=manager.GetObjectFileID(external->GetInstanceID());
+    const auto cameraInstance=external->GetComponent<GameSproutRuntime::ICameraComponent>()->GetComponentInstanceID();
+    const auto cameraFile=manager.GetComponentFileID(external->GetInstanceID(),cameraInstance);
+    Check(externalFile&&cameraFile&&scene->RemoveChild(external,false)&&manager.HasUnsavedChanges(),
+        "Detached object was not removed from the authored order");
+    Check(scene->AddChild(external,false)&&!manager.HasUnsavedChanges()&&
+        manager.GetObjectFileID(external->GetInstanceID())==externalFile&&
+        manager.GetComponentFileID(external->GetInstanceID(),cameraInstance)==cameraFile,
+        "Reattaching an unchanged object did not restore its document identities and order");
     Check(scene->DestroyGameObject(external)&&manager.HasUnsavedChanges(),"External deletion was not observed");
     // Journal readers have a bounded history. A missed window must rebuild once,
     // not silently report clean or invent an Undo transaction for external edits.

@@ -63,6 +63,7 @@ public:
     bool SaveScene(std::string& error) override;
     bool SaveSceneAs(const std::string& relativePath,std::string& error) override;
     bool HasUnsavedChanges() const override;
+    bool HasCachedUnsavedChanges() const override {return _Unsaved;}
     bool CreateSceneAsset(const std::string& directory, const std::string& name, std::string& path, std::string& error) override;
     bool RegisterSceneListener(ISceneListener* listener) override;
     void UnregisterSceneListener(ISceneListener* listener) override;
@@ -82,11 +83,13 @@ private:
     void RememberActiveScene() const;
     GameSproutRuntime::IGameSproutRuntime* Runtime() const;
     bool Ready(std::string& error) const;
-    bool Capture(Json::Value& document,std::string& text,std::string& error) const;
+    bool Capture(Json::Value& document,std::string& error) const;
     SceneDirtyState MakeDirtyBaseline(const Json::Value&) const;
     bool SynchronizeDirtyState(std::string& error) const;
     bool RefreshDirtyDocument(const Json::Value&,std::string& error) const;
     bool RefreshDirtyRoot(std::string& error) const;
+    bool PublishNewIdentities(const std::vector<GameSproutRuntime::IGameObject*>&,std::string& error) const;
+    bool CaptureSubtree(GameSproutRuntime::IGameObject&,Json::Value&,std::string& error) const;
     bool DirtyFromSnapshot() const;
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
@@ -111,7 +114,7 @@ private:
         struct SceneSnapshot {Json::Value Document;SceneDocument::ObjectIDs IDs;};
         std::vector<SceneSnapshot> Scenes;
         std::size_t ActiveIndex=0;
-        std::string Path,BaselineText,DiskHash,LastStateText;
+        std::string Path,DiskHash;
         std::vector<Edit> History;
         std::size_t HistoryPosition=0;
         bool Unsaved=false;
@@ -122,7 +125,7 @@ private:
     struct DocumentContext {
         uint64_t ActiveID=0;
         SceneDocument::ObjectIDs IDs;
-        std::string Path,BaselineText,DiskHash,LastStateText;
+        std::string Path,DiskHash;
         std::vector<Edit> History;
         std::size_t HistoryPosition=0;
         Json::Value Annotations{Json::objectValue};
@@ -137,7 +140,7 @@ private:
     bool IsTemporaryDocumentContext() const {return _DocumentSession&&!_EditingSuspended;}
     bool RunEdit(const Edit& edit,bool forward,std::string& error);
     bool CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& edit,std::string& error) const;
-    bool RunDeletion(const Edit& edit,bool forward,std::string& error);
+    bool RunDeletion(const Edit& edit,bool forward,std::string& error,bool firstExecution=false);
     bool RunComponentEdit(const Edit& edit,bool forward,std::string& error);
     bool RunDocumentEdit(const Edit& edit,bool forward,std::string& error);
     bool ApplyDocument(const Json::Value& before,const Json::Value& after,std::string& error);
@@ -169,9 +172,7 @@ private:
     mutable SceneDirtyState _DirtyState;
     mutable SceneDocument::ObjectIDs _ObjectIDs;
     Json::Value _Annotations{Json::objectValue};
-    std::string _BaselineText;
     std::string _DiskHash; // 打开/上次保存的原始文件字节 SHA256，不能用规范化快照代替。
-    std::string _LastStateText;
     std::vector<Edit> _History;
     std::size_t _HistoryPosition = 0;
     std::uint64_t _NextListener = 0;

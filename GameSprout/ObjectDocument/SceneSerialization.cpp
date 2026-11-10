@@ -40,6 +40,24 @@ Json::Value Components(GameSproutRuntime::IGameObject& object, const SceneDocume
 }
 
 namespace SceneDocument {
+void ObjectIDs::PruneComponentFileIDs(const GameSproutRuntime::IGameObject& owner) {
+    const auto id=owner.GetInstanceID();
+    std::set<std::uint64_t> live;
+    for(std::size_t index=0;index<owner.GetComponentCount();++index)
+        if(const auto* component=owner.GetComponentAt(index))live.insert(component->GetComponentInstanceID());
+    auto it=_ComponentToFile.lower_bound({id,0});
+    while(it!=_ComponentToFile.end()&&it->first.first==id) {
+        if(!live.contains(it->first.second))it=_ComponentToFile.erase(it);
+        else ++it;
+    }
+}
+
+void ObjectIDs::ForgetObjectFileID(std::uint64_t owner) {
+    RuntimeToFile.erase(owner);
+    auto it=_ComponentToFile.lower_bound({owner,0});
+    while(it!=_ComponentToFile.end()&&it->first.first==owner)it=_ComponentToFile.erase(it);
+}
+
 bool SerializeProperties(GameSproutRuntime::IGameObject& object,const ObjectIDs& ids,Json::Value& output,std::string& error) {
     error.clear();
     try {
