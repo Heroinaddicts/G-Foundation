@@ -255,7 +255,7 @@ namespace GameSproutEditor {
     void GameSproutEditorFinal::Release() {
         _Ready = false;
         for (const auto& [name, view] : _ViewMap) {
-            if(name!="IDEWindow")view->Release(this);
+            if(name!="IDEWindow"&&name!="ConsoleUI")view->Release(this);
         }
         // End gameplay while scene snapshots, script module code and the host
         // still exist. OnRelease callbacks must finish before unloading GameLogic.
@@ -275,6 +275,12 @@ namespace GameSproutEditor {
         // Runtime and the loading UI still exist. Source listeners go first.
         const auto scripts=_ModuleMap.find("ScriptEditor");
         if(scripts!=_ModuleMap.end())scripts->second->Release(_Api);
+        // Keep the Console subscribed through gameplay Release callbacks, then
+        // detach it before destroying the log view and its IDE container.
+        const auto console=_ModuleMap.find("Console");
+        if(console!=_ModuleMap.end())console->second->Release(_Api);
+        const auto consoleView=_ViewMap.find("ConsoleUI");
+        if(consoleView!=_ViewMap.end())consoleView->second->Release(this);
         // The IDE container owns attached widgets. Disconnect and shut down their
         // views before deleting the container and its native viewport windows.
         const auto ide=_ViewMap.find("IDEWindow");
@@ -286,7 +292,7 @@ namespace GameSproutEditor {
             if(found!=_ModuleMap.end())found->second->Release(_Api);
         }
         for (const auto& [name, module] : _ModuleMap) {
-            if(name!="PrefabStage"&&name!="PrefabManager"&&name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
+            if(name!="PrefabStage"&&name!="PrefabManager"&&name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="Console"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
         }
         _ViewMap.clear();
         _ModuleMap.clear();

@@ -49,6 +49,14 @@ Update(delta) 等价于 AdvanceFrame(delta,0,0)；FixedUpdate(delta) 是独立�
 Transform 固有、唯一、不能移除；场景根固定为单位变换。
 保留世界变换的重挂载遇到不可逆矩阵或 TRS 无法表达的剪切时拒绝，保持原层级。
 
+游戏日志
+项目 Script 和 Module 可调用 runtime->Log(RuntimeLogLevel::Debug, "message")。
+RuntimeScriptModule.h 也提供 GS_DEBUG、GS_TRACE 和 GS_ERROR，支持 printf 格式，
+例如 GS_DEBUG(runtime, "I am %s", "max") 或 GS_TRACE(runtime, "开始运行")。
+日志正文使用 UTF-8，级别包括 Debug、Trace、Warning、Error，文件和行号默认取调用位置。
+宿主在 Runtime 所属线程注册日志监听，销毁监听者前注销。Runtime 同步传递记录，
+包括停止游戏时的释放日志。回调需要在调用结束后使用记录时应先复制。
+
 几何数据与空间
 Vector2/3/4、Mat3/4、Quaternion、Color、Rect、Bounds、Plane、Ray、Viewport 各自独立头文件。
 Math/TransformMath.h 公开有限值检查、TRS组合、仿射求逆、TRS分解；RuntimeMath.h仅是内部转发。

@@ -180,7 +180,7 @@ inline bool IGameSproutRuntime::RemoveScriptComponent(IGameObject*,std::uint64_t
 inline bool IGameSproutRuntime::SetScriptExecutionEnabled(bool,std::string& error) { error="Native scripts are unavailable"; return false; }
 
 // Fixed native library entry contract. All SDK/compiler/CRT versions must match.
-inline constexpr std::uint32_t ScriptModuleABIVersion = 6;
+inline constexpr std::uint32_t ScriptModuleABIVersion = 7;
 inline constexpr const char* ScriptModuleEntryName = "GetGameSproutGameLogic";
 struct ScriptModuleAPI {
     std::uint32_t Version = ScriptModuleABIVersion;

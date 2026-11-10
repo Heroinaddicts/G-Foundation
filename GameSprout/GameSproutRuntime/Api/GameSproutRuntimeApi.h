@@ -6,6 +6,8 @@
 #include <functional>
 #include <cstddef>
 #include <cstdint>
+#include <source_location>
+#include <string_view>
 #include <type_traits>
 #include <typeinfo>
 #include <vector>
@@ -19,6 +21,7 @@
 #include "Math/Viewport.h"
 #include "ResourceReference.h"
 #include "RuntimeInputApi.h"
+#include "RuntimeLogApi.h"
 #include "RuntimePrefabApi.h"
 #include "RuntimeProjectSettings.h"
 #include "RuntimeStaticFlags.h"
@@ -608,6 +611,18 @@ namespace GameSproutRuntime {
         virtual bool ReplaceGameLogicTypes(const std::vector<std::string>& removeScriptTypes,
             const std::vector<ScriptTypeRegistration>& scripts,
             const std::vector<GameModuleRegistration>& modules,std::string& error);
+
+        // Owner thread only. Unregister borrowed listeners before destroying them.
+        virtual bool RegisterLogListener(IRuntimeLogListener*) { return false; }
+        virtual void UnregisterLogListener(IRuntimeLogListener*) {}
+        // UTF-8 message. Calls made from a log listener are ignored.
+        void Log(RuntimeLogLevel level, std::string_view message,
+                 std::source_location location = std::source_location::current()) noexcept {
+            WriteLog(level, message, location.file_name(), location.line());
+        }
+
+    private:
+        virtual void WriteLog(RuntimeLogLevel, std::string_view, const char*, std::uint_least32_t) noexcept {}
     };
 
 }

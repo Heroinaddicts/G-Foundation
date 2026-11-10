@@ -11,6 +11,7 @@
 #include <QLibrary>
 #include <QTemporaryDir>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 
 static void Require(bool condition,const std::string& message){if(!condition)throw std::runtime_error(message);}
@@ -64,6 +65,49 @@ public:
     bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
     void Release(GameSproutEditor::GameSproutModuleApi*)override{}
 };
+class LogRecorder final : public GameSproutRuntime::IRuntimeLogListener {
+public:
+    void OnRuntimeLog(const GameSproutRuntime::RuntimeLogRecord& record) override {
+        Records.push_back(record);
+    }
+
+    std::vector<GameSproutRuntime::RuntimeLogRecord> Records;
+};
+
+static void CheckGameplayLogs(const LogRecorder& recorder, const QString& assetsCode, const QString& mirrorRoot) {
+    using GameSproutRuntime::RuntimeLogLevel;
+    struct ExpectedLog {
+        RuntimeLogLevel Level;
+        std::string Message;
+        const char* File;
+        const char* Format = nullptr;
+    };
+    const ExpectedLog expected[] = {
+        {RuntimeLogLevel::Debug, "模块启动 max 100%", "SessionModule.hpp", "模块启动 %s %d%%"},
+        {RuntimeLogLevel::Trace, "脚本启动", "Test.hpp"},
+        {RuntimeLogLevel::Warning, "模块更新", "SessionModule.hpp"},
+        {RuntimeLogLevel::Debug, "脚本更新", "Test.hpp"},
+        {RuntimeLogLevel::Warning, "脚本释放", "Test.hpp"},
+        {RuntimeLogLevel::Error, "模块释放 " + std::string(299, '0') + '7',
+            "SessionModule.hpp", "模块释放 %0300d"},
+    };
+    Require(recorder.Records.size() == std::size(expected), "Gameplay lifecycle logs were lost or duplicated");
+    for (std::size_t index = 0; index < std::size(expected); ++index) {
+        const auto& record = recorder.Records[index];
+        const auto& wanted = expected[index];
+        Require(record.Level == wanted.Level && record.Message == wanted.Message,
+                "Unexpected gameplay log level or UTF-8 message: " + record.Message);
+        const QString path = QDir(mirrorRoot).absoluteFilePath(QString::fromStdString(record.File));
+        const QString compiledPath = QFileInfo(mirrorRoot + "/Code/" + wanted.File).canonicalFilePath();
+        Require(!compiledPath.isEmpty() && QFileInfo(path).canonicalFilePath() == compiledPath,
+                "Gameplay log did not report its source header: " + record.File);
+        const QByteArray source = Read(assetsCode + '/' + wanted.File);
+        const qsizetype message = source.indexOf(wanted.Format ? wanted.Format : wanted.Message.c_str());
+        Require(message >= 0 && record.Line == source.left(message).count('\n') + 1,
+                "Gameplay log did not report the line of the call: " + record.Message);
+    }
+}
+
 static EditorScriptType Find(const std::vector<EditorScriptType>& types,const std::string& name){
     for(const auto& type:types)if(type.Type.Name==name)return type;
     throw std::runtime_error("Missing compiled class: "+name);
@@ -108,10 +152,17 @@ public:
     int Ticks() const override { return _Ticks; }
 protected:
     bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        GS_DEBUG(runtime, "模块启动 %s %d%%", "max", 100);
         return runtime->FindModule<ISessionModule>("SessionModule") == this;
     }
     bool Launch(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
-    void Update(GameSproutRuntime::IGameSproutRuntime*, float) override { ++_Ticks; }
+    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float) override {
+        runtime->Log(GameSproutRuntime::RuntimeLogLevel::Warning, "模块更新");
+        ++_Ticks;
+    }
+    void Release(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        GS_ERROR(runtime, "模块释放 %0300d", 7);
+    }
 private:
     int _Ticks = 0;
 };
@@ -152,6 +203,7 @@ GAMESPROUT_SCRIPT(Mover)
 class Test : public GameSproutRuntime::ScriptBehaviour {
 public:
     void OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        GS_TRACE(runtime, "脚本启动");
         auto* module=runtime->FindModule<ISessionModule>("SessionModule");
         if(!module||module->Ticks()!=0)throw std::runtime_error("Gameplay module was not ready before script creation");
         if(_GameObject->AddComponent<Test>()!=nullptr)throw std::runtime_error("duplicate self add succeeded");
@@ -167,12 +219,14 @@ public:
     }
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=2;_GameObject->GetTransform()->SetLocalPosition(p);}
     void Update(GameSproutRuntime::IGameSproutRuntime* runtime,float delta) override {
+        runtime->Log(GameSproutRuntime::RuntimeLogLevel::Debug, "脚本更新");
         const auto* module=runtime->FindModule<ISessionModule>("SessionModule");
         if(!module||module->Ticks()==0)throw std::runtime_error("Module Update did not run before script Update");
         auto p=_GameObject->GetTransform()->GetLocalPosition();p.X+=delta;_GameObject->GetTransform()->SetLocalPosition(p);
     }
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=delta;_GameObject->GetTransform()->SetLocalPosition(p);}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        runtime->Log(GameSproutRuntime::RuntimeLogLevel::Warning, "脚本释放");
         if(!runtime->FindModule<ISessionModule>("SessionModule"))throw std::runtime_error("Module released before the script");
         auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=3;_GameObject->GetTransform()->SetLocalPosition(p);
     }
@@ -238,9 +292,13 @@ GAMESPROUT_SCRIPT(Test)
         Require(plainObject->AddComponent<GameSproutRuntime::IMeshComponent>()!=nullptr,"Host failed to create Mesh for cross-DLL typed lookup");
         auto* plain=editor._Runtime->AddScriptComponent(plainObject,testType.Type.TypeID,testType.Source,0,error);Require(plain,error);
         Require(!editor._Runtime->AddScriptComponent(object,moverType.Type.TypeID,moverType.Source,0,error),"Duplicate script class attached to one object");
+        LogRecorder logs;
+        Require(editor._Runtime->RegisterLogListener(&logs), "Cannot subscribe to Runtime logs");
         Require(editor._Runtime->BeginExecution(error),error);
         Require(editor._Runtime->FindModule("SessionModule")!=nullptr,"Play did not create the registered module");
+        Require(logs.Records.size() == 2, "Startup logs were not delivered before BeginExecution returned");
         editor._Runtime->Update(.016f);
+        Require(logs.Records.size() == 4, "Update logs were not delivered before the frame returned");
         Require(plain->GetScriptError().empty()&&plainObject->GetTransform()->GetLocalPosition().Y==2,"Plain Test self-add/Get<this> or lifecycle failed: "+plain->GetScriptError());
         Require(plainObject->GetTransform()->GetLocalPosition().Z==0,"Variable Update called FixedUpdate");
         editor._Runtime->FixedUpdate(.25f);
@@ -253,6 +311,10 @@ GAMESPROUT_SCRIPT(Test)
         Require(editor._Runtime->EndExecution(error),error);
         Require(editor._Runtime->FindModule("SessionModule")==nullptr,"Stop retained a live gameplay module");
         Require(plainObject->GetTransform()->GetLocalPosition().Y==3,"Plain user OnRelease was not invoked");
+        CheckGameplayLogs(logs, code, mirrorRoot);
+        editor._Runtime->UnregisterLogListener(&logs);
+        editor._Runtime->Log(GameSproutRuntime::RuntimeLogLevel::Trace, "Detached listener");
+        Require(logs.Records.size() == 6, "A detached Runtime listener received a log");
         ScriptCompileResult cached;Require(compiler.Compile(request,cached,[]{return false;})&&cached.CacheHit,"Cache hit");
         Require(Stamp(independentObject)==firstIndependentStamp&&Stamp(mirrorRoot+"/Code/Test.hpp")==firstMirrorStamp,"Identical input rewrote source mirrors or rebuilt a helper object");
         Require(editor.Load(request,cached,error)&&editor._CurrentSlot==executionSlot,"Loading the same fingerprint unnecessarily switched slots");
@@ -402,6 +464,6 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
         editor.Release(nullptr);Require(!script->IsScriptTypeAvailable(),"Unload did not leave a safe missing-type wrapper");
         delete editor._Runtime;
         temporary.setAutoRemove(true);
-        std::cout<<"PASS plain five-callback single-marker source, typed self Add/Get, automatic GUID/field reflection, default values, distinct classes, explicit FixedUpdate, cache, atomic reload/rejection and schema identity, class rename identity, cancellation and safe unload\n";
+        std::cout<<"PASS plain five-callback single-marker source, typed self Add/Get, automatic GUID/field reflection, default values, distinct classes, explicit FixedUpdate, gameplay lifecycle logs, cache, atomic reload/rejection and schema identity, class rename identity, cancellation and safe unload\n";
     }catch(const std::exception& exception){std::cerr<<"FAIL: "<<exception.what()<<'\n';return 1;}
 }

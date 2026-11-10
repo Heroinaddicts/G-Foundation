@@ -6,6 +6,7 @@
 #include <chrono>
 #include <map>
 #include <set>
+#include <thread>
 #include <typeindex>
 #include <type_traits>
 #include <vector>
@@ -146,6 +147,8 @@ public:
     void NotifyScriptError(IGameObject*,const std::string&);
     bool RegisterListener(IRuntimeListener* listener) override;
     void UnregisterListener(IRuntimeListener* listener) override;
+    bool RegisterLogListener(IRuntimeLogListener* listener) override;
+    void UnregisterLogListener(IRuntimeLogListener* listener) override;
     bool IsExecuting() const override { return _Depth != 0 || _Updating || _Flushing || _InitializingComponents || _EndingFrame; }
     void AdvanceFrame(float deltaSeconds,std::uint32_t fixedStepCount,float fixedDeltaSeconds) override;
     void Update(float deltaSeconds) override;
@@ -184,6 +187,9 @@ public:
     void ResetPhysics(bool releaseSystem = false);
 
 private:
+    void WriteLog(RuntimeLogLevel level, std::string_view message, const char* file,
+                  std::uint_least32_t line) noexcept override;
+
     enum class CommandType { Attach, Reparent, DestroyObject, DestroyScene, RemoveComponent };
     struct Command {
         CommandType Type;
@@ -262,6 +268,10 @@ private:
     std::deque<AnimationRecord> _AnimationEvents;
     std::uint64_t _AnimationSequence=0;
     std::map<std::uint64_t,Listener> _Listeners;
+    const std::thread::id _LogOwnerThread = std::this_thread::get_id();
+    std::map<std::uint64_t,IRuntimeLogListener*> _LogListeners;
+    std::uint64_t _NextLogListener = 0;
+    bool _DispatchingLog = false;
     struct ObjectPropertyObservation {
         std::uint64_t SceneID=0;
         std::map<IRuntimePropertyObserver*,std::uint64_t> Observers;
