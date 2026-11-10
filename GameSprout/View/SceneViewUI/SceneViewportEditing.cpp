@@ -123,7 +123,7 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
         if(!_Gizmo.BeginDrag(pixel,error)){Report(error);return true;}
         const char* label=_Tool==SceneEditingTool::Move?"Scene 移动物体":_Tool==SceneEditingTool::Rotate?"Scene 旋转物体":"Scene 缩放物体";
         if(!_Scenes->BeginTransformEdit(_ObjectID,label,error)){_Gizmo.CancelDrag();Report(error);return true;}
-        _TransformEditActive=true;_DragView=view;return true;
+        _TransformEditActive=true;_DragChanged=false;_DragView=view;return true;
     }
     GameSproutRuntime::Ray ray;GameSproutRuntime::SceneRaycastHit hit;
     bool picked=SceneGizmo::MakeRay(view,pixel,ray);
@@ -146,13 +146,13 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
 bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
     _HoverPixel=logical;_HasHover=true;
     if(_Gizmo.IsDragging()) {
-        _Viewport.RequestRender();
-        if(!_Scenes||!Selected()||Selected()->GetInstanceID()!=_ObjectID||!_Scenes->HasTransformEdit()){Cancel();return true;}
-        // 拖动时相机和目标像素尺寸都固定。宿主 resize 会先取消此事务。
+        // Sample every point for rotation winding. Only the latest valid TRS
+        // needs to cross into SceneManager before the next presented frame.
         SceneGizmoTransform candidate;std::string error;
         if(_Gizmo.Drag(Pixel(logical,_DragView),snap||_Snap,candidate,error)) {
             _Viewport.ClearEditingError();
-            if(!_Scenes->PreviewTransformEdit({candidate.Position,candidate.Rotation,candidate.Scale},error)){Report(error);Cancel();}
+            _PendingDrag=SceneTransformState{candidate.Position,candidate.Rotation,candidate.Scale};
+            _Viewport.RequestRender();
         }else Report(error);
         return true;
     }
@@ -163,16 +163,31 @@ bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
     }
     return false;
 }
-bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap) {
+void SceneViewportEditing::ApplyPendingDrag() {
+    if(!_PendingDrag)return;
+    const auto candidate=*_PendingDrag;
+    _PendingDrag.reset();
+    auto* object=Selected();
+    if(!_Scenes||!object||object->GetInstanceID()!=_ObjectID||!_Scenes->HasTransformEdit()){Cancel();return;}
+    const auto revision=_ActiveScene->GetAuthoringRevision();
+    std::string error;
+    if(!_Scenes->PreviewTransformEdit(candidate,error)){Report(error);Cancel();}
+    else _DragChanged|=_ActiveScene->GetAuthoringRevision()!=revision;
+}
+bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap,std::uint64_t& shadowPreviewID) {
     if(!_Gizmo.IsDragging())return false;
     Move(logical,snap);
+    ApplyPendingDrag();
     if(_Gizmo.IsDragging()) {
+        shadowPreviewID=ShadowPreviewObjectID();
         _Gizmo.EndDrag();std::string error;
         if(_Scenes&&!_Scenes->CommitTransformEdit(error)){Report(error);_Scenes->CancelTransformEdit(error);}
     }
-    _Ready=false;return true;
+    _DragChanged=false;_Ready=false;return true;
 }
 void SceneViewportEditing::Cancel() {
+    _PendingDrag.reset();
+    _DragChanged=false;
     const bool dragging=_Gizmo.IsDragging();_Gizmo.CancelDrag();_Ready=false;
     if(dragging&&_Scenes){std::string error;if(!_Scenes->CancelTransformEdit(error))Report(error);}
     if(dragging){_Viewport.ReleaseEditingCapture();_Viewport.RequestRender();}

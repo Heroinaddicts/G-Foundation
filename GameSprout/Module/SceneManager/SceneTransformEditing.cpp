@@ -70,7 +70,9 @@ bool SceneManager::BeginTransformEdit(uint64_t objectID,const std::string& label
         TransformEdit edit;edit.Active=true;edit.SceneID=_ActiveID;edit.ObjectID=objectID;edit.Label=label;
         edit.Before=edit.Last=Read(*object->GetTransform());
         if(auto* parent=object->Parent()){edit.ParentID=parent->GetInstanceID();edit.ParentWorld=parent->GetTransform()->GetWorldMatrix();}
-        _TransformEdit=std::move(edit);return true;
+        _TransformEdit=std::move(edit);
+        NotifyStateChanged();
+        return true;
     } catch(const std::exception& exception) {error=exception.what();return false;}
     catch(...) {error="无法开始连续变换。";return false;}
 }
@@ -79,6 +81,7 @@ bool SceneManager::PreviewTransformEdit(const SceneTransformState& value,std::st
     if(!_TransformEdit.Active||!Runtime()||Runtime()->IsExecuting()||_Switching||_ExecutingEdit||_Notifying){error="连续变换当前不可用。";return false;}
     auto* object=TransformTarget(true);
     if(!object){std::string ignored;CancelTransformEdit(ignored);error="目标、父节点或变换已改变，拖拽已取消。";return false;}
+    if(Equal(value,_TransformEdit.Last))return true;
     EditingScope editing(_ExecutingEdit);
     bool accepted=false;
     try {
@@ -94,8 +97,9 @@ bool SceneManager::PreviewTransformEdit(const SceneTransformState& value,std::st
         try {if(!Write(*object,_TransformEdit.Last,rollback))error+=" 恢复上次预览失败："+rollback;}
         catch(...) {error+=" 恢复上次预览时发生异常。";}
     }
-    // 同步通知Inspector；监听回调不能重入取消、保存或其他编辑。
-    RefreshState(true);return accepted;
+    // Runtime 的组件事件会更新 Inspector。文档级通知留在事务边界，
+    // 避免每个鼠标样本触发 Prefab、保存菜单和其他监听者重新处理场景。
+    return accepted;
 }
 bool SceneManager::CancelTransformEdit(std::string& error) {
     error.clear();if(!_TransformEdit.Active)return true;

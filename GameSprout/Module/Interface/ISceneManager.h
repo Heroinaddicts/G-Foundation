@@ -129,7 +129,8 @@ public:
     virtual bool EditObjectDocument(const SceneDocumentEditRequest&,SceneSubtreeDocument&,std::string& error) {error="当前场景服务不支持文档事务。";return false;}
     // Scene 拖拽：Preview 实时修改同一 Runtime 对象，不追加历史；Commit 一拖一条，Cancel 不截断 Redo。
     // 活动事务期间拒绝其他属性编辑/Undo/Redo/保存/打开场景。全部在宿主主线程调用。
-    // Preview先验证完整TRS及场景可序列化性，失败保留上次有效预览；同步发StateChanged。
+    // Preview 先验证完整 TRS 及场景可序列化性，失败保留上次有效预览。
+    // Runtime 组件事件同步预览值，文档状态通知在开始、提交和取消时发出。
     // 目标删除/重挂父级/父世界变换变化会自动取消，恢复存活目标的原局部TRS。
     virtual bool BeginTransformEdit(uint64_t,const std::string&,std::string& error) {error="当前场景服务不支持连续变换编辑。";return false;}
     virtual bool PreviewTransformEdit(const SceneTransformState&,std::string& error) {error="没有连续变换编辑。";return false;}

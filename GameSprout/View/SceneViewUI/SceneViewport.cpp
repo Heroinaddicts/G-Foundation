@@ -56,6 +56,7 @@ void SceneViewport::DestroyGpu() {
     auto* renderer=_Renderer;_Renderer=nullptr;
     _AnimatedMaterials=false;
     _PresentedCamera={};
+    _ReleasedTransformPreviewID=0;
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
     RequestRender();
@@ -166,7 +167,7 @@ bool SceneViewport::EnsureRendering() {
 }
 void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};RequestRender();emit FrameStreamReset();}
+    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};_ReleasedTransformPreviewID=0;RequestRender();emit FrameStreamReset();}
     if(_Drag!=DragMode::None)AdvanceInput(dt);
     if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if(_Rendering||!CanRender())return;
@@ -174,6 +175,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     if(!EnsureRendering())return;
     _Rendering=true;
     struct Guard{bool& Value;~Guard(){Value=false;}} guard{_Rendering};
+    _Editing->ApplyPendingDrag();
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=grid;
     view.WaitForSurface=false;
@@ -186,6 +188,8 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     view.Camera.Projection.NearPlane=camera.NearPlane;view.Camera.Projection.FarPlane=camera.FarPlane;
     GameSproutRuntime::DebugDrawList debug;
     _Editing->UpdateFrame(scene,&view.Camera);
+    view.TransformPreviewObjectID=_Editing->ShadowPreviewObjectID();
+    if(!view.TransformPreviewObjectID)view.TransformPreviewObjectID=_ReleasedTransformPreviewID;
     if(!_ViewportChanged)_Editing->BuildDraw(scene,debug);
     if(!_ViewportChanged)_Tools->Draw(scene,debug);
     view.DebugDraw=&debug;
@@ -200,6 +204,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
         RequestRender();
         return;
     }
+    _ReleasedTransformPreviewID=0;
     emit FrameSubmitted();
     _Renderer->GetRenderedCamera(_PresentedCamera);
     const bool refreshOverlays=_ViewportChanged;

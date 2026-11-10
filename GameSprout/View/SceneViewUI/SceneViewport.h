@@ -76,6 +76,7 @@ private:
     SceneToolRouter* _Tools=nullptr;
     DragMode _Drag=DragMode::None;
     Qt::MouseButton _DragButton=Qt::NoButton;
+    std::uint64_t _ReleasedTransformPreviewID=0;
     QPointF _LastMouse;
     QSet<int> _Keys;
     QTimer _WheelNavigationSettle;

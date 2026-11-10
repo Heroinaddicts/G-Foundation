@@ -27,6 +27,7 @@ void SceneViewport::ReleaseEditingCapture() {
 void SceneViewport::ClearInput() {
     if(_Drag!=DragMode::None||_WheelNavigationSettle.isActive())RequestRender();
     _WheelNavigationSettle.stop();
+    _ReleasedTransformPreviewID=0;
     _Keys.clear();_Drag=DragMode::None;_DragButton=Qt::NoButton;
     // 先结束事务，再释放捕获；UngrabMouse 可能同步重新进入此函数。
     _Editing->Cancel();
@@ -43,6 +44,7 @@ void SceneViewport::AdvanceInput(float dt) {
 }
 void SceneViewport::mousePressEvent(QMouseEvent* event) {
     RequestRender();
+    _ReleasedTransformPreviewID=0;
     setFocus(Qt::MouseFocusReason);
     DragMode mode=DragMode::None;
     if(event->button()==Qt::RightButton && !(event->modifiers()&Qt::AltModifier))mode=DragMode::Look;
@@ -80,8 +82,12 @@ void SceneViewport::mouseReleaseEvent(QMouseEvent* event) {
     if(event->button()==Qt::LeftButton&&_Tools->Release(Pixel(event),event->modifiers()&Qt::ShiftModifier,event->modifiers()&Qt::AltModifier,Snap(event->modifiers()))) {
         ReleaseEditingCapture();event->accept();return;
     }
-    if(event->button()==Qt::LeftButton&&_Editing->Release(Pixel(event),Snap(event->modifiers()))) {
-        ReleaseEditingCapture();event->accept();return;
+    std::uint64_t transformPreviewID=0;
+    if(event->button()==Qt::LeftButton&&_Editing->Release(Pixel(event),Snap(event->modifiers()),transformPreviewID)) {
+        ReleaseEditingCapture();
+        // A quick gesture can finish before the host presents any drag frame.
+        _ReleasedTransformPreviewID=transformPreviewID;
+        event->accept();return;
     }
     if(event->button()==Qt::LeftButton&&_Drag==DragMode::None)ReleaseEditingCapture();
     if(event->button()==_DragButton){ClearInput();event->accept();return;}

@@ -127,10 +127,11 @@ void PrefabStage::OnActiveSceneChanged() {
     }
 }
 void PrefabStage::OnSceneStateChanged() {
-    if(_Busy||!_State.Active||_Scenes->IsEditingSuspendedDocument())return;
-    Json::Value current;std::string text,error;
-    if(Capture(current,text,error)){_State.Dirty=text!=_SavedText;if(!_State.MissingSource&&!_State.ExternalConflict)_State.Error.clear();}
-    else {_State.Dirty=true;_State.Error=error;}
+    if(_Busy||!_State.Active||_Scenes->IsEditingSuspendedDocument()||_Scenes->HasTransformEdit())return;
+    // SceneManager owns the stage's saved baseline. Full prefab capture and
+    // validation happen at the explicit Save/Close boundary.
+    _State.Dirty=_Scenes->HasUnsavedChanges();
+    if(!_State.MissingSource&&!_State.ExternalConflict)_State.Error.clear();
     Notify();
 }
 void PrefabStage::QueueObserve(const AssetEvent& event) {

@@ -30,6 +30,9 @@ class SceneFixture final : public ISceneManager {
 public:
     GameSproutRuntime::IScene* Scene=nullptr;
     std::string Path;
+    GameSproutRuntime::ITransformComponent* DragTarget=nullptr;
+    GameSproutRuntime::Vector3 DragStart;
+    unsigned DragPreviews=0,DragCommits=0;
     GameSproutRuntime::IScene* GetActiveScene() const override{return Scene;}
     const std::string& GetActiveScenePath() const override{return Path;}
     bool OpenScene(const std::string&,std::string&) override{return false;}
@@ -42,6 +45,24 @@ public:
     bool SaveSceneAs(const std::string&,std::string&) override{return false;}
     bool HasUnsavedChanges() const override{return false;}
     bool CreateSceneAsset(const std::string&,const std::string&,std::string&,std::string&) override{return false;}
+    bool BeginTransformEdit(uint64_t id,const std::string&,std::string&) override {
+        for(std::size_t index=0;index<Scene->GetChildCount();++index) {
+            auto* node=Scene->GetChild(index);
+            if(node->GetInstanceID()!=id)continue;
+            DragTarget=node->GetTransform();DragStart=DragTarget->GetLocalPosition();return true;
+        }
+        return false;
+    }
+    bool PreviewTransformEdit(const SceneTransformState& value,std::string&) override {
+        if(!DragTarget)return false;
+        ++DragPreviews;DragTarget->SetLocalPosition(value.Position);return true;
+    }
+    bool CommitTransformEdit(std::string&) override {++DragCommits;DragTarget=nullptr;return true;}
+    bool CancelTransformEdit(std::string&) override {
+        if(DragTarget)DragTarget->SetLocalPosition(DragStart);
+        DragTarget=nullptr;return true;
+    }
+    bool HasTransformEdit() const override{return DragTarget!=nullptr;}
     bool RegisterSceneListener(ISceneListener*) override{return true;}
     void UnregisterSceneListener(ISceneListener*) override{}
     bool Initialize(GameSproutEditor::GameSproutModuleApi*) override{return true;}
@@ -285,6 +306,28 @@ int main(int argc,char** argv) {
             auto stats=viewport->GetStatistics();Check(stats.DrawCalls>0&&stats.VisibleObjects>0,"Native test only cleared and did not draw triangle");
             std::cout<<"Native first frame "<<stats.Width<<'x'<<stats.Height<<" logical="<<viewport->width()<<'x'<<viewport->height()<<" dpr="<<viewport->devicePixelRatioF()<<'\n';
             Check(std::abs(int(stats.Width)-qRound(viewport->width()*viewport->devicePixelRatioF()))<=2&&std::abs(int(stats.Height)-qRound(viewport->height()*viewport->devicePixelRatioF()))<=2,"Native SurfaceFrame did not match physical Retina pixels");
+            const QPoint pivot(viewport->width()/2,viewport->height()/2);
+            const auto moveDrag=[&](int x) {Mouse(viewport,QEvent::MouseMove,pivot+QPoint(x,0),Qt::NoButton,Qt::LeftButton);};
+            const auto startDrag=[&] {
+                Mouse(viewport,QEvent::MouseButtonPress,pivot,Qt::LeftButton,Qt::LeftButton);
+                Check(editor->Scenes.HasTransformEdit(),"Center gizmo did not open an edit");
+            };
+            startDrag();
+            for(int x:{8,15,20})moveDrag(x);
+            Check(editor->Scenes.DragPreviews==0,"Mouse input edited the document before the host frame");
+            tick();
+            const auto previewed=mesh->GetTransform()->GetLocalPosition();
+            Check(editor->Scenes.DragPreviews==1&&std::fabs(previewed.X)>.01f,"Drag inputs did not coalesce into one preview");
+            moveDrag(28);
+            Mouse(viewport,QEvent::MouseButtonRelease,pivot+QPoint(42,0),Qt::LeftButton,Qt::NoButton);
+            Check(editor->Scenes.DragPreviews==2&&editor->Scenes.DragCommits==1&&
+                std::fabs(mesh->GetTransform()->GetLocalPosition().X)>std::fabs(previewed.X),"Release lost the final pointer position");
+            mesh->GetTransform()->SetLocalPosition({});tick();
+            startDrag();moveDrag(40);
+            QKeyEvent cancelDrag(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);
+            QCoreApplication::sendEvent(viewport,&cancelDrag);tick();
+            Check(editor->Scenes.DragPreviews==2&&editor->Scenes.DragCommits==1&&
+                Same(mesh->GetTransform()->GetLocalPosition(),{}),"Cancel applied a queued preview after restoring the original transform");
             const auto originalWidth=stats.Width;host->resize(1060,770);QCoreApplication::processEvents();
             ide->ResizeDockers({ide->QueryDocker("Scene")},{1},Qt::Horizontal);QCoreApplication::processEvents();
             std::cout<<"Native resized logical="<<viewport->width()<<'x'<<viewport->height()<<" dpr="<<viewport->devicePixelRatioF()<<std::endl;

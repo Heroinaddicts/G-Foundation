@@ -58,7 +58,7 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
 void SceneManager::Update(GameSproutEditor::GameSproutModuleApi*) {
     if(!Runtime()) return;
     if(_TransformEdit.Active&&!TransformTarget(true)) {std::string error;CancelTransformEdit(error);}
-    if (_StatePending) RefreshState();
+    if (_StatePending&&!_TransformEdit.Active) RefreshState();
 }
 void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Listeners.clear();

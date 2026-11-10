@@ -101,9 +101,18 @@ void CheckOpenDiscardAndHistory(Fixture& fixture) {
     Check(!main->IsSimulationEnabled()&&main->IsActiveInHierarchy()&&fixture.Scenes->GetActiveScene()->IsSimulationEnabled(),
         "Opening Stage failed to isolate main simulation while keeping its hierarchy renderable");
     Check(fixture.Selection.GetSceneObjectSelection()==SceneObjectSelection{state.SceneID,root->GetInstanceID()},"Opening Stage did not select its content root");
-    const auto childID=root->GetChild(0)->GetInstanceID();SetPosition(*fixture.Scenes,childID,{2,3,4});
-    Check(fixture.Stage->GetState().Dirty,"Stage property edit did not mark its own document dirty");
-    Check(fixture.Scenes->Undo(error)&&root->GetChild(0)->GetTransform()->GetLocalPosition().X==0,error);
+    auto* child=root->GetChild(0);const auto childID=child->GetInstanceID();auto* transform=child->GetTransform();
+    const SceneTransformState preview{{2,3,4},transform->GetLocalRotation(),transform->GetLocalScale()};
+    Check(fixture.Scenes->BeginTransformEdit(childID,"Stage drag",error)&&fixture.Scenes->PreviewTransformEdit(preview,error),error);
+    Check(!fixture.Stage->GetState().Dirty&&!fixture.Stage->Save(error)&&Read(fixture.Full())==sourceBytes,
+        "Uncommitted stage drag published dirty state or changed the prefab source");
+    Check(fixture.Scenes->CancelTransformEdit(error)&&!fixture.Stage->GetState().Dirty&&fixture.Stage->GetState().Error.empty(),
+        "Cancelled drag dirtied the stage or failed to clear preview state");
+    Check(fixture.Scenes->BeginTransformEdit(childID,"Stage drag",error)&&fixture.Scenes->PreviewTransformEdit(preview,error)&&
+        fixture.Scenes->CommitTransformEdit(error),error);
+    Check(fixture.Stage->GetState().Dirty&&fixture.Stage->GetState().Error.empty(),"Committed drag did not mark the stage dirty");
+    Check(fixture.Scenes->Undo(error)&&root->GetChild(0)->GetTransform()->GetLocalPosition().X==0&&!fixture.Stage->GetState().Dirty,
+        "Undo did not restore the stage's saved baseline");
     Check(fixture.Scenes->Redo(error)&&root->GetChild(0)->GetTransform()->GetLocalPosition().X==2,error);
     Check(!fixture.Stage->Close(false,error)&&fixture.Stage->GetState().Active,"Dirty Stage closed without an explicit discard/save");
     Check(fixture.Stage->Close(true,error),error);Pump();

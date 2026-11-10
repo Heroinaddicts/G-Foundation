@@ -3,6 +3,7 @@
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
 #include <functional>
+#include <optional>
 
 class SceneViewport;
 enum class SceneEditingTool { View, Move, Rotate, Scale };
@@ -21,11 +22,14 @@ public:
     void BuildDraw(GameSproutRuntime::IScene* scene,GameSproutRuntime::DebugDrawList& draw);
     bool Press(GameSproutRuntime::Vector2 logicalPixel);
     bool Move(GameSproutRuntime::Vector2 logicalPixel,bool snap);
-    bool Release(GameSproutRuntime::Vector2 logicalPixel,bool snap);
+    void ApplyPendingDrag();
+    bool Release(GameSproutRuntime::Vector2 logicalPixel,bool snap,std::uint64_t& shadowPreviewID);
     void Cancel();
     void SetReadOnly(bool value);
     bool DeleteSelection();
     bool IsDragging() const {return _Gizmo.IsDragging();}
+    std::uint64_t DraggingObjectID() const {return IsDragging()?_ObjectID:0;}
+    std::uint64_t ShadowPreviewObjectID() const {return _DragChanged?DraggingObjectID():0;}
     SceneEditingTool Tool() const {return _Tool;}
     void SetTool(SceneEditingTool tool);
     void SetSpace(SceneGizmoSpace space);
@@ -52,6 +56,8 @@ private:
     SceneGizmoSettings _Settings;
     SceneGizmo _Gizmo;
     SceneGizmoView _DragView;
+    std::optional<SceneTransformState> _PendingDrag;
+    bool _DragChanged=false;
     GameSproutRuntime::Vector2 _HoverPixel;
     bool _HasHover=false;
     bool _Ready=false,_Snap=false,_ReadOnly=false;
