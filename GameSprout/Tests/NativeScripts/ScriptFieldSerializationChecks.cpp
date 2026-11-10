@@ -38,6 +38,9 @@ public:
 };
 class Child final : public Base {
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Child>;
+    explicit Child(IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     IGameObject* _Target;
     GAMESPROUT_SERIALIZE_FIELD
@@ -63,8 +66,9 @@ protected:
 };
 GAMESPROUT_SCRIPT(Child)
 )";
-        Write(assets+"/Child.hpp",source);ScriptCompiler compiler;ScriptCompileRequest request;
-        request.AssetsRoot=assets.toStdString();request.BuildRoot=(temporary.path()+"/Library/ScriptBuild").toStdString();request.Sources={{"Child.hpp","00112233445566778899aabbccddeeff"}};
+        Write(assets+"/Child.h",source);ScriptCompiler compiler;ScriptCompileRequest request;
+        Write(assets+"/Child.cpp","#include \"Child.h\"\n");
+        request.AssetsRoot=assets.toStdString();request.BuildRoot=(temporary.path()+"/Library/ScriptBuild").toStdString();request.Sources={{"Child.h","00112233445566778899aabbccddeeff"},{"Child.cpp","10112233445566778899aabbccddeeff"}};
         ScriptCompileResult compiled;Check(compiler.Compile(request,compiled,[]{return false;}),compiled.Diagnostics);
         Check(compiled.Types.size()==1&&compiled.Types[0].Fields.size()==10,"Private/protected/inherited fields schema is incomplete: "+compiled.ReflectionWarnings);
         Check(!compiled.SchemaPath.empty()&&QCryptographicHash::hash(Read(QString::fromStdString(compiled.SchemaPath)),QCryptographicHash::Sha256).toHex().toStdString()==compiled.SchemaHash,"Pure metadata schema missing/hash mismatch");
@@ -101,13 +105,16 @@ GAMESPROUT_SCRIPT(Child)
             Check(runtime->EndExecution(error),error);delete runtime;runtime=nullptr;
         }
         Check(library.unload(),"Module unload");
-        QByteArray unsupported=source;unsupported.replace("int _ChildSecret = 7;","int _ChildSecret = 7;\n    GAMESPROUT_SERIALIZE_FIELD\n    void* _Unsupported = nullptr;");Write(assets+"/Child.hpp",unsupported);
+        QByteArray unsupported=source;unsupported.replace("int _ChildSecret = 7;","int _ChildSecret = 7;\n    GAMESPROUT_SERIALIZE_FIELD\n    void* _Unsupported = nullptr;");Write(assets+"/Child.h",unsupported);
         ScriptCompileResult rejected;Check(!compiler.Compile(request,rejected,[]{return false;})&&rejected.Diagnostics.find("Child::_Unsupported")!=std::string::npos,"Unsupported explicitly serialized pointer lacked a diagnostic: "+rejected.Diagnostics);
-        Write(assets+"/Child.hpp",R"(#pragma once
+        Write(assets+"/Child.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 namespace Other {
 struct IGameObject {};
 class Pretender final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Pretender>;
+    explicit Pretender(GameSproutRuntime::IGameSproutRuntime*) {}
+
 protected:
     GAMESPROUT_SERIALIZE_FIELD
     IGameObject* _Target = nullptr;

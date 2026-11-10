@@ -18,7 +18,9 @@
 #include <QTest>
 
 class RecursiveUIBehaviour:public GameSproutRuntime::ScriptBehaviour {
-public:GameSproutRuntime::ScriptValue Tree;
+public:
+    explicit RecursiveUIBehaviour(GameSproutRuntime::IGameSproutRuntime*) {}
+    GameSproutRuntime::ScriptValue Tree;
 };
 static void PumpUI(){QCoreApplication::processEvents();QTest::qWait(5);}
 template<typename T>static T* Field(QWidget& parent,const char* id){

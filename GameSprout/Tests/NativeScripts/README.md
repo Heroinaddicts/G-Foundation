@@ -13,11 +13,14 @@ ctest --test-dir /tmp/gamesprout-native-checks --output-on-failure
 
 `SCRIPT_TEST_RUNTIME_DIRECTORY` 传动态库所在目录。Windows/Linux 按本机 Qt、工具链及 Runtime 路径配置。
 
-当前使用模块 ABI 3。用户 `.hpp` 使用普通 C++ 类、五个生命周期和 `GAMESPROUT_SCRIPT(Test)`，不需要构造函数转发、手工 TypeID 或 `ScriptFields`。Clang AST 自动识别支持的公开实例字段；私有、受保护实例字段使用 `GAMESPROUT_SERIALIZE_FIELD`。类型身份取自源 `.meta` GUID，字段身份为 `声明类::成员名`。故意损坏的描述、异常桥接只存在于测试内部夹具，不是用户脚本 API。
+脚本和模块的原生工厂在构造时传入所属 Runtime。新建脚本的 `.h` 使用私有构造函数、对应类型的工厂友元和 `GAMESPROUT_SCRIPT(Test)`。类型身份取自头文件的 `.meta` GUID。Clang AST 自动识别支持的公开实例字段。私有和受保护实例字段使用 `GAMESPROUT_SERIALIZE_FIELD`。字段身份为 `声明类::成员名`。故意损坏的描述和异常桥接仅用于内部测试。
 
 ```cpp
 class Test final : public GameSproutRuntime::ScriptBehaviour {
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Test>;
+    explicit Test(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     GameSproutRuntime::IGameObject* _Target = nullptr;
 protected:
@@ -50,7 +53,7 @@ GAMESPROUT_SCRIPT(Test)
 
 覆盖的主要情景：
 
-- 安全创建 `.hpp`，拒绝同名源、目录越界和 C++ 关键字；普通 Test 真编译，OnCreate 内自添加返回空、查询自身返回 this；隐藏游戏库可以查询宿主 Mesh、重复添加返回已有 Mesh、执行内置接口 dynamic_cast，并添加、查询和移除 Image。
+- 成对创建同名 `.h` 和 `.cpp`，拒绝同名源、目录越界和 C++ 关键字。编译真实 GameLogic，验证 Script 和 Module 的私有构造函数均收到当前会话的 Runtime。OnCreate 内自添加返回空、查询自身返回 this。隐藏游戏库可以查询宿主 Mesh、重复添加返回已有 Mesh、执行内置接口 dynamic_cast，并添加、查询和移除 Image。
 - 自动发现七个公开字段及默认值、跳过私有字段、报告不支持类型；辅助 `.cpp` 与入口头共同编译，`.inl` 只由类内包含；显式 FixedUpdate 与普通 Update 分开。
 - 相同输入命中缓存。改独立辅助 `.cpp` 只重编该对象，不改写聚合绑定或重编无关 TU；改角色头和多轮代码版本时独立对象、未改源镜像的 mtime 保持。删除源及空目录会同步清理镜像。
 - 损坏未映射的候选输出后，相同输入自动失效并重新链接，不把坏库当缓存命中，也不重编无关对象。

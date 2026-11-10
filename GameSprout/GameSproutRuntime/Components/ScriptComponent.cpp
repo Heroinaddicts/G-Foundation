@@ -152,7 +152,7 @@ IScript* ScriptComponent::PrepareInstance() {
         ~StartingScope() {Starting=false;}
     } starting{_Starting};
     try {
-        _Instance=type->Create(_GameObject);_Destroy=type->Destroy;
+        _Instance=type->Create(_GameObject,&_Runtime);_Destroy=type->Destroy;
         if(!_Instance) {Fail("Native script factory returned null: "+_TypeID);return nullptr;}
         if(_Instance->GetGameObject()!=_GameObject) {Fail("Native script factory returned an instance for another object");return nullptr;}
         if(!type->CppType||typeid(*_Instance)!=*type->CppType) {Fail("Native script factory returned a different C++ type");return nullptr;}

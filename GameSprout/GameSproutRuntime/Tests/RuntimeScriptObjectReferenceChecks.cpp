@@ -17,6 +17,7 @@ protected:
     GAMESPROUT_SERIALIZE_FIELD
     GameSproutRuntime::IGameObject* _Other=nullptr;
 public:
+    explicit ReferenceScript(GameSproutRuntime::IGameSproutRuntime*) {}
     GameSproutRuntime::IGameObject* Target() const {return _Target;}
     GameSproutRuntime::IGameObject* Other() const {return _Other;}
     void AssignOther(GameSproutRuntime::IGameObject* value) {_Other=value;}

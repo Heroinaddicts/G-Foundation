@@ -13,6 +13,7 @@ struct Counters {int Created=0,Initialized=0,Updated=0,Fixed=0,Released=0,Destro
 Counters Counts;
 class Probe final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit Probe(GameSproutRuntime::IGameSproutRuntime*) {}
     float Value=1;
     bool OpenScopeOnRelease=false;
     ~Probe() override {++Counts.Destroyed;}

@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRegularExpression>
 #include <set>
 #include <cmath>
 #include <limits>
@@ -113,6 +114,46 @@ QString LocationFile(const QJsonObject& marker) {
     const QString expansion=location.value("expansionLoc").toObject().value("file").toString();
     if(!expansion.isEmpty()) return expansion;
     return location.value("file").toString();
+}
+struct GameplayMarker {
+    MarkerKind Kind;
+    QString Type;
+    QString Source;
+    bool operator==(const GameplayMarker&) const = default;
+};
+bool ReadGameplayMarkers(const QString& path, const QDir& sourceDirectory,
+    const std::map<QString, const ScriptCompileSource*>& sourcesByPath, std::vector<GameplayMarker>& markers,
+    std::string& diagnostics, const std::function<bool()>& cancelled) {
+    // Both SDK markers share this suffix, so Clang can discover both in one pass.
+    std::vector<QJsonObject> declarations;
+    if (!Ast(path, "Marker_", sourceDirectory.absolutePath(), declarations, diagnostics, cancelled)) return false;
+    std::set<QString> markedFiles;
+    QString markerFile;
+    for (const auto& declaration : declarations) {
+        const auto location = LocationFile(declaration);
+        if (!location.isEmpty()) markerFile = location;
+        const auto kind = GetMarkerKind(declaration);
+        if (kind == MarkerKind::Other) continue;
+        const auto file = QFileInfo(markerFile).canonicalFilePath();
+        const auto source = file.isEmpty() ? markerFile : sourceDirectory.relativeFilePath(file);
+        if (QFileInfo(source).suffix().toLower() != "h" || !sourcesByPath.contains(source)) {
+            const char* macro = kind == MarkerKind::Module ? "GAMESPROUT_REGIST_MODULE" : "GAMESPROUT_SCRIPT";
+            diagnostics = std::string(macro) + " gameplay registration must be declared in a project .h asset: " + source.toStdString();
+            return false;
+        }
+        const auto type = ClassArgument(declaration, kind == MarkerKind::Module
+            ? "GameSproutRuntime::Internal::ModuleMarker" : "GameSproutRuntime::Internal::ScriptMarker");
+        if (type.isEmpty() || type.contains("(anonymous namespace)")) {
+            diagnostics = "Cannot resolve gameplay registration type in " + source.toStdString();
+            return false;
+        }
+        if (!markedFiles.insert(source).second) {
+            diagnostics = "Each .h asset supports one gameplay registration marker: " + source.toStdString();
+            return false;
+        }
+        markers.push_back({kind, type, source});
+    }
+    return true;
 }
 bool String(const QJsonObject& node,QString& expression) {
     const QString kind=Kind(node);
@@ -384,6 +425,7 @@ bool Collect(const QString& type,const QString& probe,const QString& sourceRoot,
 }
 
 bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const QString& sourceRoot,
+    const std::vector<ScriptBuildStorage::SourceSnapshot>& sources,
     const QString& probePath,QByteArray& generated,std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
     std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules,std::string& diagnostics,std::string& warnings,
     const std::function<bool()>& cancelled) {
@@ -391,66 +433,69 @@ bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const
     if((compiler!="Clang" && compiler!="AppleClang") || QString::fromUtf8(GAMESPROUT_SCRIPT_FRONTEND)=="MSVC") {
         diagnostics="Native script field generation requires a GCC-compatible Clang/AppleClang driver with JSON AST support; current compiler: "+compiler.toStdString();return false;
     }
-    // Both SDK marker names share this suffix, so one Clang scan finds both.
-    std::vector<QJsonObject> declarationsFromAst;
-    if(!Ast(probePath,"Marker_",sourceRoot,declarationsFromAst,diagnostics,cancelled))return false;
     const QDir sourceDirectory(QFileInfo(sourceRoot).canonicalFilePath());
     std::map<QString,const ScriptCompileSource*> sourcesByPath;
     for(const auto& source:request.Sources)sourcesByPath.emplace(QString::fromStdString(source.Path),&source);
-    // Helper .cpp files remain independent TUs. Registered types need an .hpp
-    // asset so the generated binding TU can include their class definitions.
-    for(const auto& source:request.Sources) {
-        const QString extension=QFileInfo(QString::fromStdString(source.Path)).suffix().toLower();
-        if(extension!="cpp" && extension!="cc" && extension!="cxx") continue;
-        std::vector<QJsonObject> helperMarkers;
-        if(!Ast(sourceDirectory.filePath(QString::fromStdString(source.Path)),"Marker_",sourceRoot,helperMarkers,diagnostics,cancelled))return false;
-        QString previousFile;
-        for(const auto& marker:helperMarkers) {
-            const auto location=LocationFile(marker);
-            if(!location.isEmpty())previousFile=location;
-            const auto kind=GetMarkerKind(marker);
-            if(kind==MarkerKind::Other)continue;
-            const auto relative=sourceDirectory.relativeFilePath(QFileInfo(previousFile).canonicalFilePath());
-            if(QFileInfo(relative).suffix().toLower()!="hpp"||!sourcesByPath.contains(relative)) {
-                const auto macro=kind==MarkerKind::Module?"GAMESPROUT_REGIST_MODULE":"GAMESPROUT_SCRIPT";
-                diagnostics=std::string(macro)+" must be declared in a .hpp asset, not "+relative.toStdString();
+    // Discover registrations through real implementation TUs. Shared includes
+    // can expose the same marker in several TUs, but it is registered only once.
+    std::map<QString, GameplayMarker> discovered;
+    for (const auto& source : sources) {
+        if (!source.Compile) continue;
+        std::vector<GameplayMarker> markers;
+        if (!ReadGameplayMarkers(sourceDirectory.filePath(source.Relative), sourceDirectory, sourcesByPath, markers, diagnostics, cancelled)) return false;
+        for (const auto& marker : markers) {
+            const auto [existing, inserted] = discovered.emplace(marker.Source, marker);
+            if (!inserted && existing->second != marker) {
+                diagnostics = "Gameplay registration varies between implementation files: " + marker.Source.toStdString();
                 return false;
             }
         }
     }
-    struct RegisteredSource {
-        MarkerKind Kind;
-        QString Type;
-        QString File;
-        const ScriptCompileSource& Asset;
-    };
-    std::vector<RegisteredSource> markers;
-    std::set<QString> seenFiles,seenTypes;
+    // Detect an orphan registration without requiring ordinary auxiliary
+    // headers to compile standalone. Clang confirms each text candidate.
+    const QRegularExpression registrationCall(R"(\b(?:GAMESPROUT_SCRIPT|GAMESPROUT_REGIST_MODULE)\s*\()");
+    for (const auto& source : sources) {
+        if (source.Compile || discovered.contains(source.Relative)) continue;
+        if (!source.Bytes.contains("GAMESPROUT_") || !registrationCall.match(QString::fromUtf8(source.Bytes)).hasMatch()) continue;
+        std::vector<GameplayMarker> markers;
+        if (!ReadGameplayMarkers(sourceDirectory.filePath(source.Relative), sourceDirectory, sourcesByPath, markers, diagnostics, cancelled)) return false;
+        for (const auto& marker : markers) {
+            if (discovered.contains(marker.Source)) continue;
+            diagnostics = "Gameplay registration must be included by a project .cpp, .cc or .cxx file: " + marker.Source.toStdString();
+            return false;
+        }
+    }
+    generated = "#include \"Internal/RuntimeScriptBindings.h\"\n";
+    for (const auto& registration : discovered) {
+        QString include = registration.first;
+        include.replace('\\', "\\\\");
+        include.replace('"', "\\\"");
+        generated += "#include \"" + include.toUtf8() + "\"\n";
+    }
+    if (!ScriptBuildStorage::WriteIfChanged(probePath, generated, diagnostics)) return false;
+    std::vector<GameplayMarker> markers;
+    if (!discovered.empty() && !ReadGameplayMarkers(probePath, sourceDirectory, sourcesByPath, markers, diagnostics, cancelled)) return false;
+    if (markers.size() != discovered.size()) {
+        diagnostics = "Gameplay registrations differ between implementation files and the generated reflection source";
+        return false;
+    }
+    std::set<QString> seenTypes;
     std::set<Guid> seenGuids;
     std::map<QString,DeclaredFields> declarations;
     std::map<QString,QJsonObject> validatedRecords;
-    std::map<QString,QString> scriptTypeIDs;QString markerFile;
-    for(const auto& declaration:declarationsFromAst) {
-        const auto location=LocationFile(declaration);
-        if(!location.isEmpty())markerFile=location;
-        const auto kind=GetMarkerKind(declaration);
-        if(kind==MarkerKind::Other)continue;
-        const auto type=ClassArgument(declaration,kind==MarkerKind::Module
-            ?"GameSproutRuntime::Internal::ModuleMarker":"GameSproutRuntime::Internal::ScriptMarker");
-        const auto file=QFileInfo(markerFile).canonicalFilePath();
-        const auto relative=sourceDirectory.relativeFilePath(file);
-        const auto source=sourcesByPath.find(relative);
-        if(type.isEmpty()||type.contains("(anonymous namespace)")||source==sourcesByPath.end()||QFileInfo(relative).suffix().toLower()!="hpp") {
-            diagnostics="Cannot map Clang gameplay code marker to a supported .hpp asset: "+type.toStdString()+" "+file.toStdString();
+    std::map<QString,QString> scriptTypeIDs;
+    for (const auto& marker : markers) {
+        const auto found = discovered.find(marker.Source);
+        if (found == discovered.end() || found->second != marker) {
+            diagnostics = "Gameplay registration differs in the generated reflection source: " + marker.Source.toStdString();
             return false;
         }
-        const Guid guid(source->second->SourceGuid);
-        if(!guid.IsValid()) {diagnostics="Gameplay code source has no valid .meta GUID: "+relative.toStdString();return false;}
-        if(!seenFiles.insert(file).second) {diagnostics="Each .hpp asset supports one gameplay registration marker: "+relative.toStdString();return false;}
-        if(!seenTypes.insert(type).second) {diagnostics="A gameplay class was marked more than once: "+type.toStdString();return false;}
-        if(!seenGuids.insert(guid).second) {diagnostics="Duplicate gameplay source .meta GUID: "+relative.toStdString();return false;}
-        if(kind==MarkerKind::Script)scriptTypeIDs.emplace(type,QString::fromStdString(source->second->SourceGuid));
-        markers.push_back({kind,type,file,*source->second});
+        const auto& source = *sourcesByPath.at(marker.Source);
+        const Guid guid(source.SourceGuid);
+        if(!guid.IsValid()) {diagnostics="Gameplay code source has no valid .meta GUID: "+source.Path;return false;}
+        if(!seenTypes.insert(marker.Type).second) {diagnostics="A gameplay class was marked more than once: "+marker.Type.toStdString();return false;}
+        if(!seenGuids.insert(guid).second) {diagnostics="Duplicate gameplay source .meta GUID: "+source.Path;return false;}
+        if (marker.Kind == MarkerKind::Script) scriptTypeIDs.emplace(marker.Type, QString::fromStdString(source.SourceGuid));
     }
     ScriptRecursiveFields recursive(
         [&](const QString& declaredType,QJsonObject& record,std::string& error) {
@@ -471,9 +516,8 @@ bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const
         },Marked,std::move(scriptTypeIDs));
     for(const auto& marker:markers) {
         const auto& type=marker.Type;
-        const auto& file=marker.File;
-        const auto& asset=marker.Asset;
-        const auto relative=QString::fromStdString(asset.Path);
+        const auto& asset=*sourcesByPath.at(marker.Source);
+        const auto& relative=marker.Source;
         const auto guid=QString::fromStdString(asset.SourceGuid);
         if(marker.Kind==MarkerKind::Module) {
             modules.push_back({type.toStdString(),asset.SourceGuid,asset.Path});
@@ -490,13 +534,13 @@ bool ScriptBindingsGenerator::Generate(const ScriptCompileRequest& request,const
             return true;
         };
         if(!ScriptDeclarationValidator::Validate(type,relative,loadDeclaration,diagnostics)) return false;
-        GameSproutRuntime::ScriptTypeInfo schema;schema.TypeID=asset.SourceGuid;schema.Name=type.toStdString();schema.SourceFile=file.toStdString();
+        GameSproutRuntime::ScriptTypeInfo schema;schema.TypeID=asset.SourceGuid;schema.Name=type.toStdString();schema.SourceFile=asset.Path;
         std::set<QString> visiting,visited;QStringList calls;
         if(!Collect(type,probePath,sourceRoot,relative,declarations,visiting,visited,calls,generated,schema.Fields,warnings,diagnostics,cancelled,recursive))return false;
         const QString fieldBindings="([] { std::vector<::GameSproutRuntime::ScriptFieldRegistration> fields; "+calls.join(' ')+" return fields; }())";
         types.push_back(std::move(schema));
         generated+="namespace { const bool GameSproutGeneratedScript_"+QByteArray::number(types.size())+" =\n";
-        generated+=("::GameSproutRuntime::Internal::RegisterScriptClass<::"+type+">("+Literal(guid)+','+Literal(type)+','+Literal(file)+",::GameSproutRuntime::ResourceReference{"+Literal(guid)+",1},"+fieldBindings+"); }\n").toUtf8();
+        generated+=("::GameSproutRuntime::Internal::RegisterScriptClass<::"+type+">("+Literal(guid)+','+Literal(type)+','+Literal(relative)+",::GameSproutRuntime::ResourceReference{"+Literal(guid)+",1},"+fieldBindings+"); }\n").toUtf8();
     }
     return true;
 }

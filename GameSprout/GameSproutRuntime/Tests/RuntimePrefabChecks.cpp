@@ -13,6 +13,7 @@ const GameSproutRuntime::ResourceReference Source{"0123456789abcdef0123456789abc
 }
 class PrefabProbe final:public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit PrefabProbe(GameSproutRuntime::IGameSproutRuntime*) {}
     GameSproutRuntime::IGameObject* Target=nullptr;
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*)override {
         ++Created;

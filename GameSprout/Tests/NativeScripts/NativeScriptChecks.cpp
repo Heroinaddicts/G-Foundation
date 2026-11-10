@@ -83,13 +83,13 @@ static void CheckGameplayLogs(const LogRecorder& recorder, const QString& assets
         const char* Format = nullptr;
     };
     const ExpectedLog expected[] = {
-        {RuntimeLogLevel::Debug, "模块启动 max 100%", "SessionModule.hpp", "模块启动 %s %d%%"},
-        {RuntimeLogLevel::Trace, "脚本启动", "Test.hpp"},
-        {RuntimeLogLevel::Warning, "模块更新", "SessionModule.hpp"},
-        {RuntimeLogLevel::Debug, "脚本更新", "Test.hpp"},
-        {RuntimeLogLevel::Warning, "脚本释放", "Test.hpp"},
+        {RuntimeLogLevel::Debug, "模块启动 max 100%", "SessionModule.cpp", "模块启动 %s %d%%"},
+        {RuntimeLogLevel::Trace, "脚本启动", "Test.cpp"},
+        {RuntimeLogLevel::Warning, "模块更新", "SessionModule.cpp"},
+        {RuntimeLogLevel::Debug, "脚本更新", "Test.cpp"},
+        {RuntimeLogLevel::Warning, "脚本释放", "Test.cpp"},
         {RuntimeLogLevel::Error, "模块释放 " + std::string(299, '0') + '7',
-            "SessionModule.hpp", "模块释放 %0300d"},
+            "SessionModule.cpp", "模块释放 %0300d"},
     };
     Require(recorder.Records.size() == std::size(expected), "Gameplay lifecycle logs were lost or duplicated");
     for (std::size_t index = 0; index < std::size(expected); ++index) {
@@ -100,7 +100,7 @@ static void CheckGameplayLogs(const LogRecorder& recorder, const QString& assets
         const QString path = QDir(mirrorRoot).absoluteFilePath(QString::fromStdString(record.File));
         const QString compiledPath = QFileInfo(mirrorRoot + "/Code/" + wanted.File).canonicalFilePath();
         Require(!compiledPath.isEmpty() && QFileInfo(path).canonicalFilePath() == compiledPath,
-                "Gameplay log did not report its source header: " + record.File);
+                "Gameplay log did not report its implementation file: " + record.File);
         const QByteArray source = Read(assetsCode + '/' + wanted.File);
         const qsizetype message = source.indexOf(wanted.Format ? wanted.Format : wanted.Message.c_str());
         Require(message >= 0 && record.Line == source.left(message).count('\n') + 1,
@@ -127,21 +127,32 @@ int main(int argc,char** argv){
         editor._Runtime=Export(argv[1]);Require(editor._Runtime,"Runtime load");
         std::string path,error;
         Require(editor.CreateScript("Code","Mover",path,error),"Create: "+error);
-        Require(path=="Code/Mover.hpp","Relative script path");
-        const auto created=Read(code+"/Mover.hpp");
-        Require(created.contains("GAMESPROUT_SCRIPT(Mover)")&&!created.contains("ScriptFields")&&!created.contains("::ScriptBehaviour;")&&!created.contains("explicit Mover"),"Created script exposes constructor forwarding or manual binding metadata");
+        Require(path=="Code/Mover.h","Relative script path");
+        const auto created=Read(code+"/Mover.h");
+        const auto implementation=Read(code+"/Mover.cpp");
+        Require(created.contains("GAMESPROUT_SCRIPT(Mover)")&&created.contains("GameplayFactory<Mover>")&&
+            created.contains("explicit Mover(")&&!created.contains("ScriptFields"),"Created script lacks its constructor contract or exposes manual binding metadata");
         Require(created.contains("void OnInitialized(")&&!created.contains("void OnInitialize("),"Created script does not use the current OnInitialized lifecycle");
         Require(created.contains("void EarlyUpdate(")&&created.contains("void LateUpdate(")&&!created.contains("void LaterUpdate("),"Created script is missing current Early/Late callbacks");
+        Require(implementation.contains("#include \"Mover.h\"")&&implementation.contains("Mover::OnInitialized(")&&
+            !implementation.contains("GAMESPROUT_SCRIPT("),"Script implementation should define callbacks without registration");
         Require(!editor.CreateScript("Code","Mover",path,error),"Duplicate source must fail");
+        Write(code+"/Occupied.cpp","// Existing implementation\n");
+        Require(!editor.CreateModule("Code","Occupied",path,error)&&!QFileInfo::exists(code+"/Occupied.h")&&
+            Read(code+"/Occupied.cpp")=="// Existing implementation\n","A conflicting .cpp must leave both paths intact");
         Require(!editor.CreateScript("../","Escaped",path,error),"Escape must fail");
         Require(!editor.CreateScript("Code","class",path,error),"C++ keyword must fail");
         Require(editor.CreateModule("Code","SessionModule",path,error),"Create Module: "+error);
-        Require(path=="Code/SessionModule.hpp","Relative module path");
-        const auto moduleTemplate=Read(code+"/SessionModule.hpp");
-        Require(moduleTemplate.contains("class ISessionModule")&&
+        Require(path=="Code/SessionModule.h","Relative module path");
+        const auto moduleTemplate=Read(code+"/SessionModule.h");
+        const auto moduleImplementation=Read(code+"/SessionModule.cpp");
+        Require(moduleTemplate.contains("class ISessionModule")&&moduleTemplate.contains("GameplayFactory<SessionModule>")&&
+            moduleTemplate.contains("explicit SessionModule(")&&moduleTemplate.contains("SessionModule(const SessionModule&) = delete")&&
             moduleTemplate.contains("GAMESPROUT_REGIST_MODULE(SessionModule)"),"Created module is missing its interface or marker");
+        Require(moduleImplementation.contains("#include \"SessionModule.h\"")&&moduleImplementation.contains("SessionModule::Initialize(")&&
+            !moduleImplementation.contains("GAMESPROUT_REGIST_MODULE("),"Module implementation should define callbacks without registration");
         Require(!editor.CreateScript("Code","SessionModule",path,error),"Script creation overwrote a module");
-        Write(code+"/SessionModule.hpp",R"(#pragma once
+        Write(code+"/SessionModule.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 class ISessionModule : public GameSproutRuntime::IModule {
 public:
@@ -151,24 +162,35 @@ class SessionModule final : public ISessionModule {
 public:
     int Ticks() const override { return _Ticks; }
 protected:
-    bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override {
-        GS_DEBUG(runtime, "模块启动 %s %d%%", "max", 100);
-        return runtime->FindModule<ISessionModule>("SessionModule") == this;
-    }
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override;
     bool Launch(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
-    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float) override {
-        runtime->Log(GameSproutRuntime::RuntimeLogLevel::Warning, "模块更新");
-        ++_Ticks;
-    }
-    void Release(GameSproutRuntime::IGameSproutRuntime* runtime) override {
-        GS_ERROR(runtime, "模块释放 %0300d", 7);
-    }
+    void Update(GameSproutRuntime::IGameSproutRuntime* runtime, float) override;
+    void Release(GameSproutRuntime::IGameSproutRuntime* runtime) override;
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<SessionModule>;
+    explicit SessionModule(GameSproutRuntime::IGameSproutRuntime* runtime) : _Runtime(runtime) {}
+    SessionModule(const SessionModule&) = delete;
+
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
     int _Ticks = 0;
 };
 GAMESPROUT_REGIST_MODULE(SessionModule)
 )");
-        Write(code+"/Mover.hpp",R"(#pragma once
+        Write(code+"/SessionModule.cpp",R"(#include "SessionModule.h"
+    bool SessionModule::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) {
+        if (!_Runtime || _Runtime != runtime) return false;
+        GS_DEBUG(_Runtime, "模块启动 %s %d%%", "max", 100);
+        return _Runtime->FindModule<ISessionModule>("SessionModule") == this;
+    }
+    void SessionModule::Update(GameSproutRuntime::IGameSproutRuntime* runtime, float) {
+        runtime->Log(GameSproutRuntime::RuntimeLogLevel::Warning, "模块更新");
+        ++_Ticks;
+    }
+    void SessionModule::Release(GameSproutRuntime::IGameSproutRuntime* runtime) {
+        GS_ERROR(runtime, "模块释放 %0300d", 7);
+    }
+)");
+        Write(code+"/Mover.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 #include <vector>
 class Mover final:public GameSproutRuntime::ScriptBehaviour {
@@ -189,22 +211,40 @@ public:
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=Speed*delta;_GameObject->GetTransform()->SetLocalPosition(p);}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {}
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Mover>;
+    explicit Mover(GameSproutRuntime::IGameSproutRuntime*) {}
+
     static constexpr float MotionMultiplier = 1.0f;
     float Secret = 99;
 };
 GAMESPROUT_SCRIPT(Mover)
 )");
-        // A plain user class: five callbacks and one marker, no constructor,
-        // persistent ID, ScriptFields method or handwritten reflection code.
-        Write(code+"/Test.hpp",R"(#pragma once
+        Write(code+"/Mover.cpp","#include \"Mover.h\"\n");
+        // A user class with a factory-only constructor and one registration marker.
+        Write(code+"/Test.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
-#include "SessionModule.hpp"
-#include <stdexcept>
 class Test : public GameSproutRuntime::ScriptBehaviour {
 public:
-    void OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) override {
-        GS_TRACE(runtime, "脚本启动");
-        auto* module=runtime->FindModule<ISessionModule>("SessionModule");
+    void OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) override;
+    void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=2;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void Update(GameSproutRuntime::IGameSproutRuntime* runtime,float delta) override;
+    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=delta;_GameObject->GetTransform()->SetLocalPosition(p);}
+    void OnRelease(GameSproutRuntime::IGameSproutRuntime* runtime) override;
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Test>;
+    explicit Test(GameSproutRuntime::IGameSproutRuntime* runtime) : _Runtime(runtime) {}
+
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
+};
+GAMESPROUT_SCRIPT(Test)
+)");
+        Write(code+"/Test.cpp",R"(#include "Test.h"
+#include "SessionModule.h"
+#include <stdexcept>
+    void Test::OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) {
+        if (!_Runtime || _Runtime != runtime) throw std::runtime_error("Script factory passed a different Runtime");
+        GS_TRACE(_Runtime, "脚本启动");
+        auto* module=_Runtime->FindModule<ISessionModule>("SessionModule");
         if(!module||module->Ticks()!=0)throw std::runtime_error("Gameplay module was not ready before script creation");
         if(_GameObject->AddComponent<Test>()!=nullptr)throw std::runtime_error("duplicate self add succeeded");
         if(_GameObject->GetComponent<Test>()!=this)throw std::runtime_error("GetComponent<Test> did not return this");
@@ -217,23 +257,19 @@ public:
         if(!image||_GameObject->GetComponent<GameSproutRuntime::IImageComponent>()!=image)throw std::runtime_error("Hidden game DLL cannot create or query a builtin Image");
         if(!_GameObject->RemoveComponent<GameSproutRuntime::IImageComponent>())throw std::runtime_error("Hidden game DLL cannot remove a builtin Image");
     }
-    void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=2;_GameObject->GetTransform()->SetLocalPosition(p);}
-    void Update(GameSproutRuntime::IGameSproutRuntime* runtime,float delta) override {
+    void Test::Update(GameSproutRuntime::IGameSproutRuntime* runtime,float delta) {
         runtime->Log(GameSproutRuntime::RuntimeLogLevel::Debug, "脚本更新");
         const auto* module=runtime->FindModule<ISessionModule>("SessionModule");
         if(!module||module->Ticks()==0)throw std::runtime_error("Module Update did not run before script Update");
         auto p=_GameObject->GetTransform()->GetLocalPosition();p.X+=delta;_GameObject->GetTransform()->SetLocalPosition(p);
     }
-    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float delta) override {auto p=_GameObject->GetTransform()->GetLocalPosition();p.Z+=delta;_GameObject->GetTransform()->SetLocalPosition(p);}
-    void OnRelease(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+    void Test::OnRelease(GameSproutRuntime::IGameSproutRuntime* runtime) {
         runtime->Log(GameSproutRuntime::RuntimeLogLevel::Warning, "脚本释放");
         if(!runtime->FindModule<ISessionModule>("SessionModule"))throw std::runtime_error("Module released before the script");
         auto p=_GameObject->GetTransform()->GetLocalPosition();p.Y=3;_GameObject->GetTransform()->SetLocalPosition(p);
     }
-};
-GAMESPROUT_SCRIPT(Test)
 )");
-        Write(code+"/Helper.cpp","#include \"Mover.hpp\"\nint ScriptHelper(){return 7;}\n");
+        Write(code+"/Helper.cpp","#include \"Mover.h\"\nint ScriptHelper(){return 7;}\n");
         Require(QDir().mkpath(code+"/Aux"),"Create independent helper directory");
         Write(code+"/Aux/Independent.cpp","int IndependentHelper(){return 17;}\n");
         Write(code+"/OnlyInsideClass.inl","public:\nint ClassMemberOnly = 0;\n");
@@ -242,17 +278,21 @@ GAMESPROUT_SCRIPT(Test)
         request.BuildRoot=temporary.path().toStdString()+"/Library/ScriptBuild";
         request.ArtifactRoot=temporary.path().toStdString()+"/Library/Artifact";
         request.AssemblyGuid="ffeeddccbbaa99887766554433221100";
-        request.Sources={{"Code/Mover.hpp","00112233445566778899aabbccddeeff"},
+        const std::string moduleGuid="71112233445566778899aabbccddeeff";
+        request.Sources={{"Code/Mover.h","00112233445566778899aabbccddeeff"},
+            {"Code/Mover.cpp","80112233445566778899aabbccddeeff"},
             {"Code/Helper.cpp","11112233445566778899aabbccddeeff"},
             {"Code/OnlyInsideClass.inl","21112233445566778899aabbccddeeff"},
-            {"Code/Test.hpp","41112233445566778899aabbccddeeff"},
+            {"Code/Test.h","41112233445566778899aabbccddeeff"},
+            {"Code/Test.cpp","90112233445566778899aabbccddeeff"},
             {"Code/Aux/Independent.cpp","51112233445566778899aabbccddeeff"},
-            {"Code/SessionModule.hpp","71112233445566778899aabbccddeeff"}};
+            {"Code/SessionModule.h",moduleGuid},
+            {"Code/SessionModule.cpp","a0112233445566778899aabbccddeeff"}};
         ScriptCompileResult result;
         Require(compiler.Compile(request,result,[]{return false;}),"Compile: "+result.Diagnostics);
         Require(result.Modules.size()==1&&result.Modules.front().Name=="SessionModule"&&
-            result.Modules.front().SourceFile=="Code/SessionModule.hpp"&&
-            result.Modules.front().SourceGuid==request.Sources.back().SourceGuid,"Gameplay module metadata");
+            result.Modules.front().SourceFile=="Code/SessionModule.h"&&
+            result.Modules.front().SourceGuid==moduleGuid,"Gameplay module metadata");
         CheckFixedWorkspace(request,result);
         const auto outputRepairObject=ObjectFile(request,"Independent.cpp");
         const auto outputRepairStamp=Stamp(outputRepairObject);
@@ -278,7 +318,7 @@ GAMESPROUT_SCRIPT(Test)
         const QString independentObject=ObjectFile(request,"Independent.cpp");
         const QString dependentObject=ObjectFile(request,"Helper.cpp");
         const QString generatedObject=ObjectFile(request,"GameLogic.generated.cpp");
-        const auto firstIndependentStamp=Stamp(independentObject),firstMirrorStamp=Stamp(mirrorRoot+"/Code/Test.hpp");
+        const auto firstIndependentStamp=Stamp(independentObject),firstMirrorStamp=Stamp(mirrorRoot+"/Code/Test.h");
         auto types=editor.GetScriptTypes();Require(types.size()==2,"Native class discovery did not deduplicate included headers");
         const auto moverType=Find(types,"Mover"),testType=Find(types,"Test");
         Require(moverType.Type.TypeID==request.Sources[0].SourceGuid&&moverType.Source.LocalID==1,"Automatic stable type identity must come from source .meta");
@@ -316,24 +356,28 @@ GAMESPROUT_SCRIPT(Test)
         editor._Runtime->Log(GameSproutRuntime::RuntimeLogLevel::Trace, "Detached listener");
         Require(logs.Records.size() == 6, "A detached Runtime listener received a log");
         ScriptCompileResult cached;Require(compiler.Compile(request,cached,[]{return false;})&&cached.CacheHit,"Cache hit");
-        Require(Stamp(independentObject)==firstIndependentStamp&&Stamp(mirrorRoot+"/Code/Test.hpp")==firstMirrorStamp,"Identical input rewrote source mirrors or rebuilt a helper object");
+        Require(Stamp(independentObject)==firstIndependentStamp&&Stamp(mirrorRoot+"/Code/Test.h")==firstMirrorStamp,"Identical input rewrote source mirrors or rebuilt a helper object");
         Require(editor.Load(request,cached,error)&&editor._CurrentSlot==executionSlot,"Loading the same fingerprint unnecessarily switched slots");
         GameSproutRuntime::ScriptValue authored;authored.Number=3;Require(script->SetField("Mover::Speed",authored,error),error);
         const auto helperBeforeEdit=Stamp(independentObject),dependentBeforeEdit=Stamp(dependentObject),generatedBeforeEdit=Stamp(generatedObject);
-        const auto generatedSourceBeforeEdit=Stamp(generated),moverMirrorBeforeEdit=Stamp(mirrorRoot+"/Code/Mover.hpp");
+        const auto generatedSourceBeforeEdit=Stamp(generated),moverMirrorBeforeEdit=Stamp(mirrorRoot+"/Code/Mover.h");
         Write(code+"/Aux/Independent.cpp","int IndependentHelper(){return 18;}\n");
         ScriptCompileResult helperChanged;Require(compiler.Compile(request,helperChanged,[]{return false;}),"Incremental helper compile: "+helperChanged.Diagnostics);
         Require(!helperChanged.CacheHit&&Stamp(independentObject)!=helperBeforeEdit,"Changed helper translation unit was not rebuilt");
-        Require(Stamp(dependentObject)==dependentBeforeEdit&&Stamp(generatedObject)==generatedBeforeEdit&&Stamp(generated)==generatedSourceBeforeEdit&&Stamp(mirrorRoot+"/Code/Mover.hpp")==moverMirrorBeforeEdit,"Independent .cpp edit rebuilt unrelated translation units or rewrote source/aggregate mirrors");
+        Require(Stamp(dependentObject)==dependentBeforeEdit&&Stamp(generatedObject)==generatedBeforeEdit&&Stamp(generated)==generatedSourceBeforeEdit&&Stamp(mirrorRoot+"/Code/Mover.h")==moverMirrorBeforeEdit,"Independent .cpp edit rebuilt unrelated translation units or rewrote source/aggregate mirrors");
         Require(editor.Load(request,helperChanged,error),error);CheckLoadedSlot(editor,request,helperChanged);
         const auto independentAfterEdit=Stamp(independentObject);
-        QByteArray good=Read(code+"/Mover.hpp");good.replace("    float Speed = 1.0f;","    float Speed = 2.0f;\n    float Added = 4.0f;");Write(code+"/Mover.hpp",good);
+        QByteArray good=Read(code+"/Mover.h");good.replace("    float Speed = 1.0f;","    float Speed = 2.0f;\n    float Added = 4.0f;");Write(code+"/Mover.h",good);
         const QByteArray oldArtifact=Read(artifact);
         const int beforeInvalidSlot=editor._CurrentSlot;
         const QByteArray beforeInvalidSlotBytes=Read(SlotFile(request,helperChanged,beforeInvalidSlot));
         // Malformed candidates are low-level loader fixtures, not a user API.
         Write(code+"/BadDescriptor.cpp",R"(#include "Internal/RuntimeScriptBindings.h"
-class Invalid final:public GameSproutRuntime::ScriptBehaviour {public:float Value=1;};
+class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+public:
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+    float Value=1;
+};
 static const bool BadRegistered=GameSproutRuntime::Internal::RegisterScriptClass<Invalid>("31112233445566778899aabbccddeeff","Invalid",__FILE__,{"31112233445566778899aabbccddeeff",1},{
 GameSproutRuntime::Internal::MakeField<Invalid>("Value","A",&Invalid::Value,1.0f),
 GameSproutRuntime::Internal::MakeField<Invalid>("Value","B",&Invalid::Value,1.0f)});
@@ -347,7 +391,11 @@ GameSproutRuntime::Internal::MakeField<Invalid>("Value","B",&Invalid::Value,1.0f
 #include <exception>
 class NativeCopyError final:public std::exception {public:~NativeCopyError() override {} const char* what()const noexcept override{return "candidate bridge copy failed";}};
 struct CopyThrower {inline static bool Active=false;CopyThrower()=default;CopyThrower(const CopyThrower&){if(Active)throw NativeCopyError();}bool operator()(GameSproutRuntime::IScript&,const GameSproutRuntime::ScriptValue&,const GameSproutRuntime::ScriptReferenceContext&,std::string&)const{return true;}};
-class Invalid final:public GameSproutRuntime::ScriptBehaviour {public:float Value=1;};
+class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+public:
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+    float Value=1;
+};
 static const bool BadRegistered=[] {
  auto field=GameSproutRuntime::Internal::MakeField<Invalid>("Value","Value",&Invalid::Value,1.0f);field.Write=CopyThrower{};
  return GameSproutRuntime::Internal::RegisterScriptClass<Invalid>("31112233445566778899aabbccddeeff","Invalid",__FILE__,{"31112233445566778899aabbccddeeff",1},{field});
@@ -360,13 +408,13 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
         Require(editor._CurrentSlot==beforeInvalidSlot&&Read(artifact)==oldArtifact&&!QFileInfo::exists(SlotFile(request,throwing,1-beforeInvalidSlot)),"Throwing candidate damaged slot ownership or Artifact");
         request.Sources.pop_back();Require(QFile::remove(code+"/BadDescriptor.cpp"),"Remove low-level candidate fixture");
         ScriptCompileResult updated;Require(compiler.Compile(request,updated,[]{return false;}),"Compile hot reload: "+updated.Diagnostics);
-        Require(Stamp(independentObject)==independentAfterEdit&&Stamp(mirrorRoot+"/Code/Test.hpp")==firstMirrorStamp,"Header-only revisions rebuilt an unrelated helper or rewrote an unchanged source mirror");
+        Require(Stamp(independentObject)==independentAfterEdit&&Stamp(mirrorRoot+"/Code/Test.h")==firstMirrorStamp,"Header-only revisions rebuilt an unrelated helper or rewrote an unchanged source mirror");
         Require(!QFileInfo::exists(mirrorRoot+"/Code/BadDescriptor.cpp"),"Deleted candidate helper remains in Sources");
         Require(editor.Load(request,updated,error),"Atomic hot reload: "+error);
         CheckLoadedSlot(editor,request,updated);
         Require(editor._CurrentSlot==1-beforeInvalidSlot,"Recovered candidate did not reuse the released slot");
         Require(script->GetFields().size()==8&&script->GetFields().at("Mover::Speed").Number==3&&script->GetFields().at("Mover::Added").Number==4,"Hot reload lost author value or new field default");
-        QByteArray renamed=Read(code+"/Mover.hpp");renamed.replace("class Mover final","class RenamedMover final").replace("GAMESPROUT_SCRIPT(Mover)","GAMESPROUT_SCRIPT(RenamedMover)");Write(code+"/Mover.hpp",renamed);
+        QByteArray renamed=Read(code+"/Mover.h");renamed.replace("Mover","RenamedMover");Write(code+"/Mover.h",renamed);
         ScriptCompileResult renamedResult;Require(compiler.Compile(request,renamedResult,[]{return false;}),"Compile renamed class: "+renamedResult.Diagnostics);
         Require(editor.Load(request,renamedResult,error),error);
         Require(Find(editor.GetScriptTypes(),"RenamedMover").Type.TypeID==moverType.Type.TypeID&&script->GetFields().at("RenamedMover::Speed").Number==2,"Class rename changed source identity or did not assign new declaring-type field identities");
@@ -384,14 +432,14 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
         };
         int codeVersion=1;
         const auto compileVersion=[&](int version) {
-            QByteArray source=Read(code+"/Mover.hpp");
+            QByteArray source=Read(code+"/Mover.h");
             const QByteArray previous="static constexpr float MotionMultiplier = "+QByteArray::number(codeVersion)+".0f;";
             Require(source.count(previous)==1,"Missing deterministic code version fixture");
-            source.replace(previous,"static constexpr float MotionMultiplier = "+QByteArray::number(version)+".0f;");Write(code+"/Mover.hpp",source);
+            source.replace(previous,"static constexpr float MotionMultiplier = "+QByteArray::number(version)+".0f;");Write(code+"/Mover.h",source);
             codeVersion=version;
             ScriptCompileResult candidate;
             Require(compiler.Compile(request,candidate,[]{return false;}),"Compile code version: "+candidate.Diagnostics);
-            Require(Stamp(independentObject)==independentAfterEdit&&Stamp(mirrorRoot+"/Code/Test.hpp")==firstMirrorStamp,"Code-only version changes rebuilt unrelated objects or rewrote unchanged mirrors");
+            Require(Stamp(independentObject)==independentAfterEdit&&Stamp(mirrorRoot+"/Code/Test.h")==firstMirrorStamp,"Code-only version changes rebuilt unrelated objects or rewrote unchanged mirrors");
             CheckFixedWorkspace(request,candidate);return candidate;
         };
         playVersion(1);
@@ -440,30 +488,30 @@ static const bool TriggerCopyFailure=[] {CopyThrower::Active=true;return true;}(
         Require(editor.Load(request,removed,error),error);CheckLoadedSlot(editor,request,removed);playVersion(codeVersion);
         // A failed B must not let the successful A record bypass restoring both
         // the source mirror and generated bindings when the user reverts to A.
-        const QByteArray sourceA=Read(code+"/Mover.hpp"),generatedA=Read(generated);
+        const QByteArray sourceA=Read(code+"/Mover.h"),generatedA=Read(generated);
         const QByteArray artifactA=Read(artifact),outputA=Read(QString::fromStdString(removed.LibraryPath));
         const QByteArray recordA=Read(QString::fromStdString(request.BuildRoot)+"/Build/ScriptBuildState.json");
         const int slotA=editor._CurrentSlot;
         QByteArray sourceB=sourceA;sourceB.replace("    float Added = 4.0f;","    float Added = 4.0f;\n    float FailedCandidateField = 9.0f;");
         sourceB.replace("static constexpr float MotionMultiplier = 2.0f;","static constexpr float MotionMultiplier = 3.0f;");
         Require(sourceB!=sourceA&&sourceB.contains("FailedCandidateField"),"Failure-revert fixture did not change field schema");
-        Write(code+"/Mover.hpp",sourceB);Write(code+"/BrokenCandidate.cpp","void NativeTestBackendFailure(){asm(\"gamesprout_deliberately_invalid_instruction\");}\n");
+        Write(code+"/Mover.h",sourceB);Write(code+"/BrokenCandidate.cpp","void NativeTestBackendFailure(){asm(\"gamesprout_deliberately_invalid_instruction\");}\n");
         request.Sources.push_back({"Code/BrokenCandidate.cpp","61112233445566778899aabbccddeeff"});
         ScriptCompileResult failedB;Require(!compiler.Compile(request,failedB,[]{return false;})&&!failedB.Diagnostics.empty(),"Invalid auxiliary translation unit was accepted");
-        Require(Read(generated)!=generatedA&&Read(mirrorRoot+"/Code/Mover.hpp")==sourceB,"Failed B did not exercise changed Sources and generated schema: "+failedB.Diagnostics);
+        Require(Read(generated)!=generatedA&&Read(mirrorRoot+"/Code/Mover.h")==sourceB,"Failed B did not exercise changed Sources and generated schema: "+failedB.Diagnostics);
         Require(editor._CurrentSlot==slotA&&Read(artifact)==artifactA&&Read(QString::fromStdString(removed.LibraryPath))==outputA&&Read(QString::fromStdString(request.BuildRoot)+"/Build/ScriptBuildState.json")==recordA,"Failed compile published a new record, library, Artifact or slot");
         Require(script->GetFields().size()==8&&!script->GetFields().contains("RenamedMover::FailedCandidateField"),"Failed build changed Runtime author data");playVersion(codeVersion);
-        Write(code+"/Mover.hpp",sourceA);Require(QFile::remove(code+"/BrokenCandidate.cpp"),"Remove failed translation unit");request.Sources.pop_back();
+        Write(code+"/Mover.h",sourceA);Require(QFile::remove(code+"/BrokenCandidate.cpp"),"Remove failed translation unit");request.Sources.pop_back();
         ScriptCompileResult restoredA;Require(compiler.Compile(request,restoredA,[]{return false;}),"Restore successful A: "+restoredA.Diagnostics);
-        Require(restoredA.Fingerprint==removed.Fingerprint&&Read(mirrorRoot+"/Code/Mover.hpp")==sourceA&&Read(generated)==generatedA&&!QFileInfo::exists(mirrorRoot+"/Code/BrokenCandidate.cpp"),"Successful A cache record hid stale B source/generated files");
+        Require(restoredA.Fingerprint==removed.Fingerprint&&Read(mirrorRoot+"/Code/Mover.h")==sourceA&&Read(generated)==generatedA&&!QFileInfo::exists(mirrorRoot+"/Code/BrokenCandidate.cpp"),"Successful A cache record hid stale B source/generated files");
         Require(editor.Load(request,restoredA,error),error);CheckLoadedSlot(editor,request,restoredA);playVersion(codeVersion);
         ScriptCompileResult cancelled;Require(!compiler.Compile(request,cancelled,[]{return true;}),"Cancelled request did not abort");
-        Write(code+"/Mover.hpp",sourceA+"\nsyntax error here\n");ScriptCompileResult failure;
+        Write(code+"/Mover.h",sourceA+"\nsyntax error here\n");ScriptCompileResult failure;
         Require(!compiler.Compile(request,failure,[]{return false;})&&!failure.Diagnostics.empty(),"Invalid source has no readable diagnostic");
         Require(editor.GetScriptTypes().size()==2&&script->IsScriptTypeAvailable(),"Failed build replaced the previous loaded module");
         editor.Release(nullptr);Require(!script->IsScriptTypeAvailable(),"Unload did not leave a safe missing-type wrapper");
         delete editor._Runtime;
         temporary.setAutoRemove(true);
-        std::cout<<"PASS plain five-callback single-marker source, typed self Add/Get, automatic GUID/field reflection, default values, distinct classes, explicit FixedUpdate, gameplay lifecycle logs, cache, atomic reload/rejection and schema identity, class rename identity, cancellation and safe unload\n";
+        std::cout<<"PASS private constructors with session Runtime injection, typed self Add/Get, automatic GUID/field reflection, default values, distinct classes, explicit FixedUpdate, gameplay lifecycle logs, cache, atomic reload/rejection and schema identity, class rename identity, cancellation and safe unload\n";
     }catch(const std::exception& exception){std::cerr<<"FAIL: "<<exception.what()<<'\n';return 1;}
 }

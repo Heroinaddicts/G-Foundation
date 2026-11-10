@@ -13,6 +13,8 @@
 static void Check(bool value,const std::string& error) {if(!value)throw std::runtime_error(error);}
 class FieldsBehaviour final:public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit FieldsBehaviour(GameSproutRuntime::IGameSproutRuntime*) {}
+
     float Speed=1;
     GameSproutRuntime::IGameObject* Target=nullptr;
 };

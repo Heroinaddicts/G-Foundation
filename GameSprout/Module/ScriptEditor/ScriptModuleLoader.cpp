@@ -188,34 +188,24 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
             error="GameLogic 类型描述与动态库构建版本不一致。";
         nextFingerprint=result.Fingerprint;nextLibraryHash=result.LibraryHash;
         std::set<std::string> identifiers;
-        // __FILE__ belongs to the one fixed Sources tree. Lexical mapping also
-        // works if another build has removed that source after this compile.
-        const QString buildRoot=QFileInfo(QString::fromStdString(request.BuildRoot)).canonicalFilePath();
-        const QString snapshot=QDir(buildRoot).filePath("Sources");
-        const QString requestedSnapshot=QDir::cleanPath(QDir(QString::fromStdString(request.BuildRoot)).absoluteFilePath("Sources"));
         for(std::size_t i=0;error.empty()&&i<api->Count;++i) {
             const auto& registration=api->Types[i];
             if(registration.Info.TypeID.empty()||registration.Info.Name.empty()||!registration.Create||!registration.Destroy||!identifiers.insert(registration.Info.TypeID).second) {
                 error="GameLogic contains an invalid or duplicate TypeID";break;
             }
             const auto description=std::find_if(result.Types.begin(),result.Types.end(),[&](const auto& type){return type.TypeID==registration.Info.TypeID;});
-            if(description==result.Types.end()||description->Name!=registration.Info.Name||!SameFields(description->Fields,registration.Info.Fields)) {
+            if(description==result.Types.end()||description->Name!=registration.Info.Name||
+                description->SourceFile!=registration.Info.SourceFile||!SameFields(description->Fields,registration.Info.Fields)) {
                 error="GameLogic 的本地字段桥接与编译字段描述不一致。";break;
             }
-            QString source=QString::fromStdString(registration.Info.SourceFile);
-            if(!QDir::isAbsolutePath(source)) source=QDir(snapshot).filePath(source);
-            source=QDir::cleanPath(source);
-            if(source.startsWith(requestedSnapshot+'/')) source=QDir(snapshot).filePath(source.mid(requestedSnapshot.size()+1));
-            const QString relative=QDir(snapshot).relativeFilePath(source);
-            if(relative==".."||relative.startsWith("../")||QDir::isAbsolutePath(relative)) {error="Registered script is outside the Sources directory";break;}
             const auto match=std::find_if(request.Sources.begin(),request.Sources.end(),[&](const auto& entry) {
-                return QDir::cleanPath(QString::fromStdString(entry.Path))==relative;
+                return entry.Path==registration.Info.SourceFile&&entry.SourceGuid==registration.Info.TypeID;
             });
-            if(match==request.Sources.end()||!Guid(match->SourceGuid).IsValid()) {
-                error="Registered script has no matching source .meta: "+registration.Info.SourceFile;break;
+            if(match==request.Sources.end()||QFileInfo(QString::fromStdString(match->Path)).suffix().toLower()!="h"||!Guid(match->SourceGuid).IsValid()) {
+                error="Registered script has no matching .h source and .meta: "+registration.Info.SourceFile;break;
             }
             EditorScriptType type;type.Type=*description;type.Path=match->Path;
-            type.Source.Guid=match->SourceGuid;type.Source.LocalID=1;type.Type.SourceFile=type.Path;
+            type.Source.Guid=match->SourceGuid;type.Source.LocalID=1;
             registrations.push_back(registration);registrations.back().Source=type.Source;types.push_back(std::move(type));
         }
         std::set<std::string> moduleNames;
@@ -232,8 +222,8 @@ bool ScriptEditor::Load(const ScriptCompileRequest& request,const ScriptCompileR
             const auto source=std::find_if(request.Sources.begin(),request.Sources.end(),[&](const auto& entry) {
                 return entry.Path==registration.SourceFile && entry.SourceGuid==registration.SourceGuid;
             });
-            if(source==request.Sources.end()||QFileInfo(QString::fromStdString(source->Path)).suffix().toLower()!="hpp") {
-                error="Registered gameplay module has no matching .hpp source: "+registration.SourceFile;break;
+            if(source==request.Sources.end()||QFileInfo(QString::fromStdString(source->Path)).suffix().toLower()!="h") {
+                error="Registered gameplay module has no matching .h source: "+registration.SourceFile;break;
             }
             moduleRegistrations.push_back(registration);
             moduleTypes.push_back(description);

@@ -1,0 +1,35 @@
+#include "#CLASSNAME#.h"
+
+using GameSproutRuntime::IGameSproutRuntime;
+
+I#CLASSNAME#::~I#CLASSNAME#() = default;
+
+#CLASSNAME#::#CLASSNAME#(IGameSproutRuntime* runtime) : _Runtime(runtime) {}
+
+#CLASSNAME#::~#CLASSNAME#() = default;
+
+bool #CLASSNAME#::Initialize(IGameSproutRuntime* const runtime) {
+    return true;
+}
+
+bool #CLASSNAME#::Launch(IGameSproutRuntime* const runtime) {
+    return true;
+}
+
+void #CLASSNAME#::LaunchFinished(IGameSproutRuntime* const runtime) {
+}
+
+void #CLASSNAME#::EarlyUpdate(IGameSproutRuntime* const runtime, float deltaSeconds) {
+}
+
+void #CLASSNAME#::Update(IGameSproutRuntime* const runtime, float deltaSeconds) {
+}
+
+void #CLASSNAME#::LateUpdate(IGameSproutRuntime* const runtime, float deltaSeconds) {
+}
+
+void #CLASSNAME#::FixedUpdate(IGameSproutRuntime* const runtime, float fixedDeltaSeconds) {
+}
+
+void #CLASSNAME#::Release(IGameSproutRuntime* const runtime) {
+}

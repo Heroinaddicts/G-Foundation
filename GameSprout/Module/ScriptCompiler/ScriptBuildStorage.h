@@ -11,7 +11,6 @@ struct SourceSnapshot {
     QString Relative;
     QByteArray Bytes;
     bool Compile = false;
-    bool HeaderEntry = false;
 };
 bool WriteIfChanged(const QString& path,const QByteArray& bytes,std::string& error);
 bool Synchronize(const QString& root,const std::vector<SourceSnapshot>& sources,std::string& error);

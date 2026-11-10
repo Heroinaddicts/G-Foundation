@@ -87,7 +87,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     toolchain.addData(QByteArray("ScriptDeclarationSafety/1/-Werror=shadow-field/-Werror=overloaded-virtual"));
     toolchain.addData(directory.toUtf8()); // Relocated CMake trees cannot retain absolute object paths.
     const QString toolchainHash=QString::fromLatin1(toolchain.result().toHex());
-    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/5/RecursiveFieldSchema/2/GameModuleCatalog/1/"));hash.addData(toolchainHash.toUtf8());
+    QCryptographicHash hash(QCryptographicHash::Sha256);hash.addData(QByteArray("FixedNativeScriptInputs/6/RecursiveFieldSchema/2/GameModuleCatalog/1/"));hash.addData(toolchainHash.toUtf8());
     QJsonObject sdkInputs;
     QDirIterator sdk(QString::fromUtf8(GAMESPROUT_SCRIPT_SDK),QStringList{"*.h","*.hpp","*.inl"},QDir::Files,QDirIterator::Subdirectories);
     QStringList sdkFiles;while(sdk.hasNext()) sdkFiles.push_back(sdk.next());sdkFiles.sort();
@@ -113,7 +113,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
         const QByteArray bytes=file.readAll();
         hash.addData(relative.toUtf8());hash.addData(QByteArray::fromStdString(source.SourceGuid));hash.addData(bytes);
         const QString extension=QFileInfo(relative).suffix().toLower();
-        sources.push_back({relative,bytes,extension=="cpp" || extension=="cc" || extension=="cxx",extension=="hpp"});
+        sources.push_back({relative,bytes,extension=="cpp" || extension=="cc" || extension=="cxx"});
         normalized.Sources.push_back({relative.toStdString(),source.SourceGuid});
     }
     for(const auto& source:sources) {
@@ -141,22 +141,15 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     // A failed linker or external corruption may leave a newer invalid output.
     // Invalidate that managed candidate so Ninja must relink instead of no-op.
     if(QFileInfo::exists(library) && !sameLibrary && !QFile::remove(library)) {result.Diagnostics="Cannot invalidate damaged GameLogic output";return false;}
-    QByteArray aggregate="#include \"Internal/RuntimeScriptBindings.h\"\n";
     QString cmake="cmake_minimum_required(VERSION 3.21)\nproject(GameSproutGameLogic LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 20)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\nset(CMAKE_CXX_EXTENSIONS OFF)\n";
     cmake+="set(CMAKE_CXX_FLAGS "+CMakeString(QString::fromUtf8(GAMESPROUT_SCRIPT_BASE_FLAGS))+")\n";
     cmake+="string(TOUPPER "+Quoted(QString::fromUtf8(GAMESPROUT_SCRIPT_CONFIGURATION))+" script_configuration)\nset(CMAKE_CXX_FLAGS_${script_configuration} "+CMakeString(QString::fromUtf8(GAMESPROUT_SCRIPT_CONFIGURATION_FLAGS))+")\n";
     cmake+="add_library(GameLogic SHARED GameLogic.generated.cpp GameLogic.buildstamp.cpp";
     for (const auto& source : sources) {
-        const QString destination=QDir(sourceRoot).filePath(source.Relative);
-        if (source.Compile) cmake+=' '+Quoted(destination);
-        else if(source.HeaderEntry) {
-            QString include=source.Relative; include.replace('\\',"\\\\"); include.replace('"',"\\\"");
-            aggregate+="#include \""+include.toUtf8()+"\"\n";
-        }
+        if (source.Compile) cmake+=' '+Quoted(QDir(sourceRoot).filePath(source.Relative));
     }
     const QString probe=QDir(sourceRoot).filePath("GameLogic.reflection.cpp");
-    if(!Write(probe,aggregate,result.Diagnostics)) return false;
-    QByteArray bindings;
+    QByteArray aggregate;
     const auto translateDiagnostics=[&] {
         QString diagnostics=QString::fromStdString(result.Diagnostics);
         diagnostics.replace(QFileInfo(sourceRoot).canonicalFilePath(),root);diagnostics.replace(sourceRoot,root);
@@ -164,8 +157,7 @@ bool ScriptCompiler::Compile(const ScriptCompileRequest& request,ScriptCompileRe
     };
     result.Types.clear();
     result.Modules.clear();
-    if(!ScriptBindingsGenerator::Generate(normalized,sourceRoot,probe,bindings,result.Types,result.Modules,result.Diagnostics,result.ReflectionWarnings,cancelled)) {translateDiagnostics();return false;}
-    aggregate+=bindings;
+    if(!ScriptBindingsGenerator::Generate(normalized,sourceRoot,sources,probe,aggregate,result.Types,result.Modules,result.Diagnostics,result.ReflectionWarnings,cancelled)) {translateDiagnostics();return false;}
     // The build identity lives in the tiny build-stamp TU, keeping helper-only
     // edits incremental while the module and pure schema stay paired.
     aggregate+="extern \"C\" const char* GetGameSproutGameLogicBuildFingerprint() noexcept;\n"

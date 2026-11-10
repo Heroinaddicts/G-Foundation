@@ -346,7 +346,7 @@ static void CheckScriptSchemaOverrides(TestProject& project,TestAssets& assets,T
     added.Kind=GameSproutRuntime::ScriptValueKind::Boolean;added.Boolean=true;
     GameSproutRuntime::ScriptTypeRegistration oldType;oldType.Info.TypeID=typeID;oldType.Info.Name="SchemaBehaviour";
     oldType.Source=scriptSource;oldType.CppType=&typeid(SchemaBehaviour);
-    oldType.Create=[](GameSproutRuntime::IGameObject* owner)->GameSproutRuntime::IScript*{return new SchemaBehaviour(owner);};
+    oldType.Create=[](GameSproutRuntime::IGameObject* owner,GameSproutRuntime::IGameSproutRuntime*)->GameSproutRuntime::IScript*{return new SchemaBehaviour(owner);};
     oldType.Destroy=[](GameSproutRuntime::IScript* instance){delete instance;};
     oldType.Fields={SchemaField("Schema::Removed",removed),SchemaField("Schema::Changed",changed),SchemaField("Schema::Kept",kept)};
     std::string error;Check(runtime.RegisterScriptType(oldType,error),error);

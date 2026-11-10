@@ -50,8 +50,8 @@ public:
     void OnAssetModify(const AssetEvent&) override;
     void OnAssetRemove(const AssetEvent&) override;
 private:
-    bool CreateSource(const std::string& relativeDirectory,const std::string& name,const char* templatePath,
-                      std::string& relativePath,std::string& error);
+    bool CreateSourcePair(const std::string& relativeDirectory,const std::string& name,const char* templateName,
+                          std::string& relativePath,std::string& error);
     void BeforeInitialize(GameSproutEditor::GameSproutModuleApi*) override;
     bool Initialize(GameSproutEditor::GameSproutModuleApi*) override;
     bool Launch(GameSproutEditor::GameSproutModuleApi*) override;

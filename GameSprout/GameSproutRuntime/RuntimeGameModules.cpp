@@ -39,8 +39,8 @@ bool Runtime::StartGameModules(std::string& error) {
     };
     // Create the complete set before Initialize so every module can resolve its
     // peers. Run each phase across that set before proceeding to the next.
-    return run("Create",[](auto& module) {
-        module.Instance=module.Registration->Create();
+    return run("Create",[this](auto& module) {
+        module.Instance=module.Registration->Create(this);
         return module.Instance!=nullptr;
     }) && run("Initialize",[this](auto& module) {
         module.ReleaseNeeded=true;

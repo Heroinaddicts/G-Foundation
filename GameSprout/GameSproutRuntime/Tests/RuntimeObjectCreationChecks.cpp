@@ -21,7 +21,7 @@ const GameSproutRuntime::ResourceReference MaterialReference{"1234567890abcdef12
 
 class CreatedBehaviour final : public GameSproutRuntime::ScriptBehaviour {
 public:
-    CreatedBehaviour(){++State.ChildConstructed;}
+    explicit CreatedBehaviour(GameSproutRuntime::IGameSproutRuntime*){++State.ChildConstructed;}
     ~CreatedBehaviour() override {++State.ChildDestroyed;}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {
         Check(_GameObject->Parent()!=nullptr,"Created script started before its node was attached");
@@ -40,6 +40,7 @@ public:
 };
 class CreatingBehaviour final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit CreatingBehaviour(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
         ++State.ParentInitialized;
         if(State.Mode!=SpawnMode::DuringUpdate) Spawn(runtime);

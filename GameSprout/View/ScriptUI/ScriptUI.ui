@@ -5,17 +5,21 @@
   <property name="title"><string>代码</string></property>
   <widget class="QMenu" name="createMenu">
    <property name="title"><string>Create</string></property>
-   <addaction name="createScriptAction"/>
-   <addaction name="createModuleAction"/>
+   <widget class="QMenu" name="scriptMenu">
+    <property name="title"><string>Script</string></property>
+    <addaction name="createScriptAction"/>
+    <addaction name="createModuleAction"/>
+   </widget>
+   <addaction name="scriptMenu"/>
   </widget>
   <addaction name="createMenu"/>
   <action name="createScriptAction">
-   <property name="text"><string>Script.hpp</string></property>
+   <property name="text"><string>Script</string></property>
    <property name="dialogTitle" stdset="0"><string>新建 C++ 脚本</string></property>
    <property name="defaultName" stdset="0"><string notr="true">NewBehaviour</string></property>
   </action>
   <action name="createModuleAction">
-   <property name="text"><string>Module.hpp</string></property>
+   <property name="text"><string>Module</string></property>
    <property name="dialogTitle" stdset="0"><string>新建 C++ 模块</string></property>
    <property name="defaultName" stdset="0"><string notr="true">NewModule</string></property>
   </action>

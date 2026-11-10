@@ -10,16 +10,16 @@
 
 bool ScriptEditor::CreateScript(const std::string& relativeDirectory,const std::string& name,
                                 std::string& relativePath,std::string& error) {
-    return CreateSource(relativeDirectory,name,":/GameSprout/Script/Script.hpp.template",relativePath,error);
+    return CreateSourcePair(relativeDirectory,name,"Script",relativePath,error);
 }
 
 bool ScriptEditor::CreateModule(const std::string& relativeDirectory,const std::string& name,
                                 std::string& relativePath,std::string& error) {
-    return CreateSource(relativeDirectory,name,":/GameSprout/Script/Module.hpp.template",relativePath,error);
+    return CreateSourcePair(relativeDirectory,name,"Module",relativePath,error);
 }
 
-bool ScriptEditor::CreateSource(const std::string& relativeDirectory,const std::string& name,const char* templatePath,
-                                std::string& relativePath,std::string& error) {
+bool ScriptEditor::CreateSourcePair(const std::string& relativeDirectory,const std::string& name,
+                                   const char* templateName,std::string& relativePath,std::string& error) {
     relativePath.clear();error.clear();
     const QString identifier=QString::fromStdString(name);
     static const QRegularExpression valid("\\A[A-Za-z][A-Za-z0-9_]*\\z");
@@ -31,20 +31,61 @@ bool ScriptEditor::CreateSource(const std::string& relativeDirectory,const std::
     const QString directory=QFileInfo(QDir(assets).filePath(relative)).canonicalFilePath();
     if(root.isEmpty() || directory.isEmpty() || !QFileInfo(directory).isDir() ||
        QDir::isAbsolutePath(relative) || (directory!=root && !directory.startsWith(root+'/'))) {error="创建目录必须在项目 Assets 内";return false;}
-    const QString filename=identifier+".hpp";
-    for(const QString& existing:QDir(directory).entryList(QDir::AllEntries|QDir::Hidden|QDir::NoDotAndDotDot)) {
-        if(existing.compare(filename,Qt::CaseInsensitive)==0 || existing.compare(filename+".meta",Qt::CaseInsensitive)==0) {error="同名源码或 .meta 已存在，禁止覆盖";return false;}
+    const QString headerName=identifier+".h";
+    const QString sourceName=identifier+".cpp";
+    const QDir destination(directory);
+    for(const QString& existing:destination.entryList(QDir::AllEntries|QDir::Hidden|QDir::System|QDir::NoDotAndDotDot)) {
+        if(existing.compare(headerName,Qt::CaseInsensitive)==0 || existing.compare(headerName+".meta",Qt::CaseInsensitive)==0 ||
+           existing.compare(sourceName,Qt::CaseInsensitive)==0 || existing.compare(sourceName+".meta",Qt::CaseInsensitive)==0) {
+            error="同名源码或 .meta 已存在，禁止覆盖："+existing.toStdString();
+            return false;
+        }
     }
-    QFile source(QString::fromLatin1(templatePath));
-    if(!source.open(QIODevice::ReadOnly)) {error="源码模板无法读取";return false;}
-    QByteArray text=source.readAll();
-    text.replace("#CLASSNAME#",identifier.toUtf8());
-    const QString destination=QDir(directory).filePath(filename);
-    QFile file(destination);
-    if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)) {error=file.errorString().toStdString();return false;}
-    if(file.write(text)!=text.size()) {error=file.errorString().toStdString();file.close();QFile::remove(destination);return false;}
-    file.close();
-    relativePath=QDir(root).relativeFilePath(destination).toStdString(); return true;
+    const QString templateBase=QStringLiteral(":/GameSprout/Script/")+QString::fromLatin1(templateName);
+    const QByteArray className=identifier.toUtf8();
+    const auto readTemplate=[&templateBase,&className,&error](const QString& suffix,QByteArray& contents) {
+        QFile file(templateBase+suffix);
+        if(file.open(QIODevice::ReadOnly)) {
+            contents=file.readAll();
+            if(file.error()==QFileDevice::NoError) {
+                contents.replace("#CLASSNAME#",className);
+                return true;
+            }
+        }
+        error="源码模板无法读取："+file.fileName().toStdString();
+        return false;
+    };
+    QByteArray header,source;
+    if(!readTemplate(".h.template",header) || !readTemplate(".cpp.template",source)) return false;
+
+    const auto removeCreated=[&error](const QString& path) {
+        QFile file(path);
+        if(!file.remove()) error+="；无法清理 "+path.toStdString()+"："+file.errorString().toStdString();
+    };
+    const auto writeNew=[&error,&removeCreated](QFile& file,const QByteArray& contents) {
+        if(!file.open(QIODevice::WriteOnly|QIODevice::NewOnly)) {
+            error=file.fileName().toStdString()+"："+file.errorString().toStdString();
+            return false;
+        }
+        if(file.write(contents)!=contents.size() || !file.flush()) {
+            error=file.fileName().toStdString()+"："+file.errorString().toStdString();
+            file.close();
+            removeCreated(file.fileName());
+            return false;
+        }
+        file.close();
+        return true;
+    };
+    QFile sourceFile(destination.filePath(sourceName));
+    QFile headerFile(destination.filePath(headerName));
+    // Publish the registration header once its implementation exists.
+    if(!writeNew(sourceFile,source)) return false;
+    if(!writeNew(headerFile,header)) {
+        removeCreated(sourceFile.fileName());
+        return false;
+    }
+    relativePath=QDir(root).relativeFilePath(headerFile.fileName()).toStdString();
+    return true;
 }
 
 // Assembly identity is independent of source .meta GUIDs and remains stable across builds.

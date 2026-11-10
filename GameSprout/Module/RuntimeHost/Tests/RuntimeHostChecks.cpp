@@ -20,6 +20,7 @@ int Created=0,Released=0,Early=0,Updated=0,Late=0,Fixed=0,EarlyPress=0,UpdatePre
 bool FixedSawEarly=true;std::string Order;
 class Mover final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit Mover(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {++Created;}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {++Released;}
     void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime* runtime,float) override {++Early;Order+='E';if(runtime->GetInputState().GetKey(GameSproutRuntime::InputKey::W).Pressed)++EarlyPress;}

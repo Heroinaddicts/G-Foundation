@@ -85,7 +85,7 @@ public:
     virtual ScriptBuildState GetBuildState() const = 0;
     virtual bool RegisterScriptListener(IScriptEditorListener* listener) = 0;
     virtual void UnregisterScriptListener(IScriptEditorListener* listener) = 0;
-    // Creates one .hpp without overwriting any source/.meta. AssetsManager creates its .meta.
+    // Creates a .h/.cpp pair without overwriting source or .meta files. Returns the header path.
     virtual bool CreateScript(const std::string& relativeDirectory, const std::string& name,
                               std::string& relativePath, std::string& error) = 0;
     virtual bool RequestCompile(std::string& error) = 0;
@@ -143,7 +143,7 @@ public:
     // received while blocked compile after the session ends, without replacing
     // code referenced by live script instances.
     virtual bool SetReloadBlocked(bool blocked, std::string& error) { error.clear(); return true; }
-    // A gameplay module uses the same .hpp source import pipeline as a script.
+    // Creates a gameplay module .h/.cpp pair with the same path contract as CreateScript.
     virtual bool CreateModule(const std::string& relativeDirectory, const std::string& name,
                               std::string& relativePath, std::string& error) {
         relativePath.clear();error="游戏模块创建服务不可用。";return false;

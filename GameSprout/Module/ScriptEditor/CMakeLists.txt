@@ -28,10 +28,14 @@ file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.hxx"
     "${CMAKE_CURRENT_SOURCE_DIR}/*.inl"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Templates/*.template"
 )
 # Exclude build output, separately built dependencies and test entry points.
 list(FILTER module_files EXCLUDE REGEX "/(build|cmake-build-[^/]+|CMakeFiles|[^/]+_autogen|ThirdParty|Tests)/")
-list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(APPEND module_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ScriptTemplates.qrc"
+)
 
 add_library(ScriptEditor SHARED ${module_files})
 target_compile_features(ScriptEditor PRIVATE cxx_std_20)
@@ -82,7 +86,3 @@ set_target_properties(ScriptEditor PROPERTIES
 )
 
 set_target_properties(ScriptEditor PROPERTIES AUTORCC ON)
-target_sources(ScriptEditor PRIVATE ScriptTemplates.qrc Templates/Script.hpp.template)
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/ScriptTemplates.qrc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Templates/Script.hpp.template")

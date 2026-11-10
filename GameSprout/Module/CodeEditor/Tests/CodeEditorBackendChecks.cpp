@@ -27,27 +27,37 @@ static QByteArray Run(const QStringList& arguments) {
     const auto output=process.readAll();Check(process.exitStatus()==QProcess::NormalExit&&process.exitCode()==0,output.toStdString());return output;
 }
 static void CheckRealPipeline(CodeEditorBackend& backend,const QString& project,const QString& buildTool) {
-    Write(project+"/Assets/Hero.hpp",R"(#pragma once
+    Write(project+"/Assets/Hero.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 class Hero final:public GameSproutRuntime::ScriptBehaviour {
 public:
     float Speed=2;
-    void Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) override {
-        auto value=_GameObject->GetTransform()->GetLocalPosition();value.X+=Speed*seconds;
-        _GameObject->GetTransform()->SetLocalPosition(value);
-    }
+    void Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) override;
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Hero>;
+    explicit Hero(GameSproutRuntime::IGameSproutRuntime*) {}
 };
 GAMESPROUT_SCRIPT(Hero)
 )");
-    Write(project+"/Assets/Hero.hpp.meta",R"({"Version":1,"ImporterType":"Script","Guid":"0123456789abcdef0123456789abcdef"})");
+    Write(project+"/Assets/Hero.cpp",R"(#include "Hero.h"
+
+void Hero::Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) {
+    auto value=_GameObject->GetTransform()->GetLocalPosition();value.X+=Speed*seconds;
+    _GameObject->GetTransform()->SetLocalPosition(value);
+}
+)");
+    Write(project+"/Assets/Hero.h.meta",R"({"Version":1,"ImporterType":"Script","Guid":"0123456789abcdef0123456789abcdef"})");
+    Write(project+"/Assets/Hero.cpp.meta",R"({"Version":1,"ImporterType":"Script","Guid":"2234567890abcdef1234567890abcdef"})");
     Write(project+"/Info/GameLogic.json",R"({"Version":1,"Guid":"1234567890abcdef1234567890abcdef"})");
     CodeEditorProjectRequest request;
     request.ProjectRoot=project;request.RuntimeSDKDirectory=QString::fromUtf8(TEST_RUNTIME_SDK);
     request.CMakeProgram=QString::fromUtf8(TEST_CMAKE_PROGRAM);request.CompilerProgram=QString::fromUtf8(TEST_COMPILER_PROGRAM);
     request.BuildToolProgram=buildTool;request.BuildToolArguments={"--ProjectRoot="+project};
-    request.Configuration="Debug";request.ConfigurationFlags="-g";request.Sources={"Hero.hpp"};
+    request.Configuration="Debug";request.ConfigurationFlags="-g";request.Sources={"Hero.h","Hero.cpp"};
     CodeEditorProjectResult result;std::string error;
     Check(backend.Generate(request,result,error,[]{return false;}),error);
+    const auto projectFile=Read(result.ProjectPath+"/project.pbxproj");
+    Check(projectFile.contains("Hero.h")&&projectFile.contains("Hero.cpp"),"Xcode project is missing an authored gameplay file");
     const auto first=Run({"-project",result.ProjectPath,"-scheme","GameLogic","-configuration","Debug","build"});
     Check(first.contains("GameLogic build succeeded"),"Xcode did not complete the real reflection/native pipeline: "+first.toStdString());
     const QString library=project+"/Library/ScriptBuild/Build/Output/libGameLogic.dylib";
@@ -56,7 +66,8 @@ GAMESPROUT_SCRIPT(Hero)
     QLibrary module(library);Check(module.load(),module.errorString().toStdString());
     const auto get=reinterpret_cast<GameSproutRuntime::fGetScriptModule>(module.resolve(GameSproutRuntime::ScriptModuleEntryName));
     const auto* api=get?get():nullptr;
-    Check(api&&api->Version==GameSproutRuntime::ScriptModuleABIVersion&&api->Count==1&&api->Types[0].Info.Name=="Hero"&&api->Types[0].Fields.size()==1,
+    Check(api&&api->Version==GameSproutRuntime::ScriptModuleABIVersion&&api->Count==1&&api->Types[0].Info.Name=="Hero"&&
+        api->Types[0].Info.SourceFile=="Hero.h"&&api->Types[0].Fields.size()==1,
         "Xcode product is missing generated script registration or field bridges");
     Check(module.unload(),"Unload real test module");
     const auto cached=Run({"-project",result.ProjectPath,"-scheme","GameLogic","-configuration","Debug","build"});

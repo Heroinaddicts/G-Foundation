@@ -5,6 +5,7 @@
 extern int NativeScriptCounts[13];
 class NativeObserver final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit NativeObserver(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override;
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {}
     void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {}
@@ -16,6 +17,7 @@ GAMESPROUT_SCRIPT(NativeObserver)
 // The authored class has no constructor forwarding or registration metadata.
 class NativeMover final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit NativeMover(GameSproutRuntime::IGameSproutRuntime*) {}
     ~NativeMover() override {++NativeScriptCounts[3];}
     float Speed=1;
     bool Throw=false;
@@ -71,10 +73,12 @@ inline void NativeObserver::OnCreate(GameSproutRuntime::IGameSproutRuntime*) {
 
 class CascadeB final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit CascadeB(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override;
 };
 class CascadeA final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit CascadeA(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {_GameObject->RemoveComponent<CascadeB>();}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {++NativeScriptCounts[11];}
 };

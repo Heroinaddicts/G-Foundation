@@ -30,8 +30,9 @@ bool ScriptUI::Launch(GameSproutEditor::GameSproutViewApi*){
     _Registered=_Inspector->RegisterExtension(this);
     if(!_Registered)return false;
     const std::string createMenu=_Ui->createMenu->title().toStdString();
-    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,_Ui->createScriptAction->text().toStdString()},&CreateScriptMenu))return false;
-    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,_Ui->createModuleAction->text().toStdString()},&CreateModuleMenu))return false;
+    const std::string scriptMenu=_Ui->scriptMenu->title().toStdString();
+    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,scriptMenu,_Ui->createScriptAction->text().toStdString()},&CreateScriptMenu))return false;
+    if(!_ProjectAssets->RegisterContextAction(this,{createMenu,scriptMenu,_Ui->createModuleAction->text().toStdString()},&CreateModuleMenu))return false;
     return _ProjectAssets->RegisterAssetOpenHandler(this,[this](const ProjectAssetSelection& selection){return OpenSourceAsset(selection);});
 }
 void ScriptUI::Release(GameSproutEditor::GameSproutViewApi*){
@@ -64,7 +65,7 @@ bool ScriptUI::OpenSourceAsset(const ProjectAssetSelection& selected){
     if(_Console)_Console->ConsoleLog(__FILE__,__LINE__,eConsoleLog::Error,error);
     else qWarning().noquote()<<QString::fromStdString(error);
     // This source belongs to the code-project handler even when launching fails;
-    // falling through would open only a loose .hpp in the system default app.
+    // falling through would open only a loose source file in the system default app.
     return true;
 }
 ComponentEditor* ScriptUI::CreateComponentEditor(const std::type_info& type,QWidget* parent){

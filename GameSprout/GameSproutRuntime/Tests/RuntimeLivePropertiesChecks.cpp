@@ -14,6 +14,7 @@ GameSproutRuntime::IRuntimePropertyObserver* RemoveDuringRead=nullptr;
 }
 class LiveScript final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit LiveScript(GameSproutRuntime::IGameSproutRuntime*) {}
     float Number=1;
     GameSproutRuntime::IGameObject* Target=nullptr;
     void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {++Number;++Updates;}

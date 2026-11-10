@@ -18,6 +18,7 @@ namespace Internal {
 template<typename T> struct ScriptMarker {};
 template<typename T> struct ModuleMarker {};
 template<typename T> struct ScriptFieldAccess;
+template<typename T> struct GameplayFactory;
 
 #if defined(__clang__) || defined(__GNUC__)
 [[gnu::format(printf, 4, 5)]]

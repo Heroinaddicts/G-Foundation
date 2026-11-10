@@ -18,6 +18,14 @@ Tests 的 Object/Image/ExportFixture 只是测试替身，不属于发布的 Run
 序列化使用 GetTypeName 的稳定类型标识，不保存 type_info/hash_code。
 接口与模块使用同一套头文件、兼容编译器/标准库和 RTTI 配置。
 
+项目脚本与模块创建
+GameLogic 工厂通过接收 IGameSproutRuntime* 的构造函数创建 Script 和 Module 实例。
+生成模板将构造函数设为私有，并授权对应类型的 Internal::GameplayFactory<T>。
+实例借用当前执行会话的 Runtime。脚本工厂在调用构造函数前绑定所属 GameObject。
+构造函数只绑定实例状态。脚本依赖同批装配结果的逻辑放在 OnInitialized，
+模块查找其他模块的逻辑放在 Initialize 或之后的阶段。
+GameLogic ABI 8 的创建回调显式接收 Runtime 指针，宿主和项目动态库须使用当前 SDK 构建。
+
 所有权与节点树
 Runtime 持有场景，场景持有对象，对象持有组件；外部指针只借用，不自行 delete。
 所有节点/组件接口在所属宿主线程调用，不以智能指针或引用计数替代线程规则。

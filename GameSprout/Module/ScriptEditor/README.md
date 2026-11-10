@@ -2,18 +2,19 @@
 
 `ScriptEditor` 负责源码创建、资产事件订阅、TaskApi 调度、类型目录和动态库替换；`ScriptCompiler` 负责源码快照、Clang AST、生成内部绑定、CMake 编译与缓存。界面只通过公开接口与事件协作，不查询功能模块的私有实现。
 
-用户源码只需要继承 `GameSproutRuntime::ScriptBehaviour`，按需实现 `OnCreate`、`OnInitialized`、`EarlyUpdate`、`Update`、`LateUpdate`、`FixedUpdate`、`OnRelease`，最后写一行 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，七个生命周期统一放在 protected，并使用 `override` 检查签名，由 Runtime 调用；不要求构造函数、构造继承、UUID 或字段注册表。
+在 `.h` 中声明继承 `GameSproutRuntime::ScriptBehaviour` 的脚本类，在类声明之后写 `GAMESPROUT_SCRIPT(Test)`。创建模板提供 public 虚析构函数，并在 protected 中用 `override` 声明 `OnCreate`、`OnInitialized`、`EarlyUpdate`、`Update`、`LateUpdate`、`FixedUpdate`、`OnRelease`。生命周期由 Runtime 调用，实现在同名 `.cpp` 中。UUID 与字段注册表由工具生成。
 
 ## 游戏模块
 
-`Create → Module.hpp` 生成模块接口、继承该接口的实现类和 `GAMESPROUT_REGIST_MODULE(Type)` 标记。它与 `Script.hpp` 使用同一套源码导入和 GameLogic 构建，编译结果分别提供模块和组件脚本的注册表。
+`Create → Script` 下提供 `Script` 和 `Module`，两者都生成同名的 `.h` 和 `.cpp`。Module 的 `.h` 声明模块接口、实现类和 `GAMESPROUT_REGIST_MODULE(Type)` 标记。两种源码共用导入和 GameLogic 构建，编译结果分别提供模块和组件脚本的注册表。
 
 模块的名称是实现类的完整 C++ 名称，源文件仍由 `.meta` GUID 标识。例如 `runtime->FindModule<ITestModule>("TestModule")` 返回游戏会话内的借用指针。Runtime 先登记全部模块实例，然后依次调用全部 `Initialize`、`Launch`、`LaunchFinished`，再初始化对象脚本。各帧阶段先调用模块，再调用该阶段的组件。Stop 先释放对象脚本，再逆序释放模块。
 
-- `GAMESPROUT_SCRIPT(Type)` 只生成编译期类型标记，不执行注册和用户构造。默认构造时的 GameObject 归属由 SDK 内部注入。
+- Script 和 Module 在类内授权 `GameSproutRuntime::Internal::GameplayFactory<Type>`，并声明接收 `IGameSproutRuntime*` 的私有构造函数。工厂在创建实例时传入该实例所属的 Runtime。模板将指针保存到私有的 `_Runtime`，供普通业务方法使用。Script 的 GameObject 归属仍由工厂建立。
+- 类外注册宏只声明编译期标记。构造函数可绑定 Runtime 和初始化成员。场景引用在 Script 的 `OnInitialized` 中读取，Module 可在 `Initialize` 中查找同一会话的其他模块。
 - 游戏代码通过 `_GameObject->AddComponent<T>()`、`GetComponent<T>()`、`RemoveComponent<T>()` 使用脚本。每个对象同类脚本最多一个，重复添加返回 `nullptr`；`OnCreate` 中查询自身返回当前真实实例，也可以查询或创建内置组件。内置组件重复添加仍返回已有组件。
 - 实例在 `OnCreate` 前已经登记并恢复作者字段。Runtime 完成本批节点、组件、字段与引用的装配，并提交 `OnCreate` 产生的结构修改后，调用一次 `OnInitialized`，之后才允许 `EarlyUpdate`、`Update`、`LateUpdate` 和 `FixedUpdate`。此时可以访问同批其他组件及其数据，但不保证其他组件已经执行完自己的 `OnInitialized`；后续新增组件不会重新初始化已有组件。宿主通过 `Runtime.AdvanceFrame(deltaSeconds, fixedStepCount, fixedDeltaSeconds)` 推进完整帧：全体 `EarlyUpdate` → 零到多次（全体 `FixedUpdate` → 物理）→ 全体 `Update` → 独立动画求值及相关通知 → 全体 `LateUpdate`。`EarlyUpdate` 是 GameSprout 自定义的脚本前置阶段，用于本帧输入锁存；Unity 的同名 PlayerLoop 阶段并非 MonoBehaviour 回调。`Runtime.Update(deltaSeconds)` 推进不含固定步的完整变量帧；`Runtime.FixedUpdate(fixedDeltaSeconds)` 保留为低层单固定步入口，完整游戏循环优先使用 `AdvanceFrame`。停止执行或移除组件时调用 `OnRelease`，回调中的移除延迟到安全边界处理。
-- 每个 `.hpp` 资源最多标记一个组件，可以包含其他辅助类。隐藏 TypeID 直接使用该源资源 `.meta` GUID；类、文件、目录改名不会改变身份。复制资源时由 AssetsManager 创建新 `.meta` GUID。源引用是同一 GUID 加固定 LocalID `1`。
+- 每个 `.h` 最多标记一个组件或模块，可以包含其他辅助类。注册身份来自 `.h.meta` 的 GUID，源引用使用该 GUID 加固定 LocalID `1`。保留 `.h.meta` 的 GUID 即可在改名或移动后维持原有引用。`.cpp` 也有自己的资产身份，供源码追踪和构建使用。
 - `ScriptBindingsGenerator` 调用本机 Clang JSON AST，识别标记的真实 C++ 类、访问权限和字段类型，再生成 `GameLogic.generated.cpp`。不使用正则猜测 C++ 声明，也不创建用户类实例来读取默认值。
 - 支持的 public 实例字段自动序列化；private / protected 使用 `GAMESPROUT_SERIALIZE_FIELD` 标记。字段类型包括 bool、有符号/无符号整数、float/double、枚举、std::string、Vector2/3/4、Quaternion、Color、ResourceReference、`IGameObject*` 和类型明确的组件指针。结构体/普通数据类递归展开；C 数组、std::array、std::vector、std::list 与 std::map/std::unordered_map 保存逻辑元素，不保存容器地址、分配器或内部节点。访问器通过每个声明类授权的友元生成，继承字段由其声明类处理；字段 ID 为 `声明类型::成员名`。字段更名视为新字段。
 - 编译器拒绝派生类隐藏基类成员，覆盖 SDK 和用户定义基类，包括未标记的 private/protected 字段、静态字段、类型别名、枚举值以及非虚接口的同名函数。真正覆盖基类虚函数的实现可以使用；生命周期参数、返回值、const/static 等签名不匹配会编译失败，`using Base::Update` 也不能把错误生命周期重载变成有效实现。诊断包含声明位置、冲突名称和基类来源，不依赖等到 Play 执行才发现问题。
@@ -23,7 +24,7 @@
 - `AddComponent()` 返回后可以继续配置属性和添加其他组件，不会在返回前调用 `OnInitialized`。脚本回调中新建的对象在本轮回调／遍历结束、结构提交后分批初始化；`OnInitialized` 中新增的对象进入下一批，初始化完成前不更新。非激活或禁用的脚本等待激活／启用后初始化。
 - 宿主跨多次调用装配对象时，使用可嵌套的 `BeginConstruction(error)`／`EndConstruction(error)`。最外层提交前禁止模拟与渲染；场景加载、模型实例化和组件恢复已接入此边界。没有显式范围的外部新增组件在下一次正时间步前初始化；`Update(0)` 和仅派发事件不会启动待执行的用户脚本。`BeginExecution` 则主动完成启动初始化，不等待第一帧。
 - 源文件事件触发排队编译；编译中发生的新事件提升版本号，旧任务结束后丢弃过期结果再编译。主线程先 Loading，再提交 TaskApi；完成、拒绝与释放均配对 Unloading。
-- `.hpp` 入口聚合为一个 TU，每份 `.hpp` 应能独立 include。`.cpp/.cc/.cxx` 为辅助 TU；`.h/.hxx/.inl` 只复制并参与指纹，由入口按需 include。组件标记放在 `.hpp`，不放在 `.cpp`。
+- `.cpp/.cc/.cxx` 分别编译。Clang 从源码编译单元发现注册宏，生成绑定时只包含注册类型所在的 `.h`。每份注册头应能独立被包含。只用到其他类型的指针或引用时可以在头文件前置声明，在实现文件里再包含其头文件。
 - 缓存指纹包含源路径、源 GUID、内容、SDK、绑定生成格式和工具链设置，只写进固定构建记录。相同输入且候选库校验通过时直接复用；源码或 SDK 改变时保留 CMake 对象文件，工具链改变时重建当前构建树。
 - `Library/ScriptBuild/Sources/` 固定保存本次源码快照、反射探针和生成代码。内容相同不重写文件；删除或改名的源会同步移除旧快照。`Build/` 是固定 CMake 增量构建目录，候选库在 `Build/Output/`，成功记录在 `Build/ScriptBuildState.json`。
 - `Info/GameLogic.json` 保存 assembly GUID；最终动态库仍平铺为 `Library/Artifact/<assemblyGuid>_1.dylib`（Windows `.dll`、Linux `.so`），没有额外 JSON 头。
@@ -43,6 +44,10 @@ Unity 参考：`Editor/Mono/ProjectWindow/ProjectWindowUtil.cs` 将模板预处�
 ```cpp
 class Test final : public GameSproutRuntime::ScriptBehaviour {
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Test>;
+    explicit Test(GameSproutRuntime::IGameSproutRuntime* runtime) : _Runtime(runtime) {}
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
+
     GAMESPROUT_SERIALIZE_FIELD
     GameSproutRuntime::IGameObject* _Target = nullptr;
 protected:
@@ -70,6 +75,10 @@ struct MovementOptions {
     GameSproutRuntime::IRigidbodyComponent* Body = nullptr;
 };
 class Mover final : public GameSproutRuntime::ScriptBehaviour {
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Mover>;
+    explicit Mover(GameSproutRuntime::IGameSproutRuntime*) {}
+
 protected:
     GAMESPROUT_SERIALIZE_FIELD
     MovementOptions _Options;

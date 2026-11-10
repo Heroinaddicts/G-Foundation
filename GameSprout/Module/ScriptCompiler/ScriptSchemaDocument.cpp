@@ -10,6 +10,12 @@
 #include <set>
 
 namespace {
+constexpr int SchemaVersion = 4;
+bool IsRegistrationHeader(const QString& source) {
+    return !source.isEmpty() && !source.contains(QChar(0)) && !source.contains('\\') &&
+           !QDir::isAbsolutePath(source) && QDir::cleanPath(source) == source &&
+           !source.startsWith("../") && QFileInfo(source).suffix().toLower() == "h";
+}
 QJsonObject Value(const GameSproutRuntime::ScriptValue& value) {
     using GameSproutRuntime::ScriptValueKind;
     QJsonObject output{{"Kind",int(value.Kind)}};
@@ -122,20 +128,29 @@ QByteArray Serialize(const std::string& buildID,const std::vector<GameSproutRunt
     for(const auto& module:modules)
         moduleEntries.append(QJsonObject{{"Name",QString::fromStdString(module.Name)},
             {"SourceGuid",QString::fromStdString(module.SourceGuid)},{"SourceFile",QString::fromStdString(module.SourceFile)}});
-    return QJsonDocument(QJsonObject{{"Version",3},{"BuildID",QString::fromStdString(buildID)},
+    return QJsonDocument(QJsonObject{{"Version",SchemaVersion},{"BuildID",QString::fromStdString(buildID)},
         {"Types",entries},{"Modules",moduleEntries}}).toJson(QJsonDocument::Compact);
 }
 bool Parse(const QByteArray& bytes,const std::string& buildID,std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
            std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules,std::string& error) {
     QJsonParseError parse;const auto document=QJsonDocument::fromJson(bytes,&parse);const auto root=document.object();
-    if(parse.error!=QJsonParseError::NoError||!document.isObject()||root.value("Version").toInt()!=3||
+    if(parse.error!=QJsonParseError::NoError||!document.isObject()||root.value("Version").toInt()!=SchemaVersion||
        root.value("BuildID").toString()!=QString::fromStdString(buildID)||!root.value("Types").isArray()||
        !root.value("Modules").isArray()) {error="Invalid or mismatched GameLogic schema";return false;}
-    std::vector<GameSproutRuntime::ScriptTypeInfo> candidate;std::set<std::string> identities;
+    std::vector<GameSproutRuntime::ScriptTypeInfo> candidate;
+    std::set<Guid> identities;
+    std::set<QString> sourceFiles;
+    std::set<std::string> names;
     for(const auto& entry:root.value("Types").toArray()) {
         const auto data=entry.toObject();GameSproutRuntime::ScriptTypeInfo type;
-        type.TypeID=data.value("TypeID").toString().toStdString();type.Name=data.value("Name").toString().toStdString();type.SourceFile=data.value("SourceFile").toString().toStdString();
-        if(type.TypeID.empty()||type.Name.empty()||!identities.insert(type.TypeID).second||!data.value("Fields").isArray()){error="Invalid GameLogic schema type";return false;}
+        const auto source=data.value("SourceFile").toString();
+        type.TypeID=data.value("TypeID").toString().toStdString();type.Name=data.value("Name").toString().toStdString();type.SourceFile=source.toStdString();
+        const Guid sourceGuid(type.TypeID);
+        if(!sourceGuid.IsValid()||type.Name.empty()||type.Name.find('\0')!=std::string::npos||!IsRegistrationHeader(source)||
+           !identities.insert(sourceGuid).second||!sourceFiles.insert(source).second||!names.insert(type.Name).second||!data.value("Fields").isArray()) {
+            error="Invalid GameLogic schema type";
+            return false;
+        }
         std::set<std::string> fieldIDs;
         for(const auto& item:data.value("Fields").toArray()) {
             GameSproutRuntime::ScriptFieldInfo field;
@@ -145,18 +160,14 @@ bool Parse(const QByteArray& bytes,const std::string& buildID,std::vector<GameSp
         candidate.push_back(std::move(type));
     }
     std::vector<GameSproutRuntime::GameModuleTypeInfo> candidateModules;
-    std::set<std::string> moduleNames;
-    std::set<Guid> moduleGuids;
     for(const auto& entry:root.value("Modules").toArray()) {
         const auto data=entry.toObject();
         const auto name=data.value("Name").toString();
         const auto guid=data.value("SourceGuid").toString();
         const auto source=data.value("SourceFile").toString();
         const Guid sourceGuid(guid.toStdString());
-        if(name.isEmpty()||name.contains(QChar(0))||!sourceGuid.IsValid()||source.isEmpty()||source.contains(QChar(0))||
-           QDir::isAbsolutePath(source)||QDir::cleanPath(source)!=source||source.startsWith("../")||
-           QFileInfo(source).suffix().toLower()!="hpp"||!moduleNames.insert(name.toStdString()).second||
-           !moduleGuids.insert(sourceGuid).second) {
+        if(name.isEmpty()||name.contains(QChar(0))||!sourceGuid.IsValid()||!IsRegistrationHeader(source)||
+           !names.insert(name.toStdString()).second||!sourceFiles.insert(source).second||!identities.insert(sourceGuid).second) {
             error="Invalid GameLogic schema module";
             return false;
         }

@@ -10,10 +10,10 @@ bool FailCreate=false;
 GameSproutRuntime::IGameObject* Peer=nullptr;
 class SessionScript final : public GameSproutRuntime::ScriptBehaviour {
 public:
-    SessionScript(){++Constructed;}
     ~SessionScript() override {++Destroyed;}
     float Value=1;
-    void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {
+    void OnCreate(GameSproutRuntime::IGameSproutRuntime* runtime) override {
+        Check(_Runtime==runtime,"Script construction received a different Runtime from its lifecycle");
         Check(Constructed==2,"OnCreate ran before all native instances were constructed");
         auto* peer=Peer->GetComponent<SessionScript>();
         Check(peer&&peer->Value==9,"OnCreate could not see the restored peer field");
@@ -26,9 +26,15 @@ public:
     void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {++Updated;}
     void FixedUpdate(GameSproutRuntime::IGameSproutRuntime*,float) override {++Fixed;}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {++Released;}
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<SessionScript>;
+    explicit SessionScript(GameSproutRuntime::IGameSproutRuntime* runtime) : _Runtime(runtime) {++Constructed;}
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
 };
+static_assert(!std::is_constructible_v<SessionScript, GameSproutRuntime::IGameSproutRuntime*>);
 class SimulationScript final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit SimulationScript(GameSproutRuntime::IGameSproutRuntime*) {}
     int Updates=0,FixedTicks=0;
     void Update(GameSproutRuntime::IGameSproutRuntime*,float delta) override {
         ++Updates;auto* transform=_GameObject->GetTransform();auto position=transform->GetLocalPosition();position.X+=delta;transform->SetLocalPosition(position);
@@ -110,12 +116,14 @@ class IOtherModule : public GameSproutRuntime::IModule {};
 
 template<char Letter> class PhaseModule final : public IPhaseModule {
 public:
-    PhaseModule() : _Instance(++NextModuleInstance) {Record("Create");}
+    explicit PhaseModule(GameSproutRuntime::IGameSproutRuntime* runtime)
+        : _Runtime(runtime), _Instance(++NextModuleInstance) {Record("Create");}
     ~PhaseModule() override {Record("Destroy");}
     int InstanceNumber() const override {return _Instance;}
 protected:
     bool Initialize(GameSproutRuntime::IGameSproutRuntime* runtime) override {
-        Check(runtime->FindModule<IPhaseModule>("A")&&runtime->FindModule<IPhaseModule>("B"),
+        Check(_Runtime==runtime,"Module construction received a different Runtime from its lifecycle");
+        Check(_Runtime->FindModule<IPhaseModule>("A")&&_Runtime->FindModule<IPhaseModule>("B"),
             "Module peer lookup must be available before Initialize");
         Record("Initialize");
         return true;
@@ -138,11 +146,12 @@ protected:
     }
 private:
     static void Record(const char* callback) {ModuleCalls.push_back(std::string(callback)+Letter);}
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
     int _Instance;
 };
 template<char Letter> GameSproutRuntime::GameModuleRegistration PhaseRegistration() {
     return {std::string(1,Letter),std::string("fixture-")+Letter,__FILE__,
-        []()->GameSproutRuntime::IModule* {return new PhaseModule<Letter>();},
+        [](GameSproutRuntime::IGameSproutRuntime* runtime)->GameSproutRuntime::IModule* {return new PhaseModule<Letter>(runtime);},
         [](GameSproutRuntime::IModule* module) {delete static_cast<PhaseModule<Letter>*>(module);}};
 }
 class ModuleEvents final : public GameSproutRuntime::IRuntimeListener {

@@ -11,6 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SCRIPT_GUID = '1349119f706a432ea716f963a18c2001'
 CAMERA_GUID = '1349119f706a432ea716f963a18c2002'
+SCRIPT_IMPLEMENTATION_GUID = '1349119f706a432ea716f963a18c2003'
+CAMERA_IMPLEMENTATION_GUID = '1349119f706a432ea716f963a18c2004'
 RIG_GUID = '1349119f706a432ea716f963a18c2010'
 CHARACTER_MATERIAL_GUID = '1349119f706a432ea716f963a18c2092'
 CLIP_GUIDS = {name: f'1349119f706a432ea716f963a18c20{i:02x}' for i, name in enumerate(('Idle','Walk','Run','Jump'), 32)}
@@ -75,10 +77,14 @@ def create(output):
     try:
         write(output,'Info/project.json',{'Project':{'name':'Third Person Playground'}})
         write(output,'Info/GameLogic.json',{'Version':1,'Guid':'1349119f706a432ea716f963a18c2000'})
-        for name,guid in [('ThirdPersonCharacter',SCRIPT_GUID),('ThirdPersonCamera',CAMERA_GUID)]:
-            path='Scripts/'+name+'.hpp'
-            destination=output/'Assets'/path;destination.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(ROOT/'Assets'/path,destination);meta(output,path,guid,'Script')
+        for name,header_guid,implementation_guid in [
+            ('ThirdPersonCharacter',SCRIPT_GUID,SCRIPT_IMPLEMENTATION_GUID),
+            ('ThirdPersonCamera',CAMERA_GUID,CAMERA_IMPLEMENTATION_GUID),
+        ]:
+            for extension,guid in [('h',header_guid),('cpp',implementation_guid)]:
+                path=f'Scripts/{name}.{extension}'
+                destination=output/'Assets'/path;destination.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copyfile(ROOT/'Assets'/path,destination);meta(output,path,guid,'Script')
         # Direct velocity control presses into walls every fixed step. A dedicated
         # zero-friction capsule must not turn that pressure into upward support.
         write(output,'Assets/Character.physicmaterial',{'Version':1,'Friction':0,'Restitution':0,

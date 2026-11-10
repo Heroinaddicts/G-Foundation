@@ -9,7 +9,7 @@ python3 GameSprout/Examples/ThirdPerson/CreateProject.py --output /Users/max/Doc
 open -n Bin/GameSproutEditor.app --args --ProjectRoot=/Users/max/Documents/GameSproutThirdPerson
 ```
 
-目标目录只允许新建，存在时直接失败，绝不覆盖。生成器会创建 `Info/project.json`、GameLogic 身份、两个用户脚本、骨架、四个 `.anim`、`Playground.scene`、`Player.prefab` 和对应的当前格式 `.meta`。预处理产物及 GameLogic 动态库仍由现有导入和编译流程生成到项目 Library。首次启动会打开 Playground；等待资源与脚本处理完成后点击运行，再点击 Game 画面获取输入。
+目标目录只允许新建，存在时直接失败，绝不覆盖。生成器会创建 `Info/project.json`、GameLogic 身份、两个用户脚本、骨架、四个 `.anim`、`Playground.scene`、`Player.prefab` 和对应的当前格式 `.meta`。每个脚本由同名 `.h` 和 `.cpp` 组成，注册宏在 `.h`，场景和 Prefab 用 `.h.meta` 的 GUID 引用脚本。预处理产物及 GameLogic 动态库仍由现有导入和编译流程生成到项目 Library。首次启动会打开 Playground。等待资源与脚本处理完成后点击运行，再点击 Game 画面获取输入。
 
 ## 操作
 
@@ -20,11 +20,11 @@ open -n Bin/GameSproutEditor.app --args --ProjectRoot=/Users/max/Documents/GameS
 
 ## 数据与职责
 
-`ThirdPersonCharacter.hpp` 根据固定步控制 Dynamic Rigidbody，保留重力产生的 Y 速度，冻结物理旋转，并让独立 Visual 节点朝向移动方向。它使用普通 Raycast 排除自身物体，检查地面法线与坡度；输入边沿由 EarlyUpdate 在物理前锁存，在一个 FixedUpdate 中消费一次，避免多固定步重复跳跃。它是刚体角色例子，尚未实现专用 CharacterController 的自动跨台阶或移动平台补偿。
+`ThirdPersonCharacter.cpp` 根据固定步控制 Dynamic Rigidbody，保留重力产生的 Y 速度，冻结物理旋转，并让独立 Visual 节点朝向移动方向。它使用普通 Raycast 排除自身物体，检查地面法线与坡度；输入边沿由 EarlyUpdate 在物理前锁存，在一个 FixedUpdate 中消费一次，避免多固定步重复跳跃。它是刚体角色例子，尚未实现专用 CharacterController 的自动跨台阶或移动平台补偿。
 
 角色胶囊使用独立的 `Character.physicmaterial`：摩擦为 0、弹性为 0、摩擦合并为 Minimum。持续写入水平速度会使角色不断压向墙面，普通材质的接触摩擦可能抵消重力而产生“贴墙悬停”；角色材质避免这种摩擦支撑。墙和地面保持默认材质。零摩擦自身不足以保证合并结果为零，故明确使用 Minimum；若对方材质采用优先级更高的 Maximum，仍需按项目材质规则配置。游戏移动和刹停继续由脚本控制，角色仍与墙碰撞并受重力。
 
-`ThirdPersonCamera.hpp` 在 EarlyUpdate 通过 Runtime 输入读取右键旋转，在 LateUpdate 读取角色本帧经过物理、脚本和动画后的最终位置，夹紧俯仰角并平滑跟随。遮挡使用五条射线，立即回拉、平滑恢复，不能等同于完整球形 Sweep。父级变换通过公开数学接口转换；它不控制 Scene 的编辑相机。
+`ThirdPersonCamera.cpp` 在 EarlyUpdate 通过 Runtime 输入读取右键旋转，在 LateUpdate 读取角色本帧经过物理、脚本和动画后的最终位置，夹紧俯仰角并平滑跟随。遮挡使用五条射线，立即回拉、平滑恢复，不能等同于完整球形 Sweep。父级变换通过公开数学接口转换；它不控制 Scene 的编辑相机。
 
 示例采用 Unity 世界坐标：X 向右、Y 向上、+Z 向前，零旋转时按 W 沿 +Z 移动。相机初始位于角色的 -Z 一侧，Yaw 为零时朝 +Z，正 Pitch 向下俯视。脚本通过 `RuntimeMath::TryMakeLookRotation` 生成对象旋转；相机 View 的 -Z 前方属于渲染空间，不作为对象的世界前向。生成的 Scene 和 Prefab 内部节点文档使用当前版本 2。
 

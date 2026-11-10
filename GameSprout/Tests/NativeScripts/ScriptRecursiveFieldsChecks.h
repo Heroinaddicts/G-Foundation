@@ -3,7 +3,9 @@
 // use the compiler's generated native bridges. This exercises Module commands,
 // Runtime component identity and author/live transaction isolation together.
 class RecursiveFieldsBehaviour final:public GameSproutRuntime::ScriptBehaviour {
-public:GameSproutRuntime::ScriptValue Tree;
+public:
+    explicit RecursiveFieldsBehaviour(GameSproutRuntime::IGameSproutRuntime*) {}
+    GameSproutRuntime::ScriptValue Tree;
 };
 static void CheckRecursiveFieldEditing(ScriptEditor& editor,SceneService& scenes,SelectionService& selection,
     ModeService& mode,GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IGameObject* owner){

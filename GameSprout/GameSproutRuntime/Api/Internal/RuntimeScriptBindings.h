@@ -62,15 +62,34 @@ GAMESPROUT_SCRIPT_LOCAL inline std::vector<GameModuleRegistration>& GameModuleTy
     return modules;
 }
 template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterScriptClass(const char* id,const char* name,const char* file,
-    const ResourceReference& source,std::vector<ScriptFieldRegistration> fields={}) {
+    const ResourceReference& source,std::vector<ScriptFieldRegistration> fields={});
+template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterGameModuleClass(const char* name,const char* guid,
+    const char* file);
+
+template<typename T> struct GameplayFactory {
+private:
+    friend bool RegisterScriptClass<T>(const char*,const char*,const char*,const ResourceReference&,
+        std::vector<ScriptFieldRegistration>);
+    friend bool RegisterGameModuleClass<T>(const char*,const char*,const char*);
+
+    static T* Create(IGameSproutRuntime* runtime) {
+        constexpr bool canConstruct = requires { new T(runtime); };
+        static_assert(canConstruct,
+            "Gameplay types need a constructor taking IGameSproutRuntime*. A private constructor "
+            "requires friendship with GameSproutRuntime::Internal::GameplayFactory<T>.");
+        if constexpr (canConstruct) return new T(runtime);
+    }
+};
+
+template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterScriptClass(const char* id,const char* name,const char* file,
+    const ResourceReference& source,std::vector<ScriptFieldRegistration> fields) {
     static_assert(std::is_base_of_v<ScriptBehaviour,T>);
-    static_assert(std::is_default_constructible_v<T>,"Script components must be default constructible");
     ScriptTypeRegistration type;
     type.Info.TypeID=id;type.Info.Name=name;type.Info.SourceFile=file;
     type.CppType=&typeid(T);type.Source=source;
-    type.Create=[](IGameObject* owner)->IScript* {
+    type.Create=[](IGameObject* owner,IGameSproutRuntime* runtime)->IScript* {
         ScriptConstructionScope construction(owner);
-        return new T();
+        return GameplayFactory<T>::Create(runtime);
     };
     type.Destroy=[](IScript* instance) {delete static_cast<T*>(instance);};
     type.Fields=std::move(fields);
@@ -81,12 +100,11 @@ template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterScriptClass(const char
 template<typename T> GAMESPROUT_SCRIPT_LOCAL bool RegisterGameModuleClass(const char* name, const char* guid,
     const char* file) {
     static_assert(std::is_convertible_v<T*, IModule*>, "Gameplay modules must publicly derive from IModule");
-    static_assert(std::is_default_constructible_v<T>, "Gameplay modules must be default constructible");
     GameModuleRegistration module;
     module.Name = name;
     module.SourceGuid = guid;
     module.SourceFile = file;
-    module.Create = []() -> IModule* { return new T(); };
+    module.Create = [](IGameSproutRuntime* runtime) -> IModule* { return GameplayFactory<T>::Create(runtime); };
     module.Destroy = [](IModule* instance) { delete instance; };
     GameModuleTypes().push_back(std::move(module));
     return true;

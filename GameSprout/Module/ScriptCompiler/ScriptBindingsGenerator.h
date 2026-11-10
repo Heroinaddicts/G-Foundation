@@ -1,5 +1,6 @@
 #pragma once
 #include "IScriptCompiler.h"
+#include "ScriptBuildStorage.h"
 #include <QByteArray>
 #include <QString>
 
@@ -8,6 +9,7 @@
 class ScriptBindingsGenerator final {
 public:
     static bool Generate(const ScriptCompileRequest& request,const QString& sourceRoot,
+                         const std::vector<ScriptBuildStorage::SourceSnapshot>& sources,
                          const QString& probePath,QByteArray& generated,
                          std::vector<GameSproutRuntime::ScriptTypeInfo>& types,
                          std::vector<GameSproutRuntime::GameModuleTypeInfo>& modules,

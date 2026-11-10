@@ -23,6 +23,7 @@ void DestroyFieldsFixture(IScriptEditor*);
 struct FieldsOwner{IScriptEditor* Pointer;~FieldsOwner(){if(Pointer)DestroyFieldsFixture(Pointer);}};
 class Behaviour final:public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit Behaviour(GameSproutRuntime::IGameSproutRuntime*) {}
     float Speed=1;GameSproutRuntime::Vector3 Direction{1,2,3};GameSproutRuntime::IGameObject* Target=nullptr;
 };
 class Editors final:public IInspectorExtension {

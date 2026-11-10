@@ -294,7 +294,7 @@ int main(int argc,char** argv) {
         GameSproutRuntime::ScriptTypeRegistration type;
         type.Info.TypeID="test.mover";type.Info.Name="Mover";type.CppType=&typeid(Mover);
         type.Source={"1234567890abcdef1234567890abcdef",1};
-        type.Create=[](GameSproutRuntime::IGameObject* object)->GameSproutRuntime::IScript* {return new Mover(object);};
+        type.Create=[](GameSproutRuntime::IGameObject* object,GameSproutRuntime::IGameSproutRuntime*)->GameSproutRuntime::IScript* {return new Mover(object);};
         type.Destroy=[](GameSproutRuntime::IScript* value){delete value;};
         Check(runtime->RegisterScriptType(type,error),error);
         auto* author=editor.Scenes.GetActiveScene();

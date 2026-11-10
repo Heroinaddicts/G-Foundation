@@ -96,6 +96,7 @@ void RemovalAndFailure(){
 }
 class ScriptProbe final:public ScriptBehaviour {
 public:
+    explicit ScriptProbe(IGameSproutRuntime*) {}
     static inline bool Throw=false,Disable=false;
 protected:
     void OnInitialized(IGameSproutRuntime*)override{Calls.push_back("I");}
@@ -131,6 +132,7 @@ void ScriptForwarding(){
 }
 class ConstructionScript final:public ScriptBehaviour {
 public:
+    explicit ConstructionScript(IGameSproutRuntime*) {}
     static inline bool InCallback=false,ReleaseOnStack=false,Throw=false,Balanced=false;
     static inline std::string Phase="E";
 protected:

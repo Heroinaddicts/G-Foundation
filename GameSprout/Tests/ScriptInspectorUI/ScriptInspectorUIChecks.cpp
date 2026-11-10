@@ -82,10 +82,10 @@ public:
     void UnregisterScriptListener(IScriptEditorListener* listener)override{std::erase(Listeners,listener);Observed.erase(listener);}
     bool CreateScript(const std::string& directory,const std::string& name,std::string& path,std::string& error)override{
         if(RejectCreation){error="脚本已存在，不能覆盖。";return false;}
-        path=(directory.empty()?"":directory+"/")+name+".hpp";Created=path;return true;
+        path=(directory.empty()?"":directory+"/")+name+".h";Created=path;return true;
     }
     bool CreateModule(const std::string& directory,const std::string& name,std::string& path,std::string&)override{
-        path=(directory.empty()?"":directory+"/")+name+".hpp";CreatedModule=path;return true;
+        path=(directory.empty()?"":directory+"/")+name+".h";CreatedModule=path;return true;
     }
     bool RequestCompile(std::string&)override{State.Compiling=true;for(auto* listener:Listeners)listener->OnScriptBuildStateChanged(State);return true;}
 private:
@@ -210,8 +210,8 @@ public:
     bool NavigateToDirectory(const std::string&)override{return true;}
     bool RegisterAssetOpenHandler(const void* owner,const fAssetOpenHandler& handler)override{OpenOwner=owner;Open=handler;return true;}
     bool RegisterContextAction(const void*,const std::vector<std::string>& path,fContextActionCallback callback,const fContextActionEnabled&)override{
-        if(path==std::vector<std::string>{"Create","Script.hpp"})CreateScript=callback;
-        else if(path==std::vector<std::string>{"Create","Module.hpp"})CreateModule=callback;
+        if(path==std::vector<std::string>{"Create","Script","Script"})CreateScript=callback;
+        else if(path==std::vector<std::string>{"Create","Script","Module"})CreateModule=callback;
         else Check(false,"Wrong C++ source creation menu");
         return true;
     }
@@ -339,7 +339,7 @@ int main(int argc,char** argv){
         GameSproutRuntime::ScriptTypeRegistration registration;
         registration.Info={"0123456789abcdef0123456789abcdef","PlayerControllerWithLongName",{}, {}};
         registration.CppType=&typeid(GuiPlayer);registration.Source={registration.Info.TypeID,1};
-        registration.Create=[](GameSproutRuntime::IGameObject* object)->GameSproutRuntime::IScript*{GameSproutRuntime::Internal::ScriptConstructionScope scope(object);return new GuiPlayer();};
+        registration.Create=[](GameSproutRuntime::IGameObject* object,GameSproutRuntime::IGameSproutRuntime*)->GameSproutRuntime::IScript*{GameSproutRuntime::Internal::ScriptConstructionScope scope(object);return new GuiPlayer();};
         registration.Destroy=[](GameSproutRuntime::IScript* script){delete script;};
         GameSproutRuntime::ScriptValue defaultValue;defaultValue.Number=1;
         GameSproutRuntime::ScriptFieldRegistration field;field.Info={"speed","Speed",defaultValue};
@@ -353,23 +353,23 @@ int main(int argc,char** argv){
         registration.Fields.push_back(GameSproutRuntime::Internal::MakeField<GuiBase>("target","Target",&GuiBase::Target,static_cast<GameSproutRuntime::IGameObject*>(nullptr)));
         Check(runtime->RegisterScriptType(registration,error),error);
         const GameSproutRuntime::ResourceReference source{"0123456789abcdef0123456789abcdef",1};
-        scripts.Types.push_back({runtime->GetScriptTypes().front(),source,"Scripts/PlayerControllerWithLongName.hpp"});
+        scripts.Types.push_back({runtime->GetScriptTypes().front(),source,"Scripts/PlayerControllerWithLongName.h"});
         auto enemyRegistration=registration;enemyRegistration.Info.TypeID="1123456789abcdef0123456789abcdef";enemyRegistration.Info.Name="EnemyControllerWithLongName";
         enemyRegistration.CppType=&typeid(GuiEnemy);enemyRegistration.Source={enemyRegistration.Info.TypeID,1};
-        enemyRegistration.Create=[](GameSproutRuntime::IGameObject* object)->GameSproutRuntime::IScript*{GameSproutRuntime::Internal::ScriptConstructionScope scope(object);return new GuiEnemy();};
+        enemyRegistration.Create=[](GameSproutRuntime::IGameObject* object,GameSproutRuntime::IGameSproutRuntime*)->GameSproutRuntime::IScript*{GameSproutRuntime::Internal::ScriptConstructionScope scope(object);return new GuiEnemy();};
         Check(runtime->RegisterScriptType(enemyRegistration,error),error);
-        scripts.Types.push_back({runtime->GetScriptTypes().back(),enemyRegistration.Source,"Scripts/EnemyControllerWithLongName.hpp"});
+        scripts.Types.push_back({runtime->GetScriptTypes().back(),enemyRegistration.Source,"Scripts/EnemyControllerWithLongName.h"});
         auto* first=runtime->AddScriptComponent(object,registration.Info.TypeID,source,0,error);Check(first,error);
         auto* second=runtime->AddScriptComponent(object,enemyRegistration.Info.TypeID,enemyRegistration.Source,0,error);Check(second,error);
         Check(!runtime->AddScriptComponent(object,registration.Info.TypeID,source,0,error),"Duplicate script class was attached");
         GameSproutRuntime::ScriptTypeInfo extra;extra.TypeID="2123456789abcdef0123456789abcdef";extra.Name="ExtraController";
-        scripts.Types.push_back({extra,{extra.TypeID,1},"Scripts/ExtraController.hpp"});
+        scripts.Types.push_back({extra,{extra.TypeID,1},"Scripts/ExtraController.h"});
         const auto firstID=first->GetScriptInstanceID(),secondID=second->GetScriptInstanceID();
         InspectorView inspector;ProjectView project;Assets assets;CodeEditor code;Console console;
-        Meta sourceMeta("0123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/PlayerControllerWithLongName.hpp");
+        Meta sourceMeta("0123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/PlayerControllerWithLongName.h");
         Meta textureMeta("3123456789abcdef0123456789abcdef",eAssetImporterType::Texture,"Textures/Player.png");
         Meta otherScript("4123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/Player.lua");
-        Meta moduleMeta("5123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/ScoreModule.hpp");
+        Meta moduleMeta("5123456789abcdef0123456789abcdef",eAssetImporterType::Script,"Scripts/ScoreModule.h");
         assets.Values={&sourceMeta,&textureMeta,&otherScript,&moduleMeta};
         Editor editor(runtime,scripts,inspector,project,assets,code,console);ScriptUI feature;
         Check(GameSproutEditor::GameSproutFinal::Start(feature,editor),"Cannot launch ScriptUI");
@@ -378,15 +378,15 @@ int main(int argc,char** argv){
         Check(project.Open(sourceSelection)&&code.Opened==std::vector<std::string>{sourceMeta.Path},"Asset source did not request the game code project");
         Check(project.Open({moduleMeta._Guid.GetGuidString(),0,false})&&code.Opened.back()==moduleMeta.Path,
             "Gameplay module did not open through the shared game code project");
-        sourceMeta.Path="Nested Folder/角色/Player.HPP";
-        Check(project.Open(sourceSelection)&&code.Opened.back()==sourceMeta.Path,"Handler retained a stale path or rejected case-insensitive .hpp");
+        sourceMeta.Path="Nested Folder/角色/Player.H";
+        Check(project.Open(sourceSelection)&&code.Opened.back()==sourceMeta.Path,"Handler retained a stale path or rejected case-insensitive .h");
         const auto openCount=code.Opened.size();
         Check(!project.Open({textureMeta._Guid.GetGuidString(),0,false})&&!project.Open({otherScript._Guid.GetGuidString(),0,false})&&
             !project.Open({sourceMeta._Guid.GetGuidString(),1,true})&&!project.Open({sourceMeta._Guid.GetGuidString(),1,false})&&
             !project.Open({"missing",0,false})&&code.Opened.size()==openCount,"Script open intercepted a non-native, invalid or subasset target");
         code.Reject=true;
-        Check(project.Open(sourceSelection)&&console.Errors==std::vector<std::string>{"Xcode project generation failed"},"Failed code-project open fell through to system .hpp handling or hid the error");
-        code.Reject=false;sourceMeta.Path="Scripts/PlayerControllerWithLongName.hpp";
+        Check(project.Open(sourceSelection)&&console.Errors==std::vector<std::string>{"Xcode project generation failed"},"Failed code-project open fell through to system .h handling or hid the error");
+        code.Reject=false;sourceMeta.Path="Scripts/PlayerControllerWithLongName.h";
         GameObjectInspector objectUI(nullptr);ComponentEditContext context;context.Scenes=&scenes;context.Runtime=runtime;context.Scripts=&scripts;context.Inspector=&inspector;context.Assets=&assets;
         context.SceneID=scenes.Scene->GetInstanceID();context.ObjectID=object->GetInstanceID();context.Report=[](const std::string&){};
         objectUI.Bind(context);objectUI.Load(*object);objectUI.resize(360,620);objectUI.show();Pump();
@@ -394,13 +394,13 @@ int main(int argc,char** argv){
         Check(!scriptForms.empty(),"Script source editor not created");
         auto* sourceEdit=scriptForms.front()->findChild<QLineEdit*>("sourceEdit");
         Check(sourceEdit&&sourceEdit->toolTip().contains(QStringLiteral("双击")),"Source field has no code-project opening hint");
-        sourceMeta.Path="Moved Folder/重新定位.hpp";
+        sourceMeta.Path="Moved Folder/重新定位.h";
         QTest::mouseDClick(sourceEdit,Qt::LeftButton);Pump();
         Check(code.Opened.back()==sourceMeta.Path,"Inspector source double-click used a stale path or bypassed the code project");
         code.Reject=true;QTest::mouseDClick(sourceEdit,Qt::LeftButton);Pump();
         auto* sourceError=scriptForms.front()->findChild<QPlainTextEdit*>("errorEdit");
         Check(sourceError&&sourceError->isVisible()&&sourceError->toPlainText().contains("Xcode project generation failed"),"Inspector code-project open failure was not displayed");
-        code.Reject=false;sourceMeta.Path="Scripts/PlayerControllerWithLongName.hpp";
+        code.Reject=false;sourceMeta.Path="Scripts/PlayerControllerWithLongName.h";
         scenes.Changed=[&]{objectUI.Load(*object);};
         auto* edit=ScriptNumber(objectUI,1);edit->setText("7.5");QMetaObject::invokeMethod(edit,"editingFinished",Qt::DirectConnection);Pump();
         Check(first->GetFields().at("speed").Number==1&&second->GetFields().at("speed").Number==7.5,"Editing second script changed the first instance");
@@ -572,14 +572,14 @@ int main(int argc,char** argv){
         dialog->grab().save("/tmp/gamesprout-create-script.png");scripts.RejectCreation=true;
         auto* create=dialog->findChild<QPushButton*>("createButton");create->click();Pump();
         Check(dialog->isVisible()&&project.Notified.empty()&&!dialog->findChild<QLabel*>("errorLabel")->text().isEmpty(),"Failed creation closed dialog or notified asset browser");
-        scripts.RejectCreation=false;create->click();Pump();Check(project.Notified=="Scripts/PlayerController.hpp","Created script not passed to resource browser");
+        scripts.RejectCreation=false;create->click();Pump();Check(project.Notified=="Scripts/PlayerController.h","Created script not passed to resource browser");
         Check(project.CreateModule,"Module create menu not registered");project.CreateModule();Pump();
         dialog=findCreateDialog();
         Check(dialog&&dialog->isVisible()&&dialog->windowTitle()==QStringLiteral("新建 C++ 模块"),"Create module dialog missing");
         auto* moduleName=dialog->findChild<QLineEdit*>("nameEdit");
         Check(moduleName&&moduleName->text()=="NewModule","Module dialog uses the wrong default class name");
         moduleName->setText("ScoreModule");dialog->findChild<QPushButton*>("createButton")->click();Pump();
-        Check(project.Notified=="Scripts/ScoreModule.hpp"&&scripts.CreatedModule==project.Notified&&scripts.Created=="Scripts/PlayerController.hpp",
+        Check(project.Notified=="Scripts/ScoreModule.h"&&scripts.CreatedModule==project.Notified&&scripts.Created=="Scripts/PlayerController.h",
             "Module action did not call the module creator and notify the resource browser");
         scenes.Changed={};objectUI.Clear();Check(scripts.Listeners.empty()&&scripts.Observed.empty(),"Cleared Inspector retained script listeners");
         GameSproutEditor::GameSproutFinal::Stop(feature,editor);Check(!project.CreateScript&&!project.CreateModule&&!project.Open&&!project.OpenOwner&&!inspector.Extension,"Feature release retained menus, source handler or editor extension");

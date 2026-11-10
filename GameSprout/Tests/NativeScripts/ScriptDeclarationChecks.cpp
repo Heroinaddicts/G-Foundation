@@ -20,7 +20,10 @@ QByteArray Hash(const std::string& path) {
 }
 QByteArray Source(const QByteArray& base,const QByteArray& body,const QByteArray& inherited="Base") {
     return "#pragma once\n#include \"RuntimeScriptModule.h\"\n"+base+
-        "\nclass Demo final : public "+inherited+" {\n"+body+"\n};\nGAMESPROUT_SCRIPT(Demo)\n";
+        "\nclass Demo final : public "+inherited+" {\n"
+        "    friend struct GameSproutRuntime::Internal::GameplayFactory<Demo>;\n"
+        "    explicit Demo(GameSproutRuntime::IGameSproutRuntime*) {}\n"+
+        body+"\n};\nGAMESPROUT_SCRIPT(Demo)\n";
 }
 struct Rejection {
     const char* Name;
@@ -37,11 +40,13 @@ int main(int argc,char** argv) {
     try {
         QTemporaryDir temporary;Check(temporary.isValid(),"Cannot create test project");
         const QString assets=temporary.path()+"/Assets";Check(QDir().mkpath(assets),"Cannot create Assets");
-        const QString sourcePath=assets+"/Demo.hpp";
+        const QString sourcePath=assets+"/Demo.h";
+        Write(assets+"/Demo.cpp","#include \"Demo.h\"\n");
         ScriptCompiler compiler;
         ScriptCompileRequest request;
         request.AssetsRoot=assets.toStdString();request.BuildRoot=(temporary.path()+"/Library/ScriptBuild").toStdString();
-        request.Sources={{"Demo.hpp","00112233445566778899aabbccddeeff"}};
+        request.Sources={{"Demo.h","00112233445566778899aabbccddeeff"},
+            {"Demo.cpp","10112233445566778899aabbccddeeff"}};
         const QByteArray ordinaryBase=R"(
 class Base : public GameSproutRuntime::ScriptBehaviour {
 private:
@@ -108,7 +113,7 @@ public:
             ScriptCompileResult result;
             const bool accepted=compiler.Compile(request,result,[]{return false;});
             Check(!accepted,std::string("Unsafe script declaration compiled: ")+fixture.Name);
-            Check(result.Diagnostics.find("Demo.hpp:")!=std::string::npos&&
+            Check(result.Diagnostics.find("Demo.h:")!=std::string::npos&&
                   result.Diagnostics.find(fixture.Member)!=std::string::npos,
                   std::string("Diagnostic lacks source/member for ")+fixture.Name+": "+result.Diagnostics);
             Check(result.Diagnostics.find(fixture.BaseName)!=std::string::npos,

@@ -26,6 +26,7 @@ public:
 };
 class RecursiveScript final:public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit RecursiveScript(GameSproutRuntime::IGameSproutRuntime*) {}
     ReferenceGroup Data;
     RecursiveScript* Next=nullptr;
     GameSproutRuntime::IScriptComponent* Wrapper=nullptr;

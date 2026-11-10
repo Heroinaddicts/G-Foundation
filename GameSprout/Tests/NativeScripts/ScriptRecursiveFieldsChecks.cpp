@@ -65,6 +65,9 @@ struct Data {
 };
 class Example final : public GameSproutRuntime::ScriptBehaviour {
 private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Example>;
+    explicit Example(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     Data Config;
     GAMESPROUT_SERIALIZE_FIELD
@@ -119,14 +122,23 @@ protected:
 }
 GAMESPROUT_SCRIPT(Demo::Example)
 )";
-        Write(assets+"/Example.hpp",source);
-        Write(assets+"/Peer.hpp",R"(#pragma once
+        Write(assets+"/Example.h",source);
+        Write(assets+"/Example.cpp","#include \"Example.h\"\n");
+        Write(assets+"/Peer.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
-namespace Demo { class Peer final : public GameSproutRuntime::ScriptBehaviour {}; }
+namespace Demo {
+class Peer final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Peer>;
+    explicit Peer(GameSproutRuntime::IGameSproutRuntime*) {}
+};
+}
 GAMESPROUT_SCRIPT(Demo::Peer)
 )");
+        Write(assets+"/Peer.cpp","#include \"Peer.h\"\n");
         ScriptCompiler compiler;ScriptCompileRequest request;
-        request.AssetsRoot=assets.toStdString();request.BuildRoot=(temporary.path()+"/Library/ScriptBuild").toStdString();request.Sources={{"Example.hpp","00112233445566778899aabbccddeeff"},{"Peer.hpp","ffeeddccbbaa99887766554433221100"}};
+        request.AssetsRoot=assets.toStdString();request.BuildRoot=(temporary.path()+"/Library/ScriptBuild").toStdString();request.Sources={
+            {"Example.h","00112233445566778899aabbccddeeff"},{"Example.cpp","10112233445566778899aabbccddeeff"},
+            {"Peer.h","ffeeddccbbaa99887766554433221100"},{"Peer.cpp","efeeddccbbaa99887766554433221100"}};
         ScriptCompileResult compiled;Check(compiler.Compile(request,compiled,[]{return false;}),compiled.Diagnostics);
         Check(compiled.Types.size()==2&&compiled.Types.front().Fields.size()==18,"Recursive script schema incomplete: "+compiled.ReflectionWarnings);
         const auto& fields=compiled.Types.front().Fields;using GameSproutRuntime::ScriptValueKind;
@@ -218,16 +230,22 @@ GAMESPROUT_SCRIPT(Demo::Peer)
 #include "RuntimeScriptModule.h"
 struct Unsupported { Unsupported(){ } int Value=1; };
 class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Invalid>;
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     Unsupported Value;
 };
 GAMESPROUT_SCRIPT(Invalid)
 )";
-        Write(assets+"/Example.hpp",invalid);ScriptCompileResult rejected;
+        Write(assets+"/Example.h",invalid);ScriptCompileResult rejected;
         Check(!compiler.Compile(request,rejected,[]{return false;})&&rejected.Diagnostics.find("Invalid::Value")!=std::string::npos,"Explicitly marked opaque constructor was not rejected");
-        Write(assets+"/Example.hpp",R"(#pragma once
+        Write(assets+"/Example.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Invalid>;
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GameSproutRuntime::IRigidbodyComponent _Rigidbody;
 };
 GAMESPROUT_SCRIPT(Invalid)
@@ -235,9 +253,12 @@ GAMESPROUT_SCRIPT(Invalid)
         ScriptCompileResult abstractValue;
         Check(!compiler.Compile(request,abstractValue,[]{return false;})&&abstractValue.Diagnostics.find("abstract")!=std::string::npos,
               "An abstract component declared by value must remain a C++ compilation error");
-        Write(assets+"/Example.hpp",R"(#pragma once
+        Write(assets+"/Example.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Invalid>;
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     void* Unsupported=nullptr;
 };
@@ -246,10 +267,13 @@ GAMESPROUT_SCRIPT(Invalid)
         ScriptCompileResult unsupported;
         Check(!compiler.Compile(request,unsupported,[]{return false;})&&unsupported.Diagnostics.find("Invalid::Unsupported")!=std::string::npos,
               "An explicitly marked unsupported pointer must fail compilation");
-        Write(assets+"/Example.hpp",R"(#pragma once
+        Write(assets+"/Example.h",R"(#pragma once
 #include "RuntimeScriptModule.h"
 enum class Nonzero { First=1, Second=2 };
 class Invalid final : public GameSproutRuntime::ScriptBehaviour {
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Invalid>;
+    explicit Invalid(GameSproutRuntime::IGameSproutRuntime*) {}
+
     GAMESPROUT_SERIALIZE_FIELD
     Nonzero Value;
 };

@@ -47,6 +47,9 @@ GameSproutRuntime::IGameObject* Named(GameSproutRuntime::IGameObject* root,const
 // A later-created target moves in Update. The real sample camera must observe
 // this new position in its LateUpdate, regardless of object creation order.
 class CameraPhaseTarget final : public GameSproutRuntime::ScriptBehaviour {
+public:
+    explicit CameraPhaseTarget(GameSproutRuntime::IGameSproutRuntime*) {}
+
 protected:
     void Update(GameSproutRuntime::IGameSproutRuntime*,float) override {
         auto position=_GameObject->GetTransform()->GetLocalPosition();
@@ -62,7 +65,13 @@ int main(int argc,char** argv){
         // An existing target is a hard failure, including an empty directory.
         generate.start(TEST_PYTHON,{TEST_GENERATOR,"--output",project});Check(generate.waitForFinished(30000)&&generate.exitCode()!=0,"Generator overwrote existing project");
         ScriptCompiler compiler;ScriptCompileRequest request;request.AssetsRoot=(project+"/Assets").toStdString();request.BuildRoot=(project+"/Library/ScriptBuild").toStdString();
-        for(const QString name:{"ThirdPersonCharacter","ThirdPersonCamera"}){const std::string path=("Scripts/"+name+".hpp").toStdString();auto meta=Parse(Read(project+"/Assets/"+QString::fromStdString(path)+".meta"));request.Sources.push_back({path,meta["Guid"].asString()});}
+        for(const QString name:{"ThirdPersonCharacter","ThirdPersonCamera"}) {
+            for(const QString extension:{".h",".cpp"}) {
+                const QString path="Scripts/"+name+extension;
+                auto meta=Parse(Read(project+"/Assets/"+path+".meta"));
+                request.Sources.push_back({path.toStdString(),meta["Guid"].asString()});
+            }
+        }
         ScriptCompileResult compiled;Check(compiler.Compile(request,compiled,[]{return false;}),compiled.Diagnostics);
         Library library;library.Root=(project+"/Library").toStdString();Context context;
         GameSproutRuntime::ResourceReference characterMaterial;

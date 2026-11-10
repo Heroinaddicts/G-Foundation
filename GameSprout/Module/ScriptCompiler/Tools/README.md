@@ -16,6 +16,9 @@ Xcode 的 GameLogic 构建目标调用该工具，索引及编辑文件引用项
 由 AssetsManager/ScriptEditor 管理这些文件；工具不生成或修复 `.meta`、Guid。
 编译诊断映射回可编辑的 Assets 路径。
 
+Script 和 Module 的注册宏写在 `.h`，注册身份取自该头文件的 `.meta`。
+实现文件分别编译，和头文件一起参与增量构建。
+
 Editor 和 IDE 共享 `.compile.lock`；工具最多等待 60 秒，等待与编译均支持取消。
 SIGINT/SIGTERM 经取消回调进入现有子进程树清理流程，清理后才释放构建锁。
 工具不发布或加载候选 DLL，Editor 继续管理 Artifact 发布与双槽加载，

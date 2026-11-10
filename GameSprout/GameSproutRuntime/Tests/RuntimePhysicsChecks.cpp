@@ -442,6 +442,7 @@ unsigned ScriptDestroyed = 0, ScriptReleased = 0, OwnedCalls = 0;
 bool InOwnedCallback = false, SafeRelease = true, DisableInCallback = true;
 class SubscriptionScript final : public GameSproutRuntime::ScriptBehaviour {
   public:
+    explicit SubscriptionScript(GameSproutRuntime::IGameSproutRuntime*) {}
     ~SubscriptionScript() override {
         SafeRelease = SafeRelease && !InOwnedCallback;
         ++ScriptDestroyed;

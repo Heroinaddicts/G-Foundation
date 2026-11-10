@@ -105,7 +105,7 @@ struct ScriptTypeRegistration {
     // Borrowed from the loaded native module; only type_info value equality is used.
     const std::type_info* CppType = nullptr;
     ResourceReference Source;
-    IScript* (*Create)(IGameObject*) = nullptr;
+    IScript* (*Create)(IGameObject*, IGameSproutRuntime*) = nullptr;
     void (*Destroy)(IScript*) = nullptr;
     std::vector<ScriptFieldRegistration> Fields;
 };
@@ -119,7 +119,7 @@ struct GameModuleRegistration {
     std::string Name;
     std::string SourceGuid;
     std::string SourceFile;
-    IModule* (*Create)() = nullptr;
+    IModule* (*Create)(IGameSproutRuntime*) = nullptr;
     void (*Destroy)(IModule*) = nullptr;
 };
 struct BuiltinComponentInfo {
@@ -180,7 +180,7 @@ inline bool IGameSproutRuntime::RemoveScriptComponent(IGameObject*,std::uint64_t
 inline bool IGameSproutRuntime::SetScriptExecutionEnabled(bool,std::string& error) { error="Native scripts are unavailable"; return false; }
 
 // Fixed native library entry contract. All SDK/compiler/CRT versions must match.
-inline constexpr std::uint32_t ScriptModuleABIVersion = 7;
+inline constexpr std::uint32_t ScriptModuleABIVersion = 8;
 inline constexpr const char* ScriptModuleEntryName = "GetGameSproutGameLogic";
 struct ScriptModuleAPI {
     std::uint32_t Version = ScriptModuleABIVersion;

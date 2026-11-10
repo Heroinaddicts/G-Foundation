@@ -102,6 +102,8 @@ void Transforms(Runtime& runtime) {
 
 unsigned Initialized=0,Updated=0,Fixed=0;
 class TickScript final:public ScriptBehaviour {
+public:
+    explicit TickScript(IGameSproutRuntime*) {}
 protected:
     void OnInitialized(IGameSproutRuntime*)override{++Initialized;}
     void Update(IGameSproutRuntime*,float)override{++Updated;}

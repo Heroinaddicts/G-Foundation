@@ -1,0 +1,33 @@
+#pragma once
+#include "RuntimeScriptModule.h"
+
+class I#CLASSNAME# : public GameSproutRuntime::IModule {
+public:
+    ~I#CLASSNAME#() override;
+};
+
+class #CLASSNAME# final : public I#CLASSNAME# {
+public:
+    ~#CLASSNAME#() override;
+
+protected:
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime* const runtime) override;
+    bool Launch(GameSproutRuntime::IGameSproutRuntime* const runtime) override;
+    void LaunchFinished(GameSproutRuntime::IGameSproutRuntime* const runtime) override;
+    void EarlyUpdate(GameSproutRuntime::IGameSproutRuntime* const runtime, float deltaSeconds) override;
+    void Update(GameSproutRuntime::IGameSproutRuntime* const runtime, float deltaSeconds) override;
+    void LateUpdate(GameSproutRuntime::IGameSproutRuntime* const runtime, float deltaSeconds) override;
+    void FixedUpdate(GameSproutRuntime::IGameSproutRuntime* const runtime, float fixedDeltaSeconds) override;
+    void Release(GameSproutRuntime::IGameSproutRuntime* const runtime) override;
+
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<#CLASSNAME#>;
+
+    explicit #CLASSNAME#(GameSproutRuntime::IGameSproutRuntime* runtime);
+    #CLASSNAME#(const #CLASSNAME#&) = delete;
+    #CLASSNAME#& operator=(const #CLASSNAME#&) = delete;
+
+    GameSproutRuntime::IGameSproutRuntime* const _Runtime;
+};
+
+GAMESPROUT_REGIST_MODULE(#CLASSNAME#)

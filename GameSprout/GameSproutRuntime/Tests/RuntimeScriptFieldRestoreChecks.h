@@ -5,6 +5,7 @@ namespace {
 GameSproutRuntime::IGameObject* EvolutionTarget=nullptr;
 class FieldEvolutionScript final:public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit FieldEvolutionScript(GameSproutRuntime::IGameSproutRuntime*) {}
     double Kept=-1,Added=-1;
     bool Changed=false;
     GameSproutRuntime::IGameObject* Target=nullptr;

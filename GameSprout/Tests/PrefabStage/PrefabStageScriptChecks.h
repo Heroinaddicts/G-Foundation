@@ -14,7 +14,7 @@ static GameSproutRuntime::ScriptFieldRegistration MetadataField(const std::strin
 static GameSproutRuntime::ScriptTypeRegistration CurrentMetadata(const std::string& typeID,const GameSproutRuntime::ResourceReference& source,bool evolved) {
     GameSproutRuntime::ScriptTypeRegistration type;type.Info.TypeID=typeID;type.Info.Name="MetadataOnly";type.Info.SourceFile="MetadataOnly.hpp";
     type.CppType=&typeid(MetadataOnlyIdentity);type.Source=source;
-    type.Create=[](GameSproutRuntime::IGameObject*)->GameSproutRuntime::IScript*{++MetadataNativeCalls;return nullptr;};
+    type.Create=[](GameSproutRuntime::IGameObject*,GameSproutRuntime::IGameSproutRuntime*)->GameSproutRuntime::IScript*{++MetadataNativeCalls;return nullptr;};
     type.Destroy=[](GameSproutRuntime::IScript*){++MetadataNativeCalls;};
     GameSproutRuntime::ScriptValue target;target.Kind=GameSproutRuntime::ScriptValueKind::SceneObject;
     type.Fields.push_back(MetadataField("Test::_Target",target));

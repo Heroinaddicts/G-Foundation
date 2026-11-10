@@ -21,6 +21,7 @@ Counters Counts;
 
 class LateReady final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit LateReady(GameSproutRuntime::IGameSproutRuntime*) {}
     float Value=1;
     ~LateReady() override {++Counts.Destroyed;}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {++Counts.LateCreated;}
@@ -38,6 +39,7 @@ public:
 
 class ReadyChild final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit ReadyChild(GameSproutRuntime::IGameSproutRuntime*) {}
     float Value=1;
     bool SpawnLate=false;
     ~ReadyChild() override {++Counts.Destroyed;}
@@ -65,6 +67,7 @@ public:
 
 class ConstructionRoot final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit ConstructionRoot(GameSproutRuntime::IGameSproutRuntime*) {}
     ~ConstructionRoot() override {++Counts.Destroyed;}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
         ++Counts.RootCreated;
@@ -92,11 +95,13 @@ public:
 
 class PendingVictim final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit PendingVictim(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {++Counts.VictimInitialized;}
     void OnRelease(GameSproutRuntime::IGameSproutRuntime*) override {++Counts.VictimReleased;}
 };
 class RemovesPending final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit RemovesPending(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {
         Check(_GameObject->RemoveComponent<PendingVictim>(),"Cannot remove another pending component");
     }
@@ -104,6 +109,7 @@ public:
 };
 class DestroysOnInitialized final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit DestroysOnInitialized(GameSproutRuntime::IGameSproutRuntime*) {}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime*) override {
         ++Counts.SelfDestroyedInitialized;
         Check(_GameObject->GetScene()->DestroyGameObject(_GameObject),"Initialization could not request owner destruction");
@@ -113,6 +119,7 @@ public:
 };
 class FailsOnInitialized final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit FailsOnInitialized(GameSproutRuntime::IGameSproutRuntime*) {}
     ~FailsOnInitialized() override {++Counts.FailureDestroyed;}
     void OnInitialized(GameSproutRuntime::IGameSproutRuntime* const runtime) override {
         ++Counts.FailureInitialized;
@@ -127,6 +134,7 @@ public:
 };
 class RestartsInCallback final : public GameSproutRuntime::ScriptBehaviour {
 public:
+    explicit RestartsInCallback(GameSproutRuntime::IGameSproutRuntime*) {}
     ~RestartsInCallback() override {Counts.RestartDestroyed.push_back(_Serial);}
     void OnCreate(GameSproutRuntime::IGameSproutRuntime*) override {
         Counts.RestartCreated.push_back(_Serial);

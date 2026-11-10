@@ -60,18 +60,28 @@ int main(int argc,char** argv) {
         Check(temporary.isValid(),"Temporary directory");
         const QString project=temporary.path()+"/项目 $literal (native)";
         Check(QDir().mkpath(project+"/Assets/代码 Folder")&&QDir().mkpath(project+"/Info"),"Create project");
-        const QString source=project+"/Assets/代码 Folder/Mover.hpp";
+        const QString source=project+"/Assets/代码 Folder/Mover.h";
+        const QString implementation=project+"/Assets/代码 Folder/Mover.cpp";
         Write(source,R"(#pragma once
 #include "RuntimeScriptModule.h"
 class Mover final: public GameSproutRuntime::ScriptBehaviour {
 public:
     float Speed=2.5f;
-    void Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) override {
-        auto position=_GameObject->GetTransform()->GetLocalPosition();position.X+=Speed*seconds;
-        _GameObject->GetTransform()->SetLocalPosition(position);
-    }
+    void Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) override;
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<Mover>;
+    explicit Mover(GameSproutRuntime::IGameSproutRuntime*) {}
 };
 GAMESPROUT_SCRIPT(Mover)
+)");
+        Write(implementation,R"(#include "Mover.h"
+#include "WorldServices.h"
+
+void Mover::Update(GameSproutRuntime::IGameSproutRuntime*,float seconds) {
+    auto position=_GameObject->GetTransform()->GetLocalPosition();
+    position.X+=Sample::WorldServices::MoveDistance(Speed,seconds);
+    _GameObject->GetTransform()->SetLocalPosition(position);
+}
 )");
         auto result=Run(executable,project);
         Check(result.Exit==3&&result.Output.contains("Info/GameLogic.json"),"Missing assembly was accepted");
@@ -80,30 +90,50 @@ GAMESPROUT_SCRIPT(Mover)
         result=Run(executable,project);
         Check(result.Exit==3&&result.Output.contains(".meta")&&!QFileInfo::exists(source+".meta"),"Missing source metadata accepted or generated");
         Meta(source,"1234567890abcdef1234567890abcdef");
-        const QString module=project+"/Assets/代码 Folder/WorldServices.hpp";
+        Meta(implementation,"3234567890abcdef1234567890abcdef");
+        const QString module=project+"/Assets/代码 Folder/WorldServices.h";
+        const QString moduleImplementation=project+"/Assets/代码 Folder/WorldServices.cpp";
         Write(module,R"(#pragma once
 #include "RuntimeScriptModule.h"
 namespace Sample {
 class WorldServices final : public GameSproutRuntime::IModule {
+public:
+    static float MoveDistance(float speed,float seconds);
 protected:
-    bool Initialize(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
-    bool Launch(GameSproutRuntime::IGameSproutRuntime*) override { return true; }
+    bool Initialize(GameSproutRuntime::IGameSproutRuntime*) override;
+    bool Launch(GameSproutRuntime::IGameSproutRuntime*) override;
+private:
+    friend struct GameSproutRuntime::Internal::GameplayFactory<WorldServices>;
+    explicit WorldServices(GameSproutRuntime::IGameSproutRuntime*) {}
+    WorldServices(const WorldServices&) = delete;
 };
 GAMESPROUT_REGIST_MODULE(WorldServices)
 }
 )");
+        const QByteArray moduleCode=R"(#include "WorldServices.h"
+
+float Sample::WorldServices::MoveDistance(float speed,float seconds) { return speed*seconds; }
+bool Sample::WorldServices::Initialize(GameSproutRuntime::IGameSproutRuntime*) { return true; }
+bool Sample::WorldServices::Launch(GameSproutRuntime::IGameSproutRuntime*) { return true; }
+)";
+        // Both translation units include both registered headers.
+        Write(moduleImplementation,moduleCode+"\n#include \"Mover.h\"\n");
         Meta(module,"2234567890abcdef1234567890abcdef");
+        Meta(moduleImplementation,"4234567890abcdef1234567890abcdef");
         const auto metadata=Read(source+".meta"),assembly=Read(project+"/Info/GameLogic.json");
         result=Run(executable,project);Check(result.Exit==0,"Native CLI build failed: "+result.Output.toStdString());
         Check(result.Output.contains("GameLogic build succeeded")&&result.Output.contains("/Build/Output/"),"CLI did not use current fixed native build");
-        const QString snapshot=project+"/Library/ScriptBuild/Sources/代码 Folder/Mover.hpp";
-        Check(Read(snapshot)==Read(source),"Native compiler did not take real Assets source snapshot");
+        const QString snapshots=project+"/Library/ScriptBuild/Sources/代码 Folder/";
+        Check(Read(snapshots+"Mover.h")==Read(source)&&Read(snapshots+"Mover.cpp")==Read(implementation),
+              "Native compiler did not take real Assets source snapshots");
         const QString schemaPath=project+"/Library/ScriptBuild/Build/Output/GameLogic.schema.json";
         const auto schema=QJsonDocument::fromJson(Read(schemaPath)).object();
+        const auto types=schema.value("Types").toArray();
         const auto modules=schema.value("Modules").toArray();
-        Check(schema.value("Types").toArray().size()==1&&modules.size()==1&&
+        Check(types.size()==1&&types[0].toObject().value("TypeID").toString()=="1234567890abcdef1234567890abcdef"&&
+              types[0].toObject().value("SourceFile").toString()=="代码 Folder/Mover.h"&&modules.size()==1&&
               modules[0].toObject()==QJsonObject{{"Name","Sample::WorldServices"},{"SourceGuid","2234567890abcdef1234567890abcdef"},
-                  {"SourceFile","代码 Folder/WorldServices.hpp"}},"GameLogic schema did not separate module and script registrations");
+                  {"SourceFile","代码 Folder/WorldServices.h"}},"GameLogic schema did not identify each registration by its header");
         result=Run(executable,project);Check(result.Exit==0&&result.Output.contains("GameLogic cache hit"),"Repeated CLI build was not incremental: "+result.Output.toStdString());
         Check(Read(source+".meta")==metadata&&Read(project+"/Info/GameLogic.json")==assembly,"CLI modified asset identity files");
 
@@ -129,9 +159,15 @@ GAMESPROUT_REGIST_MODULE(WorldServices)
         const auto valid=Read(source);
         Write(source,valid+"\nTHIS_IS_NOT_VALID_CPP !!!\n");
         result=Run(executable,project);
-        Check(result.Exit==4&&result.Output.contains("/Assets/代码 Folder/Mover.hpp")&&!result.Output.contains("ScriptBuild/Sources/代码 Folder/Mover.hpp"),
+        Check(result.Exit==4&&result.Output.contains("/Assets/代码 Folder/Mover.h")&&!result.Output.contains("ScriptBuild/Sources/代码 Folder/Mover.h"),
               "Compiler diagnostics were not mapped to editable Assets: "+result.Output.toStdString());
         Write(source,valid);result=Run(executable,project);Check(result.Exit==0,"Cannot recover corrected source");
+        auto inaccessible=valid;
+        inaccessible.replace("    friend struct GameSproutRuntime::Internal::GameplayFactory<Mover>;\n","");
+        Write(source,inaccessible);
+        result=Run(executable,project);
+        Check(result.Exit==4,"A private constructor without factory friendship was accepted: "+result.Output.toStdString());
+        Write(source,valid);
         const auto validModule=Read(module);
         Write(module,validModule+R"(
 class AdditionalScript final : public GameSproutRuntime::ScriptBehaviour {};
@@ -140,6 +176,18 @@ GAMESPROUT_SCRIPT(AdditionalScript)
         result=Run(executable,project);
         Check(result.Exit==4&&result.Output.contains("one gameplay registration marker"),"Conflicting script and module markers were accepted: "+result.Output.toStdString());
         Write(module,validModule);
+        const auto validImplementation=Read(implementation);
+        Write(implementation,validImplementation+R"(
+class MisplacedScript final : public GameSproutRuntime::ScriptBehaviour {};
+GAMESPROUT_SCRIPT(MisplacedScript)
+)");
+        result=Run(executable,project);
+        Check(result.Exit==4&&result.Output.contains("gameplay registration")&&result.Output.contains(".h"),
+              "Registration inside a .cpp was accepted: "+result.Output.toStdString());
+        Write(implementation,validImplementation+"\n// Change only the implementation.\n");
+        result=Run(executable,project);
+        Check(result.Exit==0&&result.Output.contains("GameLogic build succeeded"),
+              "Implementation-only changes did not rebuild GameLogic: "+result.Output.toStdString());
         const QString helper=project+"/Assets/Other.cpp";Write(helper,"int helper() { return 1; }\n");Meta(helper,"1234567890abcdef1234567890abcdef");
         result=Run(executable,project);Check(result.Exit==3&&result.Output.contains("Duplicate"),"Duplicate source GUID accepted");
         QFile::remove(helper+".meta");QFile::remove(helper);
@@ -149,13 +197,19 @@ GAMESPROUT_SCRIPT(AdditionalScript)
         const QString cancellation=temporary.path()+"/Cancel active compilation";
         Check(QDir().mkpath(cancellation+"/Assets")&&QDir().mkpath(cancellation+"/Info"),"Cancellation project");
         Write(cancellation+"/Info/GameLogic.json",assembly);
+        QByteArray cancellationIncludes;
         for(int index=0;index<35;++index) {
             const auto name="Actor"+QString::number(index);
-            const auto filename=cancellation+"/Assets/"+name+".hpp";
+            const auto filename=cancellation+"/Assets/"+name+".h";
             Write(filename,("#pragma once\n#include \"RuntimeScriptModule.h\"\nclass "+name+
-                " final : public GameSproutRuntime::ScriptBehaviour {public: float Speed=1;};\nGAMESPROUT_SCRIPT("+name+")\n").toUtf8());
+                " final : public GameSproutRuntime::ScriptBehaviour {public: explicit "+name+
+                "(GameSproutRuntime::IGameSproutRuntime*) {} float Speed=1;};\nGAMESPROUT_SCRIPT("+name+")\n").toUtf8());
             Meta(filename,QString::number(index+1,16).rightJustified(32,'0').toLatin1().constData());
+            cancellationIncludes+=("#include \""+name+".h\"\n").toUtf8();
         }
+        const QString cancellationSource=cancellation+"/Assets/Actors.cpp";
+        Write(cancellationSource,cancellationIncludes);
+        Meta(cancellationSource,"5234567890abcdef1234567890abcdef");
         QProcess active;active.setProcessChannelMode(QProcess::MergedChannels);
         active.start(executable,{"--ProjectRoot="+cancellation});Check(active.waitForStarted(5000),"Start active cancellation");
         QElapsedTimer observation;observation.start();qint64 child=0;
@@ -170,11 +224,13 @@ GAMESPROUT_SCRIPT(AdditionalScript)
         errno=0;
         Check(::kill(-static_cast<pid_t>(child),0)==-1&&errno==ESRCH,"A compiler process group survived CLI cancellation");
         Check(!QFileInfo::exists(cancellation+"/Library/ScriptBuild/.compile.lock"),"Cancelled CLI retained the compiler lock");
-        const auto probe=cancellation+"/Library/ScriptBuild/Sources/GameLogic.reflection.cpp";
-        const auto before=Read(probe);QThread::msleep(350);
-        Check(Read(probe)==before,"A compiler child continued writing after CLI exit");
+        QThread::msleep(350);
+        Check(!QFileInfo::exists(cancellation+"/Library/ScriptBuild/Build/Output/GameLogic.schema.json"),
+              "A cancelled compilation published a schema");
 #endif
-        Check(QFile::remove(source)&&QFile::remove(source+".meta"),"Cannot switch to module-only project");
+        Write(moduleImplementation,moduleCode);
+        Check(QFile::remove(source)&&QFile::remove(source+".meta")&&
+              QFile::remove(implementation)&&QFile::remove(implementation+".meta"),"Cannot switch to module-only project");
         result=Run(executable,project);Check(result.Exit==0,"Module-only GameLogic failed: "+result.Output.toStdString());
         const auto moduleOnly=QJsonDocument::fromJson(Read(schemaPath)).object();
         Check(moduleOnly.value("Types").toArray().isEmpty()&&moduleOnly.value("Modules").toArray()==modules,"Module-only GameLogic schema is wrong");
