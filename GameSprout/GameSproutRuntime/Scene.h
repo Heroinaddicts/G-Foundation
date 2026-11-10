@@ -18,7 +18,9 @@ public:
     // Runtime-internal snapshot invalidation. Changes are visible before queued
     // listener dispatch, including direct Set* -> Render calls in editor/tests.
     std::uint64_t GetRenderRevision() const {return _RenderRevision;}
-    void InvalidateRenderSnapshot() {++_RenderRevision;_VisualPending=true;}
+    void InvalidateRenderSnapshot(std::uint64_t transformObjectID=0);
+    // False if another kind of change or a journal gap requires a full snapshot.
+    bool GetRenderTransformChanges(std::uint64_t after,std::vector<std::uint64_t>& changes) const;
     bool TakeVisualInvalidation() {const bool pending=_VisualPending;_VisualPending=false;return pending;}
     std::uint64_t GetAuthoringRevision() const override {return _AuthoringRevision;}
     bool GetAuthoringChanges(std::uint64_t after,std::vector<SceneAuthoringChange>& changes) const override {
@@ -58,6 +60,7 @@ private:
     bool _SimulationEnabled = true;
     EnvironmentLightingSettings _EnvironmentLighting;
     std::uint64_t _RenderRevision=1;
+    std::deque<std::uint64_t> _RenderTransformChanges;
     std::uint64_t _AuthoringRevision=1;
     std::deque<SceneAuthoringChange> _AuthoringChanges;
     bool _VisualPending=false;

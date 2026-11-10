@@ -2,6 +2,7 @@
 #include "GameObject.h"
 #include "Scene.h"
 #include <limits>
+#include <string_view>
 
 namespace GameSproutRuntime {
 void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char* component,std::uint64_t oldParent) {
@@ -19,8 +20,11 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
         }
         if(root->Object!=object.SceneOwner || Find(root->Object)!=root) return;
     } else if(!IsInScene(&object)) return;
-    if(type!=SceneNodeEventType::Rename && type!=SceneNodeEventType::TagChanged &&
-        type!=SceneNodeEventType::OperationFailed) object.SceneOwner->InvalidateRenderSnapshot();
+    if(type!=SceneNodeEventType::Rename && type!=SceneNodeEventType::TagChanged && type!=SceneNodeEventType::OperationFailed) {
+        const bool transform=type==SceneNodeEventType::ComponentChanged&&component&&
+            std::string_view(component)=="GameSproutRuntime.Transform";
+        object.SceneOwner->InvalidateRenderSnapshot(transform?object.ID:0);
+    }
     object.SceneOwner->RecordAuthoringChange(object.ID,type,component);
     MarkObjectPropertiesChanged(object.ID);
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。

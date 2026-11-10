@@ -1,6 +1,24 @@
 #include "Scene.h"
 
 namespace GameSproutRuntime {
+void Scene::InvalidateRenderSnapshot(std::uint64_t transformObjectID) {
+    ++_RenderRevision;
+    _VisualPending=true;
+    if(!transformObjectID) {
+        _RenderTransformChanges.clear();
+        return;
+    }
+    try {
+        _RenderTransformChanges.push_back(transformObjectID);
+        if(_RenderTransformChanges.size()>2048)_RenderTransformChanges.pop_front();
+    } catch(...) {_RenderTransformChanges.clear();}
+}
+bool Scene::GetRenderTransformChanges(std::uint64_t after,std::vector<std::uint64_t>& changes) const {
+    if(after>_RenderRevision||_RenderRevision-after>_RenderTransformChanges.size())return false;
+    const auto count=static_cast<std::ptrdiff_t>(_RenderRevision-after);
+    changes.assign(_RenderTransformChanges.end()-count,_RenderTransformChanges.end());
+    return true;
+}
 bool Scene::SetEnvironmentLighting(const EnvironmentLightingSettings& settings) {
     if(!IsValidEnvironmentLighting(settings))return false;
     const auto sameColor=[](Color a,Color b){return a.R==b.R&&a.G==b.G&&a.B==b.B&&a.A==b.A;};

@@ -8,11 +8,18 @@
 namespace GameSproutRuntime {
 bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights) {
     const auto sceneID=scene->GetInstanceID();
-    const auto revision=static_cast<Scene*>(scene)->GetRenderRevision();
-    if(_LightSnapshotKnown&&_LightSceneID==sceneID&&_LightSceneRevision==revision) {
-        Diagnostic(_LightDiagnostic);return true;
+    const auto& runtimeScene=static_cast<const Scene&>(*scene);
+    const auto revision=runtimeScene.GetRenderRevision();
+    if(_LightSnapshotKnown&&_LightSceneID==sceneID) {
+        std::vector<std::uint64_t> changes;
+        if(_LightSceneRevision==revision||(runtimeScene.GetRenderTransformChanges(_LightSceneRevision,changes)&&
+            std::none_of(changes.begin(),changes.end(),[this](auto id){return _LightTransformSources.contains(id);}))) {
+            _LightSceneRevision=revision;
+            Diagnostic(_LightDiagnostic);return true;
+        }
     }
     _LightSnapshotKnown=false;lights.clear();
+    _LightTransformSources.clear();
     const auto diagnosticBefore=_Error.size();
     ++_Statistics.LightSnapshotRebuilds;
     std::vector<IGameObject*> pending{scene};
@@ -29,6 +36,7 @@ bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights
         // and zero scales, must never change the orientation of a directional light.
         Vector3 direction{0,0,-1};
         for(auto* node=object;node;node=node->Parent()) {
+            _LightTransformSources.insert(node->GetInstanceID());
             auto* transform=node->GetTransform();
             Quaternion orientation;
             if(const auto* current=dynamic_cast<const TransformComponent*>(transform)) {

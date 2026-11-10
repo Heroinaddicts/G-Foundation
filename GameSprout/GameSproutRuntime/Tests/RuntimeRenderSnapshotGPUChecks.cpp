@@ -97,11 +97,24 @@ int main(int argc,char** argv){
         view.Camera.Position={3,0,3};Check(TryMakeLookAt(view.Camera.Position,{3,0,0},{0,1,0},view.Camera.View),"Cannot move snapshot camera");
         stats=Render(*viewport,view);Check(!stats.SceneSnapshotRebuilds&&stats.DrawCalls==0,"Camera movement retained old visibility or rebuilt scene data");
         view=View(scene);Render(*viewport,view);
-        parent->GetTransform()->SetLocalPosition({.75f,0,0});stats=Render(*viewport,view);Rebuilt(stats,"Parent transform");
-        Check(stats.DrawCalls==1&&Pixel(*viewport,.75f)[0]>100,"Descendant world transform was stale");
+        parent->GetTransform()->SetLocalPosition({.5f,0,0});
+        parent->GetTransform()->SetLocalPosition({.75f,0,0});stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&
+            provider.MeshLoads==meshLoads&&provider.MaterialLoads==materialLoads,
+            "Transform-only edits rebuilt scene or light snapshots or reloaded resources");
+        Check(stats.DrawCalls==1&&Pixel(*viewport,.75f)[0]>100&&Pixel(*viewport)[0]==0,
+            "Descendant world transform or cached frustum bounds were stale");
+        parent->GetTransform()->SetLocalPosition({5,0,0});stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&stats.DrawCalls==0,"Moving out of the same camera left a prepared draw visible");
+        parent->GetTransform()->SetLocalPosition({.75f,0,0});stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&stats.DrawCalls==1,"Moving back into the same camera did not restore the prepared draw");
         Check(viewport->Resize(64,128,error),error);stats=Render(*viewport,view);
         Check(!stats.SceneSnapshotRebuilds&&stats.DrawCalls==0,"Resize did not recull cached world data at actual aspect");
         Check(viewport->Resize(128,128,error),error);parent->GetTransform()->SetLocalPosition({0,0,0});Render(*viewport,view);
+        parent->GetTransform()->SetLocalScale({0,1,1});stats=Render(*viewport,view);Rebuilt(stats,"Singular parent transform");
+        Check(stats.DrawCalls==0&&stats.SkippedObjects==1,"Newly singular descendant remained in the snapshot");
+        parent->GetTransform()->SetLocalScale({1,1,1});stats=Render(*viewport,view);Rebuilt(stats,"Recovered parent transform");
+        Check(stats.DrawCalls==1&&Pixel(*viewport)[0]>100,"Recovered descendant was missing from the snapshot");
         view.Camera.Projection.CullingMask=2;stats=Render(*viewport,view);Rebuilt(stats,"Camera layer mask");Check(stats.DrawCalls==0,"Camera mask retained excluded objects");
         view.Camera.Projection.CullingMask=1;Render(*viewport,view);
         Check(object->SetLayer(1),"Cannot move object layer");stats=Render(*viewport,view);Rebuilt(stats,"Object layer");Check(stats.DrawCalls==0,"Object layer setter did not invalidate visibility");
@@ -124,11 +137,17 @@ int main(int argc,char** argv){
         renderer->SetVisible(true);Render(*viewport,view);
 
         renderer->SetMaterial(0,{Guid,13});stats=Render(*viewport,view);Check(Pixel(*viewport)[0]==0,"Lit snapshot invented illumination");
-        auto* sunObject=scene->CreateGameObject("Sun");sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
+        auto* sunParent=scene->CreateGameObject("Sun parent");
+        auto* sunObject=scene->CreateGameObject("Sun",sunParent);sunObject->GetTransform()->SetLocalRotation({0,1,0,0});
         auto* sun=sunObject->AddComponent<ILightComponent>();
         stats=Render(*viewport,view);Check(stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[0]>50,"New directional light was absent from cached lighting");
         Check(sun->SetColor({0,0,1,1}),"Cannot change snapshot light");stats=Render(*viewport,view);
         Check(stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[2]>50&&Pixel(*viewport)[0]==0,"Light setter did not update the next render");
+        sunParent->GetTransform()->SetLocalRotation({0,1,0,0});stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[2]==0,
+            "Transforming a light's ancestor left stale lighting or rebuilt unrelated mesh data");
+        sunParent->GetTransform()->SetLocalRotation({});stats=Render(*viewport,view);
+        Check(stats.LightSnapshotRebuilds==1&&Pixel(*viewport)[2]>50,"Restoring light ancestry did not restore its direction");
         sunObject->SetActive(false);stats=Render(*viewport,view);Check(Pixel(*viewport)[2]==0,"Inactive light retained cached radiance");
         EnvironmentLightingSettings environment;environment.Mode=AmbientLightMode::Color;environment.AmbientColor={.1f,.2f,.3f};
         Check(scene->SetEnvironmentLighting(environment),"Cannot set snapshot environment");stats=Render(*viewport,view);
@@ -140,6 +159,10 @@ int main(int argc,char** argv){
         second=runtime->CreateOffscreenRenderer(128,128,&provider,error);Check(second,error);
         stats=Render(*second,view);Check(stats.SceneSnapshotRebuilds==1&&stats.LightSnapshotRebuilds==1,"New viewport inherited another viewport's snapshot flags");
         stats=Render(*viewport,view);Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds,"Second viewport invalidated the first viewport");
+        parent->GetTransform()->SetLocalPosition({.65f,0,0});
+        stats=Render(*second,view);Check(!stats.SceneSnapshotRebuilds&&Pixel(*second,.65f)[2]>20,"First reader lost incremental transforms");
+        stats=Render(*viewport,view);Check(!stats.SceneSnapshotRebuilds&&Pixel(*viewport,.65f)[2]>20,"One viewport consumed another viewport's transform changes");
+        parent->GetTransform()->SetLocalPosition({0,0,0});
         delete second;second=nullptr;
 
         renderer->SetMaterial(0,{Guid,12});Check(scene->AddChild(object,false),"Cannot reparent snapshot object");

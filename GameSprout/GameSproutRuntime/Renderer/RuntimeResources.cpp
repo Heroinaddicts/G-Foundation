@@ -100,7 +100,7 @@ Renderer::~Renderer() {
 }
 void Renderer::ClearResources() {
     _ShadowValid=false;_ShadowUniform.Info={};
-    _PreparedDraws.clear();_SceneObjects.clear();_SceneLights.clear();
+    _PreparedDraws.clear();_SceneObjects.clear();_SceneObjectIndices.clear();_SceneLights.clear();_LightTransformSources.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;
     _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;
     _PreparedKnown=false;_SnapshotHasSkin=false;_PreparedDiagnostic.clear();

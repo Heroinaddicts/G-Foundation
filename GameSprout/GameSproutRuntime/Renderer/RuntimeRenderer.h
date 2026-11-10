@@ -6,6 +6,8 @@
 #include "GRHIApi.h"
 #include <map>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace GameSproutRuntime {
 class Runtime;
@@ -199,6 +201,8 @@ private:
     struct DebugBatch {std::vector<DebugVertex> Vertices;bool Triangles=false,DepthTest=false;};
     bool Initialize();
     bool Extract(const RenderView& view,std::vector<DrawObject>& objects);
+    bool UpdateSceneTransforms(IScene& scene,const std::vector<std::uint64_t>& roots,std::vector<DrawObject>& objects);
+    static bool SetDrawTransform(DrawObject& object,const Mat4& model);
     void PrepareDraws(const RenderView&,const Mat4& viewProjection);
     MeshGPU* Mesh(const ResourceReference& reference);
     ColliderMeshWire* ColliderMesh(IColliderComponent& collider,const ResourceReference& reference,bool convex,const Mat4& relative);
@@ -245,7 +249,9 @@ private:
     std::map<ShaderPipelineKey,GRHI::IGraphicsPipeline*>& _ShaderPipelines;
     std::map<PipelineKey,GRHI::IGraphicsPipeline*>& _Pipelines;
     std::vector<DrawObject> _SceneObjects;
+    std::unordered_map<std::uint64_t,std::size_t> _SceneObjectIndices;
     std::vector<DirectionalLight> _SceneLights;
+    std::unordered_set<std::uint64_t> _LightTransformSources;
     FrameUniform _ShaderFrame;
     std::vector<PreparedDraw> _PreparedDraws;
     Mat4 _PreparedViewProjection;
