@@ -124,7 +124,7 @@ public:
 };
 class TestEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    TestEditor():GameSproutViewApi(nullptr) {}
+    explicit TestEditor(GameSproutRuntime::IGameSproutRuntime * runtime = nullptr) : GameSproutViewApi(runtime) {}
     std::map<std::string,GameSproutEditor::IGameSproutModule *> Modules;
     TestIDE * IDE=nullptr;
     GameSproutEditor::IGameSproutModule * FindGameSproutModule(const std::string & name) const override {const auto found=Modules.find(name);return found==Modules.end()?nullptr:found->second;}

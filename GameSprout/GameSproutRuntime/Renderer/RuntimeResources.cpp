@@ -96,10 +96,13 @@ Renderer::~Renderer() {
     for(auto& entry:_Depths) delete entry.second.Texture;
     delete _ShadowAtlas;delete _DynamicShadowAtlas;delete _ShadowSampler;
     delete _ShadowRepairVertices;
+    for(auto& entry:_UIPipelines)delete entry.second;
+    delete _UIVertex;delete _UIFragment;delete _UIFallbackAtlas;
     delete _ColorTarget;
     if(_Surface){_Surface->Release();delete _Surface;}
 }
 void Renderer::ClearResources() {
+    ClearUIDraws();
     _ShadowValid=false;_ShadowUniform.Info={};_StaticShadowCasters.clear();_PrimaryShadowCasterBounds.clear();
     _PreparedDraws.clear();_SceneObjects.clear();_SceneObjectIndices.clear();_SceneLights.clear();_LightTransformSources.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;

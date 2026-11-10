@@ -216,6 +216,32 @@ void CheckMissingReferences() {
     invalid=source;invalid["Data"]["Objects"][0]["Components"][1]["Mesh"]["LocalID"]=Json::UInt64(0);
     rejected=fixture.Import(invalid);Check(!rejected.Success,"Missing-reference support accepted a zero LocalID");
 }
+void CheckUIFontReference() {
+    Fixture fixture;
+    const std::string fontGuid="4567890abcdef1234567890abcdef123";
+    const std::string fontPath="UI/Menu.ttf";
+    fixture.SourcePaths[fontGuid]=fontPath;
+    Write(fixture.Root.filePath("Assets/UI/Menu.ttf"),"font-dependency-snapshot");
+    const auto fontMeta=Meta(fontGuid,fontPath,"Font");
+    Write(fixture.Root.filePath("Assets/UI/Menu.ttf.meta"),QByteArray::fromStdString(AssetArtifactIO::JsonText(fontMeta)));
+
+    auto prefab=Source();
+    Json::Value text;
+    text["ID"]=Json::UInt64(4);
+    text["Type"]="GameSproutRuntime.Text";
+    text["Text"]="Play";
+    text["Font"]=Reference(fontGuid,42);
+    prefab["Data"]["Objects"][0]["Components"].append(text);
+    prefab["Data"]["NextObjectID"]=Json::UInt64(5);
+    for (const bool scene : {false,true}) {
+        const auto result=fixture.Import(scene?prefab["Data"]:prefab,scene);
+        Check(result.Success,result.Result.Error);
+        const auto& manifest=result.Result.Manifest;
+        Check(manifest.GuidSourcePaths.contains(fontGuid)&&manifest.GuidSourcePaths.at(fontGuid)==fontPath&&
+              std::any_of(manifest.Dependencies.begin(),manifest.Dependencies.end(),[&](const auto& entry){return entry.Path==fontPath;}),
+              "UI font resource did not contribute a scene or Prefab dependency");
+    }
+}
 void CheckSceneRecomposition(Fixture& fixture,std::uint64_t prefabLocalID) {
     auto oldSource=Source();auto& baseline=oldSource["Data"];
     auto& root=baseline["Objects"][0];root["Components"][0]["Position"]=Numbers({0,0,0});
@@ -328,6 +354,7 @@ int main(int argc,char** argv) {
         Check(!failed.Success&&failed.Result.Error.find("stable IDs")!=std::string::npos,"Prefab source accepted a component without its stable source ID");
         CheckSceneRecomposition(fixture,artifact.LocalID);
         CheckMissingReferences();
+        CheckUIFontReference();
         CheckDependencyMemoization();
         CheckRepeatedSceneReferences();
         std::cout<<"Prefab production import, Runtime binary codec, stable resource identity, dependency and rejection checks passed\n";return 0;

@@ -30,7 +30,8 @@ def main():
                              ("LitFragment", "fragment"),
                              ("InstancedMeshVertex", "vertex"), ("InstancedMeshNoUVVertex", "vertex"),
                              ("InstancedMeshNoColorVertex", "vertex"), ("InstancedMeshNoUVNoColorVertex", "vertex"), ("ShadowFragment", "fragment"),
-                             ("SkyVertex", "vertex"), ("SkyFragment", "fragment")]:
+                             ("SkyVertex", "vertex"), ("SkyFragment", "fragment"),
+                             ("UIVertex", "vertex"), ("UIFragment", "fragment")]:
             spirv = root / (entry + ".spv")
             # One source contains several entry points. Keep only resources used
             # by that entry; retaining a fragment binding in a vertex module

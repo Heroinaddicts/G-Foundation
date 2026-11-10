@@ -18,6 +18,8 @@ const std::vector<BuiltinEntry>& Builtins() {
         {"GameSproutRuntime.RectTransform","Rect Transform","UI",&typeid(IRectTransformComponent),false},
         {"GameSproutRuntime.Canvas","Canvas","UI",&typeid(ICanvasComponent),false},
         {"GameSproutRuntime.Image","Image","UI",&typeid(IImageComponent),false},
+        {"GameSproutRuntime.Text","Text","UI",&typeid(ITextComponent),false},
+        {"GameSproutRuntime.Button","Button","UI",&typeid(IButtonComponent),false},
         {"GameSproutRuntime.Mesh","Mesh","Rendering",&typeid(IMeshComponent),false},
         {"GameSproutRuntime.MeshRenderer","Mesh Renderer","Rendering",&typeid(IMeshRendererComponent),false},
         {"GameSproutRuntime.SkinnedMeshRenderer","Skinned Mesh Renderer","Rendering",&typeid(ISkinnedMeshRendererComponent),false},

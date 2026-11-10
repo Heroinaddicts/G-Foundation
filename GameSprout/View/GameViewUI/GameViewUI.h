@@ -7,6 +7,8 @@
 #include "ISceneManager.h"
 #include "IAnimationPreview.h"
 #include "IRuntimeAssets.h"
+#include <QMetaObject>
+#include <map>
 
 QT_BEGIN_NAMESPACE
 class QWidget;
@@ -34,6 +36,9 @@ public:
     void OnAnimationPreviewReset() override;
     void OnClipPreviewStateChanged(std::uint64_t,const GameSproutRuntime::AnimationClipPlaybackState&) override;
     void OnRuntimeResourcesChanged(std::uint64_t) override;
+    GameSproutRuntime::Vector2 GetViewportSize() const override;
+    bool RegisterViewportSizeCallback(const void*, const fViewportSizeCallback&) override;
+    void UnregisterViewportSizeCallback(const void*) override;
 
 private:
     IPlayMode* _PlayMode=nullptr;
@@ -49,6 +54,7 @@ private:
     QObject* _Dispatch=nullptr;
     Ui::GameViewUIWindow* _Ui=nullptr;
     GameViewport* _Viewport=nullptr;
+    std::map<const void*, QMetaObject::Connection> _ViewportSizeConnections;
     IIDEDocker* _Docker=nullptr;
     bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;
     bool _Loading=false,_LoadingSubscribed=false;

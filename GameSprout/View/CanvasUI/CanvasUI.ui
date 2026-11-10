@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CanvasActionsForm</class>
+ <widget class="QMenu" name="CanvasActionsForm">
+  <property name="title"><string>UI</string></property>
+  <addaction name="canvasAction"/>
+  <addaction name="emptyAction"/>
+  <addaction name="panelAction"/>
+  <addaction name="imageAction"/>
+  <addaction name="textAction"/>
+  <addaction name="buttonAction"/>
+  <action name="canvasAction"><property name="text"><string>Canvas</string></property></action>
+  <action name="emptyAction"><property name="text"><string>Empty</string></property></action>
+  <action name="panelAction"><property name="text"><string>Panel</string></property></action>
+  <action name="imageAction"><property name="text"><string>Image</string></property></action>
+  <action name="textAction"><property name="text"><string>Text</string></property></action>
+  <action name="buttonAction"><property name="text"><string>Button</string></property></action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

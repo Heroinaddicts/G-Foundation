@@ -102,9 +102,6 @@ void HierarchyUI::RegisterContextMenus() {
                 case NodeKind::Empty: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Empty,true> : &CreateNodeMenu<NodeKind::Empty,false>); break;
                 case NodeKind::Camera: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Camera,true> : &CreateNodeMenu<NodeKind::Camera,false>); break;
                 case NodeKind::Mesh: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Mesh,true> : &CreateNodeMenu<NodeKind::Mesh,false>); break;
-                case NodeKind::Canvas: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Canvas,true> : &CreateNodeMenu<NodeKind::Canvas,false>); break;
-                case NodeKind::Image: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::Image,true> : &CreateNodeMenu<NodeKind::Image,false>); break;
-                case NodeKind::UIEmpty: RegisterCreateMenu(menu,child ? &CreateNodeMenu<NodeKind::UIEmpty,true> : &CreateNodeMenu<NodeKind::UIEmpty,false>); break;
                 case NodeKind::Count: break;
                 }
             }

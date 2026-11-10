@@ -16,7 +16,9 @@ bool ImportFont(AssetImportJob & job) {
     if (padding>64) return job.Fail("Font character padding exceeds 64 pixels");
     QImage atlas(1024,8192,QImage::Format_RGBA8888);
     if (atlas.isNull()) return job.Fail("Cannot allocate font atlas");
-    atlas.fill(Qt::transparent);
+    // White RGB outside the glyph keeps bilinear-filtered edges from darkening
+    // when the alpha coverage is multiplied by the authored text color.
+    atlas.fill(QColor(255,255,255,0));
     Json::Value glyphs(Json::arrayValue);
     std::set<uint32_t> seen;
     int x=padding,y=padding,row=0;
@@ -51,6 +53,16 @@ bool ImportFont(AssetImportJob & job) {
     QByteArray pixels;
     for (int line=0;line<height;++line) pixels.append(reinterpret_cast<const char *>(atlas.constScanLine(line)),atlas.width()*4);
     Json::Value texture;texture["Format"]="RGBA8";texture["Width"]=atlas.width();texture["Height"]=height;
+    texture["Settings"]["ColorSpace"]="Linear";
+    texture["Settings"]["FilterMode"]="Bilinear";
+    texture["Settings"]["WrapU"]="ClampToEdge";
+    texture["Settings"]["WrapV"]="ClampToEdge";
+    Json::Value mip;
+    mip["Width"]=atlas.width();mip["Height"]=height;
+    mip["Offset"]=Json::UInt64(0);
+    mip["Size"]=static_cast<Json::UInt64>(pixels.size());
+    mip["RowPitch"]=static_cast<Json::UInt64>(atlas.width())*4;
+    texture["Mips"].append(mip);
     if (!job.Emit(eAssetType::Texture,"atlas","FontAtlas",texture,pixels)) return false;
     Json::Value metadata;
     metadata["Family"]=font.familyName().toStdString();metadata["Ascent"]=font.ascent();metadata["Descent"]=font.descent();

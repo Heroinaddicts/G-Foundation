@@ -12,6 +12,9 @@ public:
     float GetPixelsPerUnit() const override { return _PixelsPerUnit; }
     bool SetPixelsPerUnit(float value) override;
 
+protected:
+    void OnCreate(IGameSproutRuntime*) override;
+    void OnRelease(IGameSproutRuntime*) override;
 private:
     CanvasRenderMode _Mode = CanvasRenderMode::ScreenSpace;
     Vector2 _Resolution{1920.0f, 1080.0f};

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ButtonComponentEditorForm</class>
+ <widget class="QWidget" name="ButtonComponentEditorForm">
+  <layout class="QVBoxLayout" name="layout">
+   <item><widget class="QCheckBox" name="interactableCheck"><property name="text"><string>允许交互</string></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

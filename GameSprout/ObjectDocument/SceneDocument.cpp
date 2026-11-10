@@ -5,6 +5,7 @@
 #include "SceneLightingDocument.h"
 #include "SceneEnvironmentLightingDocument.h"
 #include "PrefabDocument.h"
+#include "RuntimeUIApi.h"
 
 #include <algorithm>
 #include <cmath>
@@ -210,6 +211,33 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             component->SetRenderMode(mode);
             if (!component->SetReferenceResolution(resolution) || !component->SetPixelsPerUnit(pixels)) Fail(path,"Runtime rejected canvas settings");
         }
+    } else if (type=="GameSproutRuntime.Text") {
+        Members(value,path,{"ID","Type","Text","Font","Color","FontSize"});
+        std::string text;
+        if (value.isMember("Text")) {
+            if (!value["Text"].isString()) Fail(path+".Text","expected string");
+            text=value["Text"].asString();
+            if (!GameSproutRuntime::IsValidUIText(text)) Fail(path+".Text","expected valid UTF-8 text within the UI text size limit");
+        }
+        const auto font=Resource(value["Font"],path+".Font");
+        GameSproutRuntime::Color color;
+        if (value.isMember("Color")) {
+            const auto data=Numbers(value["Color"],4,path+".Color");
+            color={data[0],data[1],data[2],data[3]};
+            if (color.R<0 || color.G<0 || color.B<0 || color.A<0 || color.A>1) Fail(path+".Color","invalid color range");
+        }
+        const auto size=FloatMember(value,"FontSize",GameSproutRuntime::DefaultUIFontSize,path);
+        if (!GameSproutRuntime::IsValidUIFontSize(size)) Fail(path+".FontSize","font size is outside the supported UI range");
+        if (object) {
+            auto* component=Component<GameSproutRuntime::ITextComponent>(object,path);
+            if (!component->SetText(text) || !component->SetFontSize(size)) Fail(path,"Runtime rejected text settings");
+            component->SetFont(font);
+            component->SetColor(color);
+        }
+    } else if (type=="GameSproutRuntime.Button") {
+        Members(value,path,{"ID","Type","Interactable"});
+        const bool interactable=BoolMember(value,"Interactable",true,path);
+        if (object) Component<GameSproutRuntime::IButtonComponent>(object,path)->SetInteractable(interactable);
     } else if (type=="GameSproutRuntime.Mesh") {
         Members(value,path,{"ID","Type","Mesh"});
         const auto mesh=Resource(value["Mesh"],path+".Mesh");

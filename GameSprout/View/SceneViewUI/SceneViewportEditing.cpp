@@ -19,9 +19,9 @@ GameSproutRuntime::Quaternion ParentRotation(GameSproutRuntime::IGameObject* par
 }
 }
 
-void SceneViewportEditing::Bind(ISceneManager* scenes,ISelectionManager* selection) {
-    if(_Scenes==scenes && _Selection==selection)return;
-    Unbind();_Scenes=scenes;_Selection=selection;
+void SceneViewportEditing::Bind(ISceneManager* scenes,ISelectionManager* selection,IUIAuthoring* uiAuthoring) {
+    if(_Scenes==scenes && _Selection==selection && _UIAuthoring==uiAuthoring)return;
+    Unbind();_Scenes=scenes;_Selection=selection;_UIAuthoring=uiAuthoring;
     if(_Scenes)_SceneSubscribed=_Scenes->RegisterSceneListener(this);
     if(_Selection)_SelectionSubscribed=_Selection->RegisterSelectionListener(this);
     // 先订阅，再取得首次快照；后续绘制只读取事件维护的身份。
@@ -32,7 +32,7 @@ void SceneViewportEditing::Unbind(){
     if(_SceneSubscribed && _Scenes)_Scenes->UnregisterSceneListener(this);
     if(_SelectionSubscribed && _Selection)_Selection->UnregisterSelectionListener(this);
     _SceneSubscribed=false;_SelectionSubscribed=false;
-    Cancel();_Viewport.ClearEditingError();_Scenes=nullptr;_Selection=nullptr;_ActiveScene=nullptr;
+    Cancel();_Viewport.ClearEditingError();_Scenes=nullptr;_Selection=nullptr;_UIAuthoring=nullptr;_ActiveScene=nullptr;
     _SelectionSnapshot={};_SceneID=0;_ObjectID=0;_Ready=false;_TransformEditActive=false;
 }
 void SceneViewportEditing::OnActiveSceneChanged(){
@@ -70,6 +70,10 @@ GameSproutRuntime::IGameObject* SceneViewportEditing::Selected() const {
     auto* object=_Viewport.GetRuntime()->QueryGameObject(_SelectionSnapshot.ObjectID);
     return object && object!=_ActiveScene && object->GetScene()==_ActiveScene ? object : nullptr;
 }
+std::uint64_t SceneViewportEditing::UIScreenPreviewObjectID() const {
+    auto* object=Selected();
+    return object&&GameSproutRuntime::FindUIScreenCanvasRoot(*object)?object->GetInstanceID():0;
+}
 void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const GameSproutRuntime::RenderCamera* drawCamera) {
     auto* object=Selected();
     const auto sceneID=scene?scene->GetInstanceID():0,objectID=object?object->GetInstanceID():0;
@@ -79,7 +83,8 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
         return;
     }
     _Ready=false;
-    if(_ReadOnly||_ExternalToolActive||!object||_Tool==SceneEditingTool::View||!_Viewport.Renderer())return;
+    if(_ReadOnly||_ExternalToolActive||!object||_Tool==SceneEditingTool::View||_Tool==SceneEditingTool::Rect||!_Viewport.Renderer())return;
+    if(GameSproutRuntime::FindUIScreenCanvasRoot(*object))return;
     SceneGizmoView view;if(!View(view))return;
     // 绘制共享本帧RenderCamera，输入仍用最近成功呈现帧的相机。
     if(drawCamera)view.Camera=*drawCamera;
@@ -96,6 +101,7 @@ void SceneViewportEditing::UpdateFrame(GameSproutRuntime::IScene* scene,const Ga
 }
 void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSproutRuntime::DebugDrawList& draw) {
     auto* object=Selected();auto* renderer=_Viewport.Renderer();
+    if(object&&GameSproutRuntime::FindUIScreenCanvasRoot(*object))object=nullptr;
     _Viewport.SetColliderDebugError("");
     if(object&&renderer)renderer->AppendSelectionOutline(scene,object->GetInstanceID(),draw);
     if(renderer&&scene&&(_ShowAllColliders||object)) {
@@ -108,8 +114,9 @@ void SceneViewportEditing::BuildDraw(GameSproutRuntime::IScene* scene,GameSprout
     }
     if(!_ExternalToolActive&&!_ReadOnly&&_Ready&&object&&_Tool!=SceneEditingTool::View)_Gizmo.BuildDrawList(draw);
 }
-bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
+bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical,bool alt) {
     if(!_Scenes || !_Selection || !_Viewport.Renderer())return false;
+    if(alt&&(_Tool!=SceneEditingTool::Rect||!_Viewport.GetPresentedUIPreviewObjectID()))return false;
     // 输入命令开始时允许重新取快照，避免尚未派发的选择事件作用到旧目标。
     if(_Scenes->GetActiveScene()!=_ActiveScene)OnActiveSceneChanged();
     OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());
@@ -118,6 +125,9 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
     _Viewport.ClearEditingError();
     SceneGizmoView view;if(!View(view))return false;
     const auto pixel=Pixel(logical,view);
+    if(PressUI(view,pixel,alt))return true;
+    if(alt)return false;
+    if(PickUI(view,pixel))return true;
     if(!_ReadOnly&&_Ready&&_Gizmo.Hover(pixel)!=SceneGizmoHandle::None) {
         std::string error;
         if(!_Gizmo.BeginDrag(pixel,error)){Report(error);return true;}
@@ -143,8 +153,9 @@ bool SceneViewportEditing::Press(GameSproutRuntime::Vector2 logical) {
     OnSceneObjectSelectionChanged(selection);
     _Ready=false;return true;
 }
-bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap) {
+bool SceneViewportEditing::Move(GameSproutRuntime::Vector2 logical,bool snap,bool shift,bool alt) {
     _HoverPixel=logical;_HasHover=true;
+    if(MoveUI(logical,snap,shift,alt))return true;
     if(_Gizmo.IsDragging()) {
         // Sample every point for rotation winding. Only the latest valid TRS
         // needs to cross into SceneManager before the next presented frame.
@@ -174,7 +185,8 @@ void SceneViewportEditing::ApplyPendingDrag() {
     if(!_Scenes->PreviewTransformEdit(candidate,error)){Report(error);Cancel();}
     else _DragChanged|=_ActiveScene->GetAuthoringRevision()!=revision;
 }
-bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap,std::uint64_t& shadowPreviewID) {
+bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap,std::uint64_t& shadowPreviewID,bool shift,bool alt) {
+    if(ReleaseUI(logical,snap,shift,alt))return true;
     if(!_Gizmo.IsDragging())return false;
     Move(logical,snap);
     ApplyPendingDrag();
@@ -186,6 +198,7 @@ bool SceneViewportEditing::Release(GameSproutRuntime::Vector2 logical,bool snap,
     _DragChanged=false;_Ready=false;return true;
 }
 void SceneViewportEditing::Cancel() {
+    CancelUIDrag();
     _PendingDrag.reset();
     _DragChanged=false;
     const bool dragging=_Gizmo.IsDragging();_Gizmo.CancelDrag();_Ready=false;
@@ -197,7 +210,7 @@ bool SceneViewportEditing::DeleteSelection() {
     if(!_Scenes||!_Selection)return false;
     if(_Scenes->GetActiveScene()!=_ActiveScene)OnActiveSceneChanged();
     OnSceneObjectSelectionChanged(_Selection->GetSceneObjectSelection());
-    if(_Gizmo.IsDragging()||_Scenes->HasTransformEdit()) {Report("请先完成或取消 Scene 中的变换拖拽。");return true;}
+    if(IsDragging()||_Scenes->HasTransformEdit()) {Report("请先完成或取消 Scene 中的变换拖拽。");return true;}
     auto* object=Selected();if(!object)return true;
     _Viewport.ClearEditingError();
     std::string error;
@@ -210,7 +223,8 @@ bool SceneViewportEditing::DeleteSelection() {
 void SceneViewportEditing::SetTool(SceneEditingTool tool) {
     _Viewport.Tools().Deactivate();
     Cancel();_Viewport.ClearEditingError();_Tool=tool;
-    if(tool!=SceneEditingTool::View)_Settings.Tool=tool==SceneEditingTool::Move?SceneGizmoTool::Move:tool==SceneEditingTool::Rotate?SceneGizmoTool::Rotate:SceneGizmoTool::Scale;
+    if(tool!=SceneEditingTool::View&&tool!=SceneEditingTool::Rect)
+        _Settings.Tool=tool==SceneEditingTool::Move?SceneGizmoTool::Move:tool==SceneEditingTool::Rotate?SceneGizmoTool::Rotate:SceneGizmoTool::Scale;
     if(ToolChanged)ToolChanged(tool);
     _Viewport.RequestRender();
 }

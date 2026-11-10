@@ -42,15 +42,8 @@ void HierarchyUI::CreateNode(NodeKind kind, bool child) {
     case NodeKind::Camera: configured = object->AddComponent<GameSproutRuntime::ICameraComponent>() != nullptr; break;
     case NodeKind::Mesh:
         configured = object->AddComponent<GameSproutRuntime::IMeshComponent>() && object->AddComponent<GameSproutRuntime::IMeshRendererComponent>(); break;
-    case NodeKind::Canvas:
-        configured = object->AddComponent<GameSproutRuntime::IRectTransformComponent>() && object->AddComponent<GameSproutRuntime::ICanvasComponent>(); break;
-    case NodeKind::Image:
-        configured = object->AddComponent<GameSproutRuntime::IRectTransformComponent>() && object->AddComponent<GameSproutRuntime::IImageComponent>(); break;
-    case NodeKind::UIEmpty: configured = object->AddComponent<GameSproutRuntime::IRectTransformComponent>() != nullptr; break;
     case NodeKind::Count: configured = false; break;
     }
-    if(kind==NodeKind::Canvas||kind==NodeKind::Image||kind==NodeKind::UIEmpty)
-        configured=configured&&object->SetLayer(GameSproutRuntime::UILayer);
     if (!configured) {
         scene->DestroyGameObject(object);
         _Ui->statusLabel->setText(QStringLiteral("组件创建失败，已撤销新节点。"));

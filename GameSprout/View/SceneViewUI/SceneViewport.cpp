@@ -26,7 +26,7 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
     }
 }
 SceneViewport::~SceneViewport(){Shutdown();delete _Tools;_Tools=nullptr;delete _Editing;_Editing=nullptr;}
-void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection){_Editing->Bind(scenes,selection);_Tools->Bind(scenes,selection);}
+void SceneViewport::BindEditingServices(ISceneManager* scenes,ISelectionManager* selection,IUIAuthoring* uiAuthoring){_Editing->Bind(scenes,selection,uiAuthoring);_Tools->Bind(scenes,selection);}
 QPaintEngine* SceneViewport::paintEngine() const{return IsHeadless()?QWidget::paintEngine():nullptr;}
 void SceneViewport::Initialize(GameSproutRuntime::IGameSproutRuntime* runtime,GameSproutRuntime::IRuntimeResourceProvider* resources) {
     Shutdown();_Runtime=runtime;_Initialized=true;_Resources=resources;
@@ -56,6 +56,7 @@ void SceneViewport::DestroyGpu() {
     auto* renderer=_Renderer;_Renderer=nullptr;
     _AnimatedMaterials=false;
     _PresentedCamera={};
+    _PresentedUIPreviewObjectID=0;
     _ReleasedTransformPreviewID=0;
     _NativeID=0;_Attempted=false;
     _ViewportChanged=true;
@@ -75,6 +76,12 @@ void SceneViewport::Shutdown() {
     _Runtime=nullptr;_Initialized=false;
 }
 void SceneViewport::RetryRendering(){ClearInput();DestroyGpu();}
+void SceneViewport::SetGameUILayoutSize(GameSproutRuntime::Vector2 size) {
+    if(_GameUILayoutSize.X==size.X&&_GameUILayoutSize.Y==size.Y)return;
+    _Editing->CancelUIDrag();
+    _GameUILayoutSize=size;
+    RequestRender();
+}
 void SceneViewport::SetShadowReuseWhileNavigatingEnabled(bool enabled) {
     if(_ReuseShadowsWhileNavigating==enabled)return;
     _ReuseShadowsWhileNavigating=enabled;
@@ -167,7 +174,10 @@ bool SceneViewport::EnsureRendering() {
 }
 void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float dt,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};_ReleasedTransformPreviewID=0;RequestRender();emit FrameStreamReset();}
+    if(sceneID!=_SceneID){
+        _SceneID=sceneID;_ViewportChanged=true;_PresentedCamera={};_PresentedUIPreviewObjectID=0;
+        _ReleasedTransformPreviewID=0;RequestRender();emit FrameStreamReset();
+    }
     if(_Drag!=DragMode::None)AdvanceInput(dt);
     if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if(_Rendering||!CanRender())return;
@@ -187,15 +197,21 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     view.Camera.Projection.VerticalFovRadians=GameSproutRuntime::DegreesToRadians(camera.VerticalFovDegrees);
     view.Camera.Projection.NearPlane=camera.NearPlane;view.Camera.Projection.FarPlane=camera.FarPlane;
     GameSproutRuntime::DebugDrawList debug;
+    _UIDebugDraw.Triangles.clear();
     _Editing->UpdateFrame(scene,&view.Camera);
+    view.UIPreviewObjectID=scene?_Editing->UIScreenPreviewObjectID():0;
+    view.DrawUI=view.UIPreviewObjectID!=0;
+    view.UIScreenPreviewLayoutSize=_GameUILayoutSize;
     view.TransformPreviewObjectID=_Editing->ShadowPreviewObjectID();
     if(!view.TransformPreviewObjectID)view.TransformPreviewObjectID=_ReleasedTransformPreviewID;
     if(!_ViewportChanged)_Editing->BuildDraw(scene,debug);
+    if(!_ViewportChanged)_Editing->BuildUIDraw(scene,view.UIPreviewObjectID,_UIDebugDraw);
     if(!_ViewportChanged)_Tools->Draw(scene,debug);
     view.DebugDraw=&debug;
+    if(!_UIDebugDraw.Triangles.empty())view.UIScreenDebugDraw=&_UIDebugDraw;
     // Runtime Renderer 从 SurfaceFrame 实际像素尺寸算投影，包含 resize / Retina DPI。
     if(!_Renderer->Render(view)){
-        _AnimatedMaterials=false;_PresentedCamera={};SetStatus(_Renderer->GetLastError(),true);return;
+        _AnimatedMaterials=false;_PresentedCamera={};_PresentedUIPreviewObjectID=0;SetStatus(_Renderer->GetLastError(),true);return;
     }
     const auto& info=_Renderer->GetStatistics();
     if(!info.Width||!info.Height) {
@@ -207,6 +223,8 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     _ReleasedTransformPreviewID=0;
     emit FrameSubmitted();
     _Renderer->GetRenderedCamera(_PresentedCamera);
+    _PresentedUIPreviewObjectID=view.UIPreviewObjectID;
+    _PresentedGameUILayoutSize=view.UIScreenPreviewLayoutSize;
     const bool refreshOverlays=_ViewportChanged;
     _ViewportChanged=false;
     // Initial/changed pixel dimensions need one follow-up to build gizmos from

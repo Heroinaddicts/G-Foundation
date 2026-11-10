@@ -48,6 +48,7 @@ namespace GameSproutRuntime {
     struct PhysicsQuerySettings;
     struct PhysicsRaycastHit;
     struct EnvironmentLightingSettings;
+    struct UIScreenPreviewGeometry;
     class IObject {
     public:
         virtual ~IObject() {}
@@ -417,6 +418,7 @@ namespace GameSproutRuntime {
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IGameSproutRuntime {
     public:
         virtual ~IGameSproutRuntime() = default;
+
         // Runtime owns and shares the GPU device. Hosts pass only their native window.
         // Delete returned viewports before this Runtime and the resource provider.
         virtual IRuntimeViewport* CreateViewport(const NativeWindow&, IRuntimeResourceProvider*, std::string& error) = 0;
@@ -543,6 +545,17 @@ namespace GameSproutRuntime {
         // Host 每帧调用一次，放在所有逻辑步和 Scene/Game 视口处理之后。
         // 提交结构并回收最终无场景归属的子树；不推进时间，构建范围内暂缓回收。
         virtual bool EndFrame(std::string& error) = 0;
+        // Host only. Bind the scene shown in the gameplay viewport and its
+        // logical-pixel size and optional render-target size. A resize or
+        // scene change cancels the current pointer capture. Pass nullptr to detach it.
+        virtual void SetUIInputViewport(IScene*, Vector2, Vector2 renderedSize = {}) {}
+        // Hit-test the Canvas preview shown by RenderView::UIPreviewObjectID.
+        // Sizes and pointer coordinates use render-target pixels, top-left origin.
+        // Set gameViewportSize to the Game render-target size to match its aspect.
+        virtual std::uint64_t PickUIScreenPreview(IScene*, std::uint64_t, Vector2, Vector2, Vector2 gameViewportSize = {}) const { return 0; }
+        // Geometry uses the same render-target pixel coordinates and layout as PickUIScreenPreview.
+        virtual bool GetUIScreenPreviewGeometry(IScene*, std::uint64_t, Vector2, UIScreenPreviewGeometry&,
+                                                Vector2 gameViewportSize = {}) const { return false; }
         // Thread-safe offline cooker. The function uses no instance state and
         // stays callable while the Runtime module remains loaded.
         // A valid render mesh may have no usable triangle mesh or convex hull.
@@ -556,5 +569,6 @@ namespace GameSproutRuntime {
 #include "RuntimeScriptApi.h"
 #include "RuntimePhysicsApi.h"
 #include "RuntimeLightingApi.h"
+#include "RuntimeUIApi.h"
 
 #endif //__GameSproutRuntimeApi_h__

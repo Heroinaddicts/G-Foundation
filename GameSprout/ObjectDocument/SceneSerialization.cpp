@@ -4,6 +4,7 @@
 #include "ScenePhysicsDocument.h"
 #include "SceneLightingDocument.h"
 #include "SceneEnvironmentLightingDocument.h"
+#include "RuntimeUIApi.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -119,6 +120,19 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
             if (!value) throw std::runtime_error("Canvas interface mismatch");
             data["RenderMode"]=value->GetRenderMode()==GameSproutRuntime::CanvasRenderMode::WorldSpace?"WorldSpace":"ScreenSpace";
             data["ReferenceResolution"]=Vector(value->GetReferenceResolution());data["PixelsPerUnit"]=value->GetPixelsPerUnit();
+        } else if (type=="GameSproutRuntime.Text") {
+            auto* value=dynamic_cast<GameSproutRuntime::ITextComponent*>(&component);
+            if (!value) throw std::runtime_error("Text interface mismatch");
+            data["Text"]=value->GetText();
+            const auto font=Reference(value->GetFont());
+            if (!font.isNull()) data["Font"]=font;
+            const auto color=value->GetColor();
+            data["Color"]=Values({color.R,color.G,color.B,color.A});
+            data["FontSize"]=value->GetFontSize();
+        } else if (type=="GameSproutRuntime.Button") {
+            auto* value=dynamic_cast<GameSproutRuntime::IButtonComponent*>(&component);
+            if (!value) throw std::runtime_error("Button interface mismatch");
+            data["Interactable"]=value->GetInteractable();
         } else if (type=="GameSproutRuntime.Mesh") {
             auto* value=dynamic_cast<GameSproutRuntime::IMeshComponent*>(&component);
             if (!value) throw std::runtime_error("Mesh interface mismatch");

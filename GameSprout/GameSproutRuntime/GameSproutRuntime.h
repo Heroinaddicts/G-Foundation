@@ -15,6 +15,7 @@ class GameObjectState;
 class Scene;
 class AnimatorComponent;
 class ScriptComponent;
+class ButtonComponent;
 class RuntimePhysicsSystem;
 class RenderResourceCache;
 class RenderResourceLease;
@@ -114,6 +115,7 @@ public:
     ScriptComponent* ExchangeInvokingScript(ScriptComponent* value) {auto* previous=_InvokingScript;_InvokingScript=value;return previous;}
     ScriptComponent* GetInvokingScript() const {return _InvokingScript;}
     void DropPhysicsSubscriptions(std::uint64_t objectID,std::uint64_t componentID);
+    void DropUISubscriptions(std::uint64_t objectID, std::uint64_t componentID) noexcept;
     bool Raycast(IScene*,const Ray&,float,PhysicsRaycastHit&,const PhysicsQuerySettings&,std::string&) override;
     void ProcessPendingEvents() override;
     bool BeginConstruction(std::string&) override;
@@ -125,6 +127,15 @@ public:
     void ResetInput() override;
     void CompleteInputFrame() override;
     void SetInputEnabled(bool) override;
+    void SetUIInputViewport(IScene*, Vector2, Vector2) override;
+    std::uint64_t PickUIScreenPreview(IScene*, std::uint64_t, Vector2, Vector2, Vector2) const override;
+    bool GetUIScreenPreviewGeometry(IScene*, std::uint64_t, Vector2, UIScreenPreviewGeometry&, Vector2) const override;
+    const std::set<std::uint64_t>& UICanvasObjects() const { return _UICanvasObjects; }
+    void RegisterUICanvas(std::uint64_t id) { _UICanvasObjects.insert(id); }
+    void UnregisterUICanvas(std::uint64_t id) { _UICanvasObjects.erase(id); }
+    void RegisterUIButton(ButtonComponent* button) { _UIButtons.insert(button); }
+    void UnregisterUIButton(ButtonComponent* button) { _UIButtons.erase(button); }
+    ButtonComponent* FindUIButton(std::uint64_t objectID, std::uint64_t componentID) const;
     const ScriptTypeRegistration* FindScriptType(const std::string&) const;
     const ScriptTypeRegistration* FindScriptType(const std::type_info&) const;
     void NotifyScriptError(IGameObject*,const std::string&);
@@ -200,7 +211,9 @@ private:
     AnimatorComponent* ResolveAnimation(const AnimationRecord&) const;
     bool QueueAnimationRecord(AnimatorComponent&,AnimationRecord);
     void RenderWorld();
-    void RenderUI();
+    void ResetUIPointer();
+    void QueueUIPointer(bool down);
+    void DispatchUIPointer();
     struct FrameComponent {
         std::uint64_t ObjectID=0,Serial=0;
         std::uint8_t Mask=0;
@@ -264,6 +277,14 @@ private:
     bool _EndingFrame = false;
     bool _InputEnabled = false;
     RuntimeInputState _Input;
+    std::set<std::uint64_t> _UICanvasObjects;
+    std::set<ButtonComponent*> _UIButtons;
+    struct UIPointerEdge { Vector2 Position; bool Down; };
+    std::vector<UIPointerEdge> _UIPointerEdges;
+    std::uint64_t _UIInputSceneID = 0;
+    Vector2 _UIInputSize;
+    Vector2 _UIRenderSize;
+    std::uint64_t _UIPressedObjectID = 0, _UIPressedComponentID = 0;
     std::map<std::string,ScriptTypeRegistration> _ScriptTypes;
     struct ObjectIdentity {std::uint64_t SceneID=0,FileID=0;};
     std::map<std::uint64_t,ObjectIdentity> _ObjectFileIDs;

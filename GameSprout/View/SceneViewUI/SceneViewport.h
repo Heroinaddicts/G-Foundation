@@ -9,6 +9,7 @@
 class QWindow;
 class ISceneManager;
 class ISelectionManager;
+class IUIAuthoring;
 class SceneViewportEditing;
 class SceneToolRouter;
 
@@ -33,9 +34,13 @@ public:
     const SceneViewCamera& Camera() const{return _Camera;}
     SceneViewportEditing& Editing(){return *_Editing;}
     SceneToolRouter& Tools(){return *_Tools;}
-    void BindEditingServices(ISceneManager* scenes,ISelectionManager* selection);
+    void BindEditingServices(ISceneManager* scenes,ISelectionManager* selection,IUIAuthoring* uiAuthoring=nullptr);
     GameSproutRuntime::IRuntimeRenderer* Renderer() const{return _Renderer;}
     bool GetRenderedCamera(GameSproutRuntime::RenderedCamera& camera) const;
+    std::uint64_t GetPresentedUIPreviewObjectID() const { return _PresentedUIPreviewObjectID; }
+    void SetGameUILayoutSize(GameSproutRuntime::Vector2 size);
+    GameSproutRuntime::Vector2 GetGameUILayoutSize() const { return _GameUILayoutSize; }
+    GameSproutRuntime::Vector2 GetPresentedGameUILayoutSize() const { return _PresentedGameUILayoutSize; }
     void ReportEditingError(const std::string& error){_EditingError=error;SetStatus(error,true);}
     void ClearEditingError(){_EditingError.clear();}
     void SetColliderDebugError(const std::string& error){_ColliderDebugError=error;}
@@ -56,6 +61,7 @@ protected:
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
+    void leaveEvent(QEvent*) override;
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
     void keyReleaseEvent(QKeyEvent*) override;
@@ -94,6 +100,9 @@ private:
     bool _AnimatedMaterials=false;
     bool _ReuseShadowsWhileNavigating=true;
     GameSproutRuntime::RenderedCamera _PresentedCamera;
+    GameSproutRuntime::Vector2 _GameUILayoutSize,_PresentedGameUILayoutSize;
+    GameSproutRuntime::UIDebugDrawList _UIDebugDraw;
+    std::uint64_t _PresentedUIPreviewObjectID=0;
     std::uint64_t _SceneID=0;
     std::string _EditingError;
     std::string _ColliderDebugError;

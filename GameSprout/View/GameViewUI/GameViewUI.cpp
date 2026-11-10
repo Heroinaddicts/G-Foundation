@@ -84,7 +84,26 @@ void GameViewUI::OnAnimationPreviewStateChanged(bool scenePlaying) {
 void GameViewUI::OnAnimationPreviewReset(){if(_Viewport)_Viewport->RequestRender();}
 void GameViewUI::OnClipPreviewStateChanged(std::uint64_t,const GameSproutRuntime::AnimationClipPlaybackState&){if(_Viewport)_Viewport->RequestRender();}
 void GameViewUI::OnRuntimeResourcesChanged(std::uint64_t){if(_Viewport)_Viewport->RequestRender();}
+GameSproutRuntime::Vector2 GameViewUI::GetViewportSize() const {
+    return _Viewport ? _Viewport->GetOutputSize() : GameSproutRuntime::Vector2{};
+}
+bool GameViewUI::RegisterViewportSizeCallback(const void* owner, const fViewportSizeCallback& callback) {
+    if (!_Viewport || !_Dispatch || !owner || !callback || _ViewportSizeConnections.contains(owner)) return false;
+    const auto connection = QObject::connect(_Viewport, &GameViewport::OutputSizeChanged, _Dispatch,
+        [this, callback] { callback(GetViewportSize()); });
+    if (!connection) return false;
+    _ViewportSizeConnections.emplace(owner, connection);
+    return true;
+}
+void GameViewUI::UnregisterViewportSizeCallback(const void* owner) {
+    const auto found = _ViewportSizeConnections.find(owner);
+    if (found == _ViewportSizeConnections.end()) return;
+    QObject::disconnect(found->second);
+    _ViewportSizeConnections.erase(found);
+}
 void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    for (const auto& [owner, connection] : _ViewportSizeConnections) QObject::disconnect(connection);
+    _ViewportSizeConnections.clear();
     if(_ResourcesSubscribed&&_Resources)_Resources->UnregisterResourceListener(this);
     _ResourcesSubscribed=false;
     if(_LoadingSubscribed && g_IIDEWindow)g_IIDEWindow->UnregisterLoadingStateCallback(this);

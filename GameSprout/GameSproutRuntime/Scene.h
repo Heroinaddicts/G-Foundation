@@ -19,6 +19,9 @@ public:
     // listener dispatch, including direct Set* -> Render calls in editor/tests.
     std::uint64_t GetRenderRevision() const {return _RenderRevision;}
     void InvalidateRenderSnapshot(std::uint64_t transformObjectID=0);
+    void InvalidateVisual() { _VisualPending = true; }
+    std::uint64_t GetUIRevision() const { return _UIRevision; }
+    void InvalidateUI() { ++_UIRevision; _VisualPending = true; }
     // False if another kind of change or a journal gap requires a full snapshot.
     bool GetRenderTransformChanges(std::uint64_t after,std::vector<std::uint64_t>& changes) const;
     bool TakeVisualInvalidation() {const bool pending=_VisualPending;_VisualPending=false;return pending;}
@@ -60,6 +63,7 @@ private:
     bool _SimulationEnabled = true;
     EnvironmentLightingSettings _EnvironmentLighting;
     std::uint64_t _RenderRevision=1;
+    std::uint64_t _UIRevision=1;
     std::deque<std::uint64_t> _RenderTransformChanges;
     std::uint64_t _AuthoringRevision=1;
     std::deque<SceneAuthoringChange> _AuthoringChanges;

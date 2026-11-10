@@ -3,6 +3,20 @@
 #include <vector>
 
 namespace GameSproutRuntime {
+bool Renderer::InitializeSamples() {
+    if(!_White) {
+        const std::uint8_t pixels[]={255,255,255,255};
+        GRHI::TextureDesc description;description.Width=1;description.Height=1;
+        GRHI::TextureInitialData initial{pixels,sizeof(pixels),0};
+        _White=_Device.CreateTexture(description,&initial);
+        if(!_White) return Fail(DeviceError("Create untextured white sample"));
+    }
+    if(!_DefaultSampler) {
+        _DefaultSampler=_Device.CreateSampler({});
+        if(!_DefaultSampler) return Fail(DeviceError("Create default Runtime sampler"));
+    }
+    return true;
+}
 bool Renderer::Initialize() {
     static_assert(sizeof(DrawUniform)==224,"Shader draw uniform must match std140 layout");
     static_assert(sizeof(SkinUniform)==8192,"Shader skin uniform must match 128 column-major matrices");
@@ -15,17 +29,7 @@ bool Renderer::Initialize() {
         _Shaders[index]=CreatePreviewShader(_Device,kinds[index]);
         if(!_Shaders[index]) return Fail(DeviceError("Create embedded Runtime preview shader"));
     }
-    if(!_White) {
-        const std::uint8_t pixels[]={255,255,255,255};
-        GRHI::TextureDesc description;description.Width=1;description.Height=1;
-        GRHI::TextureInitialData initial{pixels,sizeof(pixels),0};
-        _White=_Device.CreateTexture(description,&initial);
-        if(!_White) return Fail(DeviceError("Create untextured white sample"));
-    }
-    if(!_DefaultSampler) {
-        _DefaultSampler=_Device.CreateSampler({});
-        if(!_DefaultSampler) return Fail(DeviceError("Create default Runtime sampler"));
-    }
+    if(!InitializeSamples()) return false;
     if(!_Grid) {
         struct Vertex {Vector3 Position;Color Tint;};
         static_assert(sizeof(Vertex)==28);

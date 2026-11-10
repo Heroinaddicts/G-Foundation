@@ -227,6 +227,25 @@ private:
     struct SkinUniform { Mat4 Bones[MaxSkinBones]; };
     struct DebugVertex {Vector3 Position;Color Tint;};
     struct DebugBatch {std::vector<DebugVertex> Vertices;bool Triangles=false,DepthTest=false;};
+    struct UIBatch {
+        GRHI::ITexture* Texture;
+        GRHI::ISampler* Sampler;
+        std::uint32_t FirstVertex,VertexCount;
+    };
+    struct UIFont {
+        FontRenderData Data;
+        std::string Error;
+        std::uint64_t ResourceRevision=0;
+    };
+    bool PrepareUI(IScene&,std::uint32_t width,std::uint32_t height,std::uint64_t previewObjectID,Vector2 gameViewportSize);
+    bool DrawUI(GRHI::IRenderPass&,GRHI::TextureFormat color,GRHI::TextureFormat depth);
+    bool DrawUIScreenDebug(GRHI::IRenderPass&,GRHI::TextureFormat color,GRHI::TextureFormat depth,
+        Vector2 viewport,const UIDebugDrawList&,std::vector<GRHI::IBuffer*>& transientBuffers);
+    bool InitializeSamples();
+    bool InitializeUIFallback();
+    const FontRenderData* UIFontData(const ResourceReference&);
+    GRHI::IGraphicsPipeline* UIPipeline(GRHI::TextureFormat color,GRHI::TextureFormat depth);
+    void ClearUIDraws();
     bool Initialize();
     bool Extract(const RenderView& view,std::vector<DrawObject>& objects);
     bool UpdateSceneTransforms(IScene& scene,const std::vector<std::uint64_t>& roots,std::vector<DrawObject>& objects);
@@ -318,6 +337,19 @@ private:
     GRHI::ISampler*& _DefaultSampler;
     GRHI::IBuffer*& _Grid;
     std::uint32_t& _GridVertices;
+    GRHI::IShader* _UIVertex=nullptr;
+    GRHI::IShader* _UIFragment=nullptr;
+    GRHI::ITexture* _UIFallbackAtlas=nullptr;
+    FontRenderData _UIFallback;
+    std::map<ResourceKey,UIFont> _UIFonts;
+    std::map<std::pair<GRHI::TextureFormat,GRHI::TextureFormat>,GRHI::IGraphicsPipeline*> _UIPipelines;
+    GRHI::IBuffer* _UIBuffer=nullptr;
+    std::vector<UIBatch> _UIBatches;
+    std::uint64_t _UISceneID=0,_UISceneRevision=0,_UIResourceRevision=0;
+    std::uint64_t _UIPreviewObjectID=0;
+    Vector2 _UIPreviewGameSize;
+    std::uint32_t _UIWidth=0,_UIHeight=0;
+    std::string _UIDiagnostic;
     std::uint64_t _ResourceGeneration=0,_Frame=0;
     bool _Rendering=false;
     RenderStatistics _Statistics;

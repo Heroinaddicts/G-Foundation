@@ -67,6 +67,13 @@ public:
         error.clear();return true;
     }
     void SetResourceProvider(GameSproutRuntime::IRuntimeResourceProvider* resources) override{if(Real)Real->SetResourceProvider(resources);}
+    bool SubmitInputEvent(const GameSproutRuntime::RuntimeInputEvent& event) override{
+        return Real&&Real->SubmitInputEvent(event);
+    }
+    void SetUIInputViewport(GameSproutRuntime::IScene* scene,GameSproutRuntime::Vector2 size,
+        GameSproutRuntime::Vector2 renderedSize={}) override{
+        if(Real)Real->SetUIInputViewport(scene,size,renderedSize);
+    }
     GameSproutRuntime::IRuntimeResourceProvider* GetResourceProvider() const override{return Real?Real->GetResourceProvider():nullptr;}
     GameSproutRuntime::IGameObject* InstantiateModel(GameSproutRuntime::IScene* scene,const GameSproutRuntime::ResourceReference& reference,
         GameSproutRuntime::IGameObject* parent,std::string& error) override{return Real?Real->InstantiateModel(scene,reference,parent,error):nullptr;}

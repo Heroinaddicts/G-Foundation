@@ -1,5 +1,7 @@
 #include "ProjectViewTestSupport.h"
 #include "ISceneManager.h"
+#include "IObjectEditing.h"
+#include "IUIAuthoring.h"
 #include "IRuntimeHost.h"
 #include "IAnimationPreview.h"
 #include "ISceneEditorUI.h"
@@ -85,6 +87,40 @@ static void PickResource(const GameSproutRuntime::ResourceReference& reference) 
     throw std::runtime_error("Expected resource missing from picker");
 }
 
+static void CheckRectEditing(ISceneManager& scenes,IUIAuthoring& authoring,
+    GameSproutRuntime::IGameObject& canvas,GameSproutRuntime::IGameObject& control) {
+    auto* canvasRect=canvas.GetComponent<GameSproutRuntime::IRectTransformComponent>();
+    auto* rect=control.GetComponent<GameSproutRuntime::IRectTransformComponent>();
+    Check(canvasRect&&rect&&!scenes.CanUndo(),"Rect editing fixture did not start with empty history");
+    const auto sceneID=canvas.GetScene()->GetInstanceID();
+    const ObjectEditTarget root{sceneID,canvas.GetInstanceID(),canvasRect->GetComponentInstanceID()};
+    const ObjectEditTarget child{sceneID,control.GetInstanceID(),rect->GetComponentInstanceID()};
+    const UIRectAuthoringValues original{rect->GetAnchoredPosition(),rect->GetSizeDelta(),control.GetTransform()->GetLocalRotation()};
+    const UIRectAuthoringValues first{{18,-12},{220,100},{0,0,0.5f,0.8660254f}};
+    const UIRectAuthoringValues last{{45,24},{250,140},{0,0,0.70710678f,0.70710678f}};
+    const auto matches=[&](const UIRectAuthoringValues& expected) {
+        const auto position=rect->GetAnchoredPosition(),size=rect->GetSizeDelta();
+        const auto rotation=control.GetTransform()->GetLocalRotation();
+        return position.X==expected.AnchoredPosition.X&&position.Y==expected.AnchoredPosition.Y&&
+            size.X==expected.SizeDelta.X&&size.Y==expected.SizeDelta.Y&&
+            std::fabs(rotation.Z-expected.LocalRotation.Z)<0.0001f&&
+            std::fabs(rotation.W-expected.LocalRotation.W)<0.0001f;
+    };
+    std::string error;
+    Check(!authoring.BeginRectEdit(root,error)&&!scenes.HasPropertyPreview(),"Screen Canvas root was editable");
+    Check(authoring.BeginRectEdit(child,error),"Cannot begin Rect edit: "+error);
+    Check(authoring.PreviewRectEdit(first,error)&&matches(first)&&!scenes.CanUndo(),"First Rect preview missed or recorded history");
+    Check(authoring.PreviewRectEdit(last,error)&&matches(last)&&!scenes.CanUndo(),"Second Rect preview missed or recorded history");
+    Check(authoring.CommitRectEdit(last,error)&&matches(last)&&scenes.CanUndo(),"Rect edit did not commit");
+    Check(scenes.Undo(error)&&matches(original)&&!scenes.CanUndo(),"One undo did not restore the whole Rect drag");
+    Check(scenes.Redo(error)&&matches(last)&&!scenes.CanRedo(),"One redo did not restore the final Rect state");
+    Check(authoring.BeginRectEdit(child,error)&&authoring.PreviewRectEdit(first,error)&&matches(first),"Cannot preview a cancellable Rect drag");
+    Check(authoring.CancelRectEdit(error)&&matches(last)&&!scenes.HasPropertyPreview(),"Cancel did not restore the Rect drag origin");
+    Check(scenes.Undo(error)&&matches(original)&&!scenes.CanUndo(),"Cancelled Rect drag changed the undo history");
+    Check(authoring.BeginRectEdit(child,error)&&authoring.CommitRectEdit(original,error)&&!scenes.CanUndo(),
+        "Unchanged Rect drag created an undo entry");
+}
+
 int main(int argc,char** argv) {
     QApplication application(argc,argv);
     PreviewEditor editor(Export(TEST_BINARY_ROOT));
@@ -99,7 +135,7 @@ int main(int argc,char** argv) {
     const auto cleanup=[&] {
         for(auto it=views.rbegin();it!=views.rend();++it)GameSproutEditor::GameSproutEditorFinal::Release(*it,&editor);
         views.clear();
-        if(modulesReady)for(const std::string& name:{"SelectionManager","AnimationPreview","SceneManager","RuntimeHost","AnimationEditor","RuntimeAssets","AssetsManager","AssetsPipeline","LibraryManager"})
+        if(modulesReady)for(const std::string& name:{"UIAuthoring","ObjectEditing","PlayMode","ScriptEditor","ScriptCompiler","SelectionManager","AnimationPreview","SceneManager","RuntimeHost","AnimationEditor","RuntimeAssets","AssetsManager","AssetsPipeline","LibraryManager"})
             if(editor.Modules.count(name))GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules[name],api);
         if(ide){GameSproutEditor::GameSproutEditorFinal::Release(ide,&editor);ide=nullptr;}
         if(foundation){foundation->Release();foundation=nullptr;}
@@ -121,13 +157,13 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation init failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager"})
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager","ObjectEditing","PlayMode","ScriptCompiler","ScriptEditor","UIAuthoring"})
             editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules)GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module init failed: "+entry.first);
         modulesReady=true;
         for(const auto& entry:editor.Modules)Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Module launch failed: "+entry.first);
-        for(const std::string& name:{"AnimationUI","AssetImportUI","MaterialUI","SceneObjectUI","HierarchyUI","InspectorUI","ProjectAssetsUI","SceneEditorUI"}) {
+        for(const std::string& name:{"AnimationUI","AssetImportUI","MaterialUI","SceneObjectUI","CanvasUI","HierarchyUI","InspectorUI","ProjectAssetsUI","SceneEditorUI"}) {
             auto* view=LoadView(name);editor.Views[name]=view;views.push_back(view);
         }
         for(auto* view:views)GameSproutEditor::GameSproutEditorFinal::Before(view,&editor);
@@ -166,6 +202,8 @@ int main(int argc,char** argv) {
         object->AddComponent<GameSproutRuntime::IImageComponent>();
         object->AddComponent<GameSproutRuntime::IRectTransformComponent>();
         object->AddComponent<GameSproutRuntime::ICanvasComponent>();
+        auto* control=scene->CreateGameObject("Rect Edit Control",object);
+        Check(control&&control->AddComponent<GameSproutRuntime::IRectTransformComponent>(),"Cannot create Rect editing fixture");
         auto* camera=object->AddComponent<GameSproutRuntime::ICameraComponent>();
         Check(camera&&scene->SetMainCamera(camera),"Cannot create editable scene");
         const auto objectID=object->GetInstanceID();
@@ -197,6 +235,9 @@ int main(int argc,char** argv) {
             object->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetMaterial(0)==material,"Reload lost resource identities");
         Check(scenes->SaveScene(error),error);
         Check(ReadScene(root.filePath("Assets/Scenes/Editing.scene"))==first,"File IDs changed after reload/save");
+        control=object->FindChild("Rect Edit Control");
+        Check(control,"Rect editing fixture was not restored");
+        CheckRectEditing(*scenes,*static_cast<IUIAuthoring*>(editor.Modules["UIAuthoring"]),*object,*control);
         // 两次原子保存可能合并为迟到的 watcher 通知；等最终文件版本完成校验再操作 UI。
         pump([&] {
             IAssetMeta* savedScene=MetaAt(assets,"Scenes/Editing.scene");
@@ -234,7 +275,7 @@ int main(int argc,char** argv) {
         CommitLine(inspectorWindow,"cameraNearEdit","2000");tick();
         Check(object->GetComponent<GameSproutRuntime::ICameraComponent>()->GetSettings().NearPlane==validNear&&
             inspectorWindow->findChild<QLineEdit*>("cameraNearEdit")->text().toFloat()==validNear,"Invalid camera setting was not restored");
-        auto* textureField=ResourceWidget(inspectorWindow,"textureResourceHost");
+        auto* textureField=ResourceWidget(inspectorWindow,"textureField");
         textureField->findChild<QAction*>("clearResourceAction")->trigger();tick();
         Check(object->GetComponent<GameSproutRuntime::IImageComponent>()->GetTexture().Guid.empty(),"Clear did not remove texture reference");
         Check(scenes->Undo(error)&&object->GetComponent<GameSproutRuntime::IImageComponent>()->GetTexture()==texture,"Clear Undo failed");tick();
@@ -286,7 +327,7 @@ int main(int argc,char** argv) {
         Check(selection->GetSceneObjectSelection().ObjectID==editedObjectID,"Project mouse press stole Inspector target before drag");
         bool dispatchedDrop=false;
         QTimer::singleShot(0,[&]{
-            dispatchedDrop=DropResource(ResourceWidget(inspectorWindow,"textureResourceHost"),{texture.Guid,0,false});
+            dispatchedDrop=DropResource(ResourceWidget(inspectorWindow,"textureField"),{texture.Guid,0,false});
             QDrag::cancel();
         });
         const QPoint moved=start+QPoint(QApplication::startDragDistance()+20,0);

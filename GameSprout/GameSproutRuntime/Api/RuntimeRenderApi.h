@@ -37,6 +37,14 @@ struct DebugDrawList {
     std::vector<DebugTriangle> Triangles;
 };
 
+struct UIDebugTriangle {
+    Vector2 A, B, C;
+    Color Tint;
+};
+struct UIDebugDrawList {
+    std::vector<UIDebugTriangle> Triangles;
+};
+
 // 宿主视图选项，不进入场景/Prefab，不启动或推进物理模拟。
 struct ColliderDebugOptions {
     std::uint64_t SelectedObjectID = 0;
@@ -52,8 +60,7 @@ struct RenderView {
     Color ClearColor{0.09f, 0.10f, 0.12f, 1.0f};
     // 仅在 Render 调用期间借用；最多 1,048,576 个调试顶点。
     const DebugDrawList* DebugDraw = nullptr;
-    // false：仅清空指定目标；忽略 Scene/Camera/Grid/DebugDraw，不生成绘制或有效相机快照。
-    // 可用于尚未加载场景或没有活动游戏相机的宿主窗口。
+    // false：跳过 3D 场景、相机、网格及调试几何。可与 DrawUI 一起使用。
     bool DrawScene = true;
     // Runtime 自动归组；关闭可用于逐对象绘制对照，不改变资源或场景数据。
     // 材质也必须允许实例化，且 Shader/绘制顺序满足合批条件。
@@ -68,6 +75,18 @@ struct RenderView {
     // Optional object subtree being transformed interactively in this view.
     // Its shadows update separately. Pass zero when the interaction ends.
     std::uint64_t TransformPreviewObjectID = 0;
+    // Draws screen-space Canvas content over the view. Requires a live Scene,
+    // including when DrawScene is false and the scene has no active camera.
+    bool DrawUI = false;
+    // With DrawUI, frame the selected object's screen Canvas inside the view
+    // and show its bounds. Zero uses the full-target gameplay layout.
+    std::uint64_t UIPreviewObjectID = 0;
+    // Game render-target size for the Canvas preview aspect. Zero uses the
+    // selected Canvas reference resolution instead.
+    Vector2 UIScreenPreviewLayoutSize;
+    // Optional host overlay drawn after UI. Borrowed only during Render.
+    // Coordinates are render-target pixels with a top-left origin.
+    const UIDebugDrawList* UIScreenDebugDraw = nullptr;
 };
 
 struct SceneRaycastHit {
@@ -115,6 +134,8 @@ struct RenderStatistics {
     std::uint32_t DynamicShadowMapUpdates = 0;
     std::uint32_t StaticShadowDrawCalls = 0;
     std::uint32_t DynamicShadowDrawCalls = 0;
+    std::uint32_t UIDrawCalls = 0;
+    std::uint32_t UITriangles = 0;
 };
 
 class IRuntimeRenderer {

@@ -32,6 +32,8 @@ GameSproutRuntime.Transform
 GameSproutRuntime.RectTransform
 GameSproutRuntime.Image
 GameSproutRuntime.Canvas
+GameSproutRuntime.Text
+GameSproutRuntime.Button
 GameSproutRuntime.Mesh
 GameSproutRuntime.MeshRenderer
 GameSproutRuntime.Camera
@@ -42,6 +44,8 @@ GameSproutRuntime.ScriptComponent
 
 资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
 未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
+Text 保存 Text（UTF-8）、Font（字体资源引用）、Color（线性 RGBA）和 FontSize（画布单位，默认 24）。
+Button 保存 Interactable（默认 true）。按下、悬停等临时状态及脚本订阅只存在于运行会话。
 MainCameraID 指向包含 Camera 组件的节点。
 Light 使用 Settings={Type:"Directional",Enabled:true,Color:[1,1,1,1],Intensity:1,CullingMask:4294967295}。
 Color 是线性 RGB（允许 HDR）与 0..1 Alpha，Intensity 为非负有限数，CullingMask 按目标对象 Layer 过滤。
@@ -54,8 +58,9 @@ Project/Create/Scene 仅创建文件并交给已有资源流程导入，不自�
 双击 Scene 源资产时加载候选场景，校验及创建成功后切换；失败保留当前场景。
 HierarchyUI 只存节点 ID 和展示数据，通过 Runtime 事件刷新，不另外维护运行节点树。
 
-Hierarchy 右键可在场景根或指定父节点下创建节点：空对象、Camera、Mesh、UI Canvas、
-UI Image、UI Empty。节点和组件由 Runtime 工厂创建，同父重名自动编号。
+Hierarchy 右键可在场景根或指定父节点下创建空对象、Camera、Mesh 等节点。
+CanvasUI 注册 UI 子菜单，UIAuthoring 将 Canvas、Empty、Panel、Image、Text 和 Button 模板交给场景事务。
+Runtime 工厂创建节点和组件，同父重名自动编号。
 SelectionManager 用 SceneID/ObjectID 共享节点选择，与 Project 的资源选择互斥。
 Inspector 按对象身份解析组件，事件发生时重新查询 Runtime。
 

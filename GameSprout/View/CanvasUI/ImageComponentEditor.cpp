@@ -5,9 +5,7 @@
 
 ImageComponentEditor::ImageComponentEditor(QWidget* parent) : ComponentEditor(parent), _Ui(new Ui::ImageComponentEditorForm()) {
     _Ui->setupUi(this);
-    _Texture = new ResourceField(_Ui->textureResourceHost);
-    _Ui->textureResourceHostLayout->addWidget(_Texture);
-    _Texture->Changed = [this](const GameSproutRuntime::ResourceReference& resource) {
+    _Ui->textureField->Changed = [this](const GameSproutRuntime::ResourceReference& resource) {
         if (_Loading||!_PropertiesEditable) return;
         auto* object = _Context.Resolve();
         auto* component = object ? object->GetComponent<GameSproutRuntime::IImageComponent>() : nullptr;
@@ -17,14 +15,14 @@ ImageComponentEditor::ImageComponentEditor(QWidget* parent) : ComponentEditor(pa
     };
     for (QLineEdit* edit : {_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit}) QObject::connect(edit,&QLineEdit::editingFinished,this,[this,edit]{CommitValues(edit);});
 }
-ImageComponentEditor::~ImageComponentEditor() { _Texture->Changed = {}; delete _Ui; }
+ImageComponentEditor::~ImageComponentEditor() { _Ui->textureField->Changed = {}; delete _Ui; }
 void ImageComponentEditor::ContextChanged() {
-    _Texture->Bind(_Context.Assets,_Context.Library,_Context.Selection,eAssetType::Texture);
-    _Texture->SetContextKey(_Context.Key("Image","Texture"));
+    _Ui->textureField->Bind(_Context.Assets,_Context.Library,_Context.Selection,eAssetType::Texture);
+    _Ui->textureField->SetContextKey(_Context.Key("Image","Texture"));
 }
 void ImageComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) {
     const auto v = InspectorValues::Read(static_cast<GameSproutRuntime::IImageComponent&>(component));
-    _Texture->SetValue(v.Texture);
+    _Ui->textureField->SetValue(v.Texture);
     ShowNumbers({_Ui->imageColorREdit,_Ui->imageColorGEdit,_Ui->imageColorBEdit,_Ui->imageColorAEdit,_Ui->imageUVPositionXEdit,_Ui->imageUVPositionYEdit,_Ui->imageUVSizeXEdit,_Ui->imageUVSizeYEdit},{v.Color.R,v.Color.G,v.Color.B,v.Color.A,v.UV.Position.X,v.UV.Position.Y,v.UV.Size.X,v.UV.Size.Y});
 }
 void ImageComponentEditor::CommitValues(QWidget* changed) {

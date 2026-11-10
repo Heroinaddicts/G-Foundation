@@ -56,6 +56,27 @@ uint64_t Allocate(uint64_t& next) {
     if(!next)throw std::runtime_error("场景文档 FileID 已耗尽。");
     const auto result=next;next=result==std::numeric_limits<uint64_t>::max()?0:result+1;return result;
 }
+bool MapSubtree(Json::Value& subtree,bool remap,uint64_t& next,uint64_t& rootFile,
+    std::map<uint64_t,uint64_t>& mapping,std::string& error) {
+    const auto mapID=[&](uint64_t id) {
+        mapping.emplace(id,remap?Allocate(next):id);
+        if(!remap&&next&&id>=next)next=id==std::numeric_limits<uint64_t>::max()?0:id+1;
+    };
+    for(const auto& node:subtree["Objects"]) {
+        mapID(node["ID"].asUInt64());
+        for(const auto& component:node["Components"])if(component["ID"].isUInt64())
+            mapID(component["ID"].asUInt64());
+    }
+    if(remap) {
+        // References outside the inserted subtree keep their scene identity.
+        std::set<uint64_t> references;References(subtree["Objects"],references);mapping.emplace(0,0);
+        for(const auto id:references)mapping.try_emplace(id,id);
+        if(!PrefabDocument::Remap(subtree,mapping,error))return false;
+        rootFile=mapping.at(rootFile);
+    }
+    subtree["NextObjectID"]=Json::UInt64(next);
+    return true;
+}
 Json::Value Subtree(const Json::Value& document,uint64_t root) {
     const auto nodes=Nodes(document);std::set<uint64_t> selected{root};
     bool added=true;
@@ -133,19 +154,27 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
     if(!Ready(error))return false;
     DocumentEditingScope editing(_ExecutingEdit);
     try {
-        Edit edit;edit.Type=Edit::Kind::Document;edit.Label=request.Label;
-        if(!Capture(edit.DocumentBefore,error))return false;
-        edit.DocumentAfter=edit.DocumentBefore;edit.AnnotationsBefore=_Annotations;edit.AnnotationsAfter=_Annotations;
         Json::Value subtree;std::map<uint64_t,uint64_t> mapping;uint64_t rootFile=0;
         if(!request.DocumentJson.empty()) {
             if(!AssetArtifactIO::Parse(request.DocumentJson,subtree)||!SceneDocument::ValidateSubtree(subtree,error)) {
                 if(error.empty())error="子树文档 JSON 无效。";return false;
             }
-            if(!subtree["Objects"].isArray()||subtree["Objects"].empty()||!subtree["RootComponents"].isNull()) {error="子树文档必须只包含一个普通节点根。";return false;}
+            if(subtree["Objects"].empty()||subtree.isMember("RootComponents")) {error="子树文档必须只包含一个普通节点根。";return false;}
             for(const auto& node:subtree["Objects"])if(!node["ParentID"].asUInt64()) {
                 if(rootFile) {error="子树文档只能有一个根。";return false;}rootFile=node["ID"].asUInt64();
             }
             if(!rootFile) {error="子树文档没有根节点。";return false;}
+            if(!request.RootObjectID&&request.RemapDocumentIDs&&request.AnnotationsJson.empty()&&!request.BuildAnnotations) {
+                std::set<uint64_t> references;
+                References(subtree["Objects"],references);
+                references.erase(0);
+                if(references.empty())return InsertObjectDocument(request,subtree,rootFile,output,error);
+            }
+        }
+        Edit edit;edit.Type=Edit::Kind::Document;edit.Label=request.Label;
+        if(!Capture(edit.DocumentBefore,error))return false;
+        edit.DocumentAfter=edit.DocumentBefore;edit.AnnotationsBefore=_Annotations;edit.AnnotationsAfter=_Annotations;
+        if(rootFile) {
             auto* scene=GetActiveScene();auto* parent=request.ParentObjectID?Runtime()->QueryGameObject(request.ParentObjectID):GetDocumentContentRoot();
             auto* original=request.RootObjectID?Runtime()->QueryGameObject(request.RootObjectID):nullptr;
             if(request.RootObjectID&&(!original||original==scene||original->GetScene()!=scene)) {error="替换目标不属于当前场景。";return false;}
@@ -160,25 +189,7 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
                 if(!request.RemapDocumentIDs&&rootFile!=originalFile) {error="替换文档必须保留根节点 FileID。";return false;}
             }
             auto next=_ObjectIDs.Next;
-            for(const auto& node:subtree["Objects"]) {
-                const auto id=node["ID"].asUInt64();mapping.emplace(id,request.RemapDocumentIDs?Allocate(next):id);
-                for(const auto& component:node["Components"])if(component["ID"].isUInt64()) {
-                    const auto id=component["ID"].asUInt64();mapping.emplace(id,request.RemapDocumentIDs?Allocate(next):id);
-                }
-            }
-            if(request.RemapDocumentIDs) {
-                // Generic scene documents may contain references outside this subtree.
-                // Those scene identities remain values and are not duplicated.
-                std::set<uint64_t> references;References(subtree["Objects"],references);mapping.emplace(0,0);
-                for(const auto id:references)if(!mapping.count(id))mapping.emplace(id,id);
-                if(!PrefabDocument::Remap(subtree,mapping,error))return false;rootFile=mapping.at(rootFile);
-            }
-            for(const auto& node:subtree["Objects"]) {
-                const auto advance=[&](uint64_t id){if(next&&id>=next)next=id==std::numeric_limits<uint64_t>::max()?0:id+1;};
-                advance(node["ID"].asUInt64());
-                for(const auto& component:node["Components"])if(component["ID"].isUInt64())advance(component["ID"].asUInt64());
-            }
-            subtree["NextObjectID"]=Json::UInt64(next);
+            if(!MapSubtree(subtree,request.RemapDocumentIDs,next,rootFile,mapping,error))return false;
             edit.DocumentAfter["NextObjectID"]=Json::UInt64(next);
             Json::Value ordered(Json::arrayValue);bool inserted=false;
             for(const auto& node:edit.DocumentBefore["Objects"]) {
@@ -218,6 +229,67 @@ bool SceneManager::EditObjectDocument(const SceneDocumentEditRequest& request,Sc
     } catch(const std::exception& exception) {error=exception.what();}
     catch(...) {error="场景文档事务失败。";}
     RefreshState(true);return false;
+}
+
+bool SceneManager::InsertObjectDocument(const SceneDocumentEditRequest& request,Json::Value& subtree,
+    uint64_t rootFile,SceneSubtreeDocument& output,std::string& error) {
+    auto* scene=GetActiveScene();
+    auto* content=GetDocumentContentRoot();
+    auto* parent=request.ParentObjectID?Runtime()->QueryGameObject(request.ParentObjectID):content;
+    if(!parent||parent->GetScene()!=scene) {error="子树父级不属于当前场景。";return false;}
+    auto* ancestor=parent;
+    while(ancestor&&ancestor!=content)ancestor=ancestor->Parent();
+    if(!ancestor||!content) {error="子树父级不属于当前编辑文档。";return false;}
+    if(!SynchronizeDirtyState(error))return false;
+
+    // Insertion with no object references or annotation changes can be
+    // recorded as a creation. Keep existing scene nodes out of the snapshot.
+    std::map<uint64_t,uint64_t> mapping;
+    auto next=_ObjectIDs.Next;
+    if(!MapSubtree(subtree,true,next,rootFile,mapping,error))return false;
+    // Inserting an object template preserves the scene's camera choice.
+    subtree["MainCameraID"]=Json::UInt64(0);
+    Edit edit;
+    edit.Type=Edit::Kind::Creation;
+    edit.Label=request.Label;
+    edit.FileID=rootFile;
+    edit.ParentFileID=parent==scene?0:_ObjectIDs.RuntimeToFile.at(parent->GetInstanceID());
+    edit.SiblingIndex=parent->GetChildCount();
+    _History.reserve(_HistoryPosition+1);
+
+    auto* runtime=Runtime();
+    GameSproutRuntime::IGameObject* inserted=nullptr;
+    const auto previousNext=_ObjectIDs.Next;
+    _ObjectIDs.Next=next;
+    if(!SceneDocument::RestoreSubtree(subtree,*runtime,*scene,*parent,edit.SiblingIndex,_ObjectIDs,inserted,error)) {
+        _ObjectIDs.Next=previousNext;
+        RefreshState(true);
+        return false;
+    }
+    SceneSubtreeDocument result;
+    bool captured=false;
+    try {
+        // Capture normalized component defaults and assigned component IDs for
+        // Redo, and publish only the identities that belong to this insertion.
+        if(!CaptureSubtree(*inserted,edit.Subtree,error))throw std::runtime_error(error);
+        SceneDocument::ObjectIDs identities;
+        for(const auto& node:edit.Subtree["Objects"]) {
+            const auto file=node["ID"].asUInt64();
+            if(auto* object=QueryObjectByFileID(file))identities.RuntimeToFile.emplace(object->GetInstanceID(),file);
+        }
+        FillResult(edit.Subtree,mapping,identities,result);
+        edit.Subtree.removeMember("NextObjectID");
+        captured=true;
+    } catch(const std::exception& exception) {error=exception.what();}
+    catch(...) {error="无法记录新建子树。";}
+    if(captured) {
+        _History.resize(_HistoryPosition);
+        _History.push_back(std::move(edit));
+        ++_HistoryPosition;
+        output=std::move(result);
+    } else if(!scene->DestroyGameObject(inserted))error+=" 无法清理新建子树。";
+    RefreshState(true);
+    return captured;
 }
 
 bool SceneManager::RunDocumentEdit(const Edit& edit,bool forward,std::string& error) {

@@ -48,10 +48,13 @@ public:
     std::string Error;
     bool SkipNextFrame=false;
     bool ReuseShadowsWhileNavigating=false;
+    bool DrawScene=false,DrawUI=false;
     bool Render(const GameSproutRuntime::RenderView& view) override {
         Check(!view.WaitForSurface,"Editor view requested a blocking surface acquisition");
         ++Count;
         ReuseShadowsWhileNavigating=view.ReuseShadowsWhileNavigating;
+        DrawScene=view.DrawScene;
+        DrawUI=view.DrawUI;
         Camera={};
         if(SkipNextFrame) {
             SkipNextFrame=false;Statistics.Width=0;Statistics.Height=0;
@@ -230,6 +233,29 @@ int main(int argc,char** argv) {
             Check(counts[sceneHandle]>previousScene,"Resize did not wake Scene rendering");
             previousGame=counts[gameHandle];game.RequestRender();tick();
             Check(counts[gameHandle]>previousGame,"Explicit resource/loading invalidation did not wake Game rendering");
+
+            auto* canvas=world->CreateGameObject("Canvas");
+            Check(canvas&&canvas->AddComponent<GameSproutRuntime::ICanvasComponent>(),"Cannot create UI fixture Canvas");
+            auto* buttonNode=world->CreateGameObject("Button",canvas);
+            Check(buttonNode&&buttonNode->AddComponent<GameSproutRuntime::IRectTransformComponent>(),"Cannot lay out UI fixture Button");
+            auto* button=buttonNode->AddComponent<GameSproutRuntime::IButtonComponent>();
+            int clicks=0;
+            Check(button&&button->RegisterClick([&]{++clicks;}),"Cannot subscribe to UI fixture Button");
+            Check(world->SetMainCamera(nullptr),"Cannot remove UI fixture camera");
+            std::string error;
+            Check(runtime->BeginExecution(error),error);
+            game.SetGameplayInputEnabled(true);
+            game.raise();game.activateWindow();QApplication::setActiveWindow(&game);game.setFocus();tick(true);
+            Check(gameRenderer->DrawUI&&!gameRenderer->DrawScene&&!sceneRenderer->DrawUI,
+                "Screen UI was not isolated to the Game viewport without a camera");
+            const auto center=game.rect().center();
+            SendMouse(game,QEvent::MouseButtonPress,center,Qt::LeftButton,Qt::LeftButton);
+            SendMouse(game,QEvent::MouseButtonRelease,center,Qt::LeftButton,Qt::NoButton);
+            tick(true);
+            Check(clicks==1,"Native Game viewport did not forward its UI click");
+            game.SetGameplayInputEnabled(false);
+            Check(runtime->EndExecution(error),error);
+
             scene.Shutdown();game.Shutdown();
             Check(runtime->DestroyScene(world),"Cannot destroy isolated scene after listener teardown");runtime->ProcessPendingEvents();
         }

@@ -79,7 +79,11 @@ void GameViewport::focusInEvent(QFocusEvent* event) {
     _InputCaptured=_Runtime->SubmitInputEvent(input);
 }
 void GameViewport::focusOutEvent(QFocusEvent* event) {ReleaseGameInput();QWidget::focusOutEvent(event);}
-void GameViewport::hideEvent(QHideEvent* event) {ReleaseGameInput();QWidget::hideEvent(event);}
+void GameViewport::hideEvent(QHideEvent* event) {
+    ReleaseGameInput();
+    if(_Runtime)_Runtime->SetUIInputViewport(nullptr,{});
+    QWidget::hideEvent(event);
+}
 void GameViewport::keyPressEvent(QKeyEvent* event) {
     if(!_InputCaptured||!_GameplayInputEnabled||!_Runtime){QWidget::keyPressEvent(event);return;}
     if(event->key()==Qt::Key_Escape){ReleaseGameInput();clearFocus();event->accept();return;}

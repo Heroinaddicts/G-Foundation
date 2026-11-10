@@ -2,6 +2,8 @@
 #include <QContextMenuEvent>
 #include <QCheckBox>
 #include <QScrollArea>
+#include <QPlainTextEdit>
+#include "RuntimeUIApi.h"
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 
@@ -88,10 +90,7 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
     struct Preset {const char* Menu;const char* Name;std::vector<std::string> Components;};
     const std::vector<Preset> presets={
         {"Empty","GameObject",{}},{"Camera","Camera",{"Camera"}},
-        {"Mesh","Mesh",{"Mesh","MeshRenderer"}},
-        {"UI Canvas","Canvas",{"RectTransform","Canvas"}},
-        {"UI Image","Image",{"RectTransform","Image"}},
-        {"UI Empty","UI Object",{"RectTransform"}}
+        {"Mesh","Mesh",{"Mesh","MeshRenderer"}}
     };
     const std::map<std::string,std::vector<QString>> fields={
         {"Transform",{"LocalPosition","LocalRotation","LocalScale","LocalMatrix","WorldMatrix"}},
@@ -117,7 +116,68 @@ static void CheckNodeInspectorFlow(ISceneManager* scenes,ISelectionManager* sele
         auto* object=create(preset.Menu,false,sceneID);roots.push_back(object->GetInstanceID());checkDetails(object,preset);
     }
     auto* parent=runtime->QueryGameObject(roots.front());
-    for(const Preset& preset:presets)checkDetails(create(preset.Menu,true,parent->GetInstanceID(),preset.Menu==std::string("UI Empty")),preset);
+    for(const Preset& preset:presets)checkDetails(create(preset.Menu,true,parent->GetInstanceID()),preset);
+
+    const auto createUI=[&](const QString& item,std::uint64_t context,bool keyboard=false) {
+        auto* menu=showMenu(context,keyboard);
+        auto* uiMenu=MenuAction(menu,"UI")->menu();
+        auto* action=MenuAction(uiMenu,item);
+        Check(action->isEnabled(),"UI creation menu disabled");
+        action->trigger();uiMenu->hide();menu->hide();
+        const auto chosen=selection->GetSceneObjectSelection();
+        auto* object=runtime->QueryGameObject(chosen.ObjectID);
+        Check(chosen.SceneID==sceneID&&object&&object->GetScene()==scene,"UI command did not select its new node");
+        pump([&]{return inspectedID()==chosen.ObjectID;});
+        return object;
+    };
+    auto* button=createUI("Button",sceneID);
+    auto* uiCanvas=button->Parent();
+    Check(uiCanvas&&uiCanvas->Parent()==scene&&uiCanvas->GetComponent<GameSproutRuntime::ICanvasComponent>()&&
+        button->GetComponent<GameSproutRuntime::IButtonComponent>()&&button->GetComponent<GameSproutRuntime::IImageComponent>()&&
+        button->GetChildCount()==1,"Button did not assemble an interactive subtree with Canvas");
+    const auto canvasID=uiCanvas->GetInstanceID();
+    std::string uiError;
+    Check(scenes->Undo(uiError)&&!runtime->QueryGameObject(canvasID),"Canvas and Button did not undo together: "+uiError);
+    Check(scenes->Redo(uiError),"Cannot redo Canvas/Button creation: "+uiError);
+    tick();
+    uiCanvas=scene->FindChild("Canvas");
+    button=uiCanvas?uiCanvas->FindChild("Button"):nullptr;
+    Check(button&&button->GetChildCount()==1,"Redo lost the Button subtree");
+    roots.push_back(uiCanvas->GetInstanceID());
+    selectNode(uiCanvas->GetInstanceID());
+    checkDetails(uiCanvas,{"Canvas","Canvas",{"RectTransform","Canvas"}});
+    auto* image=createUI("Image",sceneID);
+    Check(image->Parent()==uiCanvas,"Creating UI from the scene root did not reuse its Canvas");
+    roots.push_back(image->GetInstanceID());
+    checkDetails(image,{"Image","Image",{"RectTransform","Image"}});
+    auto* nestedCanvas=createUI("Canvas",parent->GetInstanceID());
+    Check(nestedCanvas->Parent()==parent,"Canvas ignored its explicit right-click parent");
+    auto* empty=createUI("Empty",nestedCanvas->GetInstanceID(),true);
+    Check(empty->Parent()==nestedCanvas,"UI Empty ignored its Canvas context");
+    checkDetails(empty,{"Empty","UI Object",{"RectTransform"}});
+    auto* panel=createUI("Panel",nestedCanvas->GetInstanceID());
+    const auto panelAnchor=panel->GetComponent<GameSproutRuntime::IRectTransformComponent>()->GetAnchorMax();
+    Check(panel->Parent()==nestedCanvas&&panel->GetComponent<GameSproutRuntime::IImageComponent>()&&
+        panelAnchor.X==1&&panelAnchor.Y==1,"Panel did not stretch its background in the selected Canvas");
+
+    selectNode(button->GetInstanceID());
+    auto* interactable=inspectorDock->findChild<QCheckBox*>("interactableCheck");
+    Check(interactable&&interactable->isChecked(),"Button Inspector is missing its interaction control");
+    interactable->click();tick();
+    Check(!button->GetComponent<GameSproutRuntime::IButtonComponent>()->GetInteractable(),"Button property did not reach Runtime");
+    Check(scenes->Undo(uiError)&&button->GetComponent<GameSproutRuntime::IButtonComponent>()->GetInteractable(),
+        "Button interaction edit did not undo: "+uiError);
+    tick();
+    auto* label=button->GetChild(0);
+    selectNode(label->GetInstanceID());
+    auto* labelText=label->GetComponent<GameSproutRuntime::ITextComponent>();
+    auto* textEdit=inspectorDock->findChild<QPlainTextEdit*>("textEdit");
+    auto* applyText=inspectorDock->findChild<QPushButton*>("applyTextButton");
+    Check(labelText&&textEdit&&applyText&&textEdit->toPlainText()=="Button","Button label was not initialized in Inspector");
+    textEdit->setPlainText(QStringLiteral("Play\nNow"));applyText->click();tick();
+    Check(labelText->GetText()=="Play\nNow","Text Inspector did not commit multiline text");
+    Check(scenes->Undo(uiError)&&labelText->GetText()=="Button","Text edit did not undo: "+uiError);
+    tick();
     auto* duplicate=create("Empty",true,parent->GetInstanceID());
     Check(duplicate->GetName()=="GameObject (1)","Sibling duplicate name not made unique");
     const auto duplicateID=duplicate->GetInstanceID();

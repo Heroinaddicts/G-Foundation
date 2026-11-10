@@ -159,6 +159,29 @@ float4 MeshFragment(MeshOutput input) : SV_Target0
     return float4(color.rgb * lighting, color.a);
 }
 
+struct UIInput {
+    [[vk::location(0)]] float2 ClipPosition : TEXCOORD0;
+    [[vk::location(1)]] float2 UV : TEXCOORD1;
+    [[vk::location(2)]] float4 Color : TEXCOORD2;
+};
+struct UIOutput {
+    float4 Position : SV_Position;
+    float2 UV : TEXCOORD0;
+    float4 Color : TEXCOORD1;
+};
+UIOutput UIVertex(UIInput input)
+{
+    UIOutput output;
+    output.Position = float4(input.ClipPosition, 0.0, 1.0);
+    output.UV = input.UV;
+    output.Color = input.Color;
+    return output;
+}
+float4 UIFragment(UIOutput input) : SV_Target0
+{
+    return BaseTexture.Sample(BaseSampler, input.UV) * input.Color;
+}
+
 // Built-in Lit. Runtime supplies scene-derived, per-object matching lights.
 // Colors and output are linear. An sRGB render target applies the output transfer
 // function; a linear offscreen target intentionally returns linear UNorm pixels.

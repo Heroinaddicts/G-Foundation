@@ -57,11 +57,16 @@ void ScriptComponent::Stop() noexcept {
     IScript* instance=_Instance;
     auto destroy=_Destroy;
     _Instance=nullptr;_Destroy=nullptr;
-    if(!instance) { _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());return; }
+    if(!instance) {
+        _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
+        _Runtime.DropUISubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
+        return;
+    }
     ScriptComponent* previous=_Runtime.ExchangeInvokingScript(this);
     try {instance->OnRelease(&_Runtime);} catch(...) {}
     _Runtime.ExchangeInvokingScript(previous);
     _Runtime.DropPhysicsSubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
+    _Runtime.DropUISubscriptions(_GameObject->GetInstanceID(),GetComponentInstanceID());
     try {destroy(instance);} catch(...) {}
     _Runtime.MarkNativeScriptPropertiesChanged();
 }
@@ -71,7 +76,7 @@ void ScriptComponent::InvokeExternal(const std::function<void()>& callback) {
     InvocationScope invocation(*this);
     try { callback(); }
     catch(const std::exception& exception) {Fail(exception.what());}
-    catch(...) {Fail("Native physics callback threw an exception");}
+    catch(...) {Fail("Native event callback threw an exception");}
 }
 void ScriptComponent::Fail(const std::string& message) {
     Stop();_Failed=true;_Error=message;

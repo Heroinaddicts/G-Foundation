@@ -104,6 +104,7 @@ void Runtime::AdvanceFrame(float deltaSeconds,std::uint32_t fixedStepCount,float
     std::string error;
     InitializePendingComponents(error,deltaSeconds>0||fixedStepCount>0);
     auto batch=SnapshotFrameComponents(false);
+    DispatchUIPointer();
     TickComponentPhase(batch,EarlyTick,deltaSeconds);
     for(std::uint32_t step=0;step<fixedStepCount&&!_ConstructionDepth;++step) {
         TickComponentPhase(batch,FixedTick,fixedDeltaSeconds);

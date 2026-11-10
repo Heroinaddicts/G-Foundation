@@ -11,6 +11,7 @@
 #include "AnimatorComponent.h"
 #include "SkinnedMeshRendererComponent.h"
 #include "Physics/PhysicsComponents.h"
+#include "UI/UIComponents.h"
 
 namespace GameSproutRuntime {
 namespace {
@@ -27,6 +28,8 @@ IComponent* CreateBuiltinComponent(const std::type_info& type, IGameObject* owne
     if (type == typeid(IRectTransformComponent)) return NewComponent<RectTransformComponent>(owner,tickMask);
     if (type == typeid(IImageComponent)) return NewComponent<ImageComponent>(owner,tickMask);
     if (type == typeid(ICanvasComponent)) return NewComponent<CanvasComponent>(owner,tickMask);
+    if (type == typeid(ITextComponent)) return NewComponent<TextComponent>(owner,tickMask);
+    if (type == typeid(IButtonComponent)) return NewComponent<ButtonComponent>(owner,tickMask);
     if (type == typeid(IMeshComponent)) return NewComponent<MeshComponent>(owner,tickMask);
     if (type == typeid(IMeshRendererComponent)) return NewComponent<MeshRendererComponent>(owner,tickMask);
     if (type == typeid(ICameraComponent)) return NewComponent<CameraComponent>(owner,tickMask);

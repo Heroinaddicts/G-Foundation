@@ -114,14 +114,11 @@ bool Runtime::DestroyScene(IScene* scene) {
 void Runtime::Render() {
     if (_ShuttingDown || _Depth || _ConstructionDepth || _InitializingComponents) return;
     RuntimeOperation operation(*this);
-    RenderWorld(); RenderUI();
+    RenderWorld();
 }
 void Runtime::RenderWorld() {
     // 显式 View 的 3D 绘制已由 CreateRenderer/IRuntimeRenderer::Render 提供。
     // 此旧入口没有目标或相机，不能自行替换 Editor 观察相机或推测 Surface。
-}
-void Runtime::RenderUI() {
-    // TODO GRHI：完成 Canvas 布局、裁剪与 UI 绘制提交；不创建 Qt 窗口或 Editor 控件。
 }
 }
 extern "C" GAMESPROUT_RUNTIME_API GameSproutRuntime::IGameSproutRuntime*

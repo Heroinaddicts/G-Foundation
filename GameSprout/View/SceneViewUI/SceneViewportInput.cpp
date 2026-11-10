@@ -46,6 +46,11 @@ void SceneViewport::mousePressEvent(QMouseEvent* event) {
     RequestRender();
     _ReleasedTransformPreviewID=0;
     setFocus(Qt::MouseFocusReason);
+    if(_Drag==DragMode::None&&!_Tools->Active()&&event->button()==Qt::LeftButton&&
+        (event->modifiers()&Qt::AltModifier)&&_Editing->Press(Pixel(event),true)) {
+        if(_Editing->IsDraggingUI()&&!IsHeadless())grabMouse();
+        event->accept();return;
+    }
     DragMode mode=DragMode::None;
     if(event->button()==Qt::RightButton && !(event->modifiers()&Qt::AltModifier))mode=DragMode::Look;
     else if(event->button()==Qt::MiddleButton)mode=DragMode::Pan;
@@ -61,7 +66,10 @@ void SceneViewport::mousePressEvent(QMouseEvent* event) {
         event->accept();return;
     }
     if(_Drag==DragMode::None&&event->button()==Qt::LeftButton&&_Editing->Press(Pixel(event))) {
-        if(_Editing->IsDragging()) {if(!IsHeadless())grabMouse();setCursor(Qt::SizeAllCursor);}
+        if(_Editing->IsDragging()) {
+            if(!IsHeadless())grabMouse();
+            if(!_Editing->IsDraggingUI())setCursor(Qt::SizeAllCursor);
+        }
         event->accept();return;
     }
     QWidget::mousePressEvent(event);
@@ -69,7 +77,7 @@ void SceneViewport::mousePressEvent(QMouseEvent* event) {
 void SceneViewport::mouseMoveEvent(QMouseEvent* event) {
     if(_Drag==DragMode::None) {
         if(_Tools->Move(Pixel(event),event->modifiers()&Qt::ShiftModifier,event->modifiers()&Qt::AltModifier,Snap(event->modifiers()))){event->accept();return;}
-        if(_Editing->Move(Pixel(event),Snap(event->modifiers()))){event->accept();return;}
+        if(_Editing->Move(Pixel(event),Snap(event->modifiers()),event->modifiers()&Qt::ShiftModifier,event->modifiers()&Qt::AltModifier)){event->accept();return;}
         QWidget::mouseMoveEvent(event);return;
     }
     const QPointF point=Position(event),delta=point-_LastMouse;_LastMouse=point;
@@ -83,7 +91,8 @@ void SceneViewport::mouseReleaseEvent(QMouseEvent* event) {
         ReleaseEditingCapture();event->accept();return;
     }
     std::uint64_t transformPreviewID=0;
-    if(event->button()==Qt::LeftButton&&_Editing->Release(Pixel(event),Snap(event->modifiers()),transformPreviewID)) {
+    if(event->button()==Qt::LeftButton&&_Editing->Release(Pixel(event),Snap(event->modifiers()),transformPreviewID,
+        event->modifiers()&Qt::ShiftModifier,event->modifiers()&Qt::AltModifier)) {
         ReleaseEditingCapture();
         // A quick gesture can finish before the host presents any drag frame.
         _ReleasedTransformPreviewID=transformPreviewID;
@@ -92,6 +101,10 @@ void SceneViewport::mouseReleaseEvent(QMouseEvent* event) {
     if(event->button()==Qt::LeftButton&&_Drag==DragMode::None)ReleaseEditingCapture();
     if(event->button()==_DragButton){ClearInput();event->accept();return;}
     QWidget::mouseReleaseEvent(event);
+}
+void SceneViewport::leaveEvent(QEvent* event) {
+    _Editing->ClearHover();
+    QWidget::leaveEvent(event);
 }
 void SceneViewport::wheelEvent(QWheelEvent* event) {
     const float steps=event->angleDelta().y()!=0?static_cast<float>(event->angleDelta().y())/120.0f:static_cast<float>(event->pixelDelta().y())/40.0f;
@@ -122,6 +135,7 @@ void SceneViewport::keyPressEvent(QKeyEvent* event) {
         case Qt::Key_W:tool=SceneEditingTool::Move;break;
         case Qt::Key_E:tool=SceneEditingTool::Rotate;break;
         case Qt::Key_R:tool=SceneEditingTool::Scale;break;
+        case Qt::Key_T:tool=SceneEditingTool::Rect;break;
         default:QWidget::keyPressEvent(event);return;
         }
         if(!event->isAutoRepeat()){ClearInput();_Editing->SetTool(tool);}event->accept();return;

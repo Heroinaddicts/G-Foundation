@@ -67,7 +67,7 @@ int main(int argc,char** argv) {
     IAnimationPreview* preview=nullptr;
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
     const auto releasePropertyModules=[&] {
-        for(const std::string name:{"ObjectEditing","PlayMode","ScriptEditor","ScriptCompiler"})
+        for(const std::string name:{"UIAuthoring","ObjectEditing","PlayMode","ScriptEditor","ScriptCompiler"})
             if(editor.Modules.contains(name))GameSproutEditor::GameSproutEditorFinal::Release(editor.Modules.at(name),api);
     };
     try {
@@ -82,7 +82,7 @@ int main(int argc,char** argv) {
         foundation=Foundation::GetFoundationApi(TEST_BINARY_ROOT);
         Check(foundation&&foundation->Initialize(argc,argv)&&foundation->Launch(),"Foundation startup failed");
         api=new GameSproutEditor::GameSproutModuleApi(foundation,&editor);
-        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager","ObjectEditing","PlayMode","ScriptCompiler","ScriptEditor"}) editor.Modules[name]=LoadModule(name);
+        for(const std::string& name:{"LocalDatabase","LibraryManager","ShaderCompiler","AssetsPipeline","AssetsManager","GuidCreator","RuntimeAssets","AnimationEditor","RuntimeHost","AnimationPreview","SelectionManager","SceneManager","ObjectEditing","PlayMode","ScriptCompiler","ScriptEditor","UIAuthoring"}) editor.Modules[name]=LoadModule(name);
         for(const auto& entry:editor.Modules) GameSproutEditor::GameSproutEditorFinal::Before(entry.second,api);
         for(const auto& entry:editor.Modules) Check(GameSproutEditor::GameSproutEditorFinal::Initialize(entry.second,api),"Module initialize failed: "+entry.first);
         for(const auto& entry:editor.Modules) if(entry.first!="Project") Check(GameSproutEditor::GameSproutEditorFinal::Launch(entry.second,api),"Module launch failed: "+entry.first);
@@ -96,6 +96,7 @@ int main(int argc,char** argv) {
         inspector=static_cast<IInspectorUI*>(LoadView("InspectorUI"));
         editor.Views["HierarchyUI"]=hierarchy;editor.Views["ProjectAssetsUI"]=projectView;editor.Views["InspectorUI"]=inspector;
         featureViews=LoadInspectorFeatureViews(editor);
+        auto* canvasView=LoadView("CanvasUI");editor.Views["CanvasUI"]=canvasView;featureViews.push_back(canvasView);
         auto* sceneEditor=LoadView("SceneEditorUI");editor.Views["SceneEditorUI"]=sceneEditor;featureViews.push_back(sceneEditor);
         auto views=featureViews;views.push_back(hierarchy);views.push_back(projectView);views.push_back(inspector);
         InitializeTestViews(editor,views);LaunchTestViews(editor,views);

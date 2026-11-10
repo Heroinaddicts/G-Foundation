@@ -3,6 +3,7 @@
 namespace GameSproutRuntime {
 enum class PreviewShader {MeshVertex,MeshNoUVVertex,MeshNoColorVertex,MeshNoUVNoColorVertex,MeshFragment,GridVertex,GridFragment,
     SkinnedMeshVertex,SkinnedMeshNoUVVertex,SkinnedMeshNoColorVertex,SkinnedMeshNoUVNoColorVertex,LitFragment,
-    InstancedMeshVertex,InstancedMeshNoUVVertex,InstancedMeshNoColorVertex,InstancedMeshNoUVNoColorVertex,ShadowFragment,SkyVertex,SkyFragment};
+    InstancedMeshVertex,InstancedMeshNoUVVertex,InstancedMeshNoColorVertex,InstancedMeshNoUVNoColorVertex,ShadowFragment,SkyVertex,SkyFragment,
+    UIVertex,UIFragment};
 GRHI::IShader* CreatePreviewShader(GRHI::IDevice& device,PreviewShader shader);
 }

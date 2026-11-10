@@ -5,6 +5,7 @@
 #include "SceneViewChrome.h"
 #include "ISceneManager.h"
 #include "ISelectionManager.h"
+#include "IUIAuthoring.h"
 #include "IRuntimeAssets.h"
 #include "ui_SceneViewUI.h"
 #include <QApplication>
@@ -36,16 +37,22 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     _Viewport->StatusChanged=[this](const std::string& message){if(_Chrome&&_Viewport)_Chrome->SetStatus(message,_Viewport->GetRenderError());};
     _Viewport->FocusRequested=[this]{return FocusSelection();};
     _Viewport->Initialize(_Runtime,_RuntimeAssets?_RuntimeAssets->GetResourceProvider():nullptr);
-    _Viewport->BindEditingServices(_Scenes,_Selection);
+    _Viewport->BindEditingServices(_Scenes,_Selection,editor?editor->GetGameSproutModule<IUIAuthoring>("UIAuthoring"):nullptr);
     _Viewport->Editing().ToolChanged=[this](SceneEditingTool tool){
         if(!_Ui||!_Window)return;
-        QToolButton* button=tool==SceneEditingTool::View?_Ui->viewToolButton:tool==SceneEditingTool::Move?_Ui->moveToolButton:tool==SceneEditingTool::Rotate?_Ui->rotateToolButton:_Ui->scaleToolButton;
-        button->setChecked(true);
+        switch(tool) {
+        case SceneEditingTool::View: _Ui->viewToolButton->setChecked(true);break;
+        case SceneEditingTool::Move: _Ui->moveToolButton->setChecked(true);break;
+        case SceneEditingTool::Rotate: _Ui->rotateToolButton->setChecked(true);break;
+        case SceneEditingTool::Scale: _Ui->scaleToolButton->setChecked(true);break;
+        case SceneEditingTool::Rect: _Ui->rectToolButton->setChecked(true);break;
+        }
     };
     QObject::connect(_Ui->viewToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::View);});
     QObject::connect(_Ui->moveToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::Move);});
     QObject::connect(_Ui->rotateToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::Rotate);});
     QObject::connect(_Ui->scaleToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::Scale);});
+    QObject::connect(_Ui->rectToolButton,&QToolButton::clicked,_Dispatch,[this]{_Viewport->Editing().SetTool(SceneEditingTool::Rect);});
     QObject::connect(_Ui->spaceCombo,qOverload<int>(&QComboBox::currentIndexChanged),_Dispatch,[this](int index){_Viewport->Editing().SetSpace(index==0?SceneGizmoSpace::World:SceneGizmoSpace::Local);});
     QObject::connect(_Ui->pivotCombo,qOverload<int>(&QComboBox::currentIndexChanged),_Dispatch,[this](int index){_Viewport->Editing().SetPivot(index==0?SceneGizmoPivot::Pivot:SceneGizmoPivot::Center);});
     const auto snap=[this]{_Viewport->Editing().SetSnap(_Chrome->SnapEnabled(),_Chrome->MoveSnap(),_Chrome->RotateSnap(),_Chrome->ScaleSnap());_Viewport->Tools().SetSnap(_Chrome->SnapEnabled(),_Chrome->MoveSnap());};
@@ -82,7 +89,7 @@ bool SceneViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
     OnActiveSceneChanged();_Timer.start();
     return _DockerVisibilitySubscribed && (!_Scenes || _SceneSubscribed) && _Host && _FrameSubscribed;
 }
-void SceneViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi*){}
+void SceneViewUI::LaunchFinished(GameSproutEditor::GameSproutViewApi* editor){BindGameUILayout(editor);}
 void SceneViewUI::Show(){if(_Window)_Window->show();if(_Docker)_Docker->Activate();}
 void SceneViewUI::Hide(){if(_Window)_Window->hide();}
 void SceneViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
@@ -100,6 +107,7 @@ void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     _Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous,animateMaterials);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
+    UnbindGameUILayout();
     if(_ResourcesSubscribed&&_RuntimeAssets)_RuntimeAssets->UnregisterResourceListener(this);
     _ResourcesSubscribed=false;
     if(_LoadingSubscribed && g_IIDEWindow)g_IIDEWindow->UnregisterLoadingStateCallback(this);
@@ -142,6 +150,10 @@ bool SceneViewUI::FocusSelection() {
     auto* runtime=_Runtime;auto* scene=_Scenes->GetActiveScene();const auto selection=_Selection->GetSceneObjectSelection();
     if(!runtime||!scene||selection.SceneID!=scene->GetInstanceID())return false;
     auto* object=runtime->QueryGameObject(selection.ObjectID);if(!object||object->GetScene()!=scene)return false;
+    if(GameSproutRuntime::FindUIScreenCanvasRoot(*object)) {
+        _Viewport->RequestRender();
+        return true;
+    }
     const float large=std::numeric_limits<float>::max();
     GameSproutRuntime::Vector3 minimum{large,large,large},maximum{-large,-large,-large};
     bool found=false,foundSizedBounds=false;
@@ -205,6 +217,6 @@ void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
     if(_Viewport)_Viewport->Editing().SetReadOnly(!_CanEdit);
     if(_Chrome)_Chrome->SetEditingEnabled(_CanEdit);
     _Ui->materialPreviewCheck->setEnabled(_CanEdit);
-    QWidget* controls[]={_Ui->moveToolButton,_Ui->rotateToolButton,_Ui->scaleToolButton,_Ui->spaceCombo,_Ui->pivotCombo};
+    QWidget* controls[]={_Ui->moveToolButton,_Ui->rotateToolButton,_Ui->scaleToolButton,_Ui->rectToolButton,_Ui->spaceCombo,_Ui->pivotCombo};
     for(QWidget* control:controls)control->setEnabled(_CanEdit);
 }

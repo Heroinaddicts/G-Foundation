@@ -87,7 +87,7 @@ private:
     void FocusDoubleClickedNode(const QModelIndex& index);
     void ReadSharedSelection();
     void RestoreVisibleSelection();
-    enum class NodeKind { Empty, Camera, Mesh, Canvas, Image, UIEmpty, Count };
+    enum class NodeKind { Empty, Camera, Mesh, Count };
     void CreateNode(NodeKind kind, bool child);
     void DeleteNode(bool context);
     static void DeleteContextMenu();

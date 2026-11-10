@@ -1,5 +1,7 @@
 #include "SceneDocument.h"
+#include "PrefabDocument.h"
 #include "GameSproutRuntimeExport.h"
+#include "RuntimeUIApi.h"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -78,6 +80,71 @@ static Json::Value AllComponents(const Json::Value& initial) {
 #include "SceneRootMotionChecks.h"
 #include "SceneTagLayerChecks.h"
 #include "SceneStaticFlagsChecks.h"
+
+static void CheckUIDocuments(GameSproutRuntime::IGameSproutRuntime& runtime) {
+    using namespace GameSproutRuntime;
+    const ResourceReference font{"0123456789abcdef0123456789abcdef",42};
+    auto source=SceneDocument::CreateDefault("UI scene");
+    source["MainCameraID"]=Json::UInt64(0);
+    source["Objects"]=Json::Value(Json::arrayValue);
+    auto button=Node(1,0,"Button");
+    button["Components"].append(Component("RectTransform"));
+    button["Components"].append(Component("Image"));
+    auto buttonComponent=Component("Button");
+    buttonComponent["Interactable"]=false;
+    button["Components"].append(buttonComponent);
+    source["Objects"].append(button);
+    auto label=Node(2,1,"Label");
+    label["Components"].append(Component("RectTransform"));
+    auto text=Component("Text");
+    text["Text"]="开始\nPlay";
+    text["Font"]["Guid"]=font.Guid;
+    text["Font"]["LocalID"]=Json::UInt64(font.LocalID);
+    text["Color"]=Vector({0.5f,0.25f,1,0.75f});
+    text["FontSize"]=28;
+    label["Components"].append(text);
+    source["Objects"].append(label);
+    std::string error;
+    IScene* scene=nullptr;
+    SceneDocument::ObjectIDs identities;
+    Check(SceneDocument::Instantiate(source,runtime,scene,identities,error),error);
+    const auto checkValues=[&](const IGameObject* root) {
+        Check(root,"Button root was not restored");
+        const auto* input=root->GetComponent<IButtonComponent>();
+        const auto* child=root->FindChild("Label");
+        const auto* labelComponent=child?child->GetComponent<ITextComponent>():nullptr;
+        Check(input&&!input->GetInteractable(),"Button interactability was not restored");
+        Check(labelComponent&&labelComponent->GetText()=="开始\nPlay"&&labelComponent->GetFont()==font&&
+              labelComponent->GetColor().A==0.75f&&labelComponent->GetFontSize()==28,"Text values or font identity were not restored");
+    };
+    checkValues(scene->FindChild("Button"));
+    Json::Value saved;
+    Check(SceneDocument::Serialize(*scene,identities,saved,error),error);
+    IScene* reopened=nullptr;
+    Check(SceneDocument::Instantiate(saved,runtime,reopened,error),error);
+    checkValues(reopened->FindChild("Button"));
+
+    // Prefab payloads use the same component codec and preserve external font IDs.
+    saved.removeMember("EnvironmentLighting");
+    saved.removeMember("RootComponents");
+    std::vector<std::uint8_t> encoded;
+    Json::Value decoded;
+    Check(PrefabDocument::Encode(saved,encoded,error)&&PrefabDocument::Decode(encoded,decoded,error),error);
+    IGameObject* instance=nullptr;
+    std::vector<PrefabObjectMapping> mappings;
+    Check(SceneDocument::InstantiatePrefab(decoded,runtime,*scene,*scene,instance,mappings,error),error);
+    checkValues(instance);
+
+    auto invalid=source;
+    invalid["Objects"][1]["Components"][1]["FontSize"]=4097;
+    Check(!SceneDocument::Validate(invalid,error)&&error.find(".FontSize")!=std::string::npos,"Invalid UI font size accepted");
+    invalid=source;
+    invalid["Objects"][1]["Components"][1]["Text"]=std::string("\xc0\x80",2);
+    Check(!SceneDocument::Validate(invalid,error)&&error.find(".Text")!=std::string::npos,"Invalid UI text accepted");
+    invalid=source;
+    invalid["Objects"][0]["Components"][2]["Interactable"]=1;
+    Check(!SceneDocument::Validate(invalid,error)&&error.find(".Interactable")!=std::string::npos,"Invalid Button flag accepted");
+}
 
 int main() {
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
@@ -190,6 +257,7 @@ int main() {
         CheckRootMotionPersistence(*runtime);
         CheckTagLayerDocuments(*runtime);
         CheckStaticFlagDocuments(*runtime);
+        CheckUIDocuments(*runtime);
         delete runtime;
         runtime=nullptr;
         std::cout << "PASS real Runtime: default scene/main camera, seven components, file IDs/order, validation, rollback and limits\n";

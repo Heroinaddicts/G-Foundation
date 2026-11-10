@@ -1,6 +1,5 @@
 #pragma once
 #include "ComponentEditor.h"
-class ResourceField;
 namespace Ui { class ImageComponentEditorForm; }
 class ImageComponentEditor final : public ComponentEditor {
 public:
@@ -10,6 +9,5 @@ private:
     void ReadValues(GameSproutRuntime::IComponent& component) override;
     void CommitValues(QWidget* changed);
     void ContextChanged() override;
-    ResourceField* _Texture = nullptr;
     Ui::ImageComponentEditorForm* _Ui = nullptr;
 };

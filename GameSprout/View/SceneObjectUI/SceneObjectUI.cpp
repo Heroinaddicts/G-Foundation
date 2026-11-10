@@ -3,9 +3,6 @@
 #include "IObjectEditing.h"
 #include "SceneObjectPanel.h"
 #include "TransformComponentEditor.h"
-#include "RectTransformComponentEditor.h"
-#include "CanvasComponentEditor.h"
-#include "ImageComponentEditor.h"
 #include "MeshComponentEditor.h"
 #include "MeshRendererComponentEditor.h"
 #include "CameraComponentEditor.h"
@@ -25,9 +22,6 @@ bool SceneObjectUI::CanInspect(const InspectorServices&, const InspectorTarget& 
 InspectorPanel* SceneObjectUI::CreatePanel(const InspectorServices& services, QWidget* parent) { return new SceneObjectPanel(services, parent); }
 ComponentEditor* SceneObjectUI::CreateComponentEditor(const std::type_info& type, QWidget* parent) {
     if (type == typeid(GameSproutRuntime::ITransformComponent)) return new TransformComponentEditor(parent);
-    if (type == typeid(GameSproutRuntime::IRectTransformComponent)) return new RectTransformComponentEditor(parent);
-    if (type == typeid(GameSproutRuntime::ICanvasComponent)) return new CanvasComponentEditor(parent);
-    if (type == typeid(GameSproutRuntime::IImageComponent)) return new ImageComponentEditor(parent);
     if (type == typeid(GameSproutRuntime::IMeshComponent)) return new MeshComponentEditor(parent);
     if (type == typeid(GameSproutRuntime::IMeshRendererComponent)) return new MeshRendererComponentEditor(parent);
     if (type == typeid(GameSproutRuntime::ICameraComponent)) return new CameraComponentEditor(parent);

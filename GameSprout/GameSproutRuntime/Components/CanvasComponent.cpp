@@ -1,10 +1,17 @@
 #include "CanvasComponent.h"
 #include "ComponentFactory.h"
+#include "GameSproutRuntime.h"
 #include <cmath>
 
 namespace GameSproutRuntime {
 CanvasComponent::CanvasComponent(IGameObject* owner)
     : BuiltinComponent<ICanvasComponent>(owner, "GameSproutRuntime.Canvas") {}
+void CanvasComponent::OnCreate(IGameSproutRuntime* runtime) {
+    static_cast<Runtime*>(runtime)->RegisterUICanvas(_GameObject->GetInstanceID());
+}
+void CanvasComponent::OnRelease(IGameSproutRuntime* runtime) {
+    static_cast<Runtime*>(runtime)->UnregisterUICanvas(_GameObject->GetInstanceID());
+}
 void CanvasComponent::SetRenderMode(CanvasRenderMode value) {
     if ((value != CanvasRenderMode::ScreenSpace && value != CanvasRenderMode::WorldSpace) || value == _Mode) return;
     _Mode = value;

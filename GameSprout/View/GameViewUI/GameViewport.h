@@ -21,10 +21,12 @@ public:
     void SetGameplayInputEnabled(bool enabled);
     void ReleaseGameInput();
     bool IsRenderingAvailable() const {return _Renderer!=nullptr;}
+    GameSproutRuntime::Vector2 GetOutputSize() const {return _OutputSize;}
     std::function<void(const std::string&)> StatusChanged;
 signals:
     void FrameSubmitted();
     void FrameStreamReset();
+    void OutputSizeChanged();
 protected:
     bool event(QEvent*) override;
     bool eventFilter(QObject*,QEvent*) override;
@@ -44,6 +46,7 @@ private:
     void DestroyGPU();
     void ObserveNativeWindow();
     void Status(const std::string&);
+    void SetOutputSize(GameSproutRuntime::Vector2 size);
     static bool Headless();
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
@@ -58,5 +61,6 @@ private:
     bool _NeedsRender=true,_RuntimeSubscribed=false;
     bool _AnimatedMaterials=false;
     std::uint64_t _SceneID=0;
+    GameSproutRuntime::Vector2 _OutputSize;
     std::string _Status;
 };

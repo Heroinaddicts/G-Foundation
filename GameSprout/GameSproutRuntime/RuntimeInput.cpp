@@ -6,7 +6,7 @@ namespace {
 void Press(InputButtonState& state){if(!state.Held)state.Pressed=true;state.Held=true;}
 void Release(InputButtonState& state){if(state.Held)state.Released=true;state.Held=false;}
 }
-void Runtime::ResetInput(){_Input={};}
+void Runtime::ResetInput(){_Input={};ResetUIPointer();}
 void Runtime::SetInputEnabled(bool enabled){
     _InputEnabled=enabled&&_ScriptExecutionEnabled&&!_ShuttingDown;
     ResetInput();
@@ -19,6 +19,7 @@ void Runtime::CompleteInputFrame(){
 bool Runtime::SubmitInputEvent(const RuntimeInputEvent& event){
     if(!_InputEnabled||!_ScriptExecutionEnabled||_ShuttingDown)return false;
     if(event.Type==InputEventType::FocusLost){
+        ResetUIPointer();
         for(auto& key:_Input.Keys){key.Pressed=false;Release(key);}
         for(auto& button:_Input.MouseButtons){button.Pressed=false;Release(button);}
         _Input.Focused=false;_Input.HasMousePosition=false;_Input.MouseDelta={};_Input.WheelDelta={};return true;
@@ -41,7 +42,10 @@ bool Runtime::SubmitInputEvent(const RuntimeInputEvent& event){
     case InputEventType::MouseButtonUp:{
         const auto index=static_cast<std::size_t>(event.Button);
         if(index>=_Input.MouseButtons.size())return false;
-        if(event.Type==InputEventType::MouseButtonDown)Press(_Input.MouseButtons[index]);else Release(_Input.MouseButtons[index]);
+        const bool down=event.Type==InputEventType::MouseButtonDown;
+        auto& state=_Input.MouseButtons[index];
+        if(event.Button==InputMouseButton::Left&&state.Held!=down)QueueUIPointer(down);
+        if(down)Press(state);else Release(state);
         return true;
     }
     case InputEventType::MouseMove:{

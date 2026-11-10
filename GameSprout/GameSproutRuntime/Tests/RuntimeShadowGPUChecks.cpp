@@ -159,6 +159,38 @@ void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,
     Check(Darkened(unified,layered).Count<100&&Darkened(layered,unified).Count<100,
         "Combined PCF lost or introduced a significant shadow compared with unified rendering");
 
+    // A Canvas insert emits Create/LayerChanged before its UI components are
+    // installed. These events must preserve the 3D extraction and shadow fit.
+    auto* canvas=scene->CreateGameObject("Canvas");
+    Check(canvas&&canvas->SetLayer(UILayer)&&canvas->AddComponent<IRectTransformComponent>(),
+        "Cannot create UI shadow-cache fixture");
+    auto* canvasComponent=canvas->AddComponent<ICanvasComponent>();
+    Check(canvasComponent&&canvasComponent->SetReferenceResolution({256,256}),"Cannot configure fixture Canvas");
+    auto* panel=scene->CreateGameObject("Panel",canvas);
+    Check(panel&&panel->SetLayer(UILayer)&&panel->AddComponent<IRectTransformComponent>(),
+        "Cannot lay out fixture panel");
+    auto* image=panel->AddComponent<IImageComponent>();
+    Check(image,"Cannot create fixture panel image");
+    image->SetColor({1,0,0,1});
+    view.DrawUI=true;
+    const auto withCanvas=Render(viewport,view);
+    Check(withCanvas.Statistics.UIDrawCalls==1&&Difference(layered,withCanvas)>100,
+        "UI insertion was absent from the next overlay frame");
+    Check(!withCanvas.Statistics.SceneSnapshotRebuilds&&!withCanvas.Statistics.LightSnapshotRebuilds&&
+        !withCanvas.Statistics.ShadowMapUpdates&&!withCanvas.Statistics.ShadowDrawCalls,
+        "Pure UI insertion rebuilt mesh/light snapshots or shadows");
+    canvas->SetActive(false);
+    const auto hiddenCanvas=Render(viewport,view);
+    Check(!hiddenCanvas.Statistics.UIDrawCalls&&!hiddenCanvas.Statistics.SceneSnapshotRebuilds&&
+        !hiddenCanvas.Statistics.LightSnapshotRebuilds&&!hiddenCanvas.Statistics.ShadowMapUpdates&&
+        Difference(layered,hiddenCanvas)==0,"Hiding a UI-only subtree changed the world render");
+    Check(scene->DestroyGameObject(canvas),"Cannot delete fixture Canvas");
+    const auto removedCanvas=Render(viewport,view);
+    Check(!removedCanvas.Statistics.SceneSnapshotRebuilds&&!removedCanvas.Statistics.LightSnapshotRebuilds&&
+        !removedCanvas.Statistics.ShadowMapUpdates&&Difference(layered,removedCanvas)==0,
+        "Deleting a UI-only subtree invalidated cached world geometry or shadows");
+    view.DrawUI=false;
+
     character->GetTransform()->SetLocalPosition({2.7f,-1.35f,2});
     const auto dynamicMoved=Render(viewport,view);
     Check(dynamicMoved.Statistics.StaticShadowMapUpdates==0&&dynamicMoved.Statistics.StaticShadowDrawCalls==0&&

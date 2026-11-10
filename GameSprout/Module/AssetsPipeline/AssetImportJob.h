@@ -21,6 +21,7 @@ constexpr uint32_t AssetImportAlgorithmVersion(eAssetImporterType type) {
     case eAssetImporterType::Mesh: return 5; // Native GSMESH02 -> GPU bytes and cooked colliders.
     case eAssetImporterType::Shader: return 4; // Complete graphics Pass programs and reflected material bindings.
     case eAssetImporterType::Material: return 4; // Current engine rendering options, independent of Shader reflection.
+    case eAssetImporterType::Font: return 3; // Publish the atlas as a standard RGBA8 texture.
     case eAssetImporterType::PhysicsMaterial:
     case eAssetImporterType::ComputeShader: return 3;
     default: return 2;

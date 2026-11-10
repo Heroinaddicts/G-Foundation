@@ -19,6 +19,9 @@ public:
     bool CommitContinuousEdit(const ISceneManager::fSceneEditOperation&,std::string&) override;
     bool CancelContinuousEdit(std::string&) override;
     bool HasContinuousEdit() const override {return _Continuous.Active;}
+    bool IsContinuousEditFor(const ObjectEditTarget& target) const override {
+        return _Continuous.Active&&_Continuous.Target==target;
+    }
     void OnPlayModeStateChanged(const PlayModeState&) override;
     void OnActiveSceneChanged() override;
     void OnSceneStateChanged() override;

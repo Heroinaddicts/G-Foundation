@@ -143,6 +143,7 @@ private:
     bool RunDeletion(const Edit& edit,bool forward,std::string& error,bool firstExecution=false);
     bool RunComponentEdit(const Edit& edit,bool forward,std::string& error);
     bool RunDocumentEdit(const Edit& edit,bool forward,std::string& error);
+    bool InsertObjectDocument(const SceneDocumentEditRequest&,Json::Value&,uint64_t,SceneSubtreeDocument&,std::string&);
     bool ApplyDocument(const Json::Value& before,const Json::Value& after,std::string& error);
     bool ChangeComponent(uint64_t objectID,const std::string& typeName,uint64_t scriptInstanceID,
         const std::string& scriptTypeID,const GameSproutRuntime::ResourceReference& source,

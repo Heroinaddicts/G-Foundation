@@ -2,10 +2,10 @@ GameSproutRuntime 第一阶段公共协议
 
 范围
 已实现独立 Runtime 工厂、场景和节点树、组件工厂、生命周期、变换和节点事件。
-Transform、RectTransform、Image、Canvas、Mesh、MeshRenderer、Camera 为实际内部组件。
+Transform、RectTransform、Image、Canvas、Text、Button、Mesh、MeshRenderer、Camera 为实际内部组件。
 Canvas 是普通 GameObject 挂载 ICanvasComponent，没有独立 Canvas 对象类型。
 已实现独立 3D Renderer；宿主只传入原生窗口描述与预处理资源提供者，Runtime 内部管理 GRHI；不依赖 Qt、Foundation 或 Editor。
-尚未接入 Canvas 自动布局/UI 绘制、动画蒙皮或物理。旧无参数 Render 不推测窗口或相机。
+旧无参数 Render 保留为空入口。实际视口使用显式 RenderView。
 Tests 的 Object/Image/ExportFixture 只是测试替身，不属于发布的 Runtime 实现。
 
 组件创建
@@ -88,6 +88,24 @@ Color 使用线性 RGB，默认白色；sRGB 采样解码和输出编码由纹�
 资源引用
 ResourceReference 保存 GUID 字符串与 LocalID，不保存贴图像素、Meta 指针或 GRHI 对象。
 图像的色调、UV 等实例参数归组件；Renderer 根据资源提供者读取产物并持有自己的 GPU 缓存。
+
+游戏 UI
+脚本通过公开 RuntimeUIApi.h 使用 ITextComponent 和 IButtonComponent。它也由 GameSproutRuntimeApi.h 引入。
+用 AddComponent 或 GetComponent 访问接口。动态创建时，在 Canvas 对象及每个可见控件节点添加 RectTransform，再配置锚点、尺寸和位置。
+Panel 是拉伸锚点的 Image。Button 可以由 Image 背景、Button 行为和 Text 子节点装配。
+Text::SetText 接受 UTF-8。GetFont/SetFont 绑定预处理 Font 资源的 GUID 和 LocalID；空引用使用内置基础字形。
+中文等字符使用包含对应字形的字体资产。Font 导入设置的 CustomCharacters 决定图集中烘焙的字符。
+Button::RegisterClick 返回注销用的 token。脚本可在 OnInitialized 注册，停用或销毁脚本实例时 Runtime 清理该实例的订阅。
+场景和 Prefab 保存组件配置及字体身份。点击订阅在每次运行时由游戏代码注册。
+独立宿主开启 RenderView::DrawUI，提交 Scene 后调用 SetUIInputViewport(scene, {逻辑宽, 逻辑高}, {渲染目标宽, 渲染目标高})。
+继续通过 SubmitInputEvent 发送 FocusGained、MouseMove、MouseButtonDown/Up 等输入，并在 AdvanceFrame 后完成输入帧。
+点击由 Runtime 在游戏帧开始派发。失焦、目标切换或尺寸改变会释放按下状态。
+屏幕 UI 使用渲染目标大小计算布局，参考分辨率按等比缩放处理。独立根 Canvas 按创建顺序绘制，Canvas 内遵循节点顺序。
+根 Canvas 的矩形随目标大小变化。子控件的 Transform 绕 Z 的旋转和 XY 缩放围绕 RectTransform 的 Pivot 生效，并传给子控件。
+编辑视口可设置 RenderView::UIPreviewObjectID，在当前视口内显示所选 Canvas 及边界。UIScreenPreviewLayoutSize 指定 Game 渲染目标尺寸，没有时使用 Canvas 参考宽高比。
+PickUIScreenPreview 与 GetUIScreenPreviewGeometry 使用同一套预览布局。前者返回命中节点 ID，后者提供变换后的四角、Pivot 和编辑坐标基，均不改变游戏输入或节点状态。
+UI 布局及渲染缓存由 Runtime 管理。GRHI 负责缓冲、纹理、混合和提交。Editor 和独立宿主使用相同 Runtime API。
+本阶段接入 ScreenSpace Canvas、Image、Text、Button 和指针点击。
 
 显式 3D RenderView
 包含 RuntimeRenderApi.h，调用 Runtime::CreateViewport(NativeWindow,provider,error) 或 CreateOffscreenRenderer(width,height,provider,error)。

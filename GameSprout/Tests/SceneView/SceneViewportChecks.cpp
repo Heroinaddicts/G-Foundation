@@ -1,6 +1,8 @@
 #include "SceneViewport.h"
 #include "SceneViewportEditing.h"
 #include "ISceneManager.h"
+#include "IObjectEditing.h"
+#include "IUIAuthoring.h"
 #include "ISelectionManager.h"
 #include "IHierarchyUI.h"
 #include "GameSproutRuntimeExport.h"
@@ -17,6 +19,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QCheckBox>
+#include <QLineF>
 #include <QScrollArea>
 #include <QToolButton>
 #include <QToolTip>
@@ -24,6 +27,7 @@
 #include <QLabel>
 #include <QTabBar>
 #include <QScrollBar>
+#include <cmath>
 #include <cstring>
 
 class SceneFixture final : public ISceneManager {
@@ -85,31 +89,81 @@ public:
 };
 class HostFixture final : public IRuntimeHost {
 public:
-    bool Playing=false;
+    bool Playing=false,FrameActive=false;
     std::vector<IRuntimeFrameListener*> Listeners;
     uint64_t FrameNumber=0;
     void SetSimulationPlaying(bool value)override{Playing=value;for(auto* listener:Listeners)listener->OnSimulationPlayingChanged(value);}
     bool IsSimulationPlaying()const override{return Playing;}
+    bool IsFrameActive()const override{return FrameActive;}
     void ResetClock()override{}
     bool RegisterFrameListener(IRuntimeFrameListener* listener)override{if(!listener||std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())return false;Listeners.push_back(listener);return true;}
     void UnregisterFrameListener(IRuntimeFrameListener* listener)override{std::erase(Listeners,listener);}
-    void Frame() {const RuntimeFrameEvent event{++FrameNumber,1.0f/60.0f,Playing};const auto snapshot=Listeners;for(auto* listener:snapshot)if(std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())listener->OnRuntimeFrame(event);}
+    void Frame() {
+        const RuntimeFrameEvent event{++FrameNumber,1.0f/60.0f,Playing};
+        const auto snapshot=Listeners;
+        FrameActive=true;
+        for(auto* listener:snapshot)
+            if(std::find(Listeners.begin(),Listeners.end(),listener)!=Listeners.end())listener->OnRuntimeFrame(event);
+        FrameActive=false;
+    }
     bool Initialize(GameSproutEditor::GameSproutModuleApi*)override{return true;}
     bool Launch(GameSproutEditor::GameSproutModuleApi*)override{return true;}
     void Release(GameSproutEditor::GameSproutModuleApi*)override{}
 };
+class RectAuthoringFixture final : public IUIAuthoring {
+public:
+    GameSproutRuntime::IGameSproutRuntime* Runtime=nullptr;
+    const IRuntimeHost* Host=nullptr;
+    std::uint64_t ObjectID=0;
+    UIRectAuthoringValues Original;
+    unsigned Previews=0,Commits=0;
+    bool CanCreate(std::uint64_t,std::uint64_t,std::string&) const override{return false;}
+    bool CreateControl(std::uint64_t,std::uint64_t,UIControlTemplate,std::uint64_t&,std::string&) override{return false;}
+    bool SetText(const ObjectEditTarget&,const UITextAuthoringValues&,std::string&) override{return false;}
+    bool SetButtonInteractable(const ObjectEditTarget&,bool,std::string&) override{return false;}
+    bool BeginRectEdit(const ObjectEditTarget& target,std::string&) override {
+        auto* object=Runtime?Runtime->QueryGameObject(target.ObjectID):nullptr;
+        auto* rect=object?object->GetComponent<GameSproutRuntime::IRectTransformComponent>():nullptr;
+        if(ObjectID||!rect||rect->GetComponentInstanceID()!=target.ComponentID)return false;
+        ObjectID=target.ObjectID;
+        Original={rect->GetAnchoredPosition(),rect->GetSizeDelta(),object->GetTransform()->GetLocalRotation()};
+        return true;
+    }
+    bool PreviewRectEdit(const UIRectAuthoringValues& values,std::string&) override {++Previews;return Write(values);}
+    bool CommitRectEdit(const UIRectAuthoringValues& values,std::string&) override {
+        ++Commits;const bool written=Write(values);ObjectID=0;return written;
+    }
+    bool CancelRectEdit(std::string&) override {
+        const bool restored=!ObjectID||Write(Original);ObjectID=0;return restored;
+    }
+    bool Initialize(GameSproutEditor::GameSproutModuleApi*) override{return true;}
+    bool Launch(GameSproutEditor::GameSproutModuleApi*) override{return true;}
+    void Release(GameSproutEditor::GameSproutModuleApi*) override{}
+private:
+    bool Write(const UIRectAuthoringValues& values) {
+        if(Host&&Host->IsFrameActive())return false;
+        auto* object=Runtime?Runtime->QueryGameObject(ObjectID):nullptr;
+        auto* rect=object?object->GetComponent<GameSproutRuntime::IRectTransformComponent>():nullptr;
+        if(!rect||!object->GetTransform()->SetLocalRotation(values.LocalRotation))return false;
+        rect->SetAnchoredPosition(values.AnchoredPosition);
+        rect->SetSizeDelta(values.SizeDelta);
+        return true;
+    }
+};
 class WindowEditor final : public GameSproutEditor::GameSproutViewApi {
 public:
-    explicit WindowEditor(GameSproutRuntime::IGameSproutRuntime* runtime):GameSproutViewApi(runtime){}
+    explicit WindowEditor(GameSproutRuntime::IGameSproutRuntime* runtime):GameSproutViewApi(runtime){UIAuthoring.Runtime=runtime;UIAuthoring.Host=&Host;}
     SceneFixture Scenes;
     HostFixture Host;
     SelectionFixture Selection;
+    RectAuthoringFixture UIAuthoring;
     IIDEWindow* IDE=nullptr;
     std::map<std::string,GameSproutEditor::IGameSproutView*> Views;
     GameSproutEditor::IGameSproutModule* FindGameSproutModule(const std::string& name) const override {
         if(name=="RuntimeHost")return const_cast<HostFixture*>(&Host);
         if(name=="SceneManager")return const_cast<SceneFixture*>(&Scenes);
         if(name=="SelectionManager")return const_cast<SelectionFixture*>(&Selection);
+        if(name=="UIAuthoring")return const_cast<RectAuthoringFixture*>(&UIAuthoring);
         return nullptr;
     }
     GameSproutEditor::IGameSproutView* FindGameSproutView(const std::string& name) const override {
@@ -215,7 +269,7 @@ int main(int argc,char** argv) {
         SceneViewport* viewport=nullptr;
         for(QWidget* window:QApplication::topLevelWidgets())if(auto* dock=window->findChild<QDockWidget*>("Scene")){viewport=dock->findChild<SceneViewport*>("sceneViewport");if(viewport)break;}
         Check(viewport,"Promoted native sceneViewport missing");
-        if(runtime){viewport->Initialize(runtime,&resources);viewport->BindEditingServices(&editor->Scenes,&editor->Selection);}
+        if(runtime){viewport->Initialize(runtime,&resources);viewport->BindEditingServices(&editor->Scenes,&editor->Selection,&editor->UIAuthoring);}
         QObject::connect(viewport,&QObject::destroyed,&app,[&]{viewportDestroyed=true;});
         auto* host=viewport->window();host->resize(880,650);host->raise();host->activateWindow();QApplication::setActiveWindow(host);viewport->setFocus();QCoreApplication::processEvents();
         auto* sceneDock=host->findChild<QDockWidget*>("Scene");Check(sceneDock,"Scene dock missing for compact UI checks");
@@ -296,7 +350,14 @@ int main(int argc,char** argv) {
         view->UnregisterSceneTools(&secondTool);Check(!secondTool.Active&&!view->ActivateSceneTool(&secondTool),"Unregistered feature retained activation access");
         view->UnregisterSceneTools(&firstTool);
         const auto tick=[&]{QCoreApplication::processEvents();if(runtime)runtime->Update(0);editor->Host.Frame();QCoreApplication::processEvents();};
-        const auto pump=[&](const std::function<bool()>& done){QElapsedTimer timer;timer.start();do{tick();if(done())return;QThread::msleep(5);}while(timer.elapsed()<15000);throw std::runtime_error("Native scene timed out: "+view->GetRenderError());};
+        const auto pump=[&](const std::function<bool()>& done,const char* stage="viewport"){
+            QElapsedTimer timer;timer.start();
+            do{tick();if(done())return;QThread::msleep(5);}while(timer.elapsed()<15000);
+            throw std::runtime_error(std::string("Native scene timed out at ")+stage+": "+view->GetRenderError()+
+                " (requested UI "+std::to_string(viewport->Editing().UIScreenPreviewObjectID())+
+                ", presented UI "+std::to_string(viewport->GetPresentedUIPreviewObjectID())+
+                ", UI draws "+std::to_string(viewport->GetStatistics().UIDrawCalls)+")");
+        };
         if(headless) {
             tick();Check(!view->IsRenderingAvailable()&&spy.NativeCalls==0&&view->GetRenderError().find("离屏")!=std::string::npos,"Headless passed a fake window to Runtime");
         }else {
@@ -328,6 +389,86 @@ int main(int argc,char** argv) {
             QCoreApplication::sendEvent(viewport,&cancelDrag);tick();
             Check(editor->Scenes.DragPreviews==2&&editor->Scenes.DragCommits==1&&
                 Same(mesh->GetTransform()->GetLocalPosition(),{}),"Cancel applied a queued preview after restoring the original transform");
+            auto* uiScene=editor->Scenes.Scene;
+            auto* canvas=uiScene->CreateGameObject("Screen Canvas");
+            Check(canvas&&canvas->AddComponent<GameSproutRuntime::ICanvasComponent>()&&
+                canvas->AddComponent<GameSproutRuntime::IRectTransformComponent>(),"Cannot assemble screen Canvas");
+            auto* control=uiScene->CreateGameObject("Image",canvas);
+            Check(control&&control->AddComponent<GameSproutRuntime::IRectTransformComponent>()&&
+                control->AddComponent<GameSproutRuntime::IImageComponent>(),"Cannot assemble screen control");
+            auto* rect=control->GetComponent<GameSproutRuntime::IRectTransformComponent>();
+            rect->SetSizeDelta({400,400});
+            editor->Selection.SetSceneObjectSelection({uiScene->GetInstanceID(),canvas->GetInstanceID()});
+            pump([&]{return viewport->GetPresentedUIPreviewObjectID()==canvas->GetInstanceID()&&viewport->GetStatistics().UIDrawCalls>0;},"Canvas selection");
+            GameSproutRuntime::DebugDrawList worldTools;
+            viewport->Editing().BuildDraw(uiScene,worldTools);
+            Check(worldTools.Lines.empty()&&worldTools.Triangles.empty(),
+                "Screen Canvas drew world-space transform handles");
+            const auto canvasCamera=view->GetCameraState();
+            Check(view->FocusSelection()&&Same(view->GetCameraState().Position,canvasCamera.Position),
+                "Framing a screen Canvas moved the world camera");
+            Mouse(viewport,QEvent::MouseButtonPress,pivot,Qt::LeftButton,Qt::LeftButton);
+            Mouse(viewport,QEvent::MouseButtonRelease,pivot,Qt::LeftButton,Qt::NoButton);
+            Check(!editor->Scenes.HasTransformEdit()&&editor->Selection.Selected.ObjectID==control->GetInstanceID(),
+                "Screen control selection entered the 3D transform gizmo");
+            pump([&]{return viewport->GetPresentedUIPreviewObjectID()==control->GetInstanceID();},"UI control selection");
+            const auto rectGeometry=[&] {
+                GameSproutRuntime::RenderedCamera camera;
+                GameSproutRuntime::UIScreenPreviewGeometry geometry;
+                Check(viewport->GetRenderedCamera(camera)&&runtime->GetUIScreenPreviewGeometry(uiScene,control->GetInstanceID(),
+                    {float(camera.Width),float(camera.Height)},geometry),"Cannot read the presented Rect geometry");
+                return geometry;
+            };
+            const auto logical=[&](GameSproutRuntime::Vector2 pixel) {
+                GameSproutRuntime::RenderedCamera camera;
+                Check(viewport->GetRenderedCamera(camera),"Cannot read the presented viewport");
+                return QPointF(pixel.X*viewport->width()/camera.Width,pixel.Y*viewport->height()/camera.Height);
+            };
+            const auto pressUI=[&](QPointF point){Mouse(viewport,QEvent::MouseButtonPress,point,Qt::LeftButton,Qt::LeftButton);};
+            const auto dragUI=[&](QPointF point){Mouse(viewport,QEvent::MouseMove,point,Qt::NoButton,Qt::LeftButton);};
+            const auto releaseUI=[&](QPointF point){Mouse(viewport,QEvent::MouseButtonRelease,point,Qt::LeftButton,Qt::NoButton);};
+            const auto shortcut=[&](int key){QKeyEvent event(QEvent::KeyPress,key,Qt::NoModifier);QCoreApplication::sendEvent(viewport,&event);};
+            shortcut(Qt::Key_W);tick();
+            const auto xArrow=logical(rectGeometry().Pivot)+QPointF(36,0);
+            pressUI(xArrow);dragUI(xArrow+QPointF(12,8));dragUI(xArrow+QPointF(24,16));
+            Check(editor->UIAuthoring.Previews==0,"W pointer events did not coalesce before the frame");
+            tick();
+            const float previewX=rect->GetAnchoredPosition().X;
+            Check(editor->UIAuthoring.Previews==1&&previewX>0&&std::abs(rect->GetAnchoredPosition().Y)<0.001f,
+                "W red arrow did not constrain movement to X");
+            releaseUI(xArrow+QPointF(32,22));tick();
+            Check(editor->UIAuthoring.Commits==1&&rect->GetAnchoredPosition().X>previewX,
+                "W did not commit exactly once at the release coordinate");
+
+            auto* rectTool=content->findChild<QToolButton*>("rectToolButton");
+            Check(rectTool,"Scene Rect Tool is missing from the .ui toolbar");
+            shortcut(Qt::Key_T);tick();
+            Check(rectTool->isChecked(),"T did not activate Rect Tool");
+            const auto interior=logical(rectGeometry().Pivot);
+            pressUI(interior);dragUI(interior+QPointF(10,12));releaseUI(interior+QPointF(15,20));tick();
+            Check(editor->UIAuthoring.Commits==2&&rect->GetAnchoredPosition().Y<0,"T did not move the Rect from its interior");
+
+            const auto beforeResize=rectGeometry();
+            const auto bottomRight=logical(beforeResize.Corners[2]);
+            pressUI(bottomRight);dragUI(bottomRight+QPointF(16,14));releaseUI(bottomRight+QPointF(24,20));tick();
+            const auto afterResize=rectGeometry();
+            Check(editor->UIAuthoring.Commits==3&&afterResize.Size.X>beforeResize.Size.X&&afterResize.Size.Y>beforeResize.Size.Y&&
+                QLineF(logical(beforeResize.Corners[0]),logical(afterResize.Corners[0])).length()<0.25,
+                "T corner resize moved the opposite corner or did not grow the Rect");
+
+            const auto rotationPivot=logical(afterResize.Pivot);
+            const auto corner=logical(afterResize.Corners[2]);
+            const auto ray=corner-rotationPivot;
+            const auto rotationStart=corner+ray*(15.0/std::hypot(ray.x(),ray.y()));
+            const auto radius=rotationStart-rotationPivot;
+            const auto rotated=rotationPivot+QPointF(-radius.y(),radius.x());
+            pressUI(rotationStart);dragUI(rotated);releaseUI(rotated);tick();
+            Check(editor->UIAuthoring.Commits==4&&std::abs(control->GetTransform()->GetLocalRotation().Z)>0.5f,
+                "T corner-outside drag did not rotate the UI");
+            shortcut(Qt::Key_W);
+            Check(uiScene->DestroyGameObject(canvas),"Cannot remove screen Canvas fixture");
+            editor->Selection.SetSceneObjectSelection({uiScene->GetInstanceID(),mesh->GetInstanceID()});
+            pump([&]{return viewport->GetPresentedUIPreviewObjectID()==0&&viewport->GetStatistics().UIDrawCalls==0;},"return to world selection");
             const auto originalWidth=stats.Width;host->resize(1060,770);QCoreApplication::processEvents();
             ide->ResizeDockers({ide->QueryDocker("Scene")},{1},Qt::Horizontal);QCoreApplication::processEvents();
             std::cout<<"Native resized logical="<<viewport->width()<<'x'<<viewport->height()<<" dpr="<<viewport->devicePixelRatioF()<<std::endl;

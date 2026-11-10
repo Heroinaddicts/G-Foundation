@@ -26,8 +26,14 @@ void GameViewport::Status(const std::string& text) {
     if (_Status==text) return;
     _Status=text;if(StatusChanged)StatusChanged(text);
 }
+void GameViewport::SetOutputSize(GameSproutRuntime::Vector2 size) {
+    if (size.X == _OutputSize.X && size.Y == _OutputSize.Y) return;
+    _OutputSize = size;
+    emit OutputSizeChanged();
+}
 void GameViewport::DestroyGPU() {
     auto* renderer=_Renderer;_Renderer=nullptr;
+    if(_Runtime)_Runtime->SetUIInputViewport(nullptr,{});
     _AnimatedMaterials=false;
     _Attempted=false;
     RequestRender();
@@ -61,6 +67,13 @@ void GameViewport::ObserveNativeWindow() {
     }
 }
 bool GameViewport::event(QEvent* event) {
+    const bool sizeChanged = event->type() == QEvent::Resize || event->type() == QEvent::Show ||
+        event->type() == QEvent::ScreenChangeInternal
+#if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
+        || event->type() == QEvent::DevicePixelRatioChange
+#endif
+        ;
+    if (sizeChanged && _Runtime) _Runtime->SetUIInputViewport(nullptr, {});
     if (event->type()==QEvent::WinIdChange) {RetryRendering();if(_Initialized)ObserveNativeWindow();}
     if (event->type()==QEvent::PlatformSurface) {
         const auto type=static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType();
@@ -68,13 +81,14 @@ bool GameViewport::event(QEvent* event) {
         _Attempted=false;
         RequestRender();
     }
-    if(event->type()==QEvent::Resize||event->type()==QEvent::Show||event->type()==QEvent::Paint||
-       event->type()==QEvent::Expose||event->type()==QEvent::WindowActivate||event->type()==QEvent::ScreenChangeInternal
-#if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
-       ||event->type()==QEvent::DevicePixelRatioChange
-#endif
-    )RequestRender();
-    return QWidget::event(event);
+    if (sizeChanged || event->type() == QEvent::Paint || event->type() == QEvent::Expose ||
+        event->type() == QEvent::WindowActivate) RequestRender();
+    const bool handled = QWidget::event(event);
+    if (sizeChanged && width() > 0 && height() > 0) {
+        const qreal ratio = devicePixelRatioF();
+        SetOutputSize({float(qRound(width() * ratio)), float(qRound(height() * ratio))});
+    }
+    return handled;
 }
 bool GameViewport::eventFilter(QObject* watched,QEvent* event) {
     if((watched==_NativeWindow||watched==_HostWindow)&&event->type()==QEvent::WindowDeactivate){ReleaseGameInput();clearFocus();}
@@ -123,13 +137,19 @@ bool GameViewport::EnsureRendering() {
 }
 void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,bool animateMaterials) {
     const auto sceneID=scene?scene->GetInstanceID():0;
-    if(sceneID!=_SceneID){_SceneID=sceneID;RequestRender();emit FrameStreamReset();}
+    if(sceneID!=_SceneID){
+        _SceneID=sceneID;
+        if(_Runtime)_Runtime->SetUIInputViewport(nullptr,{});
+        RequestRender();
+        emit FrameStreamReset();
+    }
     if(!_NeedsRender&&!continuous&&!(animateMaterials&&_AnimatedMaterials))return;
     if (!_Initialized||!isVisible()||width()<=0||height()<=0||_Rendering) return;
     if(!Headless()&&(!window()||window()->isMinimized()||!window()->windowHandle()||!window()->windowHandle()->isExposed()))return;
     _NeedsRender=false;
     GameSproutRuntime::RenderView view;
     view.Scene=scene;view.DrawGrid=false;
+    view.DrawUI=scene!=nullptr;
     view.WaitForSurface=false;
     std::string diagnostic;
     auto* camera=scene?scene->GetMainCamera():nullptr;
@@ -153,11 +173,18 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
         RequestRender();
         return;
     }
+    const GameSproutRuntime::Vector2 renderedSize{float(statistics.Width), float(statistics.Height)};
+    _Runtime->SetUIInputViewport(scene, {float(width()), float(height())}, renderedSize);
+    SetOutputSize(renderedSize);
     emit FrameSubmitted();
     _AnimatedMaterials=statistics.RequiresContinuousRendering;
-    if(!diagnostic.empty()){Status(diagnostic);return;}
+    if(!diagnostic.empty()){
+        Status(statistics.UIDrawCalls ? diagnostic+" 已显示屏幕 UI。" : diagnostic);
+        return;
+    }
     std::string status=std::to_string(statistics.Width)+" × "+std::to_string(statistics.Height)+" px · "+
         std::to_string(statistics.DrawCalls)+" draws · "+std::to_string(statistics.Triangles)+" triangles";
     if(statistics.InstancedDrawCalls)status+=" · instanced "+std::to_string(statistics.InstancedInstances)+" · saved "+std::to_string(statistics.SavedDrawCalls)+" draws";
+    if(statistics.UIDrawCalls)status+=" · UI "+std::to_string(statistics.UIDrawCalls)+" draws";
     Status(status);
 }

@@ -40,10 +40,10 @@ bool Renderer::Render(const RenderView& view) {
     _Error.clear();_Statistics={};_ShadowRecorded=false;
     if(!_Surface&&!_ColorTarget){_Statistics={};return true;}
     if(_Surface&&_ColorTarget)return Fail("Viewport has conflicting render targets");
-    if(view.DrawScene) {
+    if(view.DrawScene||view.DrawUI) {
         auto* scene=_Runtime.Find(view.Scene);
         if(!_Runtime.IsUsable(scene) || scene->SceneOwner!=view.Scene) return Fail("RenderView scene is not a live scene owned by this Runtime");
-        if(!RuntimeMath::IsFinite(view.Camera.View) || !RuntimeMath::IsFinite(view.Camera.Position))
+        if(view.DrawScene&&(!RuntimeMath::IsFinite(view.Camera.View) || !RuntimeMath::IsFinite(view.Camera.Position)))
             return Fail("RenderView camera is nonfinite");
     }
     if(!RuntimeMath::IsFinite(view.ClearColor)) return Fail("RenderView clear color is nonfinite");
@@ -52,10 +52,8 @@ bool Renderer::Render(const RenderView& view) {
     try {
         ++_Frame;
         PruneInstanceBuffers();
-        if(view.DrawScene) {
-            SyncRevision();
-            if(!Initialize()) return false;
-        }
+        if(view.DrawScene||view.DrawUI) SyncRevision();
+        if(view.DrawScene&&!Initialize()) return false;
         // 缓冲在Command提交/取消后释放；异常退出也保持这一顺序。
         DebugBufferScope debugBuffers;
         CommandScope command{_Device};command.Command=_Device.AcquireCommandBuffer();
@@ -108,6 +106,7 @@ bool Renderer::Render(const RenderView& view) {
         const std::vector<PreparedDraw> clearDraws;
         const auto& prepared=view.DrawScene?_PreparedDraws:clearDraws;
         if(view.DrawScene&&!RenderShadows(*command.Command,view,float(width)/height))return false;
+        if(view.DrawUI&&!PrepareUI(*view.Scene,width,height,view.UIPreviewObjectID,view.UIScreenPreviewLayoutSize))return false;
         GRHI::RenderPassDesc pass;
         pass.ColorTarget=target;pass.ClearColor={view.ClearColor.R,view.ClearColor.G,view.ClearColor.B,view.ClearColor.A};
         if(depth){pass.DepthTarget=depth->GetDepthTargetView();pass.DepthLoad=GRHI::LoadOp::Clear;pass.ClearDepth=1.0f;}
@@ -118,6 +117,10 @@ bool Renderer::Render(const RenderView& view) {
         if(view.DrawScene && view.DrawGrid && !DrawGrid(*command.Pass,viewProjection,format)) return false;
         if(!DrawPrepared(*command.Pass,prepared,view,viewProjection,format,lights,&environment,sizeof(environment)))return false;
         if(view.DrawScene && !DrawDebug(*command.Pass,viewProjection,format,debugBatches,debugBuffers.Buffers)) return false;
+        const auto depthFormat=depth?depth->GetFormat():GRHI::TextureFormat::Unknown;
+        if(view.DrawUI&&!DrawUI(*command.Pass,format,depthFormat)) return false;
+        if(view.UIScreenDebugDraw&&!DrawUIScreenDebug(*command.Pass,format,depthFormat,{float(width),float(height)},
+            *view.UIScreenDebugDraw,debugBuffers.Buffers)) return false;
         command.Command->EndRenderPass(command.Pass);command.Pass=nullptr;
         auto* submitted=command.Command;command.Command=nullptr;
         if(!_Device.Submit(submitted)) return Fail(DeviceError("Submit Runtime view"));

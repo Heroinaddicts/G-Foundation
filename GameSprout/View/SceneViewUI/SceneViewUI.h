@@ -19,6 +19,7 @@ class ISelectionManager;
 class IRuntimeAssets;
 class SceneViewport;
 class SceneViewChrome;
+class IGameViewUI;
 
 class SceneViewUI : public ISceneViewUI, public IRuntimeFrameListener, public ISceneListener, public IPlayModeListener,public IRuntimeAssetsListener {
 public:
@@ -56,10 +57,13 @@ private:
     void LaunchFinished(GameSproutEditor::GameSproutViewApi * const editor) override;
     void Update(GameSproutEditor::GameSproutViewApi * const editor) override;
     void Release(GameSproutEditor::GameSproutViewApi * const editor) override;
+    void BindGameUILayout(GameSproutEditor::GameSproutViewApi* editor);
+    void UnbindGameUILayout();
     QWidget* _Window=nullptr;
     QObject* _Dispatch=nullptr;
     Ui::SceneViewUIWindow* _Ui=nullptr;
     SceneViewport* _Viewport=nullptr;
+    IGameViewUI* _GameView=nullptr;
     SceneViewChrome* _Chrome=nullptr;
     IIDEDocker* _Docker=nullptr;
     bool _DockerContentVisible=false,_DockerVisibilitySubscribed=false;

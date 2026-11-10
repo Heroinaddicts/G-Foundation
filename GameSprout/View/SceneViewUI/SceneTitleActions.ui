@@ -52,7 +52,7 @@
       <string>?</string>
      </property>
      <property name="toolTip">
-      <string>&lt;b&gt;Scene 操作&lt;/b&gt;&lt;br/&gt;左键选取 · Q 视图 / W 移动 / E 旋转 / R 缩放&lt;br/&gt;Ctrl / Cmd 吸附 · Esc 取消拖动 · Delete / Backspace 删除&lt;br/&gt;右键观察 + WASD / QE · Shift 加速&lt;br/&gt;Alt + 左键环绕 · 中键平移 · 滚轮推拉 · F 聚焦</string>
+      <string>&lt;b&gt;Scene 操作&lt;/b&gt;&lt;br/&gt;左键选取 · Q 视图 / W 移动 / E 旋转 / R 缩放&lt;br/&gt;UI 用 W 拖二维轴，T 拖框内移动、拖边角改大小、从角外旋转&lt;br/&gt;Ctrl / Cmd 吸附 · Esc 取消拖动 · Delete / Backspace 删除&lt;br/&gt;右键观察 + WASD / QE · Shift 加速&lt;br/&gt;Alt + 左键环绕 · 中键平移 · 滚轮推拉 · F 聚焦</string>
      </property>
      <property name="autoRaise">
       <bool>true</bool>

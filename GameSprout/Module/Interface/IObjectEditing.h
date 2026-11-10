@@ -42,6 +42,7 @@ public:
     virtual bool CommitContinuousEdit(const ISceneManager::fSceneEditOperation&,std::string& error) {error="没有连续属性编辑。";return false;}
     virtual bool CancelContinuousEdit(std::string& error) {error.clear();return true;}
     virtual bool HasContinuousEdit() const {return false;}
+    virtual bool IsContinuousEditFor(const ObjectEditTarget&) const {return false;}
     virtual bool SetLayer(const ObjectEditTarget&, std::uint8_t layer,
         bool includeChildren, std::string& error) = 0;
     // Owner thread, synchronous completion; listener callbacks cannot reenter edits.

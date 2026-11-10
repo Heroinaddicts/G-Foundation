@@ -246,6 +246,7 @@ void NotifyRuntimePropertiesChanged(IGameObject* owner) {
         auto& state=access->State();
         if(state.Owner.IsInScene(&state)) {
             state.SceneOwner->InvalidateRenderSnapshot();
+            if (FindUIScreenCanvasRoot(*owner)) state.SceneOwner->InvalidateUI();
             state.Owner.MarkObjectPropertiesChanged(state.ID);
         }
     }

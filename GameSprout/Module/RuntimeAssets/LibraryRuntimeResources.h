@@ -31,6 +31,7 @@ public:
     bool LoadAnimatorController(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::AnimatorControllerData&, std::string&) override;
     bool LoadHumanoidAvatar(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::HumanoidAvatarData&, std::string&) override;
     bool LoadAvatarMask(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::AvatarMaskData&, std::string&) override;
+    bool LoadFont(const GameSproutRuntime::ResourceReference&, GameSproutRuntime::FontRenderData&, std::string&) override;
     bool LoadMeshCollision(const GameSproutRuntime::ResourceReference&, bool convex,
                            std::vector<std::uint8_t>&, std::string&) override;
     void OnAssetCreate(const AssetEvent&) override;

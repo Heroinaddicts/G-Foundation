@@ -1,5 +1,6 @@
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeRenderApi.h"
+#include "RuntimeUIApi.h"
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -46,6 +47,13 @@ public:
         if(reference.LocalID==4) data.BaseColor={1,0,0,1};
         return true;
     }
+    bool LoadFont(const GameSproutRuntime::ResourceReference& reference,GameSproutRuntime::FontRenderData& data,std::string& error) override {
+        if(reference.LocalID!=6)return IRuntimeResourceProvider::LoadFont(reference,data,error);
+        data={};
+        data.Atlas={reference.Guid,7};data.PixelSize=2;data.Ascent=2;
+        data.Glyphs={{0x6C49,0,0,2,2,0,-2,2}};
+        return true;
+    }
 };
 class Probe final : public GameSproutRuntime::IRuntimeListener {
 public:
@@ -61,6 +69,91 @@ static std::array<int,4> Center(GameSproutRuntime::IRuntimeViewport& renderer) {
     return {pixels[offset],pixels[offset+1],pixels[offset+2],pixels[offset+3]};
 }
 #include "RuntimeSceneToolsChecks.h"
+static void CheckUI(GameSproutRuntime::IGameSproutRuntime& runtime,GameSproutRuntime::IRuntimeViewport& renderer) {
+    using namespace GameSproutRuntime;
+    auto* scene=runtime.CreateScene("Screen UI");Check(scene,"Cannot create UI scene");
+    auto* canvas=scene->CreateGameObject("Canvas");
+    auto* canvasComponent=canvas->AddComponent<ICanvasComponent>();
+    Check(canvasComponent&&canvasComponent->SetReferenceResolution({128,128}),"Cannot configure Canvas");
+    Check(canvas->AddComponent<IRectTransformComponent>(),"Canvas rectangle unavailable");
+    auto* panel=scene->CreateGameObject("Panel",canvas);
+    panel->AddComponent<IRectTransformComponent>()->SetSizeDelta({80,60});
+    auto* panelImage=panel->AddComponent<IImageComponent>();panelImage->SetColor({1,0,0,0.5f});
+    auto* sprite=scene->CreateGameObject("Top-left Image",canvas);
+    auto* spriteRect=sprite->AddComponent<IRectTransformComponent>();
+    spriteRect->SetAnchors({0,1},{0,1});spriteRect->SetPivot({0,1});
+    spriteRect->SetAnchoredPosition({8,-8});spriteRect->SetSizeDelta({16,16});
+    const std::string guid="0123456789abcdef0123456789abcdef";
+    sprite->AddComponent<IImageComponent>()->SetTexture({guid,3});
+    auto* label=scene->CreateGameObject("Text",panel);
+    label->AddComponent<IRectTransformComponent>()->SetSizeDelta({75,50});
+    auto* text=label->AddComponent<ITextComponent>();
+    Check(text&&text->SetFontSize(18)&&text->SetText("UI"),"Cannot configure text fixture");
+
+    RenderView view;view.Scene=scene;view.DrawScene=false;view.DrawUI=true;view.ClearColor={0,0,0,1};
+    Check(renderer.Render(view),renderer.GetLastError());
+    RenderedCamera camera;
+    Check(!renderer.GetRenderedCamera(camera)&&renderer.GetStatistics().UIDrawCalls==3,"UI-only view requires a camera or lost draws");
+    std::vector<std::uint8_t> pixels;std::string error;
+    Check(renderer.ReadPixels(pixels,error),error);
+    const auto pixel=[&](unsigned x,unsigned y,unsigned channel) {return pixels[(y*128u+x)*4u+channel];};
+    Check(pixel(35,47,0)>=127&&pixel(35,47,0)<=129&&pixel(35,47,1)==0,"UI panel did not alpha blend over the clear color");
+    Check(pixel(12,12,1)==255&&pixel(12,115,1)==0,"UI texture not drawn at the top-left layout rectangle");
+    unsigned white=0;
+    for(unsigned y=45;y<83;++y)for(unsigned x=40;x<88;++x)
+        if(pixel(x,y,0)>200&&pixel(x,y,1)>200&&pixel(x,y,2)>200)++white;
+    Check(white>20,"Fallback font did not render visible glyphs");
+
+    text->SetFont({guid,6});
+    Check(text->SetText("\xE6\xB1\x89"),"Cannot set UTF-8 text");
+    Check(renderer.Render(view),renderer.GetLastError());
+    Check(renderer.ReadPixels(pixels,error),error);
+    Check(pixel(64,64,0)==0&&pixel(64,64,1)==255,"Prepared UTF-8 font glyph did not sample its atlas");
+    text->SetText("");
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(64,64,0)>=127&&pixel(64,64,1)==0,"Clearing Text retained cached geometry");
+
+    view.DrawScene=true;view.DrawGrid=false;
+    Check(renderer.Render(view),renderer.GetLastError());
+    Check(renderer.GetStatistics().UIDrawCalls==2&&renderer.GetRenderedCamera(camera),"UI overlay failed with a 3D depth target");
+    view.DrawScene=false;
+    view.UIPreviewObjectID=canvas->GetInstanceID();
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(5,64,2)==0&&pixel(11,64,2)>200,"Canvas preview did not draw a bounded 2D selection frame");
+    Check(runtime.PickUIScreenPreview(scene,view.UIPreviewObjectID,{128,128},{22,22})==sprite->GetInstanceID(),
+        "Canvas preview hit test did not use its framed layout");
+    Check(!runtime.PickUIScreenPreview(scene,view.UIPreviewObjectID,{128,128},{5,64}),
+        "Canvas preview intercepted a click outside its frame");
+    canvasComponent->SetRenderMode(CanvasRenderMode::WorldSpace);
+    Check(renderer.Render(view)&&renderer.GetStatistics().UIDrawCalls==0,"World-space Canvas entered the screen-space preview");
+    canvasComponent->SetRenderMode(CanvasRenderMode::ScreenSpace);
+    view.UIPreviewObjectID=0;
+
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(12,12,1)==255,"UI fixture lost its original placement before rotation");
+    Check(sprite->GetTransform()->SetLocalRotation({0,0,0.70710678f,0.70710678f}),"Cannot rotate sprite about its upper-left pivot");
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(12,4,1)==255&&pixel(12,12,1)==0,"Game UI did not update its clipped and rotated sprite");
+
+    view.UIPreviewObjectID=sprite->GetInstanceID();
+    view.UIScreenPreviewLayoutSize={128,64};
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(15,39,1)==255&&pixel(15,35,1)==0,"Rotated Scene UI was not clipped by its canvas frame");
+    Check(runtime.PickUIScreenPreview(scene,view.UIPreviewObjectID,{128,128},{15.5f,39.5f},{128,64})==sprite->GetInstanceID()&&
+        !runtime.PickUIScreenPreview(scene,view.UIPreviewObjectID,{128,128},{15,35},{128,64}),
+        "Scene preview rendering and picking disagreed at the canvas clip");
+
+    UIDebugDrawList overlay;
+    overlay.Triangles.push_back({{13,38},{20,38},{13,44},{1,0,1,1}});
+    view.UIScreenDebugDraw=&overlay;
+    Check(renderer.Render(view)&&renderer.ReadPixels(pixels,error),renderer.GetLastError()+error);
+    Check(pixel(15,39,0)==255&&pixel(15,39,1)==0&&pixel(15,39,2)==255,"Host screen overlay did not draw over Scene UI");
+    view.UIScreenDebugDraw=nullptr;
+    view.UIPreviewObjectID=0;
+    view.DrawScene=true;
+    view.DrawUI=false;
+    Check(renderer.Render(view)&&renderer.GetStatistics().UIDrawCalls==0,"UI was drawn when disabled on this view");
+}
 int main(int argc,char** argv) {
     GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
     GameSproutRuntime::IRuntimeViewport* renderer=nullptr;
@@ -177,9 +270,10 @@ int main(int argc,char** argv) {
         Check(!renderer->Resize(0xffffffffu,0xffffffffu,error),"Oversized viewport accepted");
         Check(renderer->Render(view)&&renderer->GetStatistics().Width==64,"Failed viewport resize destroyed its previous target");
         Check(renderer->Resize(128,128,error),error);Check(renderer->Render(view),renderer->GetLastError());
+        CheckUI(*runtime,*renderer);
         runtime->UnregisterListener(&probe);
         delete renderer;renderer=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS actual GPU Runtime Renderer: HLSL matrices, four vertex variants, texture/sRGB, depth, inverse-transpose normals, negative/zero scale, grid/resize, revision cache and missing/corrupt assets\n";
+        std::cout<<"PASS actual GPU Runtime Renderer: mesh and depth, viewport, resource cache, screen UI blending, texture placement and font glyphs\n";
         return 0;
     } catch(const std::exception& exception) {
         delete renderer;delete runtime;

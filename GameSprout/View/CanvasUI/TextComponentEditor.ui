@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TextComponentEditorForm</class>
+ <widget class="QWidget" name="TextComponentEditorForm">
+  <layout class="QFormLayout" name="formLayout">
+   <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+   <item row="0" column="0"><widget class="QLabel" name="textLabel"><property name="text"><string>文字</string></property></widget></item>
+   <item row="0" column="1">
+    <layout class="QVBoxLayout" name="textLayout">
+     <item><widget class="QPlainTextEdit" name="textEdit"><property name="minimumHeight" stdset="0"><number>52</number></property><property name="maximumHeight" stdset="0"><number>104</number></property><property name="placeholderText"><string>输入要显示的文字</string></property></widget></item>
+     <item><widget class="QPushButton" name="applyTextButton"><property name="text"><string>应用文字</string></property></widget></item>
+    </layout>
+   </item>
+   <item row="1" column="0"><widget class="QLabel" name="fontLabel"><property name="text"><string>字体</string></property></widget></item>
+   <item row="1" column="1"><widget class="ResourceField" name="fontField"><property name="toolTip"><string>空引用使用内置字体。</string></property></widget></item>
+   <item row="2" column="0"><widget class="QLabel" name="fontSizeLabel"><property name="text"><string>字号</string></property></widget></item>
+   <item row="2" column="1"><widget class="QLineEdit" name="fontSizeEdit"/></item>
+   <item row="3" column="0"><widget class="QLabel" name="colorLabel"><property name="text"><string>颜色（线性 RGBA）</string></property></widget></item>
+   <item row="3" column="1">
+    <layout class="QHBoxLayout" name="colorLayout">
+     <item><widget class="QLineEdit" name="redEdit"><property name="placeholderText"><string>R</string></property></widget></item>
+     <item><widget class="QLineEdit" name="greenEdit"><property name="placeholderText"><string>G</string></property></widget></item>
+     <item><widget class="QLineEdit" name="blueEdit"><property name="placeholderText"><string>B</string></property></widget></item>
+     <item><widget class="QLineEdit" name="alphaEdit"><property name="placeholderText"><string>A</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>ResourceField</class><extends>QWidget</extends><header>ResourceField.h</header></customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

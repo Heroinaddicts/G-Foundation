@@ -67,7 +67,8 @@ bool TemplateArguments(const QString& type,QString& name,QStringList& arguments)
 QString ComponentType(const QString& type) {
     static const std::map<QString,QString> components={
         {"ITransformComponent","Transform"},{"IRectTransformComponent","RectTransform"},{"ICanvasComponent","Canvas"},
-        {"IImageComponent","Image"},{"ICameraComponent","Camera"},{"ILightComponent","Light"},{"IMeshComponent","Mesh"},
+        {"IImageComponent","Image"},{"ITextComponent","Text"},{"IButtonComponent","Button"},
+        {"ICameraComponent","Camera"},{"ILightComponent","Light"},{"IMeshComponent","Mesh"},
         {"IMeshRendererComponent","MeshRenderer"},{"ISkinnedMeshRendererComponent","SkinnedMeshRenderer"},
         {"IAnimatorComponent","Animator"},{"IRigidbodyComponent","Rigidbody"},{"IBoxColliderComponent","BoxCollider"},
         {"ISphereColliderComponent","SphereCollider"},{"ICapsuleColliderComponent","CapsuleCollider"},

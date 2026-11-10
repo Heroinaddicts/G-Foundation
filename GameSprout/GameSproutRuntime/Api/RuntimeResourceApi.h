@@ -64,6 +64,18 @@ struct TextureRenderData {
     SamplerSettings Sampler;
 };
 
+struct FontGlyph {
+    std::uint32_t Codepoint = 0;
+    std::uint32_t X = 0, Y = 0, Width = 0, Height = 0; // Atlas pixels, top-left origin.
+    float BearingX = 0, BearingY = 0; // Offset from baseline to bitmap top-left; Y is down.
+    float AdvanceX = 0;
+};
+struct FontRenderData {
+    ResourceReference Atlas;
+    float PixelSize = 0, Ascent = 0, Descent = 0;
+    std::vector<FontGlyph> Glyphs;
+};
+
 enum class MaterialShadingModel : std::uint8_t { Preview, Lit };
 struct MaterialRenderData {
     Color BaseColor;
@@ -125,6 +137,10 @@ public:
         data={};error="Humanoid Avatar provider is unavailable";return false;
     }
     virtual bool LoadAvatarMask(const ResourceReference&, AvatarMaskData& data, std::string& error) { data={};error="AvatarMask loading is unavailable";return false; }
+    // Prepared glyph metrics and texture identity. LoadTexture loads the atlas.
+    virtual bool LoadFont(const ResourceReference&, FontRenderData& data, std::string& error) {
+        data={};error="Font loading is unavailable";return false;
+    }
     // Success with empty bytes means this mesh has no native collision artifact
     // for the requested shape type. Runtime can still build from LoadMesh.
     virtual bool LoadMeshCollision(const ResourceReference&, bool convex,
