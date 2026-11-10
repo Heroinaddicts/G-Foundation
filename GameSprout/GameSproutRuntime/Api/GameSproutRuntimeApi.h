@@ -627,7 +627,7 @@ namespace GameSproutRuntime {
 
 }
 
-#define GET_MODULE(runtime, value, Name) ((value)=(runtime)->template FindModule<I##Name>(#Name))
+#define GET_MODULE(runtime, value, Name) ((value)=(runtime)->FindModule<I##Name>(#Name))
 
 #include "RuntimeAnimationApi.h"
 #include "RuntimeScriptApi.h"
