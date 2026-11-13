@@ -1,6 +1,7 @@
 #include "IDEDockerManager.h"
 #include "IDEDockerDragController.h"
 #include "IDEDockerFinal.h"
+#include "IDEDockerFloatingHost.h"
 #include <QDockWidget>
 #include <QLayout>
 #include <QMainWindow>
@@ -8,6 +9,7 @@
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QStyle>
+#include <QToolBar>
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -18,17 +20,22 @@ struct LayoutNode {
     QList<IDEDockerFinal*> Tabs;
     IDEDockerFinal* Active = nullptr;
     QRect Rect;
+    QRect Planned;
+    QSize Minimum;
+    int TabHeight = 0;
     int First = -1, Second = -1;
     Qt::Orientation Axis = Qt::Horizontal;
     float Ratio = 0.5f;
+    int InsertedExtent = 0;
+    bool InsertedFirst = false;
     bool IsLeaf() const { return First < 0 && Second < 0; }
 };
 class LayoutTree {
 public:
     std::vector<LayoutNode> Nodes;
     int Root = -1;
-    int Leaf(const QList<IDEDockerFinal*>& tabs, IDEDockerFinal* active, const QRect& rect) {
-        LayoutNode node;node.Tabs=tabs;node.Active=active;node.Rect=rect;
+    int Leaf(const QList<IDEDockerFinal*>& tabs, IDEDockerFinal* active, const QRect& rect, int tabHeight = 0) {
+        LayoutNode node;node.Tabs=tabs;node.Active=active;node.Rect=rect;node.TabHeight=tabHeight;
         Nodes.push_back(node);return static_cast<int>(Nodes.size()-1);
     }
     int Branch(int first,int second,Qt::Orientation axis,float ratio) {
@@ -78,9 +85,11 @@ public:
     int Remove(IDEDockerFinal* docker,int node) {
         if(node<0)return -1;
         if(Nodes[node].IsLeaf()) {
-            Nodes[node].Tabs.removeAll(docker);
-            if(Nodes[node].Tabs.empty())return -1;
-            if(Nodes[node].Active==docker)Nodes[node].Active=Nodes[node].Tabs.front();
+            auto& item=Nodes[node];
+            item.Tabs.removeAll(docker);
+            if(item.Tabs.empty())return -1;
+            if(item.Active==docker)item.Active=item.Tabs.front();
+            if(item.Tabs.size()==1)item.TabHeight=0;
             return node;
         }
         const int first=Remove(docker,Nodes[node].First),second=Remove(docker,Nodes[node].Second);
@@ -140,40 +149,93 @@ public:
         window->splitDockWidget(first,second,item.Axis);
         Restore(window,item.First);Restore(window,item.Second);
     }
-    void Plan(QMainWindow* window,int node,QSize extent,int separator,QList<QDockWidget*>& docks,QList<int>& widths,QList<int>& heights) const {
-        const LayoutNode& item=Nodes[node];
+    QSize CalculateMinimum(int node, int separator) {
+        auto& item=Nodes[node];
         if(item.IsLeaf()) {
-            auto* active=item.Active->GetDockWidget();int tabHeight=0;
-            if(item.Tabs.size()>1)for(QTabBar* bar:window->findChildren<QTabBar*>(QString(),Qt::FindDirectChildrenOnly)) {
-                if(bar->isVisible()&&bar->geometry().center().x()>=active->geometry().left()&&bar->geometry().center().x()<=active->geometry().right()
-                    &&std::abs(active->geometry().top()-bar->geometry().bottom()-1)<=6) {tabHeight=bar->height();break;}
+            QSize minimum{1,1};
+            for(auto* tab:item.Tabs) {
+                auto* dock=tab->GetDockWidget();
+                QSize size=dock->minimumSize().expandedTo(dock->minimumSizeHint());
+                if(item.Tabs.size()==1&&dock->titleBarWidget()&&dock->titleBarWidget()->maximumHeight()==0) {
+                    // The sole member regains its title after leaving a native tab group.
+                    size.rheight()+=TitleHeight;
+                }
+                minimum=minimum.expandedTo(size);
             }
-            docks.append(active);widths.append(std::max(1,extent.width()));heights.append(std::max(1,extent.height()-tabHeight));return;
+            if(item.Tabs.size()>1)minimum.rheight()+=item.TabHeight;
+            return item.Minimum=minimum;
         }
-        const int total=std::max(2,(item.Axis==Qt::Horizontal?extent.width():extent.height())-separator);
-        const int first=std::clamp(int(std::lround(total*item.Ratio)),1,total-1);
-        QSize a=extent,b=extent;
-        if(item.Axis==Qt::Horizontal){a.setWidth(first);b.setWidth(total-first);}
-        else {a.setHeight(first);b.setHeight(total-first);}
-        Plan(window,item.First,a,separator,docks,widths,heights);Plan(window,item.Second,b,separator,docks,widths,heights);
+        const auto first=CalculateMinimum(item.First,separator);
+        const auto second=CalculateMinimum(item.Second,separator);
+        return item.Minimum=item.Axis==Qt::Horizontal
+            ? QSize(first.width()+second.width()+separator,std::max(first.height(),second.height()))
+            : QSize(std::max(first.width(),second.width()),first.height()+second.height()+separator);
     }
-    void Resize(QMainWindow* window,int node) const {
-        // 一次性给每个标签组传递相互一致的叶子尺寸；逐层把整窗跨度传给局部节点会挤压其他分支。
-        QSize extent=window->contentsRect().size();
-        if(window->menuBar()->isVisible())extent.rheight()-=window->menuBar()->height();
-        if(auto* status=window->findChild<QStatusBar*>(QString(),Qt::FindDirectChildrenOnly);status&&status->isVisible())extent.rheight()-=status->height();
-        QList<QDockWidget*> docks;QList<int> widths,heights;
-        Plan(window,node,extent,window->style()->pixelMetric(QStyle::PM_DockWidgetSeparatorExtent),docks,widths,heights);
+    void Plan(int node, const QRect& rect, int separator) {
+        auto& item=Nodes[node];
+        item.Planned=rect;
+        if(item.IsLeaf())return;
+        const bool horizontal=item.Axis==Qt::Horizontal;
+        const int total=std::max(2,(horizontal?rect.width():rect.height())-separator);
+        const QSize aMin=Nodes[item.First].Minimum,bMin=Nodes[item.Second].Minimum;
+        const int firstMin=horizontal?aMin.width():aMin.height();
+        const int secondMin=horizontal?bMin.width():bMin.height();
+        const int low=firstMin+secondMin<=total?firstMin:1;
+        const int high=firstMin+secondMin<=total?total-secondMin:total-1;
+        const int preferred=item.InsertedExtent>0
+            ? (item.InsertedFirst?item.InsertedExtent:total-item.InsertedExtent)
+            : int(std::lround(total*item.Ratio));
+        const int first=std::clamp(preferred,low,high);
+        QRect a=rect,b=rect;
+        if(horizontal) {
+            a.setWidth(first);
+            b.setLeft(rect.left()+first+separator);
+        } else {
+            a.setHeight(first);
+            b.setTop(rect.top()+first+separator);
+        }
+        Plan(item.First,a,separator);
+        Plan(item.Second,b,separator);
+    }
+    void CollectSizes(int node,QList<QDockWidget*>& docks,QList<int>& widths,QList<int>& heights) const {
+        const auto& item=Nodes[node];
+        if(item.IsLeaf()) {
+            docks.append(item.Active->GetDockWidget());
+            widths.append(std::max(1,item.Planned.width()));
+            // Qt uses the supplied extent for the entire tab group, including its tab bar.
+            heights.append(std::max(1,item.Planned.height()));
+            return;
+        }
+        CollectSizes(item.First,docks,widths,heights);
+        CollectSizes(item.Second,docks,widths,heights);
+    }
+    void Resize(QMainWindow* window) const {
+        QList<QDockWidget*> docks;
+        QList<int> widths,heights;
+        CollectSizes(Root,docks,widths,heights);
         window->resizeDocks(docks,widths,Qt::Horizontal);window->resizeDocks(docks,heights,Qt::Vertical);
     }
+    int TitleHeight = 26;
 };
-LayoutTree Capture(IDEDockerManager* manager) {
-    QMainWindow* window=manager->Window();
+
+QRect Workspace(const QMainWindow* window) {
+    QRect rect=window->contentsRect();
+    if(const auto* menu=window->menuWidget();menu&&menu->isVisible())rect.setTop(std::max(rect.top(),menu->geometry().bottom()+1));
+    for(auto* toolbar:window->findChildren<QToolBar*>(QString(),Qt::FindDirectChildrenOnly))
+        if(toolbar->isVisible()&&window->toolBarArea(toolbar)==Qt::TopToolBarArea)
+            rect.setTop(std::max(rect.top(),toolbar->geometry().bottom()+1));
+    if(auto* status=window->findChild<QStatusBar*>(QString(),Qt::FindDirectChildrenOnly);status&&status->isVisible())
+        rect.setBottom(std::min(rect.bottom(),status->geometry().top()-1));
+    return rect;
+}
+
+LayoutTree Capture(const IDEDockerManager* manager,QMainWindow* window=nullptr) {
+    if(!window)window=manager->Window();
     const auto& dockers=manager->Dockers();
     LayoutTree tree;std::vector<int> leaves;QList<IDEDockerFinal*> seen;
     for(IDEDockerFinal* docker:dockers) {
         auto* dock=docker->GetDockWidget();
-        if(seen.contains(docker)||dock->isFloating()||dock->isHidden())continue;
+        if(seen.contains(docker)||manager->DockHost(dock)!=window||dock->isHidden())continue;
         QList<IDEDockerFinal*> tabs{docker};
         const auto nativePeers=window->tabifiedDockWidgets(dock);
         for(IDEDockerFinal* peer:dockers)if(peer!=docker&&!peer->GetDockWidget()->isHidden()&&!peer->GetDockWidget()->isFloating()&&nativePeers.contains(peer->GetDockWidget()))tabs.append(peer);
@@ -187,67 +249,192 @@ LayoutTree Capture(IDEDockerManager* manager) {
             for(IDEDockerFinal* tab:tabs)if(!ordered.contains(tab))ordered.append(tab);
             tabs=ordered;break;
         }
-        seen.append(tabs);leaves.push_back(tree.Leaf(tabs,active,active->GetDockWidget()->geometry()));
+        auto* activeDock=active->GetDockWidget();
+        auto rect=activeDock->geometry();
+        int tabHeight=0;
+        if(tabs.size()>1)for(auto* bar:window->findChildren<QTabBar*>(QString(),Qt::FindDirectChildrenOnly)) {
+            if(!bar->isHidden()&&bar->count()==tabs.size()&&rect.left()<=bar->geometry().center().x()&&
+                rect.right()>=bar->geometry().center().x()&&std::abs(rect.top()-bar->geometry().bottom()-1)<=6) {
+                tabHeight=rect.top()-bar->geometry().top();
+                rect.setTop(bar->geometry().top());
+                // A native reset can change order before the cached identities are refreshed.
+                QList<IDEDockerFinal*> remaining=tabs, ordered;
+                for(int index=0;index<bar->count();++index) {
+                    auto match=std::find_if(remaining.begin(),remaining.end(),[bar,index](IDEDockerFinal* tab) {
+                        return tab->GetDockWidget()->windowTitle()==bar->tabText(index);
+                    });
+                    if(match==remaining.end())break;
+                    if(std::any_of(std::next(match),remaining.end(),[match](IDEDockerFinal* tab) {
+                        return tab->GetDockWidget()->windowTitle()==(*match)->GetDockWidget()->windowTitle();
+                    }))break;
+                    ordered.append(*match);
+                    remaining.erase(match);
+                }
+                if(remaining.empty())tabs=ordered;
+                break;
+            }
+        }
+        if(tabs.size()==1)if(auto* title=activeDock->titleBarWidget();title&&title->minimumHeight()>0)
+            tree.TitleHeight=title->minimumHeight();
+        seen.append(tabs);leaves.push_back(tree.Leaf(tabs,active,rect,tabHeight));
     }
     tree.Root=tree.Build(leaves);return tree;
 }
-}
 
-bool IDEDockerManager::DropDocker(IDEDockerFinal* source,IDEDockerFinal* target,DockerDropPosition position,bool root,int tabIndex,const QList<IDEDockerFinal*>& targetSpan,float sourceFraction) {
-    if(!_Dockers.contains(source)||(!root&&!_Dockers.contains(target))||(!root&&source==target))return false;
-    ForgetClosedDocker(source);
-    RestoreMaximized();_Window->layout()->activate();
-    LayoutTree tree=Capture(this);
-    const int original=tree.Find(source,tree.Root),destination=tree.Find(target,tree.Root);
-    const bool sameGroup=original>=0&&original==destination;
-    if(position==DockerDropPosition::Tabs&&sameGroup&&tabIndex<0){source->Activate();return true;}
-    int originalIndex=-1;
-    if(original>=0)originalIndex=tree.Nodes[original].Tabs.indexOf(source);
-    tree.Root=tree.Remove(source,tree.Root);
-    if(position==DockerDropPosition::Tabs&&!root) {
-        const int leaf=tree.Find(target,tree.Root);if(leaf<0)return false;
-        auto& group=tree.Nodes[leaf];
-        int insertion=tabIndex<0?group.Tabs.size():tabIndex;
-        if(sameGroup&&originalIndex>=0&&tabIndex>originalIndex)--insertion;
-        group.Tabs.insert(std::clamp(insertion,0,int(group.Tabs.size())),source);group.Active=source;
-    } else {
-        const bool before=position==DockerDropPosition::Left||position==DockerDropPosition::Top;
-        const auto axis=position==DockerDropPosition::Left||position==DockerDropPosition::Right?Qt::Horizontal:Qt::Vertical;
-        const int old=root?tree.Root:targetSpan.empty()?tree.Find(target,tree.Root):tree.Cover(targetSpan,tree.Root);
-        if(old<0&&!root)return false;
-        const QRect rect=old>=0?tree.Nodes[old].Rect:_Window->rect();
-        const int leaf=tree.Leaf({source},source,rect);
-        if(old<0)tree.Root=leaf;
-        else {
-            const float fraction=sourceFraction>0&&sourceFraction<1?sourceFraction:(root?0.25f:0.5f);
-            const int branch=tree.Branch(before?leaf:old,before?old:leaf,axis,before?fraction:1-fraction);
-            tree.Root=root?branch:tree.Replace(tree.Root,old,branch);
+int FindSeparator(const LayoutTree& tree,const QMainWindow* window) {
+    int separator=17;
+    for(const auto& a:tree.Nodes) {
+        if(!a.IsLeaf()||!a.Rect.isValid())continue;
+        for(const auto& b:tree.Nodes) {
+            if(!b.IsLeaf()||!b.Rect.isValid())continue;
+            if(a.Rect.top()<=b.Rect.bottom()&&b.Rect.top()<=a.Rect.bottom()) {
+                const int gap=b.Rect.left()-a.Rect.right()-1;
+                if(gap>0)separator=std::min(separator,gap);
+            }
+            if(a.Rect.left()<=b.Rect.right()&&b.Rect.left()<=a.Rect.right()) {
+                const int gap=b.Rect.top()-a.Rect.bottom()-1;
+                if(gap>0)separator=std::min(separator,gap);
+            }
         }
     }
-    if(tree.Root<0)return false;
-    const bool updates=_Window->updatesEnabled();_Window->setUpdatesEnabled(false);
+    // Qt's stylesheet separator can be thicker than its native style metric.
+    return separator<=16?separator:std::max(6,window->style()->pixelMetric(QStyle::PM_DockWidgetSeparatorExtent));
+}
+
+int AddSplit(LayoutTree& tree,IDEDockerFinal* source,IDEDockerFinal* target,DockerDropPosition position,
+    bool root,const QList<IDEDockerFinal*>& targetSpan,float sourceFraction,const QRect& workspace) {
+    tree.Root=tree.Remove(source,tree.Root);
+    int old=tree.Root;
+    if(!root) {
+        old=targetSpan.empty()?tree.Find(target,tree.Root):tree.Cover(targetSpan,tree.Root);
+    }
+    if(old<0&&!root)return -1;
+    const QRect rect=old>=0?tree.Nodes[old].Rect:workspace;
+    const int leaf=tree.Leaf({source},source,rect);
+    if(old<0){tree.Root=leaf;return leaf;}
+    const bool before=position==DockerDropPosition::Left||position==DockerDropPosition::Top;
+    const bool horizontal=position==DockerDropPosition::Left||position==DockerDropPosition::Right;
+    const int available=horizontal?rect.width():rect.height();
+    const int desired=root?200:std::max(100,int(std::lround(available/3.0)));
+    const auto axis=horizontal?Qt::Horizontal:Qt::Vertical;
+    const bool restoreExtent=sourceFraction>0&&sourceFraction<1;
+    const int branch=tree.Branch(before?leaf:old,before?old:leaf,axis,
+        restoreExtent?(before?sourceFraction:1-sourceFraction):0.5f);
+    if(!restoreExtent) {
+        tree.Nodes[branch].InsertedExtent=desired;
+        tree.Nodes[branch].InsertedFirst=before;
+    }
+    tree.Root=root?branch:tree.Replace(tree.Root,old,branch);
+    return leaf;
+}
+}
+
+QRect IDEDockerManager::PreviewSplit(IDEDockerFinal* source,IDEDockerFinal* target,DockerDropPosition position,
+    bool root,QMainWindow* host) const {
+    if(!_Dockers.contains(source)||source==target||position==DockerDropPosition::Tabs||
+        (!root&&!_Dockers.contains(target)))return {};
+    auto* targetDock=target?target->GetDockWidget():nullptr;
+    const bool standalone=targetDock&&targetDock->isFloating();
+    if(!host)host=DockHost(targetDock);
+    if(!host)host=_Window;
+    const QRect workspace=standalone?QRect(QPoint(),targetDock->size()):Workspace(host);
+    LayoutTree tree;
+    if(standalone)tree.Root=tree.Leaf({target},target,workspace);
+    else tree=Capture(this,host);
+    const int separator=FindSeparator(tree,host);
+    const int moved=AddSplit(tree,source,target,position,root,{},-1,workspace);
+    if(moved<0||!workspace.isValid())return {};
+    const auto minimum=tree.CalculateMinimum(tree.Root,separator);
+    if(minimum.width()>workspace.width()||minimum.height()>workspace.height())return {};
+    tree.Plan(tree.Root,workspace,separator);
+    QRect result=tree.Nodes[moved].Planned;
+    result.moveTopLeft((standalone?static_cast<QWidget*>(targetDock):host)->mapToGlobal(result.topLeft()));
+    return result;
+}
+
+bool IDEDockerManager::DropDocker(IDEDockerFinal* source,IDEDockerFinal* target,DockerDropPosition position,bool root,
+    int tabIndex,const QList<IDEDockerFinal*>& targetSpan,float sourceFraction,QMainWindow* host) {
+    if(!_Dockers.contains(source)||(!root&&!_Dockers.contains(target))||source==target||
+        (root&&position==DockerDropPosition::Tabs))return false;
+    auto* sourceDock=source->GetDockWidget();
+    auto* targetDock=target?target->GetDockWidget():nullptr;
+    auto* previousHost=IDEDockerFloatingHost::For(sourceDock);
+    const bool promote=targetDock&&targetDock->isFloating();
+    auto* floatingHost=promote?IDEDockerFloatingHost::Promote(_Window,targetDock):
+        qobject_cast<IDEDockerFloatingHost*>(host?host:DockHost(targetDock));
+    if(promote) {
+        if(!floatingHost)return false;
+        ObserveFloatingHost(floatingHost);
+    }
+    host=floatingHost?static_cast<QMainWindow*>(floatingHost):(host?host:_Window);
+    ForgetClosedDocker(source);
+    if(host==_Window)RestoreMaximized();
+    host->layout()->activate();
+
+    if(position==DockerDropPosition::Tabs) {
+        if(!sourceDock->isFloating()&&host->tabifiedDockWidgets(targetDock).contains(sourceDock)) {
+            source->Activate();
+            return true;
+        }
+        if(floatingHost)floatingHost->AddPanel(sourceDock);
+        else {
+            if(previousHost)previousHost->RemovePanel(sourceDock);
+            if(sourceDock->isFloating())sourceDock->setFloating(false);
+        }
+        // A dock brought back from floating can return to its old Qt tab slot.
+        // Detach it before attaching it to the destination group.
+        host->removeDockWidget(sourceDock);
+        host->tabifyDockWidget(targetDock,sourceDock);
+        sourceDock->show();
+        sourceDock->raise();
+        if(!floatingHost&&previousHost)previousHost->CloseIfNoVisiblePanels();
+        PlaceTab(host,source,tabIndex);
+        RequestRefresh();
+        return true;
+    }
+
+    const QRect workspace=Workspace(host);
+    LayoutTree tree=Capture(this,host);
+    const int separator=FindSeparator(tree,host);
+    if(AddSplit(tree,source,target,position,root,targetSpan,sourceFraction,workspace)<0)return false;
+    tree.CalculateMinimum(tree.Root,separator);
+    tree.Plan(tree.Root,workspace,separator);
+    const bool updates=host->updatesEnabled();
+    host->setUpdatesEnabled(false);
+    if(previousHost&&previousHost!=floatingHost)previousHost->RemovePanel(sourceDock);
+    if(floatingHost&&IDEDockerFloatingHost::For(sourceDock)!=floatingHost)floatingHost->AddPanel(sourceDock);
     // 所有可见停靠面板进入同一分割树，避免四个 Qt dock-area 环绕空中央区的限制。
     // 浮动面板不参与本次重排；关闭的面板保留原对象，之后仍能从窗口菜单打开。
     QList<QDockWidget*> closed;
     for(IDEDockerFinal* docker:_Dockers) {
         auto* dock=docker->GetDockWidget();
-        if(dock->isFloating()&&docker!=source)continue;
+        if(docker!=source&&(dock->isFloating()||dock->parentWidget()!=host))continue;
         const bool hidden=dock->isHidden()&&docker!=source;
         if(dock->isFloating())dock->setFloating(false);
-        _Window->removeDockWidget(dock);_Window->addDockWidget(Qt::LeftDockWidgetArea,dock);
+        host->removeDockWidget(dock);host->addDockWidget(Qt::LeftDockWidgetArea,dock);
         // add 清除原标签占位，再移出；构建分割树时只放入已到达的叶子，
         // 不能让尚未构建的面板作为原生兄弟节点改变 splitDockWidget 的插入层级。
-        _Window->removeDockWidget(dock);dock->hide();
+        host->removeDockWidget(dock);dock->hide();
         if(hidden)closed.append(dock);
     }
-    _Window->addDockWidget(Qt::LeftDockWidgetArea,tree.Anchor(tree.Root));
-    tree.Restore(_Window,tree.Root);
-    for(QDockWidget* dock:closed){_Window->addDockWidget(Qt::LeftDockWidgetArea,dock);dock->hide();}
-    _Window->layout()->activate();tree.Resize(_Window,tree.Root);_Window->layout()->activate();
-    source->GetDockWidget()->show();source->GetDockWidget()->raise();
-    QList<QList<IDEDockerFinal*>> groups;tree.Groups(tree.Root,groups);
-    for(const auto& group:groups)for(IDEDockerFinal* tab:group)_TabOrders.insert(tab,group);
-    _Window->setUpdatesEnabled(updates);RequestRefresh();return true;
+    host->addDockWidget(Qt::LeftDockWidgetArea,tree.Anchor(tree.Root));
+    tree.Restore(host,tree.Root);
+    for(QDockWidget* dock:closed){host->addDockWidget(Qt::LeftDockWidgetArea,dock);dock->hide();}
+    QList<QList<IDEDockerFinal*>> groups;
+    tree.Groups(tree.Root,groups);
+    for(const auto& group:groups)for(IDEDockerFinal* tab:group) {
+        tab->SetTabbedTitle(group.size()>1);
+        _TabOrders.insert(tab,group);
+    }
+    host->layout()->activate();
+    tree.Resize(host);
+    host->layout()->activate();
+    sourceDock->show();sourceDock->raise();
+    host->setUpdatesEnabled(updates);
+    if(host==_Window)RememberHorizontalDockWidths();
+    if(previousHost&&previousHost!=floatingHost)previousHost->CloseIfNoVisiblePanels();
+    RequestRefresh();
+    return true;
 }
 
 void IDEDockerManager::RememberClosedDocker(IDEDockerFinal* docker,bool confirmed) {
@@ -297,6 +484,12 @@ void IDEDockerManager::FloatDocker(IDEDockerFinal* source,const QPoint& globalPo
     ForgetClosedDocker(source);
     RestoreMaximized();
     auto* dock=source->GetDockWidget();const QSize size=dock->size();
+    auto* previousHost=IDEDockerFloatingHost::For(dock);
+    if(previousHost) {
+        previousHost->RemovePanel(dock);
+        _Window->addDockWidget(Qt::LeftDockWidgetArea,dock);
+        previousHost->CloseIfNoVisiblePanels();
+    }
     dock->setFloating(true);dock->resize(size);dock->show();
     const int titleHeight=dock->titleBarWidget()?dock->titleBarWidget()->sizeHint().height():0;
     dock->move(globalPosition-QPoint(dock->width()/2,titleHeight/2));dock->raise();RequestRefresh();

@@ -13,6 +13,7 @@ QLabel#dropHint { color:#f1f6ff; background:rgba(28,48,74,220); border:1px solid
   <property name="bottomText" stdset="0"><string>停靠到下方</string></property>
   <property name="rootPrefix" stdset="0"><string>主布局 · </string></property>
   <layout class="QVBoxLayout" name="previewLayout">
+   <property name="sizeConstraint"><enum>QLayout::SetNoConstraint</enum></property>
    <property name="leftMargin"><number>8</number></property><property name="topMargin"><number>8</number></property><property name="rightMargin"><number>8</number></property><property name="bottomMargin"><number>8</number></property>
    <item><spacer name="topSpace"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
    <item><widget class="QLabel" name="dropHint">

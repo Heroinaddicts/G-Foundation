@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QPoint>
+#include <QPointer>
 #include <QRect>
 
 class IDEDockerManager;
@@ -8,6 +9,7 @@ class IDEDockerFinal;
 class IDEDockerDropOverlay;
 class QWidget;
 class QTabBar;
+class QMainWindow;
 
 enum class DockerDropPosition {Tabs,Left,Right,Top,Bottom};
 
@@ -36,16 +38,19 @@ private:
     void UpdateTarget(const QPoint& globalPosition);
     void FinishDrag(const QPoint& globalPosition);
     void PublishState();
-    QRect WorkspaceRect() const;
+    QRect WorkspaceRect(QMainWindow* host) const;
     IDEDockerFinal* OtherTab(IDEDockerFinal* anchor) const;
-    void SetTarget(IDEDockerFinal* docker,DockerDropPosition position,bool root,const QRect& rectangle,int tabIndex=-1);
+    void SetTarget(QMainWindow* host, IDEDockerFinal* docker, DockerDropPosition position, bool root,
+                   const QRect& rectangle, int tabIndex=-1, QTabBar* bar=nullptr);
     IDEDockerManager* _Manager; // 借用；Manager 先取消拖拽再销毁 Docker。
     IDEDockerDropOverlay* _Overlay=nullptr;
     IDEDockerFinal* _Source=nullptr;
     IDEDockerFinal* _Target=nullptr;
-    QWidget* _GrabWidget=nullptr;
+    QPointer<QWidget> _GrabWidget;
+    QPointer<QMainWindow> _TargetHost;
+    QPointer<QTabBar> _TargetBar;
     QPoint _PressPosition;
-    QRect _Workspace;
+    QRect _PreviewRect;
     bool _Dragging=false,_HasTarget=false,_Root=false,_WasMaximized=false;
     DockerDropPosition _Position=DockerDropPosition::Tabs;
     int _TabIndex=-1;

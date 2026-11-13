@@ -31,20 +31,23 @@ static void CheckDockRestoreInteractions(IIDEWindow* ide,IDockerLayoutManager* l
     QWidget* const consoleContent=console->widget();
     CloseDock(console);
     auto source=DragSource(host,hierarchy);
-    DragDock(host,controller,source.Widget,source.Point,host->mapToGlobal(VisibleGroup(host,scene).center()),tabsPreview);
+    DragDock(host,controller,source.Widget,source.Point,DropOnTabBar(host,scene),tabsPreview);
     Check(console->isHidden(),"Unrelated drag reopened closed Console");
     ReopenDockFromWindowMenu(host,console);
     auto* reopenedBar=Tabs(host,"Project","Console");
     Check(host->tabifiedDockWidgets(project).contains(console)&&reopenedBar&&
           (TabIndex(reopenedBar,"Console")>TabIndex(reopenedBar,"Project"))==consoleAfterProject,
-          "Closed Console lost its original Project group or tab order after unrelated drag");
+          "Closed Console lost its original Project group or tab order after unrelated drag, group="+
+          std::to_string(host->tabifiedDockWidgets(project).contains(console))+" bar="+std::to_string(reopenedBar!=nullptr)+
+          " expectedAfter="+std::to_string(consoleAfterProject)+" actualAfter="+
+          std::to_string(reopenedBar&&TabIndex(reopenedBar,"Console")>TabIndex(reopenedBar,"Project")));
     Check(console->widget()==consoleContent,"Reopening Console recreated its contents");
     std::cout<<"PASS closed Console restored to Project tab group after unrelated drag"<<std::endl;
 
     // A closed one-pane split retains the parent/sibling placement, not just an area enum.
     reset();const QRect inspectorBefore=inspector->geometry();QWidget* const inspectorContent=inspector->widget();
     CloseDock(inspector);source=DragSource(host,game);
-    DragDock(host,controller,source.Widget,source.Point,host->mapToGlobal(VisibleGroup(host,project).center()),tabsPreview);
+    DragDock(host,controller,source.Widget,source.Point,DropOnTabBar(host,project),tabsPreview);
     Check(inspector->isHidden(),"Unrelated drag reopened closed Inspector");
     ReopenDockFromWindowMenu(host,inspector);
     QRect remaining;
@@ -79,17 +82,17 @@ static void CheckDockRestoreInteractions(IIDEWindow* ide,IDockerLayoutManager* l
     // back on Escape, while a committed drag deliberately keeps the new layout.
     auto* maximize=DockCommand(scene,QStringLiteral("DockerMaximize"));
     const QByteArray normalState=host->saveState(1);
-    const QPoint projectCenter=host->mapToGlobal(VisibleGroup(host,project).center());
+    const QPoint projectTab=DropOnTabBar(host,project);
     maximize->trigger();Settle();const QRect maximizedGeometry=scene->geometry();
     Check(hierarchy->isHidden()&&inspector->isHidden()&&project->isHidden(),"Scene maximize fixture did not hide other panes");
     source=DragSource(host,scene);
-    DragDock(host,controller,source.Widget,source.Point,projectCenter,tabsPreview,true);
+    DragDock(host,controller,source.Widget,source.Point,projectTab,tabsPreview,true);
     Check(hierarchy->isHidden()&&inspector->isHidden()&&project->isHidden()&&scene->geometry()==maximizedGeometry,
           "Escape after dragging maximized Scene did not restore maximization");
     maximize->trigger();Settle();
     Check(host->saveState(1)==normalState,"Cancelling maximized drag lost the original normal dock layout");
     maximize->trigger();Settle();source=DragSource(host,scene);
-    DragDock(host,controller,source.Widget,source.Point,projectCenter,tabsPreview);
+    DragDock(host,controller,source.Widget,source.Point,projectTab,tabsPreview);
     Check(!hierarchy->isHidden()&&!inspector->isHidden()&&!project->isHidden()&&host->tabifiedDockWidgets(project).contains(scene),
           "Committing a maximized Scene drag restored maximization over the new layout");
     std::cout<<"PASS maximized Scene drag Escape rollback and committed normal layout"<<std::endl;

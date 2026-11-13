@@ -2,6 +2,7 @@
 #include "IDEDockerDropOverlay.h"
 #include "IDEDockerManager.h"
 #include "IDEDockerFinal.h"
+#include "IDEDockerFloatingHost.h"
 #include <QAbstractButton>
 #include <QApplication>
 #include <QDockWidget>
@@ -14,7 +15,6 @@
 #include <QTabBar>
 #include <QVariant>
 #include <algorithm>
-#include <limits>
 #include <iterator>
 
 namespace {
@@ -33,19 +33,40 @@ bool IsButton(QWidget* widget,QWidget* boundary) {
     }
     return false;
 }
-QRect SplitPreview(const QRect& rectangle,DockerDropPosition position,bool root) {
-    const bool horizontal=position==DockerDropPosition::Left || position==DockerDropPosition::Right;
-    const int available=horizontal?rectangle.width():rectangle.height();
-    const int extent=qMax(1,available/(root?4:2));
-    switch(position) {
-    case DockerDropPosition::Left:return QRect(rectangle.left(),rectangle.top(),extent,rectangle.height());
-    case DockerDropPosition::Right:return QRect(rectangle.right()-extent+1,rectangle.top(),extent,rectangle.height());
-    case DockerDropPosition::Top:return QRect(rectangle.left(),rectangle.top(),rectangle.width(),extent);
-    case DockerDropPosition::Bottom:return QRect(rectangle.left(),rectangle.bottom()-extent+1,rectangle.width(),extent);
-    case DockerDropPosition::Tabs:return rectangle;
-    }
-    return rectangle;
+constexpr DockerDropPosition Edges[]{
+    DockerDropPosition::Left, DockerDropPosition::Right,
+    DockerDropPosition::Top, DockerDropPosition::Bottom
+};
+
+DockerDropPosition LocalEdge(const QRect& content, const QPoint& point) {
+    if (!content.contains(point)) return DockerDropPosition::Tabs;
+    const float width = qMax(1, qMin(content.width() / 3, 300));
+    const float height = qMax(1, qMin(content.height() / 3, 300));
+    const float distances[] = {
+        (point.x() - content.left()) / width, (content.right() - point.x()) / width,
+        (point.y() - content.top()) / height, (content.bottom() - point.y()) / height
+    };
+    const auto closest = std::min_element(std::begin(distances), std::end(distances));
+    return *closest < 1 ? Edges[closest - std::begin(distances)] : DockerDropPosition::Tabs;
 }
+
+DockerDropPosition RootEdge(const QRect& workspace, const QPoint& point) {
+    constexpr int outer = 28;
+    if (!workspace.isValid() || !workspace.adjusted(-outer, -outer, outer, outer).contains(point))
+        return DockerDropPosition::Tabs;
+    const int distances[] = {
+        point.x() - workspace.left(), workspace.right() - point.x(),
+        point.y() - workspace.top(), workspace.bottom() - point.y()
+    };
+    int best = -1;
+    for (int edge = 0; edge < 4; ++edge) {
+        const int inner = edge < 2 ? 12 : 4;
+        if (distances[edge] < -outer || distances[edge] > inner) continue;
+        if (best == -1 || qAbs(distances[edge]) < qAbs(distances[best])) best = edge;
+    }
+    return best == -1 ? DockerDropPosition::Tabs : Edges[best];
+}
+
 }
 
 IDEDockerDragController::IDEDockerDragController(IDEDockerManager* manager):QObject(manager),_Manager(manager) {
@@ -69,11 +90,11 @@ void IDEDockerDragController::PublishState() {
 }
 void IDEDockerDragController::CancelDrag(IDEDockerFinal* docker) {
     if(docker && docker!=_Source && docker!=_Target) return;
-    auto* grabbed=_GrabWidget;
+    auto* grabbed=_GrabWidget.data();
     auto* source=_Source;
     const bool restoreMaximized=!docker && _WasMaximized;
     _Source=nullptr;_Target=nullptr;_GrabWidget=nullptr;_Dragging=false;_HasTarget=false;_Root=false;_TabIndex=-1;
-    _Position=DockerDropPosition::Tabs;_Workspace={};_WasMaximized=false;
+    _Position=DockerDropPosition::Tabs;_PreviewRect={};_TargetHost=nullptr;_TargetBar=nullptr;_WasMaximized=false;
     if(_Overlay) _Overlay->hide();
     // 先清状态再释放，避免 UngrabMouse 事件导致递归取消。
     if(grabbed && QWidget::mouseGrabber()==grabbed) QWidget::mouseGrabber()->releaseMouse();
@@ -88,7 +109,10 @@ bool IDEDockerDragController::BeginPress(QWidget* widget,const QPoint& point) {
     IDEDockerFinal* source=nullptr;
     for(auto* current=widget;current && current!=window;current=current->parentWidget()) {
         auto* bar=qobject_cast<QTabBar*>(current);
-        if(!bar || bar->parentWidget()!=window || !bar->isVisible()) continue;
+        if(!bar || !bar->isVisible()) continue;
+        auto* host=qobject_cast<QMainWindow*>(bar->parentWidget());
+        if(host!=window && !qobject_cast<IDEDockerFloatingHost*>(host)) continue;
+        if(!_Manager->ActiveDocker(bar)) return false;
         const int index=bar->tabAt(bar->mapFromGlobal(point));
         if(index<0) return false;
         bar->setCurrentIndex(index);
@@ -101,15 +125,14 @@ bool IDEDockerDragController::BeginPress(QWidget* widget,const QPoint& point) {
         if(widget==title || title->isAncestorOf(widget)) {source=docker;break;}
     }
     if(!source || !(source->GetDockWidget()->features()&QDockWidget::DockWidgetMovable)) return false;
-    _Source=source;_PressPosition=point;_Workspace=WorkspaceRect();PublishState();return true;
+    _Source=source;_PressPosition=point;PublishState();return true;
 }
-QRect IDEDockerDragController::WorkspaceRect() const {
-    auto* window=_Manager->Window();
+QRect IDEDockerDragController::WorkspaceRect(QMainWindow* window) const {
     if(!window || !window->isVisible() || window->isMinimized()) return {};
     QRect result;
     for(auto* docker:_Manager->Dockers()) {
         auto* dock=docker->GetDockWidget();
-        if(dock->isFloating() || !dock->isVisible() || dock->geometry().left()<0 || dock->geometry().top()<0) continue;
+        if(_Manager->DockHost(dock)!=window || !dock->isVisible() || dock->geometry().left()<0 || dock->geometry().top()<0) continue;
         const QRect rectangle=GlobalRect(dock).intersected(GlobalRect(window));
         result=result.isNull()?rectangle:result.united(rectangle);
     }
@@ -125,7 +148,9 @@ QRect IDEDockerDragController::WorkspaceRect() const {
 }
 IDEDockerFinal* IDEDockerDragController::OtherTab(IDEDockerFinal* anchor) const {
     if(anchor!=_Source) return anchor;
-    const auto peers=_Manager->Window()->tabifiedDockWidgets(_Source->GetDockWidget());
+    auto* host=_Manager->DockHost(_Source->GetDockWidget());
+    if(!host) return nullptr;
+    const auto peers=host->tabifiedDockWidgets(_Source->GetDockWidget());
     for(auto* candidate:_Manager->Dockers()) if(candidate!=_Source && peers.contains(candidate->GetDockWidget()) &&
         !candidate->GetDockWidget()->isHidden() && !candidate->GetDockWidget()->isFloating()) return candidate;
     return nullptr;
@@ -135,91 +160,127 @@ void IDEDockerDragController::StartDrag() {
     _WasMaximized=_Manager->IsMaximized(_Source);
     _Manager->RestoreMaximized();
     if(!_Source) return;
-    _Dragging=true;_Workspace=WorkspaceRect();
-    _GrabWidget=_Source->GetDockWidget()->isFloating()?static_cast<QWidget*>(_Source->GetDockWidget()):static_cast<QWidget*>(_Manager->Window());
+    _Dragging=true;
+    _GrabWidget=_Source->GetDockWidget()->window();
     _GrabWidget->grabMouse(Qt::ClosedHandCursor);_GrabWidget->grabKeyboard();
     PublishState();
 }
-void IDEDockerDragController::SetTarget(IDEDockerFinal* target,DockerDropPosition position,bool root,const QRect& rectangle,int index) {
-    _Target=target;_Position=position;_Root=root;_HasTarget=true;_TabIndex=index;
-    const bool reorder=target && position==DockerDropPosition::Tabs && !_Source->GetDockWidget()->isFloating() &&
-        _Manager->Window()->tabifiedDockWidgets(_Source->GetDockWidget()).contains(target->GetDockWidget());
-    if(_Overlay) _Overlay->ShowPreview(rectangle,position,root,reorder);
+void IDEDockerDragController::SetTarget(QMainWindow* host, IDEDockerFinal* target,
+    DockerDropPosition position, bool root, const QRect& rectangle, int index, QTabBar* bar) {
+    if (_HasTarget && _TargetHost == host && _Target == target && _Position == position &&
+        _Root == root && _PreviewRect == rectangle && _TabIndex == index && _TargetBar == bar) return;
+    _TargetHost=host;_Target=target;_Position=position;_Root=root;_HasTarget=true;
+    _TabIndex=index;_TargetBar=bar;_PreviewRect=rectangle;
+    if(_Overlay) _Overlay->ShowPreview(rectangle,position,root,bar!=nullptr);
     PublishState();
 }
+
 void IDEDockerDragController::UpdateTarget(const QPoint& point) {
-    _Target=nullptr;_HasTarget=false;_Root=false;_TabIndex=-1;
-    if(_Overlay) _Overlay->hide();
-    auto* window=_Manager->Window();
-    _Workspace=WorkspaceRect();
-    // 根边缘独立于单组，优先命中；容许工作区外侧少量余量，避免细边缘难以命中。
-    if(_Workspace.isValid() && _Workspace.adjusted(-8,-8,8,8).contains(point)) {
-        const int distances[]={qAbs(point.x()-_Workspace.left()),qAbs(point.x()-_Workspace.right()),
-            qAbs(point.y()-_Workspace.top()),qAbs(point.y()-_Workspace.bottom())};
-        const auto closest=std::min_element(std::begin(distances),std::end(distances));
-        if(*closest<=8) {
-            const DockerDropPosition positions[]={DockerDropPosition::Left,DockerDropPosition::Right,DockerDropPosition::Top,DockerDropPosition::Bottom};
-            const auto position=positions[closest-std::begin(distances)];
-            SetTarget(nullptr,position,true,SplitPreview(_Workspace,position,true));return;
+    auto* main = _Manager->Window();
+    auto* hit = QApplication::widgetAt(point);
+    auto* top = hit ? hit->window() : nullptr;
+    auto* host = qobject_cast<QMainWindow*>(top);
+    IDEDockerFinal* standalone = nullptr;
+
+    if (!host && top) {
+        for (auto* docker : _Manager->Dockers())
+            if (docker->GetDockWidget() == top && docker->GetDockWidget()->isFloating()) { standalone = docker; break; }
+    }
+    // Outside an application's client rect widgetAt() may return null.
+    // Prefer a floating host's outer activation band over the main one.
+    if (!top) {
+        for (auto* floating : main->findChildren<IDEDockerFloatingHost*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (floating->isVisible() && !floating->isMinimized() &&
+                RootEdge(WorkspaceRect(floating), point) != DockerDropPosition::Tabs) { host = floating; break; }
+        }
+        if (!host && main->isVisible() && !main->isMinimized()) host = main;
+    }
+    if (host && host != main && !qobject_cast<IDEDockerFloatingHost*>(host)) host = nullptr;
+
+    if (host) {
+        // A native bar exposes a gap between two tabs, including the ends.
+        for (auto* bar : host->findChildren<QTabBar*>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (!bar->isVisible() || !GlobalRect(bar).contains(point)) continue;
+            if (hit && hit != bar && !bar->isAncestorOf(hit)) continue;
+            auto* active = _Manager->ActiveDocker(bar);
+            auto* target = OtherTab(active);
+            if (!target) continue;
+            const QPoint local = bar->mapFromGlobal(point);
+            const int hovered = bar->tabAt(local);
+            const int index = hovered < 0 ? bar->count() : hovered + (local.x() > bar->tabRect(hovered).center().x());
+            const int x = qBound(4, index == bar->count() ? bar->tabRect(index - 1).right() + 1 :
+                bar->tabRect(index).left(), qMax(4, bar->width() - 4));
+            const QRect preview(bar->mapToGlobal(QPoint(x - 4, 0)), QSize(8, bar->height()));
+            SetTarget(host, target, DockerDropPosition::Tabs, false, preview, index, bar);
+            return;
+        }
+        const auto edge = RootEdge(WorkspaceRect(host), point);
+        if (edge != DockerDropPosition::Tabs) {
+            const QRect preview = _Manager->PreviewSplit(_Source, nullptr, edge, true, host);
+            if (preview.isValid()) { SetTarget(host, nullptr, edge, true, preview); return; }
         }
     }
-    // 标签栏提供插入缝 [0,count]；身份交给 Manager 解析，不比较标题文字。
-    for(auto* bar:window->findChildren<QTabBar*>(QString(),Qt::FindDirectChildrenOnly)) {
-        if(!bar->isVisible() || !GlobalRect(bar).contains(point)) continue;
-        const QPoint local=bar->mapFromGlobal(point);const int hovered=bar->tabAt(local);
-        const int insertion=hovered<0?bar->count():hovered+(local.x()>bar->tabRect(hovered).center().x()?1:0);
-        auto* anchor=hovered<0?_Manager->ActiveDocker(bar):_Manager->DockerForTab(bar,hovered);
-        auto* target=OtherTab(anchor);
-        if(!target) continue;
-        const bool sameGroup=window->tabifiedDockWidgets(_Source->GetDockWidget()).contains(target->GetDockWidget());
-        auto* active=_Manager->ActiveDocker(bar);
-        QRect preview=active?GlobalRect(active->GetDockWidget()):GlobalRect(bar);
-        if(sameGroup && bar->count()) {
-            const int x=insertion>=bar->count()?bar->tabRect(bar->count()-1).right()+1:bar->tabRect(insertion).left();
-            preview=QRect(bar->mapToGlobal(QPoint(x-8,0)),QSize(16,bar->height()));
+
+    for (auto* docker : _Manager->Dockers()) {
+        auto* dock = docker->GetDockWidget();
+        if (!dock->isVisible() || dock->isHidden() || !GlobalRect(dock).contains(point)) continue;
+        if (standalone ? docker != standalone : !host || _Manager->DockHost(dock) != host ||
+            !host->rect().contains(dock->geometry().center())) continue;
+        auto* target = OtherTab(docker);
+        if (!target) continue;
+        QRect content = GlobalRect(dock);
+        if (auto* title = dock->titleBarWidget(); title && title->isVisible() && title->height() > 0) {
+            const QRect header = GlobalRect(title);
+            if (header.contains(point)) {
+                SetTarget(host, target, DockerDropPosition::Tabs, false, header);
+                return;
+            }
+            content.setTop(qMax(content.top(), header.bottom() + 1));
         }
-        SetTarget(target,DockerDropPosition::Tabs,false,preview,insertion);return;
+        const auto edge = LocalEdge(content, point);
+        if (edge != DockerDropPosition::Tabs) {
+            const QRect preview = _Manager->PreviewSplit(_Source, target, edge, false, host);
+            if (preview.isValid()) { SetTarget(host, target, edge, false, preview); return; }
+        }
+        break;
     }
-    // 局部四边各占内容区三分之一；角落按归一化距离选择最近边，其余中心合并标签。
-    for(auto* docker:_Manager->Dockers()) {
-        auto* dock=docker->GetDockWidget();
-        if(dock->isFloating() || !dock->isVisible() || dock->geometry().left()<0 || dock->geometry().top()<0) continue;
-        const QRect rectangle=GlobalRect(dock);
-        if(!rectangle.contains(point)) continue;
-        auto* target=OtherTab(docker);if(!target) continue;
-        QRect content=rectangle;
-        if(auto* title=dock->titleBarWidget();title && title->isVisible() && title->height()>0) {
-            const QRect header=GlobalRect(title);
-            if(header.contains(point)) {SetTarget(target,DockerDropPosition::Tabs,false,rectangle);return;}
-            content.setTop(qMax(content.top(),header.bottom()+1));
-        }
-        const float x=float(point.x()-content.left())/qMax(1,content.width());
-        const float y=float(point.y()-content.top())/qMax(1,content.height());
-        const float distances[]={x,1-x,y,1-y};const auto closest=std::min_element(std::begin(distances),std::end(distances));
-        DockerDropPosition position=DockerDropPosition::Tabs;
-        if(*closest<1.0f/3.0f) {
-            const DockerDropPosition positions[]={DockerDropPosition::Left,DockerDropPosition::Right,DockerDropPosition::Top,DockerDropPosition::Bottom};
-            position=positions[closest-std::begin(distances)];
-        }
-        SetTarget(target,position,false,SplitPreview(rectangle,position,false));return;
+    if (_HasTarget) {
+        _Target=nullptr;_TargetHost=nullptr;_TargetBar=nullptr;_HasTarget=false;_Root=false;_TabIndex=-1;_PreviewRect={};
+        if (_Overlay) _Overlay->hide();
+        PublishState();
     }
-    PublishState();
 }
+
 void IDEDockerDragController::FinishDrag(const QPoint& point) {
-    if(!_Source) return;
-    if(!_Dragging) {CancelDrag();return;}
+    if (!_Source) return;
+    if (!_Dragging) { CancelDrag(); return; }
     UpdateTarget(point);
-    auto* source=_Source;auto* target=_Target;
-    const bool drop=_HasTarget,root=_Root;const auto position=_Position;const int index=_TabIndex;
-    const bool outside=!_Manager->Window()->isVisible() || _Manager->Window()->isMinimized() || !GlobalRect(_Manager->Window()).contains(point);
-    // 松开鼠标即结束提交事务，取消清理不再还原拖拽前的最大化布局。
-    _WasMaximized=false;
+    auto* source = _Source;
+    auto* target = _Target;
+    const auto host = _TargetHost;
+    const auto bar = _TargetBar;
+    const bool drop = _HasTarget, root = _Root;
+    const auto position = _Position;
+    const int index = _TabIndex;
+    bool inside = _Manager->Window()->isVisible() && !_Manager->Window()->isMinimized() &&
+        GlobalRect(_Manager->Window()).contains(point);
+    for (auto* docker : _Manager->Dockers()) {
+        auto* window = docker->GetDockWidget()->window();
+        if (window != _Manager->Window() && window->isVisible() && !window->isMinimized() &&
+            GlobalRect(window).contains(point)) inside = true;
+    }
+    _WasMaximized = _WasMaximized && !drop && inside;
     CancelDrag();
-    if(drop) _Manager->DropDocker(source,target,position,root,index);
-    else if(outside) _Manager->FloatDocker(source,point);
+    if (drop) {
+        if (position == DockerDropPosition::Tabs && bar && _Manager->ReorderTab(bar, source, index)) return;
+        _Manager->DropDocker(source, target, position, root, index, {}, -1.0f, host);
+    } else if (!inside) {
+        _Manager->FloatDocker(source, point);
+    }
 }
 bool IDEDockerDragController::eventFilter(QObject* watched,QEvent* event) {
-    if(event->type()==QEvent::ApplicationDeactivate || (watched==_Manager->Window() && event->type()==QEvent::Close)) {
+    if (event->type()==QEvent::ApplicationDeactivate ||
+        (event->type()==QEvent::Close && (watched==_Manager->Window() || watched==_TargetHost || watched==_GrabWidget))) {
         CancelDrag();return false;
     }
     if(_Source && event->type()==QEvent::ShortcutOverride) {event->accept();return true;}

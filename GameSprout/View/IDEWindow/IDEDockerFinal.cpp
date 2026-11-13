@@ -1,6 +1,7 @@
 #include "IDEDockerFinal.h"
 #include "IDEDockerManager.h"
 #include "IDEDockerDragController.h"
+#include "IDEDockerFloatingHost.h"
 #include "IDEDockerTitleBar.h"
 #include "IDEMenuFinal.h"
 #include "IDEContextMenuManagerFinal.h"
@@ -43,7 +44,8 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
         QAction* floating = _MenuUi->DockerFloat;
         QObject::connect(floating, &QAction::triggered, _Menu, [this]() {
             _Manager->RestoreMaximized();
-            _Dock->setFloating(!_Dock->isFloating());
+            if (IDEDockerFloatingHost::For(_Dock)) Layout(eDockerLayout::Left);
+            else _Dock->setFloating(!_Dock->isFloating());
             Activate();
         });
         QAction* close = _MenuUi->DockerClose;
@@ -52,6 +54,7 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
             _Manager->RememberClosedDocker(this);
             // 面板关闭契约是隐藏并保留内容；浮动后重新停靠的 native close 不能可靠表示此操作。
             _Dock->hide();
+            if (auto* host = IDEDockerFloatingHost::For(_Dock)) host->CloseIfNoVisiblePanels();
         });
         QMenu* addTab = _MenuUi->DockerAddTab;
         QObject::connect(addTab, &QMenu::aboutToShow, addTab, [this, addTab]() {
@@ -63,7 +66,7 @@ IDEDockerFinal::IDEDockerFinal(QMainWindow* window, const QString& name, IDEDock
                          [this, maximize, floating, addTab, maximizeText, floatingText]() {
             maximize->setText(_Manager->IsMaximized(this)
                 ? maximize->property("restoreText").toString() : maximizeText);
-            floating->setText(_Dock->isFloating()
+            floating->setText((_Dock->isFloating() || IDEDockerFloatingHost::For(_Dock))
                 ? floating->property("dockText").toString() : floatingText);
             addTab->setEnabled(!_Dock->isFloating());
         });
@@ -151,6 +154,10 @@ void IDEDockerFinal::Layout(eDockerLayout layout) {
     }
     _Manager->RestoreMaximized();
     _Manager->ForgetClosedDocker(this);
+    if (auto* floating = IDEDockerFloatingHost::For(_Dock)) {
+        floating->RemovePanel(_Dock);
+        floating->CloseIfNoVisiblePanels();
+    }
     _Dock->setFloating(false);
     _Window->removeDockWidget(_Dock);
     _Window->addDockWidget(area, _Dock);
@@ -177,6 +184,11 @@ bool IDEDockerFinal::Tabify(IIDEDocker* docker) {
 
 void IDEDockerFinal::Activate() {
     _Manager->BeforeActivate(this);
+    if (auto* floating = IDEDockerFloatingHost::For(_Dock)) {
+        if (floating->isMinimized()) floating->showNormal();
+        else floating->show();
+        floating->raise();
+    }
     _Dock->show();
     _Dock->raise();
     _Manager->RequestRefresh();

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>IDEDockerFloatingHostForm</class>
+ <widget class="QMainWindow" name="DockerFloatingHost">
+  <property name="windowTitle"><string>GameSprout</string></property>
+  <property name="styleSheet"><string notr="true">QMainWindow::separator { width:6px; height:6px; background:#202329; }
+QMainWindow::separator:hover { background:#527799; }</string></property>
+  <property name="dockOptions"><set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks</set></property>
+  <property name="documentMode"><bool>true</bool></property>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
