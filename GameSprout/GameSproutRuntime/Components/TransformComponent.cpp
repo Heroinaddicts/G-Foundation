@@ -28,7 +28,10 @@ TransformComponent::TransformComponent(IGameObject* owner)
 void TransformComponent::InvalidateLocalMatrix() {
     _LocalMatrixKnown=false;
     _WorldMatrixChangeEpoch=0;
-    if(_Runtime)_Runtime->InvalidateTransforms();
+    if (_Runtime) {
+        _Runtime->InvalidateTransforms();
+        _Runtime->InvalidatePhysicsTransform(_GameObject);
+    }
 }
 
 bool TransformComponent::IsSceneRoot() const {

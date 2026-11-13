@@ -185,8 +185,10 @@ public:
     bool IsConstructing() const { return _ConstructionDepth!=0; }
     bool PreparePhysics(std::string& error);
     void ResetPhysics(bool releaseSystem = false);
+    void InvalidatePhysicsTransform(IGameObject* object);
 
 private:
+    void NotifyPhysicsChange(const GameObjectState& object, SceneNodeEventType type, const char* component);
     void WriteLog(RuntimeLogLevel level, std::string_view message, const char* file,
                   std::uint_least32_t line) noexcept override;
 

@@ -105,6 +105,47 @@ void QueryExclusions() {
     Check(world.Raycast({0,6,0},{0,-10,0},1u<<3,true,hit,{10,11,30})&&hit.Collider==20,"Ignored trigger obstructed raycast");
     Check(!world.Raycast({0,6,0},{0,-10,0},1u<<2,true,hit,{10,11})&&!hit.Collider,"Layer-filtered miss retained hit");
 }
+void DormantContactReplacement() {
+    std::string error;
+    GPhysics::World world;
+    Check(world.Initialize(error),error);
+    GPhysics::BodySettings ground;
+    ground.Key=1;
+    ground.Transform.Position={0,-.5f,0};
+    GPhysics::Shape floor;
+    floor.Collider=1;
+    floor.HalfExtents={5,.5f,5};
+    ground.Shapes={floor};
+    Check(world.PutBody(ground,error),error);
+    GPhysics::BodySettings box;
+    box.Key=2;
+    box.Motion=GPhysics::MotionType::Dynamic;
+    box.Transform.Position={0,2,0};
+    GPhysics::Shape shape;
+    shape.Collider=2;
+    box.Shapes={shape};
+    Check(world.PutBody(box,error),error);
+
+    std::vector<GPhysics::Contact> contacts;
+    unsigned enters=0,exits=0;
+    const auto step=[&] {
+        Check(world.Step(1.f/60,contacts,error),error);
+        for(const auto& contact:contacts) {
+            Check(!contact.Trigger&&contact.FirstCollider==1&&contact.SecondCollider==2,"Unexpected dormant contact pair");
+            if(contact.State==GPhysics::Contact::Phase::Enter)++enters;
+            if(contact.State==GPhysics::Contact::Phase::Exit)++exits;
+        }
+    };
+    for(unsigned frame=0;frame<240;++frame)step();
+    GPhysics::BodyState body;
+    Check(world.GetBodyState(2,body)&&!body.Active&&enters==1&&!exits,"Sleeping contact produced a false Exit");
+
+    world.RemoveBody(ground.Key);
+    ground.Transform.Position.Y=-10;
+    Check(world.PutBody(ground,error),error);
+    for(unsigned frame=0;frame<4;++frame)step();
+    Check(enters==1&&exits==1,"Replacing a dormant body retained the old contact or repeated its Exit");
+}
 void FreezeAll() {
     std::string error;GPhysics::World world;Check(world.Initialize(error),error);
     GPhysics::BodySettings frozen;frozen.Key=1;frozen.Motion=GPhysics::MotionType::Dynamic;
@@ -143,6 +184,7 @@ int main() {
         Materials();
         World();
         QueryExclusions();
+        DormantContactReplacement();
         FreezeAll();
         std::cout << "PASS material combine priority/numeric limits and actual Jolt friction simulation\n";
         return 0;

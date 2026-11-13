@@ -6,16 +6,16 @@
 
 namespace GameSproutRuntime {
 bool RuntimePhysicsSystem::PublishTransforms(SceneWorld &world, std::string &error) {
-    if(world.StaticOnly)return true;
+    if(world.DynamicBodies.empty())return true;
     std::vector<std::pair<std::size_t, uint64_t>> ordered;
-    for (const auto &[id, record] : world.Bodies)
-        if (record.ComponentID) {
-            auto *object = _Runtime.QueryGameObject(id);
-            std::size_t depth = 0;
-            for (auto *parent = object ? object->Parent() : nullptr; parent; parent = parent->Parent())
-                ++depth;
-            ordered.emplace_back(depth, id);
-        }
+    ordered.reserve(world.DynamicBodies.size());
+    for (const auto id : world.DynamicBodies) {
+        auto *object = _Runtime.QueryGameObject(id);
+        std::size_t depth = 0;
+        for (auto *parent = object ? object->Parent() : nullptr; parent; parent = parent->Parent())
+            ++depth;
+        ordered.emplace_back(depth, id);
+    }
     // Parent world poses must be published before converting a child body's
     // world pose back to local TRS.
     std::sort(ordered.begin(), ordered.end());

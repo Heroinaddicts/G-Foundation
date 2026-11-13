@@ -2,7 +2,6 @@
 #include "PhysicsConversions.h"
 #include "RuntimePhysicsSystem.h"
 #include <cmath>
-#include <set>
 
 namespace GameSproutRuntime {
 bool RuntimePhysicsSystem::Raycast(IScene *scene, const Ray &ray, float maximum, PhysicsRaycastHit &output,
@@ -44,15 +43,10 @@ bool RuntimePhysicsSystem::Raycast(IScene *scene, const Ray &ray, float maximum,
     if (!Synchronize(scene, *world, 0, error))
         return false;
     std::vector<std::uint64_t> ignoredColliders;
-    if(!settings.IgnoredObjectIDs.empty()) {
-        const std::set<std::uint64_t> ignoredObjects(settings.IgnoredObjectIDs.begin(),settings.IgnoredObjectIDs.end());
-        for(const auto& [objectID,body]:world->Bodies)for(const auto& shape:body.Description.Shapes) {
-            // Body keys are the Rigidbody owner's object ID (or the static
-            // Collider owner). Shape identity retains the exact child owner.
-            const auto identity=_Identities.find(shape.Collider);
-            if(ignoredObjects.contains(objectID)||(identity!=_Identities.end()&&ignoredObjects.contains(identity->second.ObjectID)))
-                ignoredColliders.push_back(shape.Collider);
-        }
+    for (const auto object : settings.IgnoredObjectIDs) {
+        const auto found = world->CollidersByObject.find(object);
+        if (found != world->CollidersByObject.end())
+            ignoredColliders.insert(ignoredColliders.end(), found->second.begin(), found->second.end());
     }
     GPhysics::RayHit hit;
     if (!world->Backend.Raycast(PhysicsVector(ray.Origin), PhysicsVector(displacement),

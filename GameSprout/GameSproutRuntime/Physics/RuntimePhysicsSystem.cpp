@@ -7,6 +7,16 @@ namespace GameSproutRuntime {
 RuntimePhysicsSystem::~RuntimePhysicsSystem() {
     Reset();
 }
+void RuntimePhysicsSystem::InvalidateScene(uint64_t scene) {
+    const auto found = _Worlds.find(scene);
+    if (found != _Worlds.end() && found->second)
+        ++found->second->Revision;
+}
+void RuntimePhysicsSystem::InvalidateTransform(uint64_t scene, uint64_t object) {
+    const auto found = _Worlds.find(scene);
+    if (found != _Worlds.end() && found->second && found->second->StaticTransforms.contains(object))
+        ++found->second->Revision;
+}
 void RuntimePhysicsSystem::ForgetMissingScenes() {
     std::set<uint64_t> live;
     for (std::size_t i = 0; i < _Runtime.GetSceneCount(); ++i)
@@ -62,10 +72,11 @@ bool RuntimePhysicsSystem::Step(float delta, std::string &error) {
             return false;
         // A newly changed world still drains backend removals/Exit events once.
         // Stable static-only pairs cannot generate contacts or moving poses.
-        if(world->UnchangedStatic)continue;
+        if(world->DynamicBodies.empty() && !world->BackendNeedsStep)continue;
         std::vector<GPhysics::Contact> events;
         if (!world->Backend.Step(delta, events, error) || !PublishTransforms(*world, error))
             return false;
+        world->BackendNeedsStep = false;
         notifications.insert(notifications.end(), std::make_move_iterator(events.begin()),
                              std::make_move_iterator(events.end()));
     }

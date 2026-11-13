@@ -93,6 +93,7 @@ bool Runtime::RequestDestroy(GameObjectState* object,bool scene) {
     if(!IsUsable(object) || object->IsSceneRoot()!=scene) return false;
     _Commands.push_back({scene?CommandType::DestroyScene:CommandType::DestroyObject,object->ID});
     object->PendingDestroy=true;
+    NotifyPhysicsChange(*object,SceneNodeEventType::Destroy,"");
     return true;
 }
 bool Runtime::RequestRemoveComponent(GameObjectState* object,IComponent* component,std::uint64_t serial) {
@@ -100,6 +101,7 @@ bool Runtime::RequestRemoveComponent(GameObjectState* object,IComponent* compone
     Command command{CommandType::RemoveComponent,object->ID};
     command.Component=component;command.Serial=serial;
     _Commands.push_back(command);
+    NotifyPhysicsChange(*object,SceneNodeEventType::ComponentRemoved,component->GetTypeName());
     return true;
 }
 void Runtime::DestroyNow(GameObjectState& state) {
@@ -169,6 +171,8 @@ void Runtime::FlushCommands() noexcept {
             if(!success && Find(command.ObjectID)) Notify(*object,SceneNodeEventType::OperationFailed);
         } catch (...) {
             if(GameObjectState* remaining=Find(command.ObjectID)) {
+                if(remaining->PendingDestroy)
+                    NotifyPhysicsChange(*remaining,SceneNodeEventType::Destroy,"");
                 remaining->PendingDestroy=false;
                 Notify(*remaining,SceneNodeEventType::OperationFailed);
                 if(command.Type==CommandType::Attach) DestroyNow(*remaining);

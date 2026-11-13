@@ -3,6 +3,7 @@
 #include "Physics/MeshColliderGeometry.h"
 #include "Physics/RuntimePhysicsSystem.h"
 #include "Scene.h"
+#include <string_view>
 
 namespace GameSproutRuntime {
 namespace {
@@ -23,6 +24,38 @@ bool CookMeshCollision(const MeshCollisionBakeInput &input, CookedMeshCollisionD
 }
 MeshCollisionCooker Runtime::GetMeshCollisionCooker() const {
     return {&CookMeshCollision,GPhysics::MeshArtifactFormat()};
+}
+void Runtime::InvalidatePhysicsTransform(IGameObject* object) {
+    if (!_PhysicsSystem)
+        return;
+    const auto* state = Find(object);
+    if (state && state->SceneOwner)
+        _PhysicsSystem->InvalidateTransform(state->SceneOwner->GetInstanceID(), state->ID);
+}
+void Runtime::NotifyPhysicsChange(const GameObjectState& object, SceneNodeEventType type, const char* component) {
+    if (!_PhysicsSystem || !object.SceneOwner)
+        return;
+    switch (type) {
+    case SceneNodeEventType::Create:
+    case SceneNodeEventType::Destroy:
+    case SceneNodeEventType::Reparent:
+    case SceneNodeEventType::ActiveChanged:
+    case SceneNodeEventType::LayerChanged:
+        break;
+    case SceneNodeEventType::ComponentAdded:
+    case SceneNodeEventType::ComponentRemoved:
+    case SceneNodeEventType::ComponentChanged: {
+        const std::string_view name = component ? component : "";
+        if (name != "GameSproutRuntime.Rigidbody" && name != "GameSproutRuntime.BoxCollider" &&
+            name != "GameSproutRuntime.SphereCollider" && name != "GameSproutRuntime.CapsuleCollider" &&
+            name != "GameSproutRuntime.MeshCollider")
+            return;
+        break;
+    }
+    default:
+        return;
+    }
+    _PhysicsSystem->InvalidateScene(object.SceneOwner->GetInstanceID());
 }
 bool Runtime::SynchronizePhysics(std::string& error) {
     error.clear();

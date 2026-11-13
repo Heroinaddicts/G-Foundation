@@ -58,10 +58,21 @@ int main(int argc,char** argv){
         provider.Valid=true;++provider.Revision;Check(runtime->SynchronizePhysics(error),error);Check(ray(),"Failed synchronization poisoned the static cache");
         parent->GetTransform()->SetLocalPosition({});
         auto* ball=scene->CreateGameObject("New moving body");ball->GetTransform()->SetLocalPosition({0,4,0});
-        Check(ball->AddComponent<ISphereColliderComponent>(),"Cannot add moving collider");
+        auto* ballShape=scene->CreateGameObject("Moving child shape",ball);
+        Check(ballShape->AddComponent<ISphereColliderComponent>(),"Cannot add moving collider");
         auto* rigid=ball->AddComponent<IRigidbodyComponent>();Check(rigid&&rigid->SetEnabled(true),"Cannot enable new Rigidbody");
         for(unsigned frame=0;frame<30;++frame)runtime->FixedUpdate(.02f);
         Check(ball->GetTransform()->GetLocalPosition().Y<3,"New Rigidbody did not leave the static-only fast path");
+        Check(ray()&&hit.Collider.ObjectID==ballShape->GetInstanceID(),"Mixed world lost its moving child collider");
+        query.IgnoredObjectIDs={ball->GetInstanceID()};
+        Check(ray()&&hit.Collider.ObjectID==ground->GetInstanceID(),"Ignoring a Rigidbody did not exclude its child collider");
+        query.IgnoredObjectIDs={ballShape->GetInstanceID()};
+        parent->GetTransform()->SetLocalPosition({0,2,0});
+        Check(ray()&&hit.Collider.ObjectID==ground->GetInstanceID()&&hit.Distance>2.4f&&hit.Distance<2.6f,
+              "Static parent transform remained stale in a mixed world");
+        parent->SetActive(false);Check(!ray(),"Inactive parent retained static collision in a mixed world");
+        parent->SetActive(true);Check(ray()&&hit.Collider.ObjectID==ground->GetInstanceID(),
+                                     "Reactivated parent did not restore static collision in a mixed world");
         Check(runtime->EndExecution(error),error);runtime->SetResourceProvider(nullptr);
         delete runtime;runtime=nullptr;
         std::cout<<"PASS static physics: 1001 colliders/200 fixed steps="<<elapsed<<"ms; transform/active/collider/provider revisions and dynamic transition\n";return 0;

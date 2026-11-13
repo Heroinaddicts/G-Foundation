@@ -1,7 +1,6 @@
 #include "Api/RuntimeResourceApi.h"
 #include "Components/TransformComponent.h"
 #include "GameObject.h"
-#include "Scene.h"
 #include "PhysicsConversions.h"
 #include "RuntimePhysicsSystem.h"
 #include "Api/RuntimeColliderMath.h"
@@ -151,18 +150,27 @@ bool RuntimePhysicsSystem::AppendCollider(BodyRequest &request, PhysicsColliderS
     request.Description.Shapes.push_back(shape);
     return true;
 }
-bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyRequest> &requests,
-                                         std::string &error) {
+bool RuntimePhysicsSystem::BuildRequests(IScene *scene, SceneWorld &world, bool reuseStatic,
+                                         std::map<uint64_t, BodyRequest> &requests, std::string &error) {
     std::vector<IGameObject *> objects;
-    for (std::size_t i = 0; i < scene->GetChildCount(); ++i)
-        objects.push_back(scene->GetChild(i));
-    for (std::size_t i = 0; i < objects.size(); ++i) {
-        auto *object = objects[i];
-        auto *node = _Runtime.Find(object);
-        if (!_Runtime.IsInScene(node) || !node->IsActiveInHierarchy())
-            continue;
-        for (std::size_t child = 0; child < object->GetChildCount(); ++child)
-            objects.push_back(object->GetChild(child));
+    if (reuseStatic) {
+        objects.reserve(world.DynamicObjects.size());
+        for (const auto id : world.DynamicObjects)
+            if (auto *object = _Runtime.QueryGameObject(id))
+                objects.push_back(object);
+    } else {
+        world.DynamicObjects.clear();
+        world.StaticTransforms.clear();
+        for (std::size_t i = 0; i < scene->GetChildCount(); ++i)
+            objects.push_back(scene->GetChild(i));
+        for (std::size_t i = 0; i < objects.size(); ++i) {
+            auto *object = objects[i];
+            auto *node = _Runtime.Find(object);
+            if (!_Runtime.IsInScene(node) || !node->IsActiveInHierarchy())
+                continue;
+            for (std::size_t child = 0; child < object->GetChildCount(); ++child)
+                objects.push_back(object->GetChild(child));
+        }
     }
     const auto createRequest = [&](IGameObject *object, RigidbodyComponent *rigid) -> BodyRequest * {
         const auto key = object->GetInstanceID();
@@ -210,6 +218,9 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
         auto *node = _Runtime.Find(object);
         if (!_Runtime.IsInScene(node) || !node->IsActiveInHierarchy())
             continue;
+        // An enabled Rigidbody contributes a body even without any shapes.
+        const auto existing = requests.find(node->ID);
+        bool dynamic = existing != requests.end() && existing->second.Rigidbody;
         for (const auto &entry : node->Components) {
             if (entry.PendingRemove || entry.InitializationFailed)
                 continue;
@@ -231,34 +242,64 @@ bool RuntimePhysicsSystem::BuildRequests(IScene *scene, std::map<uint64_t, BodyR
                             break;
                         }
             }
+            if (!attached) {
+                if (reuseStatic)
+                    continue;
+                // The collider's world pose also depends on all ancestors,
+                // including a Rigidbody above a disabled-body boundary.
+                for (auto *ancestor = node; ancestor; ancestor = ancestor->Parent)
+                    if (!world.StaticTransforms.insert(ancestor->ID).second)
+                        break;
+            } else {
+                dynamic = true;
+            }
             BodyRequest *request = createRequest(attached ? attached->GetGameObject() : object, attached);
             if (!request || !AppendCollider(*request, *collider, error))
                 return false;
         }
+        if (!reuseStatic && dynamic)
+            world.DynamicObjects.push_back(node->ID);
     }
     return true;
 }
 bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float delta, std::string &error) {
     SyncResources();
-    const auto revision=static_cast<Scene*>(scene)->GetRenderRevision();
-    const auto& matrix=_Runtime.GetProjectSettings().CollisionMatrix;
-    world.UnchangedStatic=world.SnapshotKnown&&world.StaticOnly&&world.SceneRevision==revision&&
-        world.Provider==_Provider&&world.ResourceGeneration==_ResourceGeneration&&world.CollisionMatrix==matrix;
-    if(world.UnchangedStatic)return true;
-    world.SnapshotKnown=false;
+    const auto revision = world.Revision;
+    const auto &matrix = _Runtime.GetProjectSettings().CollisionMatrix;
+    const bool reuseStatic = world.SnapshotKnown && world.SnapshotRevision == revision &&
+        world.Provider == _Provider && world.ResourceGeneration == _ResourceGeneration &&
+        world.CollisionMatrix == matrix;
+    if (reuseStatic && world.DynamicBodies.empty())
+        return true;
+    world.SnapshotKnown = false;
     std::map<uint64_t, BodyRequest> requests;
-    if (!BuildRequests(scene, requests, error))
+    if (!BuildRequests(scene, world, reuseStatic, requests, error))
         return false;
-    for (auto it = world.Bodies.begin(); it != world.Bodies.end();)
-        if (!requests.count(it->first)) {
-            world.Backend.RemoveBody(it->first);
-            if (auto *object = _Runtime.QueryGameObject(it->first))
-                if (auto *transform = dynamic_cast<TransformComponent *>(object->GetTransform()))
-                    transform->ClearPhysicsPose();
-            it = world.Bodies.erase(it);
-        } else
-            ++it;
+    if (!reuseStatic) {
+        for (auto it = world.Bodies.begin(); it != world.Bodies.end();)
+            if (!requests.count(it->first)) {
+                world.Backend.RemoveBody(it->first);
+                if (auto *object = _Runtime.QueryGameObject(it->first))
+                    if (auto *transform = dynamic_cast<TransformComponent *>(object->GetTransform()))
+                        transform->ClearPhysicsPose();
+                it = world.Bodies.erase(it);
+            } else
+                ++it;
+        world.DynamicBodies.clear();
+        world.CollidersByObject.clear();
+        world.BackendNeedsStep = true;
+    }
     for (auto &[key, request] : requests) {
+        if (!reuseStatic) {
+            if (request.Rigidbody)
+                world.DynamicBodies.push_back(key);
+            for (const auto &shape : request.Description.Shapes) {
+                world.CollidersByObject[key].push_back(shape.Collider);
+                const auto owner = _Identities.at(shape.Collider).ObjectID;
+                if (owner != key)
+                    world.CollidersByObject[owner].push_back(shape.Collider);
+            }
+        }
         auto found = world.Bodies.find(key);
         auto *transform = dynamic_cast<TransformComponent *>(request.Object->GetTransform());
         const auto componentID = request.Rigidbody ? request.Rigidbody->GetComponentInstanceID() : 0;
@@ -339,11 +380,11 @@ bool RuntimePhysicsSystem::Synchronize(IScene *scene, SceneWorld &world, float d
             rigid.Impulse = {};
         }
     }
-    world.StaticOnly=std::none_of(world.Bodies.begin(),world.Bodies.end(),
-        [](const auto& entry){return entry.second.ComponentID!=0;});
-    world.SceneRevision=static_cast<Scene*>(scene)->GetRenderRevision();
-    world.Provider=_Provider;world.ResourceGeneration=_ResourceGeneration;world.CollisionMatrix=matrix;
-    world.SnapshotKnown=true;
+    world.SnapshotRevision = revision;
+    world.Provider = _Provider;
+    world.ResourceGeneration = _ResourceGeneration;
+    world.CollisionMatrix = matrix;
+    world.SnapshotKnown = true;
     return true;
 }
 } // namespace GameSproutRuntime

@@ -181,7 +181,6 @@ struct World::Impl final : public JPH::ContactListener {
     std::vector<RawEvent> Pending;
     std::map<RawKey, Contact> RawContacts;
     std::map<std::pair<uint64_t, uint64_t>, Contact> Contacts;
-    std::map<uint32_t, bool> BodyActivity;
     std::atomic<bool> Overflow{false};
     bool Initialized = false;
     explicit Impl(Detail::MeshShapeCache *meshCookCache)
@@ -279,9 +278,13 @@ struct World::Impl final : public JPH::ContactListener {
             Overflow = true;
     }
     bool Dormant(const RawKey &key) const {
-        const auto first = BodyActivity.find(key.FirstBody), second = BodyActivity.find(key.SecondBody);
-        return first != BodyActivity.end() && second != BodyActivity.end() && !first->second &&
-               !second->second;
+        // Sleeping contacts may stop producing manifolds. Keep those contacts
+        // only while both original bodies are still registered and inactive.
+        const auto inactive = [&](uint32_t indexAndSequence) {
+            const JPH::BodyLockRead lock(Physics.GetBodyLockInterface(), JPH::BodyID(indexAndSequence));
+            return lock.SucceededAndIsInBroadPhase() && !lock.GetBody().IsActive();
+        };
+        return inactive(key.FirstBody) && inactive(key.SecondBody);
     }
 };
 
@@ -584,10 +587,6 @@ bool World::Step(float delta, std::vector<Contact> &events, std::string &error) 
     }
     _Impl->Overflow = false;
     const auto status = _Impl->Physics.Update(delta, 1, &_Impl->Temporary, &_Impl->Jobs);
-    _Impl->BodyActivity.clear();
-    for (const auto &[key, body] : _Impl->Bodies)
-        _Impl->BodyActivity.emplace(body.ID.GetIndexAndSequenceNumber(),
-                                    _Impl->Physics.GetBodyInterface().IsActive(body.ID));
     std::set<Impl::RawKey> observed;
     for (auto &event : _Impl->Pending) {
         if (event.Removed) {

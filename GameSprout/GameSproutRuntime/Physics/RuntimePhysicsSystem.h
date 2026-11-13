@@ -4,6 +4,7 @@
 #include "PhysicsComponents.h"
 #include <array>
 #include <map>
+#include <set>
 #include <tuple>
 
 namespace GameSproutRuntime {
@@ -14,6 +15,8 @@ class RuntimePhysicsSystem {
     bool Prepare(std::string &error);
     bool Step(float deltaSeconds, std::string &error);
     void Reset();
+    void InvalidateScene(uint64_t scene);
+    void InvalidateTransform(uint64_t scene, uint64_t object);
     bool Raycast(IScene *, const Ray &, float, PhysicsRaycastHit &, const PhysicsQuerySettings &,
                  std::string &);
 
@@ -28,11 +31,13 @@ class RuntimePhysicsSystem {
     struct SceneWorld {
         GPhysics::World Backend;
         std::map<uint64_t, BodyRecord> Bodies;
-        // A world with no enabled Rigidbody has no simulation to advance.
-        // Reuse its synchronized bodies until an authoring/pose/resource or
-        // collision-matrix change. Dynamic worlds retain the full update path.
-        bool SnapshotKnown=false,StaticOnly=false,UnchangedStatic=false;
-        uint64_t SceneRevision=0,ResourceGeneration=0;
+        std::vector<uint64_t> DynamicObjects;
+        std::vector<uint64_t> DynamicBodies;
+        std::set<uint64_t> StaticTransforms;
+        std::map<uint64_t, std::vector<uint64_t>> CollidersByObject;
+        bool SnapshotKnown = false;
+        bool BackendNeedsStep = false;
+        uint64_t Revision = 0, SnapshotRevision = 0, ResourceGeneration = 0;
         IRuntimeResourceProvider* Provider=nullptr;
         std::array<std::uint32_t,32> CollisionMatrix{};
     };
@@ -73,7 +78,7 @@ class RuntimePhysicsSystem {
     void SyncResources();
     IComponent *ResolveComponent(uint64_t object, uint64_t component) const;
     PhysicsColliderState *ResolveCollider(const ColliderIdentity &) const;
-    bool BuildRequests(IScene *, std::map<uint64_t, BodyRequest> &, std::string &);
+    bool BuildRequests(IScene *, SceneWorld &, bool reuseStatic, std::map<uint64_t, BodyRequest> &, std::string &);
     bool Synchronize(IScene *, SceneWorld &, float, std::string &);
     bool AppendCollider(BodyRequest &, PhysicsColliderState &, std::string &);
     bool PublishTransforms(SceneWorld &, std::string &);

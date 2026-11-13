@@ -60,6 +60,7 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
         }
         if(root->Object!=object.SceneOwner || Find(root->Object)!=root) return;
     } else if(!IsInScene(&object)) return;
+    NotifyPhysicsChange(object,type,component);
     if(type!=SceneNodeEventType::Rename && type!=SceneNodeEventType::TagChanged && type!=SceneNodeEventType::OperationFailed) {
         const std::string_view componentType = component ? component : "";
         const bool transform=type==SceneNodeEventType::ComponentChanged&&componentType=="GameSproutRuntime.Transform";
