@@ -50,8 +50,6 @@ bool Renderer::Render(const RenderView& view) {
     RenderingScope rendering(_Rendering);
     RuntimeOperation operation(_Runtime);
     try {
-        ++_Frame;
-        PruneInstanceBuffers();
         if(view.DrawScene||view.DrawUI) SyncRevision();
         if(view.DrawScene&&!Initialize()) return false;
         // 缓冲在Command提交/取消后释放；异常退出也保持这一顺序。
@@ -77,6 +75,9 @@ bool Renderer::Render(const RenderView& view) {
             target=_ColorTarget->GetColorTargetView();width=_ColorTarget->GetWidth();height=_ColorTarget->GetHeight();format=_ColorTarget->GetFormat();
         }
         if(!width || !height || !target.Token) return Fail("Runtime render target has no valid color view or pixel extent");
+        ++_Frame;
+        if(!_InstanceFrameSubmitted)InvalidateInstanceUploads();
+        _InstanceFrameSubmitted=false;
         Mat4 viewProjection;
         GRHI::ITexture* depth=nullptr;
         if(view.DrawScene) {
@@ -102,10 +103,26 @@ bool Renderer::Render(const RenderView& view) {
         RenderEnvironment::Uniform environment{};
         if(view.DrawScene&&!RenderEnvironment::Prepare(view.Scene->GetEnvironmentLighting(),environment))
             Diagnostic("Scene environment radiance is invalid or exceeds finite shader precision; diffuse environment disabled for this frame");
-        if(view.DrawScene)PrepareDraws(view,viewProjection);
-        const std::vector<PreparedDraw> clearDraws;
-        const auto& prepared=view.DrawScene?_PreparedDraws:clearDraws;
-        if(view.DrawScene&&!RenderShadows(*command.Command,view,float(width)/height))return false;
+        if(view.DrawScene) {
+            BeginTexturePrefetchFrame(view.EnableTexturePrefetch);
+            PrepareDraws(view,viewProjection);
+            EndTexturePrefetchFrame();
+            if(!_ColorInstanceBatchesKnown||_ColorInstancingEnabled!=view.EnableGPUInstancing) {
+                _ColorInstances.Indices.clear();
+                PrepareInstanceBatches(_PreparedDraws,view.EnableGPUInstancing,false,_ColorInstanceDraws,_ColorInstances.Indices);
+                _ColorInstanceBatchesKnown=true;
+                _ColorInstancingEnabled=view.EnableGPUInstancing;
+            }
+            if(view.EnableGPUInstancing) {
+                if(!UploadResidentInstances(*command.Command)||!UploadInstanceStream(*command.Command,_ColorInstances))return false;
+            }else if(!_ChangedInstanceTransforms.empty()) {
+                _InstanceTransformsDirty=true;
+                _ChangedInstanceTransforms.clear();
+            }
+            if(!RenderShadows(*command.Command,view,float(width)/height))return false;
+            for(auto* buffer:{_InstanceTransformsBuffer,_ColorInstances.Buffer,_StaticShadowInstances.Buffer,_DynamicShadowInstances.Buffer})
+                if(buffer)_Statistics.ResidentInstanceBytes+=buffer->GetSize();
+        }
         if(view.DrawUI&&!PrepareUI(*view.Scene,width,height,view.UIPreviewObjectID,view.UIScreenPreviewLayoutSize))return false;
         GRHI::RenderPassDesc pass;
         pass.ColorTarget=target;pass.ClearColor={view.ClearColor.R,view.ClearColor.G,view.ClearColor.B,view.ClearColor.A};
@@ -115,7 +132,7 @@ bool Renderer::Render(const RenderView& view) {
         _Statistics.Width=width;_Statistics.Height=height;
         if(view.DrawScene&&!DrawSky(*command.Pass,view,format,float(width)/float(height),lights))return false;
         if(view.DrawScene && view.DrawGrid && !DrawGrid(*command.Pass,viewProjection,format)) return false;
-        if(!DrawPrepared(*command.Pass,prepared,view,viewProjection,format,lights,&environment,sizeof(environment)))return false;
+        if(view.DrawScene&&!DrawPrepared(*command.Pass,_PreparedDraws,view,viewProjection,format,lights,&environment,sizeof(environment)))return false;
         if(view.DrawScene && !DrawDebug(*command.Pass,viewProjection,format,debugBatches,debugBuffers.Buffers)) return false;
         const auto depthFormat=depth?depth->GetFormat():GRHI::TextureFormat::Unknown;
         if(view.DrawUI&&!DrawUI(*command.Pass,format,depthFormat)) return false;
@@ -124,6 +141,7 @@ bool Renderer::Render(const RenderView& view) {
         command.Command->EndRenderPass(command.Pass);command.Pass=nullptr;
         auto* submitted=command.Command;command.Command=nullptr;
         if(!_Device.Submit(submitted)) return Fail(DeviceError("Submit Runtime view"));
+        _InstanceFrameSubmitted=true;
         // A recorded atlas is reusable only after the whole command is submitted.
         // A later color-pass error/cancel must not cache an unexecuted depth pass.
         if(_ShadowRecorded)_ShadowValid=true;

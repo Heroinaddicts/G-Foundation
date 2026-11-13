@@ -43,6 +43,7 @@ def main():
             resources = json.loads(reflection.read_text())
             declarations.append("inline constexpr unsigned " + entry + "Samplers = " + str(resources["samplers"]) + ";")
             declarations.append("inline constexpr unsigned " + entry + "Uniforms = " + str(resources["uniform_buffers"]) + ";")
+            declarations.append("inline constexpr unsigned " + entry + "StorageBuffers = " + str(resources["storage_buffers"]) + ";")
             for format in ["SPIRV", "MSL", "DXIL"]:
                 output = root / (entry + "." + format.lower())
                 if format == "SPIRV":

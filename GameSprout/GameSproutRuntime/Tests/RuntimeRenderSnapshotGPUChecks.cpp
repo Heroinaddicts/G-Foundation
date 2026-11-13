@@ -33,6 +33,15 @@ public:
         else {data.ShadingModel=MaterialShadingModel::Lit;data.Roughness=1;}
         return true;
     }
+    bool LoadSkeleton(const ResourceReference&,SkeletonData& data,std::string&) override {
+        data={};data.Nodes={{"/parent","Parent",-1,{}}};return true;
+    }
+    bool LoadAnimationClip(const ResourceReference&,AnimationClipData& data,std::string&) override {
+        data={};data.Duration=1;data.SampleRate=1;data.Tracks={"/parent"};
+        AnimationFrame first,last;last.Time=1;
+        first.Poses.resize(1);last.Poses.resize(1);last.Poses[0].Position.X=.75f;
+        data.Frames={first,last};return true;
+    }
 };
 RenderView View(IScene* scene){
     RenderView view;view.Scene=scene;view.DrawGrid=false;view.ClearColor={0,0,0,1};view.Camera.Position={0,0,3};
@@ -111,6 +120,34 @@ int main(int argc,char** argv){
         Check(viewport->Resize(64,128,error),error);stats=Render(*viewport,view);
         Check(!stats.SceneSnapshotRebuilds&&stats.DrawCalls==0,"Resize did not recull cached world data at actual aspect");
         Check(viewport->Resize(128,128,error),error);parent->GetTransform()->SetLocalPosition({0,0,0});Render(*viewport,view);
+
+        // An evaluated pose must update descendants without rebuilding scene membership.
+        runtime->SetResourceProvider(&provider);
+        auto* animator=scene->CreateGameObject("Animation source")->AddComponent<IAnimatorComponent>();
+        animator->SetSkeleton({Guid,21});
+        Check(animator->SetNodeBindings({{"/parent",parent->GetInstanceID()}}),"Cannot bind the mesh's parent to animation");
+        Render(*viewport,view);
+        Check(animator->PlayClip({Guid,22},1,1,false),animator->GetLastError());
+        stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&Pixel(*viewport,.75f)[0]>100&&Pixel(*viewport)[0]==0,
+            "Evaluated animation rebuilt the scene or left its mesh descendant stale");
+        animator->StopClip();stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&Pixel(*viewport)[0]>100,
+            "Stopping animation rebuilt the scene or left the evaluated pose in the snapshot");
+
+        auto* body=parent->AddComponent<IRigidbodyComponent>();
+        Check(body&&body->SetEnabled(true)&&body->SetGravityFactor(0),"Cannot initialize the mesh parent's Rigidbody");
+        Check(runtime->BeginExecution(error),error);Render(*viewport,view);
+        Check(body->Teleport({.75f,0,0},{}),"Cannot teleport the mesh parent's Rigidbody");
+        runtime->FixedUpdate(1.f/60.f);stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&Pixel(*viewport,.75f)[0]>100&&Pixel(*viewport)[0]==0,
+            "Physics pose rebuilt the scene or left its mesh descendant stale");
+        Check(runtime->EndExecution(error),error);stats=Render(*viewport,view);
+        Check(!stats.SceneSnapshotRebuilds&&!stats.LightSnapshotRebuilds&&Pixel(*viewport)[0]>100,
+            "Stopping physics rebuilt the scene or left its simulated pose in the snapshot");
+        Check(parent->RemoveComponent<IRigidbodyComponent>(),"Cannot remove the mesh parent's Rigidbody");
+        Render(*viewport,view);
+
         parent->GetTransform()->SetLocalScale({0,1,1});stats=Render(*viewport,view);Rebuilt(stats,"Singular parent transform");
         Check(stats.DrawCalls==0&&stats.SkippedObjects==1,"Newly singular descendant remained in the snapshot");
         parent->GetTransform()->SetLocalScale({1,1,1});stats=Render(*viewport,view);Rebuilt(stats,"Recovered parent transform");
@@ -184,6 +221,6 @@ int main(int argc,char** argv){
         Check(object->RemoveComponent<IMeshComponent>(),"Cannot remove cached mesh");stats=Render(*viewport,view);Rebuilt(stats,"Remove mesh");Check(stats.DrawCalls==0,"Removed mesh still produced cached draws");
 
         delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS render snapshots: idle/camera/resize reuse, synchronous setters, hierarchy/layer/visibility, resource revisions, lights/environment, scene transfers, component removal and viewport isolation\n";return 0;
+        std::cout<<"PASS render snapshots: idle/camera/resize reuse, animation and physics poses, synchronous setters, hierarchy/layer/visibility, resource revisions, lights/environment, scene transfers, component removal and viewport isolation\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete second;delete viewport;delete runtime;return 1;}
 }

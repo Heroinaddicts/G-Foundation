@@ -34,6 +34,7 @@ void RenderResourceCache::ClearPreparedResources() {
     Meshes.clear();Textures.clear();Materials.clear();
 }
 RenderResourceCache::~RenderResourceCache() {
+    delete TextureUploadTarget;
     ClearPreparedResources();
     for(auto& entry:Pipelines)delete entry.second;
     for(auto& entry:SkyPipelines)delete entry.second;
@@ -65,15 +66,18 @@ void RenderResourceCache::Synchronize() {
     for(auto& [key,material]:Materials) {
         if(textures.count(Renderer::ResourceKey(material.Data.BaseColorTexture))) {
             material.BaseColorTexture=nullptr;material.BaseColorAttempted=false;material.BaseColorError.clear();
+            material.TexturePrefetchConsidered=false;
         }
         if(textures.count(Renderer::ResourceKey(material.Data.NormalTexture))) {
             material.NormalTexture=nullptr;material.NormalAttempted=false;material.NormalError.clear();
+            material.TexturePrefetchConsidered=false;
         }
         bool reset=shaders.count(Renderer::ResourceKey(material.Data.Shader))!=0;
         for(const auto& binding:material.Data.Textures)
             reset|=textures.count(Renderer::ResourceKey(binding.Texture))!=0;
         if(reset) {
             material.ShaderAttempted=false;material.ShaderReady=false;
+            material.TexturePrefetchConsidered=false;
             material.VertexUniforms.clear();material.FragmentUniforms.clear();material.ShaderTextures.clear();
             if(material.Loaded)material.Error.clear();
         }

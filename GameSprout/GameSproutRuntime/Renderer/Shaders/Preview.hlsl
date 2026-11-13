@@ -66,21 +66,22 @@ MeshOutput MeshNoUVNoColorVertex(MeshNoUVNoColorInput input) {
     return TransformVertex(input.Position, input.Normal, float4(1, 1, 1, 1), float2(0, 0));
 }
 
-// Binding 1 advances once per instance. The CPU uploads two column-major Mat4s
-// (Model, inverse-transpose Normal), 128 bytes in all. Keep the columns explicit:
-// an HLSL float4x4 constructor would interpret its vector arguments as rows.
-struct InstanceInput {
-    [[vk::location(4)]] float4 Model0 : TEXCOORD4;
-    [[vk::location(5)]] float4 Model1 : TEXCOORD5;
-    [[vk::location(6)]] float4 Model2 : TEXCOORD6;
-    [[vk::location(7)]] float4 Model3 : TEXCOORD7;
-    [[vk::location(8)]] float4 Normal0 : TEXCOORD8;
-    [[vk::location(9)]] float4 Normal1 : TEXCOORD9;
-    [[vk::location(10)]] float4 Normal2 : TEXCOORD10;
-    [[vk::location(11)]] float4 Normal3 : TEXCOORD11;
+// The vertex stream holds only visible slots. Each slot addresses two
+// column-major Mat4s kept in the resident storage buffer across frames.
+struct InstanceTransform {
+    float4 Model0;
+    float4 Model1;
+    float4 Model2;
+    float4 Model3;
+    float4 Normal0;
+    float4 Normal1;
+    float4 Normal2;
+    float4 Normal3;
 };
-MeshOutput TransformInstanceVertex(float3 position, float3 normal, float4 color, float2 uv, InstanceInput instance)
+StructuredBuffer<InstanceTransform> InstanceTransforms : register(t0, space0);
+MeshOutput TransformInstanceVertex(float3 position, float3 normal, float4 color, float2 uv, uint slot)
 {
+    InstanceTransform instance = InstanceTransforms[slot];
     MeshOutput output;
     float4 worldPosition = instance.Model0 * position.x + instance.Model1 * position.y
                          + instance.Model2 * position.z + instance.Model3;
@@ -95,17 +96,17 @@ MeshOutput TransformInstanceVertex(float3 position, float3 normal, float4 color,
     output.NormalUV = uv;
     return output;
 }
-MeshOutput InstancedMeshVertex(MeshInput input, InstanceInput instance) {
-    return TransformInstanceVertex(input.Position, input.Normal, input.Color, input.UV, instance);
+MeshOutput InstancedMeshVertex(MeshInput input, [[vk::location(4)]] uint slot : TEXCOORD4) {
+    return TransformInstanceVertex(input.Position, input.Normal, input.Color, input.UV, slot);
 }
-MeshOutput InstancedMeshNoUVVertex(MeshNoUVInput input, InstanceInput instance) {
-    return TransformInstanceVertex(input.Position, input.Normal, input.Color, float2(0, 0), instance);
+MeshOutput InstancedMeshNoUVVertex(MeshNoUVInput input, [[vk::location(4)]] uint slot : TEXCOORD4) {
+    return TransformInstanceVertex(input.Position, input.Normal, input.Color, float2(0, 0), slot);
 }
-MeshOutput InstancedMeshNoColorVertex(MeshNoColorInput input, InstanceInput instance) {
-    return TransformInstanceVertex(input.Position, input.Normal, float4(1, 1, 1, 1), input.UV, instance);
+MeshOutput InstancedMeshNoColorVertex(MeshNoColorInput input, [[vk::location(4)]] uint slot : TEXCOORD4) {
+    return TransformInstanceVertex(input.Position, input.Normal, float4(1, 1, 1, 1), input.UV, slot);
 }
-MeshOutput InstancedMeshNoUVNoColorVertex(MeshNoUVNoColorInput input, InstanceInput instance) {
-    return TransformInstanceVertex(input.Position, input.Normal, float4(1, 1, 1, 1), float2(0, 0), instance);
+MeshOutput InstancedMeshNoUVNoColorVertex(MeshNoUVNoColorInput input, [[vk::location(4)]] uint slot : TEXCOORD4) {
+    return TransformInstanceVertex(input.Position, input.Normal, float4(1, 1, 1, 1), float2(0, 0), slot);
 }
 
 // Same 128-matrix limit as Renderer::MaxSkinBones. b0 remains the ordinary draw uniform.

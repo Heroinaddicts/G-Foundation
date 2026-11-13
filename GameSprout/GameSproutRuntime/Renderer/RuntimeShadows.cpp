@@ -1,9 +1,9 @@
 #include "RuntimeRenderer.h"
 #include "RuntimeShadowsMath.h"
-#include "RuntimeFrustum.h"
 #include "GameSproutRuntime.h"
 #include "Scene.h"
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <limits>
 #include <unordered_map>
@@ -56,7 +56,7 @@ ShadowClipBounds ProjectShadowBounds(const Bounds& bounds,const Mat4& projection
 }
 
 bool Renderer::DrawShadow(GRHI::IRenderPass& pass,const PreparedDraw& draw,const Mat4& lightViewProjection,
-    GRHI::IBuffer* instances,std::uint32_t instanceCount) {
+    std::size_t firstInstance,std::uint32_t instanceCount,const InstanceStream* instances) {
     const auto& data=draw.Mesh->Data;
     PipelineKey key;key.Shadow=true;key.Stride=data.VertexStride;key.Position=data.PositionOffset;
     key.Normal=data.NormalOffset;key.Color=data.ColorOffset;key.UV=data.UVOffset;
@@ -66,7 +66,10 @@ bool Renderer::DrawShadow(GRHI::IRenderPass& pass,const PreparedDraw& draw,const
     DrawUniform uniform;uniform.ViewProjection=lightViewProjection;
     if(!instances){uniform.Model=draw.Object->Model;uniform.Normal=draw.Object->Normal;}
     pass.SetPipeline(pipeline);pass.SetVertexBuffer(0,draw.Mesh->Buffer,0);
-    if(instances)pass.SetVertexBuffer(1,instances,0);
+    if(instances) {
+        pass.SetVertexBuffer(1,instances->Buffer,firstInstance*sizeof(std::uint32_t));
+        pass.SetVertexStorageBuffer(0,_InstanceTransformsBuffer);
+    }
     pass.SetIndexBuffer(draw.Mesh->Buffer,GRHI::IndexFormat::UInt32,static_cast<std::size_t>(data.IndexOffset));
     pass.SetVertexUniform(0,&uniform,sizeof(uniform));
     if(draw.Object->Skinned) {
@@ -84,102 +87,94 @@ bool Renderer::StaticShadowCasterKey::operator==(const StaticShadowCasterKey& ot
         SameVector(World.Center,other.World.Center)&&SameVector(World.Extents,other.World.Extents);
 }
 
-bool Renderer::DrawShadowAtlas(GRHI::ICommandBuffer& command,GRHI::ITexture& atlas,
-    const RenderView& view,const RuntimeShadowMath::CascadeSet& cascades,
-    std::uint32_t tile,std::uint32_t columns,std::vector<ShadowCandidate>& candidates,
-    std::uint32_t passOffset,const std::vector<ShadowRegion>* repair) {
-    const auto sortDraw=[](const PreparedDraw& a,const PreparedDraw& b) {
+void Renderer::SortShadowCandidates(std::vector<ShadowCandidate>& candidates) {
+    std::stable_sort(candidates.begin(),candidates.end(),[](const ShadowCandidate& left,const ShadowCandidate& right) {
+        const auto& a=left.Draw;
+        const auto& b=right.Draw;
         if(a.Mesh->SortRank!=b.Mesh->SortRank)return a.Mesh->SortRank<b.Mesh->SortRank;
         if(a.Section.FirstIndex!=b.Section.FirstIndex)return a.Section.FirstIndex<b.Section.FirstIndex;
         if(a.Section.IndexCount!=b.Section.IndexCount)return a.Section.IndexCount<b.Section.IndexCount;
         if(a.Material->DoubleSided!=b.Material->DoubleSided)return a.Material->DoubleSided<b.Material->DoubleSided;
         return a.Object->Negative<b.Object->Negative;
-    };
-    if(!repair)std::stable_sort(candidates.begin(),candidates.end(),[&](const ShadowCandidate& a,const ShadowCandidate& b) {
-        return sortDraw(a.Draw,b.Draw);
     });
-    GRHI::RenderPassDesc passDescription;passDescription.DepthTarget=atlas.GetDepthTargetView();
-    passDescription.DepthLoad=repair?GRHI::LoadOp::Load:GRHI::LoadOp::Clear;
-    passDescription.DepthStore=GRHI::StoreOp::Store;passDescription.ClearDepth=1;
-    auto* pass=command.BeginRenderPass(passDescription);
-    if(!pass)return Fail(DeviceError("Begin depth-only directional shadow pass"));
-    ShadowPassScope passScope{command,pass};
-    const auto drawBatch=[&](const std::vector<PreparedDraw>& draws,const Mat4& projection,std::uint32_t batchPass) {
-        bool success=true;
-        for(std::size_t begin=0;begin<draws.size()&&success;) {
-            const auto& draw=draws[begin];std::size_t end=begin+1;
-            if(view.EnableGPUInstancing&&draw.Material->EnableGPUInstancing&&!draw.Object->Skinned)while(end<draws.size()) {
-                const auto& next=draws[end];
-                if(next.Object->Skinned||!next.Material->EnableGPUInstancing||next.Mesh!=draw.Mesh||next.Section.FirstIndex!=draw.Section.FirstIndex||
-                    next.Section.IndexCount!=draw.Section.IndexCount||next.Material->DoubleSided!=draw.Material->DoubleSided||
-                    next.Object->Negative!=draw.Object->Negative)break;
-                ++end;
-            }
-            for(std::uint32_t part=0;begin<end&&success;++part) {
-                const auto count=std::min(MaxBatchInstances,end-begin);
-                GRHI::IBuffer* instances=nullptr;
-                if(count>1) {
-                    InstanceBatchKey key;key.Pass=batchPass;key.SceneID=view.Scene->GetInstanceID();key.FirstObjectID=draws[begin].Object->ObjectID;
-                    key.Mesh=draw.Object->Mesh;
-                    key.GroupOrdinal=draws[begin].SectionOrdinal;key.FirstIndex=draw.Section.FirstIndex;key.IndexCount=draw.Section.IndexCount;
-                    key.Part=part;key.Negative=draw.Object->Negative;
-                    instances=InstanceBuffer(key,draws,begin,count);
-                }
-                if(instances)success=DrawShadow(*pass,draws[begin],projection,instances,static_cast<std::uint32_t>(count));
-                else for(std::size_t index=begin;index<begin+count&&success;++index)
-                    success=DrawShadow(*pass,draws[index],projection,nullptr,1);
-                begin+=count;
-            }
-        }
-        return success;
+}
+
+bool Renderer::DrawShadowAtlas(GRHI::ICommandBuffer& command,GRHI::ITexture& atlas,
+    const RenderView& view,const RuntimeShadowMath::CascadeSet& cascades,
+    std::uint32_t tile,std::uint32_t columns,const std::vector<ShadowCandidate>& candidates,
+    InstanceStream& stream,std::uint32_t cascadeMask,const std::vector<ShadowRegion>* repair) {
+    struct TileDraws {
+        GRHI::Viewport Viewport;
+        Mat4 Projection;
+        std::vector<PreparedDraw> Draws;
+        std::vector<InstanceDraw> Batches;
     };
-    std::vector<PreparedDraw> draws;
-    if(!repair)draws.reserve(candidates.size());
+    std::vector<TileDraws> tiles;
+    const std::uint32_t allCascades=(std::uint32_t{1}<<cascades.Count)-1;
+    cascadeMask&=allCascades;
+    tiles.reserve(repair?repair->size():cascades.Count);
+    stream.Indices.clear();
     for(std::uint32_t cascade=0;cascade<cascades.Count;++cascade) {
+        if(!(cascadeMask&(std::uint32_t{1}<<cascade)))continue;
         const auto& projection=cascades.Entries[cascade].ViewProjection;
         const auto x=(cascade%columns)*tile,y=(cascade/columns)*tile;
         if(!repair) {
-            pass->SetViewport({float(x),float(y),float(tile),float(tile),0,1});
-            draws.clear();
-            const RenderFrustum::Frustum frustum(projection);
-            for(const auto& candidate:candidates)
-                if(frustum.Intersects(candidate.World.Min(),candidate.World.Max(),Mat4{}))draws.push_back(candidate.Draw);
-            if(!drawBatch(draws,projection,passOffset+cascade))return false;
+            auto& work=tiles.emplace_back(TileDraws{{float(x),float(y),float(tile),float(tile),0,1},projection,{},{}});
+            work.Draws.reserve(candidates.size());
+            for(const auto& candidate:candidates) {
+                const auto bounds=ProjectShadowBounds(candidate.World,projection);
+                if(bounds.Maximum[0]>=-1&&bounds.Minimum[0]<=1&&bounds.Maximum[1]>=-1&&bounds.Minimum[1]<=1&&
+                   bounds.Maximum[2]>=0&&bounds.Minimum[2]<=1)work.Draws.push_back(candidate.Draw);
+            }
             continue;
         }
 
-        struct PatchDraws {
-            const ShadowRegion& Region;
-            double Left,Right,Bottom,Top;
-            std::vector<PreparedDraw> Draws;
-        };
-        std::vector<PatchDraws> patches;
+        struct PatchBounds {double Left,Right,Bottom,Top;};
+        std::vector<PatchBounds> patches;
+        const auto firstPatch=tiles.size();
         for(const auto& region:*repair)if(region.Cascade==cascade) {
             const auto& viewport=region.Viewport;
             const double left=viewport.X-x,top=viewport.Y-y;
-            patches.push_back({region,2*left/tile-1,2*(left+viewport.Width)/tile-1,
-                1-2*(top+viewport.Height)/tile,1-2*top/tile,{}});
+            patches.push_back({2*left/tile-1,2*(left+viewport.Width)/tile-1,
+                1-2*(top+viewport.Height)/tile,1-2*top/tile});
+            tiles.push_back({viewport,region.Projection,{},{}});
         }
         if(patches.empty())continue;
-        // Project a caster once per cascade, then test its ranges against the
-        // small, disjoint repair rectangles before sorting any draws.
+        // Project a caster once per cascade before testing its small repair rectangles.
         for(const auto& candidate:candidates) {
             const auto bounds=ProjectShadowBounds(candidate.World,projection);
             if(bounds.Maximum[2]<0||bounds.Minimum[2]>1)continue;
-            for(auto& patch:patches)
+            for(std::size_t index=0;index<patches.size();++index) {
+                const auto& patch=patches[index];
                 if(!(bounds.Maximum[0]<patch.Left||bounds.Minimum[0]>patch.Right||
                      bounds.Maximum[1]<patch.Bottom||bounds.Minimum[1]>patch.Top))
-                    patch.Draws.push_back(candidate.Draw);
-        }
-        for(auto& patch:patches) {
-            pass->SetViewport(patch.Region.Viewport);
-            if(!ClearShadowRegion(*pass))return false;
-            std::stable_sort(patch.Draws.begin(),patch.Draws.end(),sortDraw);
-            const auto batchPass=9+static_cast<std::uint32_t>(&patch.Region-repair->data());
-            if(!drawBatch(patch.Draws,patch.Region.Projection,batchPass))return false;
+                    tiles[firstPatch+index].Draws.push_back(candidate.Draw);
+            }
         }
     }
-    command.EndRenderPass(pass);passScope.Pass=nullptr;
+
+    for(auto& work:tiles)
+        PrepareInstanceBatches(work.Draws,view.EnableGPUInstancing,true,work.Batches,stream.Indices);
+    if(!UploadInstanceStream(command,stream))return false;
+
+    const bool preserveOtherTiles=repair||cascadeMask!=allCascades;
+    GRHI::RenderPassDesc passDescription;
+    passDescription.DepthTarget=atlas.GetDepthTargetView();
+    passDescription.DepthLoad=preserveOtherTiles?GRHI::LoadOp::Load:GRHI::LoadOp::Clear;
+    passDescription.DepthStore=GRHI::StoreOp::Store;
+    passDescription.ClearDepth=1;
+    auto* pass=command.BeginRenderPass(passDescription);
+    if(!pass)return Fail(DeviceError("Begin depth-only directional shadow pass"));
+    ShadowPassScope passScope{command,pass};
+    for(const auto& work:tiles) {
+        pass->SetViewport(work.Viewport);
+        if(preserveOtherTiles&&!ClearShadowRegion(*pass))return false;
+        for(const auto& batch:work.Batches)
+            if(!DrawShadow(*pass,work.Draws[batch.First],work.Projection,batch.IndexOffset,batch.Count,
+                batch.Count>1?&stream:nullptr))return false;
+    }
+    command.EndRenderPass(pass);
+    passScope.Pass=nullptr;
     ++_Statistics.ShadowMapUpdates;
     return true;
 }
@@ -210,18 +205,34 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const auto sceneRevision=scene.GetRenderRevision();
     _Statistics.ShadowCascadeCount=settings.CascadeCount;
     _Statistics.LayeredShadows=layered;
+    const std::uint32_t columns=settings.CascadeCount==1?1:2;
+    const std::uint32_t tile=settings.Resolution/columns;
+    const std::uint32_t allCascades=(std::uint32_t{1}<<settings.CascadeCount)-1;
+    const float tileScale=float(tile)/settings.Resolution;
     const bool sameView=std::memcmp(_ShadowCamera.View.Data,view.Camera.View.Data,sizeof(view.Camera.View.Data))==0;
-    // Both atlases and the camera used to select a cascade must use the same XY fit.
-    const bool reuseFit=_ShadowValid&&_ShadowSceneID==sceneID&&_ShadowAspect==aspect&&
+    const bool samePreview=_ShadowPreviewObjectID==previewID;
+    const bool sameFitSettings=_ShadowValid&&_ShadowSceneID==sceneID&&_ShadowAspect==aspect&&
         _ShadowSettings==settings&&_ShadowLightMask==light.CullingMask&&
         SameVector(_ShadowDirection,light.TowardsLight)&&
-        SameShadowProjection(_ShadowCamera.Projection,view.Camera.Projection)&&
-        (sameView||view.ReuseShadowsWhileNavigating);
-    const bool samePreview=_ShadowPreviewObjectID==previewID;
-    if(reuseFit&&_ShadowSceneRevision==sceneRevision&&(samePreview||!previewID)) {
+        SameShadowProjection(_ShadowCamera.Projection,view.Camera.Projection);
+    const bool navigationReuse=!sameView&&view.ReuseShadowsWhileNavigating;
+    // Authored static maps have a small guard band. The current camera still
+    // chooses the cascade, and the atlas is refit before coverage runs out.
+    const float splits[]{_ShadowUniform.Splits.X,_ShadowUniform.Splits.Y,_ShadowUniform.Splits.Z,_ShadowUniform.Splits.W};
+    std::uint32_t coveredCascades=0;
+    if(!sameView&&!navigationReuse&&!_ShadowNavigationApproximate&&sameFitSettings&&
+       settings.CacheStaticCasters&&!previewID&&!_ShadowPreviewObjectID) {
+        coveredCascades=RuntimeShadowMath::CoveredCascades(view.Camera,aspect,_ShadowUniform.WorldToShadow,splits,
+            settings.CascadeCount,tile,settings.NormalBias,settings.Soft);
+    }
+    const bool reuseFit=sameFitSettings&&(sameView||navigationReuse||coveredCascades==allCascades);
+    const auto& samplingCamera=navigationReuse&&reuseFit?_ShadowCamera:view.Camera;
+    const bool sameSampling=std::memcmp(_ShadowUniform.CameraView.Data,samplingCamera.View.Data,sizeof(samplingCamera.View.Data))==0;
+    if(reuseFit&&sameSampling&&_ShadowSceneRevision==sceneRevision&&(samePreview||!previewID)) {
         // The submitted split still represents the exact committed pose.
         // Rebuild with the authored policy at the next actual invalidation.
         _Statistics.LayeredShadows=layered||_ShadowPreviewObjectID!=0;
+        _ShadowNavigationApproximate=navigationReuse;
         return true;
     }
 
@@ -256,6 +267,8 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     std::vector<Bounds> staticBounds,dynamicBounds;
     std::vector<StaticShadowCasterKey> staticKeys;
     std::vector<std::pair<std::uint64_t,Bounds>> primaryBounds;
+    std::unordered_set<std::uint64_t> staticTransformObjects;
+    std::vector<DrawObject*> dynamicObjects;
     std::unordered_set<std::uint64_t> previewSubtree;
     if(preview) {
         std::vector<IGameObject*> pending{preview};
@@ -271,15 +284,13 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const bool previewChangesOnly=preview&&reuseFit&&scene.GetRenderTransformChanges(_ShadowSceneRevision,moved)&&
         std::all_of(moved.begin(),moved.end(),[&](auto id){return previewSubtree.contains(id);});
     const bool onlyPreviewMoved=previewChangesOnly&&samePreview;
-    // Off-camera objects can project into the camera frustum. Cull in light space.
-    for(auto& object:_SceneObjects) {
-        if(!(light.CullingMask&(std::uint32_t{1}<<object.Layer))||!object.Geometry)continue;
-        // During an edit the moving subtree must stay out of the cached atlas,
-        // even if authored static. With unified shadows, the unchanged rigid
-        // surroundings can still be cached for the duration of the gesture.
-        const bool dynamic=layered&&(object.Skinned||previewSubtree.contains(object.ObjectID)||
-            (settings.CacheStaticCasters&&!object.StaticShadowCaster));
-        if(onlyPreviewMoved&&!dynamic)continue;
+    const bool unchangedStatic=settings.CacheStaticCasters&&sameFitSettings&&samePreview&&!_Statistics.SceneSnapshotRebuilds&&
+        scene.GetRenderTransformChanges(_ShadowSceneRevision,moved)&&
+        std::none_of(moved.begin(),moved.end(),[&](auto id){return _StaticShadowTransformObjects.contains(id);});
+    const bool skipStatic=onlyPreviewMoved||unchangedStatic;
+    const auto collectCaster=[&](DrawObject& object,bool dynamic) {
+        if(!(light.CullingMask&(std::uint32_t{1}<<object.Layer))||!object.Geometry||
+            (object.Skinned&&!object.SkinPoseReady))return;
         auto* mesh=object.Geometry;
         Bounds local=mesh->Data.LocalBounds;
         if(mesh->CullBoundsKnown)local={mesh->CullMinimum*.5f+mesh->CullMaximum*.5f,mesh->CullMaximum*.5f-mesh->CullMinimum*.5f};
@@ -308,15 +319,32 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         }
         if(casters.size()!=previousCount) {
             bounds.push_back(world);
-            if(!dynamic)primaryBounds.emplace_back(object.ObjectID,world);
+            if(!dynamic) {
+                primaryBounds.emplace_back(object.ObjectID,world);
+                if(settings.CacheStaticCasters)
+                    for(auto* node=_Runtime.QueryGameObject(object.ObjectID);node;node=node->Parent())
+                        if(!staticTransformObjects.insert(node->GetInstanceID()).second)break;
+            }
         }
+    };
+    // Off-camera objects can project into the camera frustum. Cache the list of
+    // static casters and revisit only the dynamic subset while the scene is unchanged.
+    if(unchangedStatic) {
+        for(auto* object:_DynamicShadowObjects)collectCaster(*object,true);
+    } else {
+        for(auto& object:_SceneObjects) {
+            // The moving preview subtree stays out of the primary atlas.
+            const bool dynamic=layered&&(object.Skinned||previewSubtree.contains(object.ObjectID)||
+                (settings.CacheStaticCasters&&!object.StaticShadowCaster));
+            if(settings.CacheStaticCasters&&dynamic)dynamicObjects.push_back(&object);
+            if(!skipStatic||dynamic)collectCaster(object,dynamic);
+        }
+        SortShadowCandidates(staticCasters);
     }
 
     const bool hadStaticLayer=_ShadowSettings.CacheStaticCasters||_ShadowPreviewObjectID!=0;
-    const bool reuseStatic=onlyPreviewMoved||(layered&&reuseFit&&hadStaticLayer&&_StaticShadowCasters==staticKeys);
-    const std::uint32_t columns=settings.CascadeCount==1?1:2;
-    const std::uint32_t tile=settings.Resolution/columns;
-    const float tileScale=float(tile)/settings.Resolution;
+    const bool sameCasters=unchangedStatic||(layered&&hadStaticLayer&&_StaticShadowCasters==staticKeys);
+    const bool reuseStatic=reuseFit&&(onlyPreviewMoved||sameCasters);
     std::vector<ShadowRegion> repair;
     bool repairStatic=false;
     if(!reuseStatic&&previewChangesOnly&&!samePreview) {
@@ -348,35 +376,52 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
                 cascades.Count=settings.CascadeCount;
                 for(std::uint32_t index=0;index<cascades.Count;++index)
                     cascades.Entries[index].ViewProjection=_ShadowUniform.WorldToShadow[index];
-                if(!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,staticCasters,1,&repair))return false;
+                if(!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,staticCasters,
+                    _StaticShadowInstances,allCascades,&repair))return false;
                 ++_Statistics.StaticShadowMapUpdates;
                 _Statistics.StaticShadowDrawCalls=_Statistics.ShadowDrawCalls;
+                std::uint32_t repairedMask=0;
+                for(const auto& region:repair)repairedMask|=std::uint32_t{1}<<region.Cascade;
+                _Statistics.StaticShadowCascadesUpdated=std::popcount(repairedMask);
             }
         }
     }
     const bool retainedPrimary=reuseStatic||repairStatic;
-    const RenderCamera& fitCamera=retainedPrimary?_ShadowCamera:view.Camera;
-    ShadowUniform uniform=retainedPrimary?_ShadowUniform:ShadowUniform{};
+    const RenderCamera& fitCamera=retainedPrimary?samplingCamera:view.Camera;
+    std::uint32_t refitMask=allCascades;
+    if(!retainedPrimary&&sameCasters&&coveredCascades) {
+        // If the regional clear is unavailable, a full clear/refit remains safe.
+        const auto diagnostic=_Error;
+        if(PrepareShadowRepair())refitMask&=~coveredCascades;
+        _Error=diagnostic;
+    }
+    ShadowUniform uniform=(retainedPrimary||refitMask!=allCascades)?_ShadowUniform:ShadowUniform{};
+    uniform.CameraView=fitCamera.View;
     if(!retainedPrimary) {
         RuntimeShadowMath::CascadeSet cascades;
+        constexpr double StaticReceiverFitScale=1.125;
+        const bool movingPerspective=settings.CacheStaticCasters&&fitCamera.Projection.Projection==CameraProjection::Perspective;
+        const double fitScale=movingPerspective?StaticReceiverFitScale:1;
+        const auto& fittingBounds=unchangedStatic?_StaticShadowBounds:staticBounds;
+        const auto& fittingCasters=unchangedStatic?_StaticShadowCandidates:staticCasters;
         if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
-            settings.CascadeCount,tile,staticBounds.data(),staticBounds.size(),cascades))
+            settings.CascadeCount,tile,fittingBounds.data(),fittingBounds.size(),cascades,fitScale,nullptr,refitMask))
             return Fail("Could not fit directional shadow cascades");
 
-        uniform.CameraView=fitCamera.View;
         const float maxDistance=cascades.Entries[settings.CascadeCount-1].FarDepth;
         uniform.Info={float(settings.CascadeCount),settings.Strength,maxDistance,maxDistance*.9f};
         float splits[4]{};
         for(std::uint32_t index=0;index<cascades.Count;++index) {
             const auto& fitted=cascades.Entries[index];
-            uniform.WorldToShadow[index]=fitted.ViewProjection;
             splits[index]=fitted.FarDepth;
+            if(!(refitMask&(std::uint32_t{1}<<index)))continue;
+            uniform.WorldToShadow[index]=fitted.ViewProjection;
             uniform.Bias[index]={settings.DepthBias*fitted.WorldUnitsPerTexel/fitted.DepthRange,
                 settings.NormalBias*fitted.WorldUnitsPerTexel,settings.Soft?1.0f:0.0f,0};
             uniform.Atlas[index]={tileScale,tileScale,float(index%columns)*tileScale,float(index/columns)*tileScale};
         }
         uniform.Splits={splits[0],splits[1],splits[2],splits[3]};
-        if(!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,staticCasters,1))return false;
+        if(!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,fittingCasters,_StaticShadowInstances,refitMask))return false;
         // Warm the small clear pipeline outside a drag. Partial repair remains
         // optional if this backend cannot allocate its resources.
         if(!preview) {
@@ -387,6 +432,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         if(layered) {
             ++_Statistics.StaticShadowMapUpdates;
             _Statistics.StaticShadowDrawCalls=_Statistics.ShadowDrawCalls;
+            _Statistics.StaticShadowCascadesUpdated=std::popcount(refitMask);
         }
     }
 
@@ -399,7 +445,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         }
         RuntimeShadowMath::CascadeSet cascades;
         if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
-            settings.CascadeCount,tile,dynamicBounds.data(),dynamicBounds.size(),cascades))
+            settings.CascadeCount,tile,dynamicBounds.data(),dynamicBounds.size(),cascades,1,uniform.WorldToShadow))
             return Fail("Could not fit dynamic directional shadow cascades");
         float depthBias[4]{};
         for(std::uint32_t index=0;index<cascades.Count;++index) {
@@ -410,7 +456,8 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         }
         uniform.DynamicDepthBias={depthBias[0],depthBias[1],depthBias[2],depthBias[3]};
         uniform.Bias[0].W=1;
-        if(!DrawShadowAtlas(command,*_DynamicShadowAtlas,view,cascades,tile,columns,dynamicCasters,5))return false;
+        SortShadowCandidates(dynamicCasters);
+        if(!DrawShadowAtlas(command,*_DynamicShadowAtlas,view,cascades,tile,columns,dynamicCasters,_DynamicShadowInstances))return false;
         ++_Statistics.DynamicShadowMapUpdates;
         _Statistics.DynamicShadowDrawCalls=_Statistics.ShadowDrawCalls-_Statistics.StaticShadowDrawCalls;
     }
@@ -424,9 +471,20 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     _ShadowAspect=aspect;
     _ShadowSceneID=sceneID;
     _ShadowSceneRevision=sceneRevision;
-    if(!onlyPreviewMoved) {
+    _ShadowNavigationApproximate=retainedPrimary&&navigationReuse;
+    if(!skipStatic) {
         _StaticShadowCasters=std::move(staticKeys);
         _PrimaryShadowCasterBounds=std::move(primaryBounds);
+        _StaticShadowTransformObjects=std::move(staticTransformObjects);
+        if(settings.CacheStaticCasters) {
+            _StaticShadowCandidates=std::move(staticCasters);
+            _StaticShadowBounds=std::move(staticBounds);
+            _DynamicShadowObjects=std::move(dynamicObjects);
+        } else {
+            _StaticShadowCandidates.clear();
+            _StaticShadowBounds.clear();
+            _DynamicShadowObjects.clear();
+        }
     }
     _ShadowRecorded=true;
     return true;

@@ -27,6 +27,11 @@ bool Renderer::PosedPositions(IGameObject& object,const MeshGPU& mesh,std::vecto
     positions.clear();
     std::vector<Mat4> matrices;
     if(!SkinMatrices(object,mesh,matrices)) return false;
+    return PosedPositions(mesh,matrices,positions);
+}
+
+bool Renderer::PosedPositions(const MeshGPU& mesh,const std::vector<Mat4>& matrices,std::vector<Vector3>& positions) {
+    positions.clear();
     if(matrices.empty()) {positions=mesh.Positions;return true;}
     positions.reserve(mesh.Positions.size());
     for(std::size_t index=0;index<mesh.Positions.size();++index) {

@@ -48,6 +48,8 @@ bool Renderer::UpdateSceneTransforms(IScene& scene,const std::vector<std::uint64
                 const bool wasInFrustum=hadCullBox&&preparedFrustum.Intersects(draw.CullBox);
                 const bool wasNegative=draw.Negative;
                 if(!SetDrawTransform(draw,node->GetTransform()->GetWorldMatrix()))return false;
+                if(draw.Negative!=wasNegative)_OpaqueDrawOrderKnown=false;
+                if(!_InstanceTransformsDirty&&!draw.Skinned)_ChangedInstanceTransforms.push_back(draw.InstanceIndex);
                 if(hadCullBox) {
                     draw.CullBox=RenderFrustum::Box(draw.Geometry->CullMinimum,draw.Geometry->CullMaximum,draw.Model);
                     draw.CullBoxKnown=true;
@@ -82,7 +84,11 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         }
     }
     _ObjectSnapshotKnown=false;
-    _PreparedKnown=false;_SnapshotHasSkin=false;
+    _PreparedKnown=false;
+    _OpaqueDrawOrderKnown=false;
+    _InstanceTransformsDirty=true;
+    _ChangedInstanceTransforms.clear();
+    _SkinnedDraws.clear();
     objects.clear();
     _SceneObjectIndices.clear();
     const auto skippedBefore=_Statistics.SkippedObjects;
@@ -102,16 +108,19 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
         data.Skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
         data.StaticShadowCaster=!data.Skinned&&
             (object->GetStaticFlags()&StaticFlags::ShadowCasterStatic)!=StaticFlags::None;
-        _SnapshotHasSkin|=data.Skinned;
         if(!SetDrawTransform(data,object->GetTransform()->GetWorldMatrix())) {
             _SceneObjectIndices.emplace(data.ObjectID,InvalidTransformIndex);
             ++_Statistics.SkippedObjects;Diagnostic("Skipped singular/nonfinite mesh transform: "+data.Name);continue;
         }
         data.Mesh=mesh->GetMesh();
+        if(objects.size()>=std::numeric_limits<std::uint32_t>::max())
+            return Fail("Scene exceeds the renderer instance index range");
+        data.InstanceIndex=static_cast<std::uint32_t>(objects.size());
         data.Materials.reserve(renderer->GetMaterialCount());
         for(std::size_t slot=0;slot<renderer->GetMaterialCount();++slot) data.Materials.push_back(renderer->GetMaterial(slot));
         data.MaterialCache.resize(data.Materials.size(),nullptr);
         _SceneObjectIndices.emplace(data.ObjectID,objects.size());
+        if(data.Skinned)_SkinnedDraws.push_back({objects.size(),{}});
         objects.push_back(std::move(data));
     }
     _ObjectSceneID=sceneID;_ObjectSceneRevision=revision;_ObjectCullingMask=mask;

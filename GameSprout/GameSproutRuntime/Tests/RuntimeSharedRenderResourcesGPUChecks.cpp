@@ -3,11 +3,15 @@
 #include "RuntimeBuiltinResources.h"
 #include "../Renderer/Shaders/GeneratedShaders.h"
 #include <array>
+#include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <new>
 #include <stdexcept>
+#include <thread>
 
 using namespace GameSproutRuntime;
 namespace {
@@ -20,6 +24,8 @@ class Provider final:public IRuntimeResourceProvider {
 public:
     std::uint64_t Revision=1;
     unsigned MeshLoads=0,TextureLoads=0,MaterialLoads=0,ShaderLoads=0;
+    unsigned TextureResolutions=0;
+    TexturePrefetchSource PrefetchSource;
     bool Custom=false,MissingMesh=false,MissingTexture=false,MissingMaterial=false,MissingShader=false;
     bool FineGrained=false,ShaderDepthNever=false;
     mutable unsigned BuiltinRevisionQueries=0;
@@ -46,6 +52,10 @@ public:
         ++TextureLoads;data={};if(MissingTexture){error="Missing texture fixture";return false;}
         data.Width=data.Height=1;data.SRGB=false;
         data.Pixels.assign(Pixel.begin(),Pixel.end());error.clear();return true;
+    }
+    bool ResolveTexturePrefetch(const ResourceReference& reference,TexturePrefetchSource& source)override {
+        if(reference!=TextureRef||PrefetchSource.ArtifactPath.empty())return false;
+        ++TextureResolutions;source=PrefetchSource;return true;
     }
     bool LoadMaterial(const ResourceReference&,MaterialRenderData& data,std::string& error)override {
         ++MaterialLoads;data={};error.clear();
@@ -95,10 +105,15 @@ void Red(const std::array<unsigned,4>& value){Check(value[0]>100&&value[1]==0&&v
 void Blue(const std::array<unsigned,4>& value){Check(value[2]>100&&value[0]==0&&value[1]==0,"Expected blue shared texture");}
 void Green(const std::array<unsigned,4>& value){Check(value[1]>100&&value[0]==0&&value[2]==0,"Expected green shared texture");}
 void Black(const std::array<unsigned,4>& value){Check(value[0]==0&&value[1]==0&&value[2]==0,"Missing/hidden resource rendered stale cached pixels");}
+struct TextureFile {
+    std::filesystem::path Path=std::filesystem::temp_directory_path()/
+        ("gamesprout-prefetch-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".rgba");
+    ~TextureFile(){std::error_code error;std::filesystem::remove(Path,error);}
+};
 }
 int main(int argc,char** argv) {
     IGameSproutRuntime* runtime=nullptr;IRuntimeViewport *first=nullptr,*second=nullptr,*other=nullptr,*later=nullptr;
-    Provider provider,separate,targeted;
+    Provider provider,separate,targeted,prefetched;
     try {
         Check(argc==2,"Pass Runtime binary directory");runtime=Export(argv[1]);Check(runtime,"Cannot load Runtime");
         std::string error;first=runtime->CreateOffscreenRenderer(64,64,&provider,error);
@@ -225,7 +240,50 @@ int main(int argc,char** argv) {
         Check(targeted.Loads()==std::array<unsigned,4>{before[0],before[1],before[2],before[3]+2},
             "Missing Shader recovery reread unrelated resources or retained stale program bindings");
         delete first;first=nullptr;Green(Pixel(*second,view));delete second;second=nullptr;
+
+        // A material outside the view should become resident without a
+        // synchronous provider read, even when mip 0 needs multiple frames.
+        TextureFile artifact;
+        constexpr std::uint32_t width=2048,height=1025;
+        {
+            std::ofstream file(artifact.Path,std::ios::binary);
+            const std::vector<std::uint8_t> row=[]{
+                std::vector<std::uint8_t> pixels(width*4);
+                for(std::size_t x=0;x<pixels.size();x+=4)pixels[x+2]=pixels[x+3]=255;
+                return pixels;
+            }();
+            for(std::uint32_t y=0;y<height;++y)file.write(reinterpret_cast<const char*>(row.data()),row.size());
+            Check(bool(file),"Cannot write texture prefetch fixture");
+        }
+        const auto path=artifact.Path.u8string();
+        prefetched.PrefetchSource.ArtifactPath.assign(path.begin(),path.end());
+        prefetched.PrefetchSource.ArtifactSize=std::uint64_t(width)*height*4;
+        prefetched.PrefetchSource.Width=width;prefetched.PrefetchSource.Height=height;prefetched.PrefetchSource.SRGB=false;
+        first=runtime->CreateOffscreenRenderer(64,64,&prefetched,error);Check(first,error);
+        second=runtime->CreateOffscreenRenderer(64,64,&prefetched,error);Check(second,error);
+        auto prefetchView=view;prefetchView.EnableTexturePrefetch=true;
+        object->GetTransform()->SetLocalPosition({5,0,0});
+        Black(Pixel(*first,prefetchView));
+        Check(first->GetStatistics().TexturePrefetchPending&&prefetched.TextureResolutions==1&&prefetched.TextureLoads==0,
+            "Offscreen texture did not enter the prefetch queue once");
+        unsigned completed=0,uploadFrames=0;
+        std::uint64_t uploadBytes=0;
+        for(unsigned attempt=0;attempt<400&&first->GetStatistics().TexturePrefetchPending;++attempt) {
+            Check(first->Render(prefetchView),first->GetLastError());
+            const auto& statistics=first->GetStatistics();
+            completed+=statistics.PrefetchedTextures;
+            uploadFrames+=statistics.PrefetchUploadBytes!=0;
+            uploadBytes+=statistics.PrefetchUploadBytes;
+            if(!statistics.PrefetchUploadBytes)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        Check(completed==1&&uploadFrames>=2&&uploadBytes==prefetched.PrefetchSource.ArtifactSize,
+            "A large prefetched texture was not uploaded incrementally");
+        object->GetTransform()->SetLocalPosition({});
+        Blue(Pixel(*first,prefetchView));Blue(Pixel(*second,view));
+        Check(prefetched.TextureLoads==0&&prefetched.TextureResolutions==1,
+            "Entering the view or reusing the texture in a sibling triggered a synchronous read");
+        delete first;first=nullptr;delete second;second=nullptr;
         delete runtime;runtime=nullptr;
-        std::cout<<"PASS shared GPU resources: provider/viewport isolation, targeted artifact revisions, unchanged tokens, LocalID isolation, builtin retention, Shader/texture binding updates and deletion/recovery\n";return 0;
+        std::cout<<"PASS shared GPU resources: provider/viewport isolation, targeted revisions, Shader/texture updates, and incremental offscreen texture prefetch\n";return 0;
     }catch(const std::exception& failure){delete later;delete other;delete second;delete first;delete runtime;std::cerr<<"FAIL "<<failure.what()<<'\n';return 1;}
 }

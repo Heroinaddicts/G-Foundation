@@ -76,6 +76,7 @@ private:
         TextureGPU* BaseColorTexture=nullptr;
         TextureGPU* NormalTexture=nullptr;
         bool BaseColorAttempted=false,NormalAttempted=false;
+        bool TexturePrefetchConsidered=false;
         std::string BaseColorError,NormalError;
     };
     struct ShaderGPU {
@@ -107,6 +108,7 @@ private:
     struct Depth {GRHI::ITexture* Texture=nullptr;std::uint64_t LastUsed=0;};
     struct DrawObject {
         std::uint64_t ObjectID=0;
+        std::uint32_t InstanceIndex=0;
         Mat4 Model,Normal;
         ResourceReference Mesh;
         std::vector<ResourceReference> Materials;
@@ -120,10 +122,12 @@ private:
         std::string Name;
         std::vector<Mat4> SkinMatrices;
         bool Skinned=false;
+        bool SkinPoseReady=false;
         bool StaticShadowCaster=false;
         bool Negative=false;
         std::uint8_t Layer=0;
     };
+    struct SkinnedDrawState {std::size_t ObjectIndex;Bounds LocalBounds;};
     struct DrawUniform {Mat4 Model,ViewProjection,Normal;Color BaseColor;Vector4 TextureST{1,1,0,0};};
     struct FrameUniform {Vector4 Time,CameraPosition,MainLightDirection,MainLightColor;};
     static_assert(sizeof(FrameUniform)==64);
@@ -153,7 +157,18 @@ private:
     };
     static_assert(sizeof(ShadowUniform)==560,"Shadow fragment block must match HLSL packing");
     bool RenderShadows(GRHI::ICommandBuffer&,const RenderView&,float aspect);
-    bool DrawShadow(GRHI::IRenderPass&,const PreparedDraw&,const Mat4&,GRHI::IBuffer*,std::uint32_t);
+    struct InstanceDraw {
+        std::size_t First;
+        std::uint32_t Count;
+        std::size_t IndexOffset;
+    };
+    struct InstanceStream {
+        GRHI::IBuffer* Buffer=nullptr;
+        std::vector<std::uint32_t> Indices;
+        std::vector<std::uint32_t> Uploaded;
+    };
+    bool DrawShadow(GRHI::IRenderPass&,const PreparedDraw&,const Mat4&,
+        std::size_t firstInstance=0,std::uint32_t instanceCount=1,const InstanceStream* instances=nullptr);
     struct PreparedDraw {
         const DrawObject* Object=nullptr;
         MeshGPU* Mesh=nullptr;
@@ -183,42 +198,31 @@ private:
         GRHI::Viewport Viewport;
         Mat4 Projection;
     };
+    static void SortShadowCandidates(std::vector<ShadowCandidate>&);
     bool DrawShadowAtlas(GRHI::ICommandBuffer&,GRHI::ITexture&,const RenderView&,
         const RuntimeShadowMath::CascadeSet&,std::uint32_t tile,std::uint32_t columns,
-        std::vector<ShadowCandidate>&,std::uint32_t passOffset,const std::vector<ShadowRegion>* repair=nullptr);
+        const std::vector<ShadowCandidate>&,InstanceStream&,std::uint32_t cascadeMask=0xF,
+        const std::vector<ShadowRegion>* repair=nullptr);
     static bool BuildShadowRepairRegions(const Mat4*,const std::vector<Bounds>& removedBounds,
         const std::vector<Bounds>& addedBounds,std::uint32_t tile,std::uint32_t columns,std::uint32_t count,std::vector<ShadowRegion>&);
     GRHI::IGraphicsPipeline* PrepareShadowRepair();
     bool ClearShadowRegion(GRHI::IRenderPass&);
     GRHI::IBuffer* _ShadowRepairVertices=nullptr;
     struct InstanceVertex {Mat4 Model,Normal;};
-    struct InstanceBatchKey {
-        std::uint64_t SceneID=0,FirstObjectID=0,GroupOrdinal=0;
-        ResourceReference Mesh,Material;
-        std::uint32_t FirstIndex=0,IndexCount=0,Part=0,Pass=0;
-        std::uint8_t Layer=0;
-        bool Negative=false;
-        bool operator<(const InstanceBatchKey& other) const {
-            return std::tie(SceneID,FirstObjectID,GroupOrdinal,Mesh.Guid,Mesh.LocalID,Material.Guid,Material.LocalID,FirstIndex,IndexCount,Part,Pass,Layer,Negative)<
-                std::tie(other.SceneID,other.FirstObjectID,other.GroupOrdinal,other.Mesh.Guid,other.Mesh.LocalID,other.Material.Guid,other.Material.LocalID,
-                    other.FirstIndex,other.IndexCount,other.Part,other.Pass,other.Layer,other.Negative);
-        }
-    };
-    struct InstanceBatch {
-        GRHI::IBuffer* Buffer=nullptr;
-        std::vector<InstanceVertex> Vertices;
-        std::uint64_t LastUsed=0;
-    };
-    static constexpr std::size_t MaxBatchInstances=4096;
-    static constexpr std::uint64_t MaxResidentInstanceBytes=32u*1024u*1024u;
+    void RefreshDrawSortRanks();
+    static bool OpaqueDrawBefore(const PreparedDraw&,const PreparedDraw&);
+    static bool PriorityAndDepthBefore(const PreparedDraw&,const PreparedDraw&);
     void SortPrepared(std::vector<PreparedDraw>&);
-    bool DrawPrepared(GRHI::IRenderPass&,const std::vector<PreparedDraw>&,const RenderView&,
-        const Mat4&,GRHI::TextureFormat,const std::vector<DirectionalLight>&,const void*,std::size_t);
+    void PrepareInstanceBatches(const std::vector<PreparedDraw>&,bool enabled,bool shadow,
+        std::vector<InstanceDraw>&,std::vector<std::uint32_t>&) const;
+    bool UploadResidentInstances(GRHI::ICommandBuffer&);
+    bool UploadInstanceStream(GRHI::ICommandBuffer&,InstanceStream&);
+    bool DrawPrepared(GRHI::IRenderPass&,const std::vector<PreparedDraw>&,const RenderView&,const Mat4&,
+        GRHI::TextureFormat,const std::vector<DirectionalLight>&,const void*,std::size_t);
     bool DrawBuiltin(GRHI::IRenderPass&,const PreparedDraw&,const RenderView&,const Mat4&,
         GRHI::TextureFormat,const std::vector<DirectionalLight>&,const void*,std::size_t,
-        GRHI::IBuffer* instances=nullptr,std::uint32_t instanceCount=1);
-    GRHI::IBuffer* InstanceBuffer(const InstanceBatchKey&,const std::vector<PreparedDraw>&,std::size_t,std::size_t);
-    void PruneInstanceBuffers(std::uint64_t requiredBytes=0);
+        std::size_t firstInstance=0,std::uint32_t instanceCount=1);
+    void InvalidateInstanceUploads();
     void ClearInstanceBuffers();
     bool ExtractLights(IScene*,std::vector<DirectionalLight>&);
     LitUniform MakeLitUniform(const RenderView&,const DrawObject&,const MaterialRenderData&,const std::vector<DirectionalLight>&,bool);
@@ -251,10 +255,18 @@ private:
     bool UpdateSceneTransforms(IScene& scene,const std::vector<std::uint64_t>& roots,std::vector<DrawObject>& objects);
     static bool SetDrawTransform(DrawObject& object,const Mat4& model);
     void PrepareDraws(const RenderView&,const Mat4& viewProjection);
+    void RefreshSkinPoses();
     MeshGPU* Mesh(const ResourceReference& reference);
     ColliderMeshWire* ColliderMesh(IColliderComponent& collider,const ResourceReference& reference,bool convex,const Mat4& relative);
-    TextureGPU* Texture(const ResourceReference& reference);
-    TextureGPU* MaterialTexture(Material&,bool normal);
+    TextureGPU* Texture(const ResourceReference& reference,bool* pending=nullptr);
+    GRHI::ISampler* CreateTextureSampler(const SamplerSettings&);
+    TextureGPU* MaterialTexture(Material&,bool normal,bool& pending);
+    void BeginTexturePrefetchFrame(bool enabled);
+    void EndTexturePrefetchFrame();
+    bool PrefetchTexture(const ResourceReference&,bool visible);
+    void PredictMaterialTextures(Material&);
+    bool _TexturePrefetchEnabled=false;
+    std::uint64_t _SeenTexturePrefetchRevision=0;
     Material* MaterialData(const ResourceReference& reference);
     ShaderGPU* Shader(const ResourceReference& reference);
     bool PrepareShaderMaterial(Material& material,ShaderGPU& shader);
@@ -274,6 +286,7 @@ private:
     bool QueryObject(IScene* scene,std::uint64_t objectID,IGameObject*& object,MeshGPU*& mesh,Mat4& model);
     bool SkinMatrices(IGameObject& object,const MeshGPU& mesh,std::vector<Mat4>& matrices);
     bool PosedPositions(IGameObject& object,const MeshGPU& mesh,std::vector<Vector3>& positions);
+    bool PosedPositions(const MeshGPU& mesh,const std::vector<Mat4>& matrices,std::vector<Vector3>& positions);
     void SyncRevision();
     void ClearResources();
     void Diagnostic(const std::string& error);
@@ -301,10 +314,16 @@ private:
     std::unordered_set<std::uint64_t> _LightTransformSources;
     FrameUniform _ShaderFrame;
     std::vector<PreparedDraw> _PreparedDraws;
+    std::vector<PreparedDraw> _VisibleDrawScratch;
+    std::vector<std::size_t> _OpaqueDrawOrder,_VisibleOpaqueSlots,_VisibleTransparentSlots;
+    bool _OpaqueDrawOrderKnown=false;
+    std::vector<SkinnedDrawState> _SkinnedDraws;
+    std::vector<Mat4> _SkinScratch;
+    std::vector<Vector3> _PosedPositionScratch;
     Mat4 _PreparedViewProjection;
     RenderCamera _PreparedCamera;
     MaterialRenderData _DefaultMaterial;
-    bool _PreparedKnown=false,_SnapshotHasSkin=false;
+    bool _PreparedKnown=false;
     std::uint32_t _PreparedVisible=0,_PreparedSkipped=0;
     std::string _PreparedDiagnostic;
     std::size_t _SortedMeshCount=0,_SortedMaterialCount=0;
@@ -327,12 +346,20 @@ private:
     std::uint64_t _ShadowPreviewObjectID=0;
     std::vector<StaticShadowCasterKey> _StaticShadowCasters;
     std::vector<std::pair<std::uint64_t,Bounds>> _PrimaryShadowCasterBounds;
+    std::unordered_set<std::uint64_t> _StaticShadowTransformObjects;
+    std::vector<ShadowCandidate> _StaticShadowCandidates;
+    std::vector<Bounds> _StaticShadowBounds;
+    std::vector<DrawObject*> _DynamicShadowObjects;
     float _ShadowAspect=0;
     std::uint64_t _ShadowSceneID=0,_ShadowSceneRevision=0;
-    bool _ShadowValid=false,_ShadowRecorded=false;
-    std::map<InstanceBatchKey,InstanceBatch> _InstanceBatches;
-    std::vector<InstanceVertex> _InstanceScratch;
-    std::uint64_t _ResidentInstanceBytes=0;
+    bool _ShadowValid=false,_ShadowRecorded=false,_ShadowNavigationApproximate=false;
+    GRHI::IBuffer* _InstanceTransformsBuffer=nullptr;
+    std::vector<InstanceVertex> _InstanceTransforms;
+    std::vector<std::uint32_t> _ChangedInstanceTransforms;
+    std::vector<InstanceDraw> _ColorInstanceDraws;
+    InstanceStream _ColorInstances,_StaticShadowInstances,_DynamicShadowInstances;
+    bool _InstanceTransformsDirty=true,_InstanceFrameSubmitted=true;
+    bool _ColorInstanceBatchesKnown=false,_ColorInstancingEnabled=false;
     GRHI::ITexture*& _White;
     GRHI::ISampler*& _DefaultSampler;
     GRHI::IBuffer*& _Grid;

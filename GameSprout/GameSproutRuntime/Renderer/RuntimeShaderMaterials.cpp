@@ -53,6 +53,17 @@ bool Renderer::PrepareShaderMaterial(Material& material,ShaderGPU& shader) {
     names.clear();
     for(const auto& value:material.Data.Textures)if(value.Name.empty()||!names.insert(value.Name).second||
         (value.Texture.Guid.empty()!=(value.Texture.LocalID==0)))return fail("Prepared material has invalid texture identities");
+    // Keep the custom shader's blend and sampling semantics while a texture
+    // is pending. Resolve bindings before packing and retry when it publishes.
+    if(_TexturePrefetchEnabled) {
+        bool pending=false;
+        for(const auto& binding:shader.Data.Passes[0].Fragment.Textures) {
+            const auto found=std::find_if(material.Data.Textures.begin(),material.Data.Textures.end(),
+                [&](const auto& value){return value.Name==binding.Name;});
+            if(found!=material.Data.Textures.end())pending|=PrefetchTexture(found->Texture,true);
+        }
+        if(pending){material.ShaderAttempted=false;return false;}
+    }
     const auto pack=[&](const ShaderProgramData& program,std::vector<BoundUniform>& output) {
         for(const auto& block:program.Uniforms) {
             if(block.Source!=ShaderUniformSource::Material)continue;

@@ -245,7 +245,9 @@ void NotifyRuntimePropertiesChanged(IGameObject* owner) {
     if(auto* access=dynamic_cast<ObjectAccess*>(owner)) {
         auto& state=access->State();
         if(state.Owner.IsInScene(&state)) {
-            state.SceneOwner->InvalidateRenderSnapshot();
+            // Evaluated animation and physics poses change transforms only.
+            // Let each viewport refresh only the affected scene data.
+            state.SceneOwner->InvalidateRenderSnapshot(state.ID);
             if (FindUIScreenCanvasRoot(*owner)) state.SceneOwner->InvalidateUI();
             state.Owner.MarkObjectPropertiesChanged(state.ID);
         }

@@ -67,6 +67,44 @@ int main(){
                 "Sub-texel camera motion moved the snapped light XY transform");
 
         camera.View={};
+        RuntimeShadowMath::CascadeSet guarded;
+        Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,4,512,nullptr,0,guarded,1.125),"Guarded cascade generation failed");
+        Mat4 staticProjection[4];float splits[4];
+        for(unsigned index=0;index<4;++index){
+            staticProjection[index]=guarded.Entries[index].ViewProjection;
+            splits[index]=guarded.Entries[index].FarDepth;
+        }
+        camera.View(0,3)=-.25f;
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0xF,
+            "Small camera motion escaped guarded coverage");
+        const Bounds movingCaster{{.25f,20,-6},{.5f,.8f,.5f}};
+        Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,4,512,&movingCaster,1,cascades,1,staticProjection),
+            "Moving caster depth fit failed in the retained tile");
+        for(unsigned index=0;index<4;++index){
+            for(unsigned row=0;row<2;++row)for(unsigned column=0;column<4;++column)
+                Check(cascades.Entries[index].ViewProjection(row,column)==staticProjection[index](row,column),
+                    "Dynamic depth fit moved the cached static UV coordinates");
+            CheckReceiverCorners(camera,1,cascades.Entries[index]);
+        }
+        camera.View(0,3)=-4;
+        const auto covered=RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true);
+        Check(covered==0xE,"Moderate movement should invalidate only the nearest cascade");
+        Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,4,512,nullptr,0,cascades,1.125,nullptr,0xF&~covered),
+            "Refitting only the uncovered cascade failed");
+        for(unsigned index=0;index<4;++index) {
+            Check(cascades.Entries[index].FarDepth==splits[index],"Partial fitting changed the depth partition");
+            if(!(covered&(1u<<index)))staticProjection[index]=cascades.Entries[index].ViewProjection;
+        }
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0xF,
+            "Retaining three projections after partial fitting left missing coverage");
+        camera.View(0,3)=-100;
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0,
+            "Camera teleport reused an uncovered light tile");
+        camera.View(0,3)=0;camera.View(1,3)=-100;
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0,
+            "Camera motion escaped only light depth without refitting");
+
+        camera.View={};
         const Bounds aboveView{{0,100,-10},{1,1,1}};
         Mat4 cameraProjection;Check(TryMakePerspective(camera.Projection.VerticalFovRadians,1,.1f,50,cameraProjection),"Camera setup failed");
         const RenderFrustum::Frustum cameraFrustum(cameraProjection);

@@ -54,7 +54,7 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
     const auto found=_Pipelines.find(key);
     if(found!=_Pipelines.end()) return found->second;
     GRHI::VertexBindingDesc bindings[2];bindings[0].Binding=0;bindings[0].Stride=key.Grid?28:key.Stride;
-    bindings[1].Binding=1;bindings[1].Stride=sizeof(InstanceVertex);bindings[1].Rate=GRHI::VertexInputRate::Instance;
+    bindings[1].Binding=1;bindings[1].Stride=sizeof(std::uint32_t);bindings[1].Rate=GRHI::VertexInputRate::Instance;
     GRHI::VertexAttributeDesc attributes[12];
     attributes[0]={0,0,GRHI::VertexFormat::Float3,key.Grid?0:key.Position};
     std::size_t count=1;
@@ -68,10 +68,7 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
             attributes[count++]={5,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.BoneWeights)};
         }
     }
-    if(key.Instanced) {
-        for(std::uint32_t column=0;column<8;++column)
-            attributes[count++]={4+column,1,GRHI::VertexFormat::Float4,column*16};
-    }
+    if(key.Instanced)attributes[count++]={4,1,GRHI::VertexFormat::UInt32,0};
     const std::size_t variant=key.Color<0?(key.UV<0?3:2):(key.UV<0?1:0);
     const std::size_t shader=key.Grid?5:variant+(key.Instanced?12:(key.BoneIndices>=0?7:0));
     if(!_Shaders[shader]) {

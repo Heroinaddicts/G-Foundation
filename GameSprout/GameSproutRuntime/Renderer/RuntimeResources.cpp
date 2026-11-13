@@ -104,10 +104,15 @@ Renderer::~Renderer() {
 void Renderer::ClearResources() {
     ClearUIDraws();
     _ShadowValid=false;_ShadowUniform.Info={};_StaticShadowCasters.clear();_PrimaryShadowCasterBounds.clear();
+    _StaticShadowTransformObjects.clear();
+    _StaticShadowCandidates.clear();_StaticShadowBounds.clear();_DynamicShadowObjects.clear();
     _PreparedDraws.clear();_SceneObjects.clear();_SceneObjectIndices.clear();_SceneLights.clear();_LightTransformSources.clear();
+    _VisibleDrawScratch.clear();_OpaqueDrawOrder.clear();
+    _VisibleOpaqueSlots.clear();_VisibleTransparentSlots.clear();_OpaqueDrawOrderKnown=false;
+    _SkinnedDraws.clear();
     _SortedMeshCount=0;_SortedMaterialCount=0;
     _ObjectSnapshotKnown=false;_LightSnapshotKnown=false;
-    _PreparedKnown=false;_SnapshotHasSkin=false;_PreparedDiagnostic.clear();
+    _PreparedKnown=false;_PreparedDiagnostic.clear();
     _ExtractionDiagnostic.clear();_LightDiagnostic.clear();
     ClearInstanceBuffers();
     _ColliderMeshes.clear();
@@ -170,8 +175,16 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
     if(!entry.Buffer) {Diagnostic("Mesh "+reference.Guid+"_"+std::to_string(reference.LocalID)+": "+entry.Error);return nullptr;}
     return &entry;
 }
-Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference) {
+GRHI::ISampler* Renderer::CreateTextureSampler(const SamplerSettings& settings) {
+    return _Device.CreateSampler(ToGRHISampler(settings));
+}
+Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference,bool* pending) {
+    if(pending)*pending=false;
     if(reference.Guid.empty() || !reference.LocalID) {Diagnostic("Texture reference is invalid");return nullptr;}
+    if(pending&&_TexturePrefetchEnabled&&PrefetchTexture(reference,true)) {
+        *pending=true;
+        return nullptr;
+    }
     auto [position,inserted]=_Textures.try_emplace(ResourceKey(reference));auto& entry=position->second;
     if(inserted) {
         try {
@@ -187,7 +200,7 @@ Renderer::TextureGPU* Renderer::Texture(const ResourceReference& reference) {
                     description.Usage=GRHI::TextureUsage::Sampled;
                     GRHI::TextureInitialData initial{data.Pixels.data(),data.Pixels.size(),0};
                     entry.Texture=_Device.CreateTexture(description,&initial);
-                    if(entry.Texture) entry.Sampler=_Device.CreateSampler(ToGRHISampler(data.Sampler));
+                    if(entry.Texture) entry.Sampler=CreateTextureSampler(data.Sampler);
                     if(!entry.Texture || !entry.Sampler) {entry.Error=DeviceError("Create prepared texture/sampler");delete entry.Texture;delete entry.Sampler;entry.Texture=nullptr;entry.Sampler=nullptr;}
                 }
             }
@@ -240,14 +253,14 @@ Renderer::Material* Renderer::MaterialData(const ResourceReference& reference) {
     if(!entry.Loaded) {Diagnostic("Material "+reference.Guid+"_"+std::to_string(reference.LocalID)+": "+entry.Error);return nullptr;}
     return &entry;
 }
-Renderer::TextureGPU* Renderer::MaterialTexture(Material& material,bool normal) {
+Renderer::TextureGPU* Renderer::MaterialTexture(Material& material,bool normal,bool& pending) {
     auto*& texture=normal?material.NormalTexture:material.BaseColorTexture;
     bool& attempted=normal?material.NormalAttempted:material.BaseColorAttempted;
     auto& error=normal?material.NormalError:material.BaseColorError;
     if(!attempted) {
-        attempted=true;
         const auto diagnosticBefore=_Error.size();
-        texture=Texture(normal?material.Data.NormalTexture:material.Data.BaseColorTexture);
+        texture=Texture(normal?material.Data.NormalTexture:material.Data.BaseColorTexture,&pending);
+        attempted=!pending;
         error=_Error.substr(diagnosticBefore);
         if(!error.empty()&&error.front()=='\n')error.erase(0,1);
     }else if(!texture)Diagnostic(error);

@@ -128,7 +128,8 @@ int main(int argc,char** argv){
         auto pixels=Pixels(*viewport,view);auto stats=viewport->GetStatistics();
         Check(stats.VisibleObjects==100&&stats.DrawCalls==1&&stats.InstancedDrawCalls==1&&stats.InstancedInstances==100&&stats.SavedDrawCalls==99,
             "100 shared meshes/materials did not become one 100-instance GPU draw");
-        Check(stats.Triangles==100&&stats.InstanceBufferUploads==1&&stats.ResidentInstanceBytes>=100*128,
+        Check(stats.Triangles==100&&stats.InstanceBufferUploads==2&&stats.InstanceTransformUploadBytes==100*128&&
+            stats.InstanceVisibilityUploadBytes==100*4&&stats.ResidentInstanceBytes>=100*(128+4),
             "Instance draw triangle accounting or resident upload statistics are wrong");
         unsigned colored=0;for(std::size_t index=0;index<pixels.size();index+=4)colored+=pixels[index]>0?1:0;
         Check(colored>1000,"Instanced draw submitted commands but did not render the complete instance set");
@@ -136,18 +137,29 @@ int main(int argc,char** argv){
         CompareSingleDraws(*viewport,view,pixels,"100 instances differ from individual draws");
         Check(viewport->GetStatistics().DrawCalls==100,"View opt-out did not restore 100 independent draws");
         Pixels(*viewport,view);
+        auto narrowView=view;
+        narrowView.Camera.Projection.OrthographicHeight=5;
+        const auto narrow=Pixels(*viewport,narrowView);
+        stats=viewport->GetStatistics();
+        Check(stats.InstancedInstances<100&&stats.InstancedInstances>1&&stats.InstanceTransformUploadBytes==0&&
+            stats.InstanceVisibilityUploadBytes==stats.InstancedInstances*4&&stats.InstanceBufferUploads==1,
+            "Visibility change uploaded transforms or failed to publish compact indices");
+        CompareSingleDraws(*viewport,narrowView,narrow,"Visibility index stream selected stale transforms");
+        Pixels(*viewport,view);
         const auto loads=provider.MeshLoads;nodes.front()->GetTransform()->SetLocalPosition({-8,-8,0});
         const auto moved=Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==1&&provider.MeshLoads==loads,
             "Moving one instance reloaded shared geometry or failed to update its instance buffer");
+        Check(viewport->GetStatistics().InstanceTransformUploadBytes==128&&viewport->GetStatistics().InstanceVisibilityUploadBytes==0,
+            "Moving one visible instance rewrote other transforms or visible slots");
         CompareSingleDraws(*viewport,view,moved,"Moved instance transform was stale");
         Check(scene->DestroyGameObject(nodes.back()),"Cannot delete cached instance");nodes.pop_back();
-        pixels=Pixels(*viewport,view);Check(viewport->GetStatistics().InstancedInstances==99&&viewport->GetStatistics().InstanceBufferUploads==1,
+        pixels=Pixels(*viewport,view);Check(viewport->GetStatistics().InstancedInstances==99&&viewport->GetStatistics().InstanceBufferUploads==2,
             "Deleted instance remained in GPU data");CompareSingleDraws(*viewport,view,pixels,"Deleted instance still rendered");
-        ++provider.Revision;Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==1&&provider.MeshLoads>loads,
+        ++provider.Revision;Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==2&&provider.MeshLoads>loads,
             "Resource revision reused stale mesh or instance-buffer ownership");
         secondViewport=runtime->CreateOffscreenRenderer(256,256,&provider,error);Check(secondViewport,error);
         pixels=Pixels(*viewport,view);Equivalent(Pixels(*secondViewport,view),pixels,"Independent viewport instance ownership leaked");
-        Check(secondViewport->GetStatistics().InstanceBufferUploads==1,"Second viewport reused a foreign GPU instance buffer");
+        Check(secondViewport->GetStatistics().InstanceBufferUploads==2,"Second viewport reused a foreign GPU instance buffer");
         Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==0,"Other viewport invalidated resident instances");
         delete secondViewport;secondViewport=nullptr;
         provider.Materials[100].EnableGPUInstancing=false;++provider.Revision;
@@ -201,6 +213,16 @@ int main(int argc,char** argv){
         pixels=Pixels(*viewport,view);Check(viewport->GetStatistics().DrawCalls==2,"Sorting priority disabled otherwise compatible batches");
         const auto green=Sample(pixels,viewport->GetStatistics(),-.6f,0,3);
         Check(green[1]>green[0],"Higher sorting priority was not drawn last");
+        auto sideView=view;
+        sideView.Camera.Position.X=.75f;
+        sideView.Camera.Projection.OrthographicHeight=1.1f;
+        Check(TryMakeLookAt(sideView.Camera.Position,{.75f,0,0},{0,1,0},sideView.Camera.View),
+            "Cannot aim the sorting regression camera");
+        const auto sidePixels=Pixels(*viewport,sideView);
+        Check(viewport->GetStatistics().VisibleObjects==2&&viewport->GetStatistics().InstanceTransformUploadBytes==0,
+            "Camera filtering should retain the visible opaque pair and its resident transforms");
+        const auto sideGreen=Sample(sidePixels,viewport->GetStatistics(),-.15f,0,1.1f);
+        Check(sideGreen[1]>sideGreen[0],"Filtering the cached opaque order changed the winning material");
         provider.Materials[100].SortingPriority=10;provider.Materials[101].SortingPriority=-10;++provider.Revision;
         pixels=Pixels(*viewport,view);const auto orange=Sample(pixels,viewport->GetStatistics(),-.6f,0,3);
         Check(orange[0]>orange[1],"Changing material sorting priority retained stale batch order");
@@ -208,20 +230,24 @@ int main(int argc,char** argv){
         provider.Materials[100].SortingPriority=provider.Materials[101].SortingPriority=0;++provider.Revision;
         Check(runtime->DestroyScene(scene),"Cannot replace sorting scene");
 
-        // Exercise the actual per-draw instance limit without a large framebuffer
-        // fill cost; all tiny triangles deliberately overlap in a wide view.
+        // Grow both streams past the old per-draw limit without a large
+        // framebuffer fill cost; all tiny triangles overlap in a wide view.
         scene=runtime->CreateScene("Instance capacity boundary");view=View(scene,20);
         std::vector<IGameObject*> capacityObjects;capacityObjects.reserve(4100);
-        for(unsigned index=0;index<4100;++index)capacityObjects.push_back(Object(*scene,1,100,{0,0,0}));
+        for(unsigned index=0;index<4096;++index)capacityObjects.push_back(Object(*scene,1,100,{0,0,0}));
+        Pixels(*viewport,view);
+        const auto initialCapacity=viewport->GetStatistics().ResidentInstanceBytes;
+        for(unsigned index=4096;index<4100;++index)capacityObjects.push_back(Object(*scene,1,100,{0,0,0}));
         pixels=Pixels(*viewport,view);stats=viewport->GetStatistics();
-        Check(stats.DrawCalls==2&&stats.InstancedDrawCalls==2&&stats.InstancedInstances==4100&&stats.SavedDrawCalls==4098&&stats.Triangles==4100,
-            "4100 instances did not split into correctly accounted bounded GPU draws");
+        Check(stats.DrawCalls==1&&stats.InstancedDrawCalls==1&&stats.InstancedInstances==4100&&stats.SavedDrawCalls==4099&&stats.Triangles==4100&&
+            stats.ResidentInstanceBytes>initialCapacity,
+            "Instance buffers did not grow with 4100 instances in the same draw");
         Check(Sample(pixels,stats,0,0,20)[0]>0,"Capacity-boundary instanced draw produced no pixels");
-        Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==0,"Unchanged bounded instance chunks were reuploaded");
+        Pixels(*viewport,view);Check(viewport->GetStatistics().InstanceBufferUploads==0,"Unchanged grown instance buffers were reuploaded");
         for(unsigned index=0;index<4;++index){Check(scene->DestroyGameObject(capacityObjects.back()),"Cannot shrink capacity boundary");capacityObjects.pop_back();}
         const auto atCapacity=Pixels(*viewport,view);stats=viewport->GetStatistics();
         Check(stats.DrawCalls==1&&stats.InstancedInstances==4096&&stats.Triangles==4096,
-            "Exactly 4096 instances overflowed or retained a stale second chunk");
+            "Shrinking the visible list retained stale instances");
         Equivalent(atCapacity,pixels,"Shrinking identical overlapping instances changed framebuffer output");
         Check(runtime->DestroyScene(scene),"Cannot replace capacity scene");
 
@@ -260,6 +286,6 @@ int main(int argc,char** argv){
         Check(ambientPixel[0]>20&&ambientPixel[1]>10,"Ambient preservation comparison rendered no surface");
 
         delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS actual GPU automatic instancing: 100 objects/one draw, full-image baseline, resident uploads, transforms/deletion/revision/viewports, optional layouts/mirrors/normals, material/section/light isolation, priority and 4096-capacity boundaries, opt-outs and specular/ambient\n";return 0;
+        std::cout<<"PASS actual GPU automatic instancing: image baseline, resident transform edits and compact visibility, buffer growth, resource and viewport isolation, optional layouts/mirrors/normals, material/section/light isolation and opt-outs\n";return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete secondViewport;delete viewport;delete runtime;return 1;}
 }

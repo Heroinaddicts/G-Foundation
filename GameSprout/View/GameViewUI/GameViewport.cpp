@@ -151,6 +151,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
     view.Scene=scene;view.DrawGrid=false;
     view.DrawUI=scene!=nullptr;
     view.WaitForSurface=false;
+    view.EnableTexturePrefetch=true;
     std::string diagnostic;
     auto* camera=scene?scene->GetMainCamera():nullptr;
     if(!scene)diagnostic="尚无活动场景。";
@@ -169,6 +170,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
     struct Scope{bool& Flag;~Scope(){Flag=false;}} scope{_Rendering};
     if (!_Renderer->Render(view)) {_AnimatedMaterials=false;Status(_Renderer->GetLastError());return;}
     const auto& statistics=_Renderer->GetStatistics();
+    if(statistics.TexturePrefetchPending)RequestRender();
     if(!statistics.Width||!statistics.Height) {
         RequestRender();
         return;

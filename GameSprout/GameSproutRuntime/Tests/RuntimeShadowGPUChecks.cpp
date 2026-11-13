@@ -200,6 +200,19 @@ void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,
         "Moving the dynamic caster did not add its new shadow and clear its old shadow");
 
     const auto fixedCamera=view.Camera;
+    view.Camera.Position={.2f,0,5};
+    Check(TryMakeLookAt(view.Camera.Position,{.2f,0,0},{0,1,0},view.Camera.View),"Cannot shift covered shadow camera");
+    character->GetTransform()->SetLocalPosition({2.7f,-.85f,2});
+    const auto covered=Render(viewport,view);
+    Check(covered.Statistics.StaticShadowMapUpdates==0&&covered.Statistics.StaticShadowDrawCalls==0&&
+        covered.Statistics.DynamicShadowMapUpdates==1&&covered.Statistics.DynamicShadowDrawCalls>0,
+        "Covered gameplay camera motion redrew the static map or omitted dynamic depth");
+    view.Camera.Position={40,0,5};
+    Check(TryMakeLookAt(view.Camera.Position,{40,0,0},{0,1,0},view.Camera.View),"Cannot move camera out of shadow coverage");
+    Check(Render(viewport,view).Statistics.StaticShadowMapUpdates==1,"Camera teleport froze the old static map");
+    view.Camera=fixedCamera;
+    Check(Render(viewport,view).Statistics.StaticShadowMapUpdates==1,"Returning from a teleport did not restore static shadows");
+
     view.Camera.Position={.25f,0,5};
     Check(TryMakeLookAt(view.Camera.Position,{.25f,0,0},{0,1,0},view.Camera.View),"Cannot move layered shadow camera");
     view.ReuseShadowsWhileNavigating=true;
@@ -437,6 +450,39 @@ int main(int argc,char** argv){
         Check(casterChanged.Statistics.ShadowMapUpdates>0,"Navigation reused shadows after a caster change");
         Check(viewport->Resize(192,256,error),error);const auto resized=Render(*viewport,view);
         Check(resized.Statistics.ShadowMapUpdates>0,"Aspect mutation retained the old cascade fit");
+
+        Check(viewport->Resize(256,256,error),error);
+        Check(receiver->SetStaticFlags(StaticFlags::ShadowCasterStatic)&&caster->SetStaticFlags(StaticFlags::ShadowCasterStatic),
+            "Cannot mark the cascade retention fixture static");
+        view.ReuseShadowsWhileNavigating=false;
+        view.Camera.Projection={};
+        view.Camera.Projection.FarPlane=50;
+        const auto aim=[&](float x) {
+            view.Camera.Position={x,0,20};
+            Check(TryMakeLookAt(view.Camera.Position,{x,0,0},{0,1,0},view.Camera.View),"Cannot aim cascade retention camera");
+        };
+        settings.Shadows.Enabled=false;
+        settings.Shadows.CacheStaticCasters=true;
+        settings.Shadows.CascadeCount=4;
+        settings.Shadows.Distance=50;
+        settings.Shadows.Soft=true;
+        Check(sun->SetSettings(settings),"Cannot configure cascade retention baseline");
+        aim(3);
+        const auto unshadowedShifted=Render(*viewport,view);
+        settings.Shadows.Enabled=true;
+        Check(sun->SetSettings(settings),"Cannot enable static cascade retention fixture");
+        aim(0);
+        const auto initialCascades=Render(*viewport,view);
+        Check(initialCascades.Statistics.StaticShadowCascadesUpdated==4,"Initial atlas missed a static cascade");
+        aim(3);
+        const auto shiftedCascades=Render(*viewport,view);
+        Check(shiftedCascades.Statistics.StaticShadowCascadesUpdated==1,
+            "Small lateral camera motion rebuilt all static cascades");
+        Check(Darkened(unshadowedShifted,shiftedCascades).Count>30,
+            "Updating the nearest cascade erased the retained distant shadow");
+        const auto cachedShifted=Render(*viewport,view);
+        Check(cachedShifted.Statistics.StaticShadowCascadesUpdated==0&&Difference(shiftedCascades,cachedShifted)==0,
+            "Partial update was not retained in the next unchanged frame");
 
         CheckLayeredShadows(*runtime,*viewport,provider);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;

@@ -12,7 +12,7 @@ GRHI::IShader* CreatePreviewShader(GRHI::IDevice& device,PreviewShader shader) {
         codes[0].Format=GRHI::ShaderCodeFormat::SPIRV;codes[0].Data=EmbeddedShaders::Name##SPIRV;codes[0].DataSize=sizeof(EmbeddedShaders::Name##SPIRV);codes[0].EntryPoint=EmbeddedShaders::Name##SPIRVEntry; \
         codes[1].Format=GRHI::ShaderCodeFormat::MSL;codes[1].Data=EmbeddedShaders::Name##MSL;codes[1].DataSize=sizeof(EmbeddedShaders::Name##MSL);codes[1].EntryPoint=EmbeddedShaders::Name##MSLEntry; \
         codes[2].Format=GRHI::ShaderCodeFormat::DXIL;codes[2].Data=EmbeddedShaders::Name##DXIL;codes[2].DataSize=sizeof(EmbeddedShaders::Name##DXIL);codes[2].EntryPoint=EmbeddedShaders::Name##DXILEntry; \
-        for(auto& code:codes) {code.SamplerCount=EmbeddedShaders::Name##Samplers;code.UniformBufferCount=EmbeddedShaders::Name##Uniforms;} \
+        for(auto& code:codes) {code.SamplerCount=EmbeddedShaders::Name##Samplers;code.UniformBufferCount=EmbeddedShaders::Name##Uniforms;code.VertexStorageBufferCount=EmbeddedShaders::Name##StorageBuffers;} \
         break;
         GS_SHADER_CASE(MeshVertex,Vertex)
         GS_SHADER_CASE(MeshNoUVVertex,Vertex)

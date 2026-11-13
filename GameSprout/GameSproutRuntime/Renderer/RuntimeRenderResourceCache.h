@@ -1,5 +1,8 @@
 #pragma once
 #include "RuntimeRenderer.h"
+#include <deque>
+#include <future>
+#include <optional>
 
 namespace GameSproutRuntime {
 // GPU resources belong to a Runtime/device/provider, not to a camera or window.
@@ -29,6 +32,24 @@ public:
     GRHI::ISampler* DefaultSampler=nullptr;
     GRHI::IBuffer* Grid=nullptr;
     std::uint32_t GridVertices=0;
+    struct TextureRequest {
+        ResourceReference Reference;
+        std::uint64_t Revision;
+        TexturePrefetchSource Source;
+        bool Visible=false;
+    };
+    struct TextureReadResult {
+        TextureRequest Request;
+        ByteBuffer Pixels;
+    };
+    std::deque<TextureRequest> TextureRequests;
+    std::optional<TextureRequest> TextureReading;
+    std::future<TextureReadResult> TextureRead;
+    std::optional<TextureReadResult> TextureUploading;
+    GRHI::ITexture* TextureUploadTarget=nullptr;
+    std::uint32_t TextureUploadRow=0;
+    std::map<Renderer::ResourceKey,std::uint64_t> TexturePrefetchFailures;
+    std::uint64_t TexturePrefetchRevision=0;
 private:
     void ClearPreparedResources();
     std::uint64_t _Revision=0;

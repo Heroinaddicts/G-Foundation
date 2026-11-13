@@ -87,6 +87,8 @@ struct RenderView {
     // Optional host overlay drawn after UI. Borrowed only during Render.
     // Coordinates are render-target pixels with a top-left origin.
     const UIDebugDrawList* UIScreenDebugDraw = nullptr;
+    // Read eligible 3D material textures ahead of visibility and upload across frames.
+    bool EnableTexturePrefetch = false;
 };
 
 struct SceneRaycastHit {
@@ -136,6 +138,14 @@ struct RenderStatistics {
     std::uint32_t DynamicShadowDrawCalls = 0;
     std::uint32_t UIDrawCalls = 0;
     std::uint32_t UITriangles = 0;
+    // Number of static atlas tiles touched, including partial repairs.
+    std::uint32_t StaticShadowCascadesUpdated = 0;
+    std::uint64_t InstanceTransformUploadBytes = 0;
+    std::uint64_t InstanceVisibilityUploadBytes = 0;
+    // Hosts rendering on demand should request another frame while pending.
+    bool TexturePrefetchPending = false;
+    std::uint32_t PrefetchedTextures = 0;
+    std::uint64_t PrefetchUploadBytes = 0;
 };
 
 class IRuntimeRenderer {

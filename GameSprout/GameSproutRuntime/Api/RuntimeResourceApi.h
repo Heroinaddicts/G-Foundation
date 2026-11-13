@@ -64,6 +64,16 @@ struct TextureRenderData {
     SamplerSettings Sampler;
 };
 
+// Immutable prepared mip-0 descriptor. The provider resolves it on its owning
+// thread and the Runtime may read the named file on a worker.
+struct TexturePrefetchSource {
+    std::string ArtifactPath;
+    std::uint64_t ArtifactSize = 0;
+    std::uint32_t Width = 0, Height = 0;
+    bool SRGB = true;
+    SamplerSettings Sampler;
+};
+
 struct FontGlyph {
     std::uint32_t Codepoint = 0;
     std::uint32_t X = 0, Y = 0, Width = 0, Height = 0; // Atlas pixels, top-left origin.
@@ -146,6 +156,11 @@ public:
     virtual bool LoadMeshCollision(const ResourceReference&, bool convex,
                                    std::vector<std::uint8_t>& bytes, std::string& error) {
         bytes.clear();error.clear();return true;
+    }
+    // Optional: return an absolute UTF-8 path to immutable prepared RGBA8
+    // data, with mip 0 at offset zero. Returning false retains LoadTexture().
+    virtual bool ResolveTexturePrefetch(const ResourceReference&, TexturePrefetchSource& source) {
+        source={};return false;
     }
 };
 

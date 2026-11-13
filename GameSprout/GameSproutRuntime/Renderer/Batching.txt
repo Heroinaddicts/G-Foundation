@@ -9,19 +9,17 @@ Runtime 自动合批与状态复用
 - 默认开启。MaterialRenderData.EnableGPUInstancing 或 RenderView.EnableGPUInstancing 可关闭。
 - 内置 Preview/Lit 的不透明、非蒙皮对象按 Mesh、子网格索引范围、材质身份、镜像绕序和灯光 Layer 归组。
 - 不要求对象设置 Static；位置/旋转/缩放可以不同，也可以在运行时改变。
-- 四种 Color/UV 顶点布局都有实例化变体。每实例 128 字节，包含 Model 与逆转置 Normal 矩阵。
-- 每批最多 4096 实例；超出时继续分批。单个对象或不满足条件的绘制自动采用普通路径。
+- 四种 Color/UV 顶点布局都有实例化变体。每个驻留槽包含 128 字节的 Model 与逆转置 Normal 矩阵。
+- 每个可见实例只提交 4 字节的槽位索引。单个对象或不满足条件的绘制采用普通路径。
 - 自定义 Shader 未声明实例数据契约，暂不自动改写其顶点语义；透明和蒙皮也保持普通路径。
 - 不透明类始终先于透明类；各类先按 SortingPriority（-50..50）排序。
 - 透明同优先级保持由远到近。自定义 Shader 是内置不透明状态排序的屏障，避免跨越未知深度行为。
 
 驻留与失效
-- 每个视口持有自己的实例缓存，不向 Editor 暴露 GPU 资源。相同矩阵列表直接复用 GPU 缓冲。
-- 变换或成员变化仅替换对应组；普通相机运动不改变剩余组的稳定 section 标识。
-- 可见性改变可能重组部分批次。资源修订、删除、视口释放会清理相应缓存。
-- 实例缓存预算 32 MiB，超过预算优先清理本帧未引用的旧组；仍不足时退回普通绘制。
-- 离开视野的组保留两帧复用窗口；本帧已记录命令引用的缓冲绝不被替换或驱逐。
-- 这是 CPU 归组、GPU 实例绘制与驻留缓存；尚未实现 GPU 计算剔除、间接绘制或 Unity BRG API。
+- 每个视口维护跨帧驻留的变换缓冲。颜色、静态阴影和动态阴影各有一份紧凑的可见索引流。
+- 场景结构变化时重建槽位。变换变化时合并连续槽位并批量写入；相机运动只更新发生变化的可见索引流。
+- 缓冲按场景用量扩容。资源修订和视口释放时清理相关驻留数据。
+- GRHI 在帧命令内有序提交上传与绘制，并复用上传暂存区。CPU 负责剔除和归组。
 
 状态与材质
 - GRHI 每个 RenderPass 独立缓存 Pipeline、Viewport、VB/IB、采样器和 Uniform 状态。
@@ -32,7 +30,7 @@ Runtime 自动合批与状态复用
 - 环境镜面反射、Alembic/XR Motion Vectors 尚无对应渲染功能，不展示无实际作用的材质开关。
 
 验证
-- Runtime.AutomaticInstancingGPU：批次数、完整像素对照、四种布局、镜像/非均匀缩放、材质/子网格/灯光层隔离、优先级、4096 分批、失效与多视口。
+- Runtime.AutomaticInstancingGPU：完整像素对照、可见性与变换的独立上传、缓冲扩容、四种布局、镜像/非均匀缩放、材质/子网格/灯光层隔离、优先级、失效与多视口。
 - UnitySceneBridgeChecks --project-root=<project> --render-all --compare-batching：同场景、相机、几何的批次数与完整画面对照，输出热帧 Render 调用耗时。
-- RenderStatistics 公开 InstancedDrawCalls、InstancedInstances、SavedDrawCalls、InstanceBufferUploads、ResidentInstanceBytes。
+- RenderStatistics 公开实例化绘制次数、节省的绘制次数、上传批次数、驻留容量，以及分别上传的变换和可见索引字节数。
 - InstancedInstances 按子网格实例计数；同一对象有两个材质 section 时计两次。Scene/Game 状态栏展示实例数量与节省的绘制次数。
