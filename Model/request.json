@@ -1,0 +1,90 @@
+{
+  "model": "local-gpt-oss:20b",
+  "stream": false,
+  "options": {
+    "temperature": 0
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "你是一个 C++ 代码分析助手。你的任务是分析本次提供的代码片段，并提交结构化分析结果。\n\n输出规则：\n1. 最终回答必须是符合指定 JSON Schema 的 JSON 对象，不要输出 Markdown 代码块或 JSON 之外的说明。\n2. summary：用中文简要说明当前代码片段的用途。\n3. symbols：列出当前片段中重要的类型、函数名称。\n4. findings：记录有代码依据的观察或推断。kind 为 observation 表示可以从提供的代码直接观察到；kind 为 hypothesis 表示还需要其他材料验证。条件性风险必须写明发生条件。\n5. 每个 finding 必须提供 evidence，source_id 使用输入提供的来源编号，start_line 和 end_line 使用代码前面的行号。\n6. open_questions：记录需要其他代码或信息才能回答的问题。\n7. 没有对应内容的数组返回 []，不要为了填充字段编造内容。\n8. 只分析实际提供的代码，不假设未展示的调用方式、实现或线程条件，也不要声称已分析整个项目。"
+    },
+    {
+      "role": "user",
+      "content": "当前任务：逐段分析项目代码，保存可供后续使用的摘要、发现和待解决问题。\n\n本次材料：\nsource_id: chunk_1\n文件路径: demo/Cache.cpp\n提供范围: 第 1 至 9 行\n\n代码如下，行号仅用于引用，不属于代码内容：\n1: #include <unordered_map>\n2: struct Item { int Value; };\n3: Item* Find(std::unordered_map<int, Item>& items, int id) {\n4:     auto it = items.find(id);\n5:     return it == items.end() ? nullptr : &it->second;\n6: }\n7: int ReadValue(std::unordered_map<int, Item>& items, int id) {\n8:     return Find(items, id)->Value;\n9: }\n\n请分析这段代码，提交本段的结构化分析结果。"
+    }
+  ],
+  "format": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "symbols": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "observation",
+                "hypothesis"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "source_id": {
+                  "type": "string"
+                },
+                "start_line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "source_id",
+                "start_line",
+                "end_line"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "description",
+            "evidence"
+          ]
+        }
+      },
+      "open_questions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "summary",
+      "symbols",
+      "findings",
+      "open_questions"
+    ]
+  }
+}

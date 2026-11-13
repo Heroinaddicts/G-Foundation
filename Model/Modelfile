@@ -1,0 +1,4 @@
+FROM ./gpt-oss-20b-MXFP4.gguf
+
+PARAMETER num_ctx 131072
+PARAMETER num_predict 8192
