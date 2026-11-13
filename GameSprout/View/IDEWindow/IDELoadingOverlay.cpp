@@ -14,6 +14,9 @@ IDELoadingOverlay::IDELoadingOverlay(QMainWindow* window)
         hide();
         setGeometry(_Window->rect());
         _Window->installEventFilter(this);
+        _ShowTimer.setSingleShot(true);
+        _ShowTimer.setTimerType(Qt::PreciseTimer);
+        QObject::connect(&_ShowTimer, &QTimer::timeout, this, &IDELoadingOverlay::ShowLoading);
     } catch (...) {
         delete _Ui;
         throw;
@@ -21,6 +24,7 @@ IDELoadingOverlay::IDELoadingOverlay(QMainWindow* window)
 }
 
 IDELoadingOverlay::~IDELoadingOverlay() {
+    _ShowTimer.stop();
     if (auto* application = QCoreApplication::instance()) {
         application->removeEventFilter(this);
     }
@@ -33,15 +37,22 @@ void IDELoadingOverlay::Begin(const QString& title) {
         return;
     }
     _Ui->titleLabel->setText(title);
+    _MenuWasEnabled = _Window->menuBar()->isEnabled();
+    _Window->menuBar()->setEnabled(false); // Also blocks the native macOS menu.
+    _Active = true;
+    qApp->installEventFilter(this);
+    _ShowTimer.start(100);
+}
+
+void IDELoadingOverlay::ShowLoading() {
+    if (!_Active) {
+        return;
+    }
     _PreviousFocus = QApplication::focusWidget();
     if (_PreviousFocus) {
         _FocusDestroyed = QObject::connect(_PreviousFocus, &QObject::destroyed, this,
                                           [this]() { _PreviousFocus = nullptr; });
     }
-    _MenuWasEnabled = _Window->menuBar()->isEnabled();
-    _Window->menuBar()->setEnabled(false); // Also blocks the native macOS menu.
-    _Active = true;
-    qApp->installEventFilter(this);
     setGeometry(_Window->rect());
     show();
     raise();
@@ -62,7 +73,7 @@ void IDELoadingOverlay::SetProgress(uint64_t completed, uint64_t total) {
     if (completed < total && percentage >= 100) percentage = 99;
     _Ui->progressBar->setValue(percentage);
     _Ui->completedLabel->setText(tr("已完成 %1 / %2").arg(qulonglong(completed)).arg(qulonglong(total)));
-    if (_Active) {
+    if (!isHidden()) {
         raise();
     }
 }
@@ -77,6 +88,7 @@ void IDELoadingOverlay::End() {
         return;
     }
     _Active = false;
+    _ShowTimer.stop();
     qApp->removeEventFilter(this);
     hide();
     _Window->menuBar()->setEnabled(_MenuWasEnabled);
@@ -129,7 +141,7 @@ bool IDELoadingOverlay::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::ChildAdded:
     case QEvent::Show:
     case QEvent::LayoutRequest:
-        if (watched == _Window) {
+        if (watched == _Window && !isHidden()) {
             raise();
         }
         break;

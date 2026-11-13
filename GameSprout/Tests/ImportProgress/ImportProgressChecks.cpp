@@ -1,8 +1,12 @@
 #include "IIDEWindow.h"
 #include <QApplication>
+#include <QEventLoop>
 #include <QLabel>
 #include <QLibrary>
+#include <QMainWindow>
+#include <QMenuBar>
 #include <QProgressBar>
+#include <QTimer>
 #include <QWidget>
 #include <iostream>
 #include <limits>
@@ -27,6 +31,12 @@ QWidget* Overlay() {
     for (QWidget* widget : QApplication::allWidgets())
         if (widget->objectName() == "loadingOverlay") return widget;
     throw std::runtime_error("Loading overlay missing");
+}
+
+void WaitForLoadingTimer() {
+    QEventLoop loop;
+    QTimer::singleShot(150, Qt::PreciseTimer, &loop, &QEventLoop::quit);
+    loop.exec();
 }
 
 void CheckProgress(uint64_t completed, uint64_t total, int percentage, const QString& path) {
@@ -82,6 +92,9 @@ int main(int argc, char** argv) {
         window->Loading("初始化资源", "扫描 Assets");
         Check(window->IsLoading() && loadingStates == std::vector<bool>{true} && selfRemoved == 1,
             "Loading transition or self-unsubscription failed");
+        auto* mainWindow = qobject_cast<QMainWindow*>(Overlay()->parentWidget());
+        Check(mainWindow && Overlay()->isHidden() && !mainWindow->menuBar()->isEnabled(),
+            "Pending Loading did not block input without showing the overlay");
         CheckIndeterminate();
         const uint64_t first = window->BeginImportProgress(3, "准备导入");
         Check(first != 0, "Could not register fixed plan");
@@ -93,6 +106,9 @@ int main(int argc, char** argv) {
         window->SetLoadingInfo("清理资源缓存", "删除过期产物");
         Check(loadingStates == std::vector<bool>{true}, "Nested Loading notified repeated viewport suspension");
         GameSproutEditor::GameSproutEditorFinal::Update(window);
+        Check(Overlay()->isHidden(), "Nested Loading bypassed the pending timer");
+        WaitForLoadingTimer();
+        Check(!Overlay()->isHidden(), "Long Loading did not show the overlay");
         CheckProgress(0, 3, 0, "准备导入");
         window->Unloading(); // GC completion must not advance the resource numerator.
         CheckProgress(0, 3, 0, "准备导入");
@@ -120,7 +136,8 @@ int main(int argc, char** argv) {
         window->Unloading();
         window->Unloading();
         window->Unloading();
-        Check(Overlay()->isHidden(), "Final Unloading did not hide overlay");
+        Check(Overlay()->isHidden() && mainWindow->menuBar()->isEnabled(),
+            "Final Unloading did not hide the overlay and restore input");
         Check(!window->IsLoading() && loadingStates == std::vector<bool>({true,false}) && selfRemoved == 1,
             "Final Unloading did not resume viewports exactly once");
         window->UnregisterLoadingStateCallback(&loadingStates);
@@ -133,6 +150,8 @@ int main(int argc, char** argv) {
         CheckProgress(hugeTotal - 1, hugeTotal, 99, "near completion");
         Check(window->UpdateImportProgress(huge, hugeTotal, "done") && window->EndImportProgress(huge), "Large plan did not finish");
         window->Unloading();
+        WaitForLoadingTimer();
+        Check(Overlay()->isHidden(), "Completed quick Loading left a delayed overlay");
 
         window->Loading("release", "pending");
         const uint64_t stale = window->BeginImportProgress(1, "cancelled");
@@ -146,7 +165,7 @@ int main(int argc, char** argv) {
         window->Unloading();
         GameSproutEditor::GameSproutEditorFinal::Release(window);
         window = nullptr;
-        std::cout << "PASS fixed import plans, independent Loading/GC references, concurrent batches, stale tokens and pending finalization\n";
+        std::cout << "PASS delayed overlay, fixed import plans, independent Loading/GC references, concurrent batches and stale tokens\n";
         return 0;
     } catch (const std::exception& error) {
         if (window) GameSproutEditor::GameSproutEditorFinal::Release(window);

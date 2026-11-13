@@ -3,6 +3,7 @@
 
 #include <QFrame>
 #include <QMetaObject>
+#include <QTimer>
 #include <cstdint>
 
 class QMainWindow;
@@ -28,11 +29,13 @@ protected:
 
 private:
     bool BelongsToWindow(QObject* object) const;
+    void ShowLoading();
 
     QMainWindow* _Window;
     Ui::IDELoadingOverlay* _Ui = nullptr;
     QWidget* _PreviousFocus = nullptr; // Borrowed; destruction clears this pointer.
     QMetaObject::Connection _FocusDestroyed;
+    QTimer _ShowTimer;
     bool _Active = false;
     bool _MenuWasEnabled = false;
 };
