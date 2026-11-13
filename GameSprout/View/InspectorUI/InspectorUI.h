@@ -6,12 +6,13 @@
 #include "ILibraryManager.h"
 #include "ISceneManager.h"
 #include "IObjectEditing.h"
+#include "RuntimePropertyObserver.h"
 #include <map>
 #include <QPointer>
 namespace Ui { class InspectorUIWindow; }
 class AssetInfoInspector;
 class InspectorUI final : public IInspectorUI, public ISelectionListener, public IAssetListener,
-                          public ISceneListener, public GameSproutRuntime::IRuntimeListener,public GameSproutRuntime::IRuntimePropertyObserver,public IObjectEditingListener {
+                          public ISceneListener, public GameSproutRuntime::IRuntimeListener,public GameSproutRuntime::IRuntimeDetailedPropertyObserver,public IObjectEditingListener {
 public:
     ~InspectorUI() override;
     void Show() override;
@@ -28,7 +29,8 @@ public:
     void OnSceneObjectSelectionChanged(const SceneObjectSelection&) override { RequestRefresh(); }
     void OnActiveSceneChanged() override { RequestRefresh(); }
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override;
-    void OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) override;
+    void OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID,
+        GameSproutRuntime::RuntimePropertyChange changes) override;
     void OnObjectPropertiesChanged(const ObjectEditEvent&) override;
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) override;
     void OnAssetCreate(const AssetEvent& event) override { OnAssetChanged(event); }

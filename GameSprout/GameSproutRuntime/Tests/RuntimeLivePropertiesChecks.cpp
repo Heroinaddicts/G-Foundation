@@ -1,4 +1,5 @@
 #include "GameSproutRuntimeExport.h"
+#include "RuntimePropertyObserver.h"
 #include "Internal/RuntimeScriptBindings.h"
 #include <cmath>
 #include <iostream>
@@ -31,6 +32,13 @@ public:
         if(Unsubscribe)Runtime->UnregisterObjectPropertyObserver(Object,this);
     }
 };
+class DetailedObserver final : public GameSproutRuntime::IRuntimeDetailedPropertyObserver {
+public:
+    GameSproutRuntime::RuntimePropertyChange Changes=GameSproutRuntime::RuntimePropertyChange::None;
+    unsigned Calls=0;
+    void OnRuntimeObjectPropertiesChanged(std::uint64_t,std::uint64_t,
+        GameSproutRuntime::RuntimePropertyChange changes) override {Changes=changes;++Calls;}
+};
 void CheckLiveFields(GameSproutRuntime::IGameSproutRuntime& runtime) {
     auto number=GameSproutRuntime::Internal::MakeField<LiveScript>("number","Number",&LiveScript::Number,1.f);
     const auto read=number.Read;
@@ -53,13 +61,17 @@ void CheckLiveFields(GameSproutRuntime::IGameSproutRuntime& runtime) {
     Check(first->ReadFields(fields,error)&&fields.at("number").Number==1,"Stopped reader did not use authored defaults");
     Observer observer;observer.Runtime=&runtime;observer.Object=watched->GetInstanceID();
     Observer removed;removed.Runtime=&runtime;removed.Object=watched->GetInstanceID();removed.Unsubscribe=true;
+    DetailedObserver detailed;
     Check(runtime.RegisterObjectPropertyObserver(observer.Object,&observer)&&
           runtime.RegisterObjectPropertyObserver(removed.Object,&removed)&&
+          runtime.RegisterObjectPropertyObserver(observer.Object,&detailed)&&
           !runtime.RegisterObjectPropertyObserver(observer.Object,&observer),"Object subscription identity is not unique per observer pair");
     Check(runtime.BeginExecution(error),error);runtime.ProcessPendingEvents();
-    observer.Calls=0;NativeReads.clear();
+    observer.Calls=0;detailed.Calls=0;NativeReads.clear();
     runtime.Update(.01f);
     Check(observer.Calls==1&&observer.Safe&&removed.Calls==1,"Native script change delivery or self-unregistration is unsafe");
+    Check(detailed.Calls==1&&detailed.Changes==GameSproutRuntime::RuntimePropertyChange::ScriptFields,
+          "Native script changes did not identify their affected fields");
     Check(NativeReads[observer.Object]>0&&NativeReads[ignored->GetInstanceID()]==0,"Native readers scanned an unobserved object");
     Check(first->ReadFields(fields,error)&&fields.at("number").Number==2,"Live reader returned the authored baseline");
     Check(first->GetFields().at("number").Number==1,"Live read mutated the authored baseline");
@@ -92,6 +104,7 @@ void CheckLiveFields(GameSproutRuntime::IGameSproutRuntime& runtime) {
     Check(!first->SetField("target",value,error)&&!first->RestoreSerializedFields({{"target",value}},error),
           "Runtime reference entered stopped/authored restoration");
     runtime.UnregisterObjectPropertyObserver(observer.Object,&observer);
+    runtime.UnregisterObjectPropertyObserver(observer.Object,&detailed);
     Check(runtime.DestroyScene(scene)&&runtime.DestroyScene(another),"Cannot destroy live field fixtures");
 }
 void CheckPausedPhysics(GameSproutRuntime::IGameSproutRuntime& runtime) {
@@ -102,8 +115,12 @@ void CheckPausedPhysics(GameSproutRuntime::IGameSproutRuntime& runtime) {
     unsigned collisions=0;collider->RegisterCollisionEnter([&](const auto&){++collisions;});
     Check(runtime.BeginExecution(error),error);runtime.FixedUpdate(1.f/60.f);
     Observer observer;observer.Runtime=&runtime;observer.Object=object->GetInstanceID();
-    Check(runtime.RegisterObjectPropertyObserver(observer.Object,&observer),"Cannot observe a moving physics body");
+    DetailedObserver detailed;
+    Check(runtime.RegisterObjectPropertyObserver(observer.Object,&observer)&&
+          runtime.RegisterObjectPropertyObserver(observer.Object,&detailed),"Cannot observe a moving physics body");
     runtime.FixedUpdate(1.f/60.f);Check(observer.Calls==1,"Simulated Transform did not notify its selected observer");
+    Check(detailed.Calls==1&&detailed.Changes==GameSproutRuntime::RuntimePropertyChange::TransformPose,
+          "A physics pose was reported as an authored edit or script field change");
     const auto oldVelocity=body->GetLinearVelocity();const auto oldUpdates=Updates,oldFixed=FixedUpdates;
     object->GetTransform()->SetLocalPosition({7,10,0});auto shape=collider->GetShape();shape.Size={2,2,2};Check(collider->SetShape(shape),"Cannot resize paused Collider");
     Check(runtime.SynchronizePhysics(error),error);
@@ -113,6 +130,7 @@ void CheckPausedPhysics(GameSproutRuntime::IGameSproutRuntime& runtime) {
           "Zero-time synchronization advanced scripts/velocity or dispatched contacts");
     const auto calls=observer.Calls;Check(runtime.SynchronizePhysics(error)&&observer.Calls==calls,"Unchanged physics synchronization emitted repeated property events");
     runtime.UnregisterObjectPropertyObserver(observer.Object,&observer);
+    runtime.UnregisterObjectPropertyObserver(observer.Object,&detailed);
     Check(runtime.EndExecution(error)&&runtime.DestroyScene(scene),error);
 }
 }

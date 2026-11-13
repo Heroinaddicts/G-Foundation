@@ -3,6 +3,7 @@
 #include "Scene.h"
 #include "Components/ScriptComponent.h"
 #include <limits>
+#include <utility>
 
 namespace GameSproutRuntime {
 bool Runtime::RegisterObjectPropertyObserver(std::uint64_t objectID,IRuntimePropertyObserver* observer) {
@@ -17,7 +18,7 @@ bool Runtime::RegisterObjectPropertyObserver(std::uint64_t objectID,IRuntimeProp
         CheckObservedScriptProperties(objectID);
         const auto current=_PropertyObservations.find(objectID);
         if(current==_PropertyObservations.end()||!current->second.Observers.contains(observer))return false;
-        current->second.Pending=false;
+        current->second.Pending=RuntimePropertyChange::None;
     }
     return true;
 }
@@ -27,9 +28,9 @@ void Runtime::UnregisterObjectPropertyObserver(std::uint64_t objectID,IRuntimePr
     found->second.Observers.erase(observer);
     if(found->second.Observers.empty())_PropertyObservations.erase(found);
 }
-void Runtime::MarkObjectPropertiesChanged(std::uint64_t objectID) {
+void Runtime::MarkObjectPropertiesChanged(std::uint64_t objectID,RuntimePropertyChange change) {
     const auto found=_PropertyObservations.find(objectID);
-    if(found!=_PropertyObservations.end())found->second.Pending=true;
+    if(found!=_PropertyObservations.end())found->second.Pending=found->second.Pending|change;
 }
 void Runtime::CheckObservedScriptProperties(std::uint64_t objectID) {
     if(!_PropertyObservations.contains(objectID)||_ReadingObservedProperties)return;
@@ -51,7 +52,8 @@ void Runtime::CheckObservedScriptProperties(std::uint64_t objectID) {
     const auto observation=_PropertyObservations.find(objectID);
     if(observation==_PropertyObservations.end())return;
     if(values!=observation->second.ScriptFields) {
-        observation->second.ScriptFields.swap(values);observation->second.Pending=true;
+        observation->second.ScriptFields.swap(values);
+        observation->second.Pending=observation->second.Pending|RuntimePropertyChange::ScriptFields;
     }
 }
 void Runtime::RefreshObservedScriptProperties() {
@@ -62,9 +64,11 @@ void Runtime::RefreshObservedScriptProperties() {
     for(const auto id:ids)CheckObservedScriptProperties(id);
 }
 void Runtime::DispatchObjectPropertyChanges() {
-    std::vector<std::uint64_t> pending;
-    for(auto& [id,observation]:_PropertyObservations)if(observation.Pending){observation.Pending=false;pending.push_back(id);}
-    for(const auto id:pending) {
+    std::vector<std::pair<std::uint64_t,RuntimePropertyChange>> pending;
+    for(auto& [id,observation]:_PropertyObservations)
+        if(observation.Pending!=RuntimePropertyChange::None)
+            pending.emplace_back(id,std::exchange(observation.Pending,RuntimePropertyChange::None));
+    for(const auto& [id,changes]:pending) {
         auto found=_PropertyObservations.find(id);auto* node=Find(id);
         if(found==_PropertyObservations.end())continue;
         if(!IsInScene(node)){_PropertyObservations.erase(found);continue;}
@@ -75,7 +79,11 @@ void Runtime::DispatchObjectPropertyChanges() {
             if(found==_PropertyObservations.end())break;
             const auto current=found->second.Observers.find(observer);
             if(current==found->second.Observers.end()||current->second!=sequence)continue;
-            try{observer->OnRuntimeObjectPropertiesChanged(sceneID,id);}catch(...){}
+            try {
+                if(auto* detailed=dynamic_cast<IRuntimeDetailedPropertyObserver*>(observer))
+                    detailed->OnRuntimeObjectPropertiesChanged(sceneID,id,changes);
+                else observer->OnRuntimeObjectPropertiesChanged(sceneID,id);
+            } catch(...) {}
         }
     }
 }

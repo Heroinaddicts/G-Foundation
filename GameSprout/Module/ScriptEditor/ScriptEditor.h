@@ -1,5 +1,6 @@
 #pragma once
 #include "IScriptEditor.h"
+#include "RuntimePropertyObserver.h"
 #include "IScriptCompiler.h"
 #include "IAssetsManager.h"
 #include "IProject.h"
@@ -18,7 +19,7 @@
 
 class ScriptEditor final : public IScriptEditor, public IAssetListener,
                            public ISceneListener, public GameSproutRuntime::IRuntimeListener,
-                           public GameSproutRuntime::IRuntimePropertyObserver {
+                           public GameSproutRuntime::IRuntimeDetailedPropertyObserver {
 public:
     std::vector<EditorScriptType> GetScriptTypes() const override { return _Types; }
     ScriptBuildState GetBuildState() const override;
@@ -45,7 +46,8 @@ public:
     void OnActiveSceneChanged() override;
     void OnSceneStateChanged() override;
     void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override;
-    void OnRuntimeObjectPropertiesChanged(uint64_t sceneID,uint64_t objectID) override;
+    void OnRuntimeObjectPropertiesChanged(uint64_t sceneID,uint64_t objectID,
+                                          GameSproutRuntime::RuntimePropertyChange changes) override;
     void OnAssetCreate(const AssetEvent&) override;
     void OnAssetModify(const AssetEvent&) override;
     void OnAssetRemove(const AssetEvent&) override;
@@ -73,7 +75,7 @@ private:
     bool ValidateFieldValue(const GameSproutRuntime::ScriptFieldInfo&,const GameSproutRuntime::ScriptValue&,std::string&,unsigned depth=0,const GameSproutRuntime::ScriptValue* previous=nullptr) const;
     ScriptFieldSnapshot DescribeField(const GameSproutRuntime::ScriptFieldInfo&,const GameSproutRuntime::ScriptValue&,unsigned depth=0) const;
     GameSproutRuntime::IComponent* ResolveComponentReference(const GameSproutRuntime::ScriptComponentReference&) const;
-    void NotifyFields();
+    void NotifyFields(uint64_t objectID=0);
     void RefreshFieldObservation();
     IScriptCompiler* _Compiler = nullptr;
     IAssetsManager* _Assets = nullptr;

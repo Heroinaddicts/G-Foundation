@@ -249,7 +249,7 @@ void NotifyRuntimePropertiesChanged(IGameObject* owner) {
             // Let each viewport refresh only the affected scene data.
             state.SceneOwner->InvalidateRenderSnapshot(state.ID);
             if (FindUIScreenCanvasRoot(*owner)) state.SceneOwner->InvalidateUI();
-            state.Owner.MarkObjectPropertiesChanged(state.ID);
+            state.Owner.MarkObjectPropertiesChanged(state.ID,RuntimePropertyChange::TransformPose);
         }
     }
 }

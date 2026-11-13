@@ -196,11 +196,12 @@ void InspectorUI::ObserveObject(std::uint64_t objectID) {
     _ObservedObjectID=0;
     if(_Runtime&&objectID&&_Runtime->RegisterObjectPropertyObserver(objectID,this))_ObservedObjectID=objectID;
 }
-void InspectorUI::OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID) {
-    if(_Target.Scene.SceneID==sceneID&&_Target.Scene.ObjectID==objectID) {
-        _ObservedPropertiesPending=true;
-        QueueRefresh();
-    }
+void InspectorUI::OnRuntimeObjectPropertiesChanged(std::uint64_t sceneID,std::uint64_t objectID,
+    GameSproutRuntime::RuntimePropertyChange changes) {
+    if(_Target.Scene.SceneID!=sceneID||_Target.Scene.ObjectID!=objectID)return;
+    if(!HasRuntimePropertyChange(changes,GameSproutRuntime::RuntimePropertyChange::TransformPose))return;
+    _ObjectChanges.ComponentTypes.insert("GameSproutRuntime.Transform");
+    QueueRefresh();
 }
 void InspectorUI::OnObjectPropertiesChanged(const ObjectEditEvent& event) {
     if(_Target.Scene.SceneID!=event.Target.SceneID||_Target.Scene.ObjectID!=event.Target.ObjectID)return;

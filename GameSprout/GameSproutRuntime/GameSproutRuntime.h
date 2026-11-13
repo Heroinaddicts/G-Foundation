@@ -1,5 +1,6 @@
 #pragma once
 #include "Api/GameSproutRuntimeApi.h"
+#include "Api/RuntimePropertyObserver.h"
 #include "Animation/AnimationResources.h"
 #include "GRHIApi.h"
 #include <deque>
@@ -41,7 +42,7 @@ public:
     void UnregisterObjectPropertyObserver(std::uint64_t,IRuntimePropertyObserver*) override;
     bool SynchronizePhysics(std::string&) override;
     MeshCollisionCooker GetMeshCollisionCooker() const override;
-    void MarkObjectPropertiesChanged(std::uint64_t objectID);
+    void MarkObjectPropertiesChanged(std::uint64_t objectID, RuntimePropertyChange change);
     // Internal matrix cache clock. Mutations advance it synchronously, before
     // deferred Editor events, so every query observes the committed hierarchy.
     std::uint64_t GetTransformEpoch() const {return _TransformEpoch;}
@@ -278,7 +279,7 @@ private:
         std::uint64_t SceneID=0;
         std::map<IRuntimePropertyObserver*,std::uint64_t> Observers;
         std::map<std::uint64_t,std::map<std::string,ScriptValue>> ScriptFields;
-        bool Pending=false;
+        RuntimePropertyChange Pending=RuntimePropertyChange::None;
     };
     std::map<std::uint64_t,ObjectPropertyObservation> _PropertyObservations;
     std::uint64_t _NextPropertyObserver=0;

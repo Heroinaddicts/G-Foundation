@@ -113,7 +113,7 @@ bool ScriptEditor::SetField(const ScriptFieldTarget& target,const std::string& f
         };
     };
     if(!_Editing->EditObject({target.WorldID,target.ObjectID,script->GetComponentInstanceID()},"修改脚本属性",operation(value),operation(before),error))return false;
-    if(_Scenes->IsPlaySessionActive())NotifyFields();
+    if(_Scenes->IsPlaySessionActive())NotifyFields(target.ObjectID);
     // SceneManager's completed transaction event also covers Undo/Redo.
     return true;
 }
@@ -175,12 +175,13 @@ bool ScriptEditor::LocateObjectReference(const ScriptFieldTarget& target,const G
     _Selection->SetSceneObjectSelection({target.WorldID,object->GetInstanceID()});error.clear();return true;
 }
 
-void ScriptEditor::NotifyFields() {
+void ScriptEditor::NotifyFields(uint64_t objectID) {
     auto* scene=_Scenes?_Scenes->GetActiveScene():nullptr;
-    if(!scene||_NotifyingFields)return;
+    if(!scene||_NotifyingFields||_FieldObservers.empty())return;
     _NotifyingFields=true;struct Reset{bool& Value;~Reset(){Value=false;}} reset{_NotifyingFields};
     const auto watched=_FieldObservers;
     for(const auto& [listener,target]:watched) {
+        if(objectID&&target.ObjectID!=objectID)continue;
         const auto found=_FieldObservers.find(listener);
         if(found!=_FieldObservers.end()&&found->second==target)try{listener->OnScriptFieldsChanged(target);}catch(...){}
     }
@@ -192,9 +193,11 @@ void ScriptEditor::OnActiveSceneChanged() {
     if(!_FieldSessionID)++_FieldSessionID;
     _FieldObservers.clear();
 }
-void ScriptEditor::OnRuntimeObjectPropertiesChanged(uint64_t sceneID,uint64_t objectID) {
+void ScriptEditor::OnRuntimeObjectPropertiesChanged(uint64_t sceneID,uint64_t objectID,
+    GameSproutRuntime::RuntimePropertyChange changes) {
+    if(!GameSproutRuntime::HasRuntimePropertyChange(changes,GameSproutRuntime::RuntimePropertyChange::ScriptFields))return;
     auto* scene=_Scenes?_Scenes->GetActiveScene():nullptr;
-    if(scene&&scene->GetInstanceID()==sceneID&&_ObservedObjects.contains(objectID))NotifyFields();
+    if(scene&&scene->GetInstanceID()==sceneID&&_ObservedObjects.contains(objectID))NotifyFields(objectID);
 }
 void ScriptEditor::OnSceneStateChanged() {NotifyFields();}
 void ScriptEditor::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& event) {
@@ -204,9 +207,12 @@ void ScriptEditor::OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent& eve
     switch(event.Type) {
     case SceneNodeEventType::Create:case SceneNodeEventType::Destroy:
     case SceneNodeEventType::Rename:case SceneNodeEventType::Reparent:
-        NotifyFields();break;
-    case SceneNodeEventType::ComponentAdded:case SceneNodeEventType::ComponentRemoved:case SceneNodeEventType::ComponentChanged:
-        NotifyFields(); // Any removed/renamed component may be referenced by a nested script field.
+    case SceneNodeEventType::ComponentAdded:case SceneNodeEventType::ComponentRemoved:
+        // Reference paths and resolution may change for fields on other objects.
+        NotifyFields();
+        break;
+    case SceneNodeEventType::ComponentChanged:
+        if(event.ComponentType=="GameSproutRuntime.ScriptComponent")NotifyFields(event.ObjectID);
         break;
     default:break;
     }

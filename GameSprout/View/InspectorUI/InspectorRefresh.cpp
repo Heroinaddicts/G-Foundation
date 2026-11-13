@@ -26,9 +26,7 @@ void InspectorUI::RefreshPending() {
         return;
     }
     if(observed||!changes.Empty()) {
-        const bool refreshWholePanel=changes.Empty()||
-            (observed&&_Services.Scenes&&_Services.Scenes->IsPlaySessionActive());
-        if(refreshWholePanel||!_ActivePanel->RefreshObjectProperties(changes)) {
+        if(observed||!_ActivePanel->RefreshObjectProperties(changes)) {
             std::string error;
             if(!_ActivePanel->Load(_Target,false,error)){Clear(QString::fromStdString(error));return;}
             _OperationError=QString::fromStdString(error);

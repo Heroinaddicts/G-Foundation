@@ -108,7 +108,7 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
         }
     }
     object.SceneOwner->RecordAuthoringChange(object.ID,type,component);
-    MarkObjectPropertiesChanged(object.ID);
+    MarkObjectPropertiesChanged(object.ID,RuntimePropertyChange::Authored);
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。
     try {
         SceneNodeEvent event;
