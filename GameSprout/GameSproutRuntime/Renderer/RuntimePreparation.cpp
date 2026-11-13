@@ -94,22 +94,12 @@ void Renderer::PrepareDraws(const RenderView& view,const Mat4& viewProjection) {
         }
         if(!mesh) {++_Statistics.SkippedObjects;continue;}
         bool outside=false;
-        if(!object.Skinned) {
-            if(!mesh->CullBoundsKnown&&!mesh->Positions.empty()) {
-                mesh->CullMinimum=mesh->CullMaximum=mesh->Positions.front();
-                for(const auto& point:mesh->Positions) {
-                    mesh->CullMinimum={std::min(mesh->CullMinimum.X,point.X),std::min(mesh->CullMinimum.Y,point.Y),std::min(mesh->CullMinimum.Z,point.Z)};
-                    mesh->CullMaximum={std::max(mesh->CullMaximum.X,point.X),std::max(mesh->CullMaximum.Y,point.Y),std::max(mesh->CullMaximum.Z,point.Z)};
-                }
-                mesh->CullBoundsKnown=true;
+        if(!object.Skinned&&mesh->CullBoundsKnown) {
+            if(!object.CullBoxKnown) {
+                object.CullBox=RenderFrustum::Box(mesh->CullMinimum,mesh->CullMaximum,object.Model);
+                object.CullBoxKnown=true;
             }
-            if(mesh->CullBoundsKnown) {
-                if(!object.CullBoxKnown) {
-                    object.CullBox=RenderFrustum::Box(mesh->CullMinimum,mesh->CullMaximum,object.Model);
-                    object.CullBoxKnown=true;
-                }
-                outside=!frustum.Intersects(object.CullBox);
-            }
+            outside=!frustum.Intersects(object.CullBox);
         }
         const bool shadowsOnly=object.ShadowMode==ShadowCastingMode::ShadowsOnly;
         bool drawn=false,skipped=false;

@@ -42,6 +42,8 @@ bool Renderer::Raycast(IScene* scene,const Ray& worldRay,SceneRaycastHit& hit,st
         SyncRevision();
         if(!(cullingMask&1u)) return false;
         const PickingMath::Vector origin(worldRay.Origin),worldDirection(direction);
+        const bool useDrawGeometry=_ObjectSnapshotKnown&&_ObjectSceneID==scene->GetInstanceID()&&
+            _ObjectSceneRevision==static_cast<const Scene&>(*scene).GetRenderRevision();
         double nearest=std::numeric_limits<double>::infinity();
         SceneRaycastHit candidate;
         std::vector<IGameObject*> pending{scene};
@@ -54,12 +56,23 @@ bool Renderer::Raycast(IScene* scene,const Ray& worldRay,SceneRaycastHit& hit,st
                 renderer->GetShadowCastingMode()==ShadowCastingMode::ShadowsOnly) continue;
             const Mat4 model=object->GetTransform()->GetWorldMatrix();Mat4 inverse;
             if(!RuntimeMath::IsFinite(model) || !RuntimeMath::TryInverseAffine(model,inverse)) continue;
-            auto* mesh=Mesh(component->GetMesh());if(!mesh) continue;
-            std::vector<Vector3> positions;
-            if(!PosedPositions(*object,*mesh,positions)) continue;
+            MeshGPU* mesh=nullptr;
+            if(useDrawGeometry) {
+                const auto found=_SceneObjectIndices.find(object->GetInstanceID());
+                if(found!=_SceneObjectIndices.end()&&found->second<_SceneObjects.size())
+                    mesh=_SceneObjects[found->second].Geometry;
+            }
+            if(!mesh)mesh=Mesh(component->GetMesh());
+            if(!mesh)continue;
             const auto localOrigin=PickingMath::Transform(inverse,origin,1);
             // 不再次归一化：相交参数t继续以世界射线单位计量，非均匀缩放下仍可直接比较远近。
             const auto localDirection=PickingMath::Transform(inverse,worldDirection,0);
+            const bool skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
+            if(!skinned&&mesh->CullBoundsKnown&&
+                !PickingMath::IntersectBounds(localOrigin,localDirection,mesh->CullMinimum,mesh->CullMaximum,nearest)) continue;
+            std::vector<Vector3> posedPositions;
+            if(skinned&&!PosedPositions(*object,*mesh,posedPositions)) continue;
+            const auto& positions=skinned?posedPositions:mesh->Positions;
             for(const auto& section:mesh->Data.Sections) {
                 // 与实际绘制一致：缺失材质/贴图的section并没有出现在画面中，不命中它。
                 MaterialRenderData material;

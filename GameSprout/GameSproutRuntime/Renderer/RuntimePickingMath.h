@@ -1,5 +1,6 @@
 #pragma once
 #include "RuntimeMath.h"
+#include <algorithm>
 #include <limits>
 
 namespace GameSproutRuntime::PickingMath {
@@ -25,6 +26,25 @@ inline bool ToVector3(Vector value,Vector3& result) {
     if(!std::isfinite(value.X)||!std::isfinite(value.Y)||!std::isfinite(value.Z)||
        std::fabs(value.X)>maximum||std::fabs(value.Y)>maximum||std::fabs(value.Z)>maximum) return false;
     result={static_cast<float>(value.X),static_cast<float>(value.Y),static_cast<float>(value.Z)};return true;
+}
+inline bool IntersectBounds(Vector origin,Vector direction,Vector3 minimum,Vector3 maximum,double nearest) {
+    double enter=0,exit=nearest;
+    const auto intersectAxis=[&](double start,double delta,double low,double high) {
+        // Leave room for the triangle edge tolerance and rounding when the ray
+        // is transformed to local space, including flat bounds and edge hits.
+        const double padding=1e-9*std::max({1.0,std::abs(low),std::abs(high),std::abs(start)});
+        low-=padding;
+        high+=padding;
+        if(delta==0)return start>=low&&start<=high;
+        double first=(low-start)/delta,last=(high-start)/delta;
+        if(first>last)std::swap(first,last);
+        enter=std::max(enter,first);
+        exit=std::min(exit,last);
+        return enter<=exit;
+    };
+    return intersectAxis(origin.X,direction.X,minimum.X,maximum.X)&&
+        intersectAxis(origin.Y,direction.Y,minimum.Y,maximum.Y)&&
+        intersectAxis(origin.Z,direction.Z,minimum.Z,maximum.Z);
 }
 inline bool Intersect(Vector origin,Vector direction,Vector a,Vector b,Vector c,double& distance) {
     const Vector first=b-a,second=c-a,p=direction.Cross(second);

@@ -148,7 +148,13 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
                 entry.Positions.reserve(entry.Data.VertexCount);
                 for(std::uint32_t vertex=0;vertex<entry.Data.VertexCount;++vertex) {
                     const auto* bytes=entry.Data.Bytes.data()+std::uint64_t(vertex)*entry.Data.VertexStride+entry.Data.PositionOffset;
-                    entry.Positions.push_back({std::bit_cast<float>(Read32(bytes)),std::bit_cast<float>(Read32(bytes+4)),std::bit_cast<float>(Read32(bytes+8))});
+                    const Vector3 point{std::bit_cast<float>(Read32(bytes)),std::bit_cast<float>(Read32(bytes+4)),std::bit_cast<float>(Read32(bytes+8))};
+                    entry.Positions.push_back(point);
+                    if(vertex==0)entry.CullMinimum=entry.CullMaximum=point;
+                    else {
+                        entry.CullMinimum={std::min(entry.CullMinimum.X,point.X),std::min(entry.CullMinimum.Y,point.Y),std::min(entry.CullMinimum.Z,point.Z)};
+                        entry.CullMaximum={std::max(entry.CullMaximum.X,point.X),std::max(entry.CullMaximum.Y,point.Y),std::max(entry.CullMaximum.Z,point.Z)};
+                    }
                     if(!entry.Data.Bones.empty()) {
                         MeshGPU::SkinVertex skin;
                         const auto* source=entry.Data.Bytes.data()+std::uint64_t(vertex)*entry.Data.VertexStride;
@@ -159,6 +165,7 @@ Renderer::MeshGPU* Renderer::Mesh(const ResourceReference& reference) {
                         entry.Skin.push_back(skin);
                     }
                 }
+                entry.CullBoundsKnown=true;
                 entry.Indices.reserve(entry.Data.IndexCount);
                 for(std::uint32_t index=0;index<entry.Data.IndexCount;++index)
                     entry.Indices.push_back(Read32(entry.Data.Bytes.data()+entry.Data.IndexOffset+std::uint64_t(index)*4));

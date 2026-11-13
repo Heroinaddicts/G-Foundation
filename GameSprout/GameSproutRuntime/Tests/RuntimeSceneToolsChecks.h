@@ -13,6 +13,10 @@ static void CheckSceneTools(GameSproutRuntime::IGameSproutRuntime& runtime,GameS
     Check(renderer.Raycast(&scene,ray,hit) && hit.ObjectID==object.GetInstanceID() && std::fabs(hit.Distance-3)<1e-5f && hit.Normal.Z>0.99f,
         "Exact raycast did not normalize distance or return triangle geometry");
     Check(provider.MeshLoads==loaded,"Picking reloaded/repacked an unchanged mesh");
+    Check(renderer.Raycast(&scene,{{1,-1,3},{0,0,-1}},hit)&&hit.ObjectID==object.GetInstanceID(),
+        "The broad phase rejected an edge hit on a flat mesh bound");
+    Check(!renderer.Raycast(&scene,{{2,0,3},{0,0,-1}},hit)&&!hit.ObjectID,
+        "A parallel ray outside the mesh bound was picked");
     Check(!renderer.Raycast(&scene,{{0.9f,0.9f,3},{0,0,-1}},hit) && !hit.ObjectID,"Raycast selected an AABB corner outside the triangle");
     Check(!renderer.Raycast(&scene,ray,hit,0) && !hit.ObjectID,"Raycast ignored culling mask");
     Check(!renderer.Raycast(&scene,{{0,0,3},{0,0,0}},hit) && !renderer.GetLastError().empty(),"Zero-direction ray accepted");
