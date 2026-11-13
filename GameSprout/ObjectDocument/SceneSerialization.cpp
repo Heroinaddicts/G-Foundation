@@ -4,6 +4,7 @@
 #include "ScenePhysicsDocument.h"
 #include "SceneLightingDocument.h"
 #include "SceneEnvironmentLightingDocument.h"
+#include "SceneRendererShadows.h"
 #include "RuntimeUIApi.h"
 #include <algorithm>
 #include <cmath>
@@ -142,6 +143,7 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
             auto* value=dynamic_cast<GameSproutRuntime::IMeshRendererComponent*>(&component);
             if (!value) throw std::runtime_error("MeshRenderer interface mismatch");
             data["Visible"]=value->IsVisible();data["Materials"]=Json::Value(Json::arrayValue);
+            SceneRendererShadows::Serialize(data,value->GetShadowCastingMode(),value->GetReceiveShadows());
             if (value->GetMaterialCount()>1024) throw std::runtime_error("Too many material slots");
             for (std::size_t slot=0;slot<value->GetMaterialCount();++slot) data["Materials"].append(Reference(value->GetMaterial(slot)));
         } else if (SceneLightingDocument::Handles(type)) {

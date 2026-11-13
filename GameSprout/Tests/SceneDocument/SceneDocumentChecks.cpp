@@ -208,6 +208,8 @@ int main() {
         bad=source; bad["Objects"][0]["Components"][0]["Position"][0]=std::numeric_limits<double>::infinity(); reject(bad);
         bad=source; bad["Objects"][0]["Components"][6]["Settings"]["NearPlane"]=-1; reject(bad);
         bad=source; bad["Objects"][0]["Components"][5]["Materials"].resize(1025); reject(bad);
+        bad=source; bad["Objects"][0]["Components"][5]["ShadowCastingMode"]="Unknown"; reject(bad);
+        bad=source; bad["Objects"][0]["Components"][5]["ReceiveShadows"]=1; reject(bad);
 
         // Whole-document validation succeeds, then overflow forces rollback after creation.
         bad=source;

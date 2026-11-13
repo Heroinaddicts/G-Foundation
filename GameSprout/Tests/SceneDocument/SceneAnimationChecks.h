@@ -21,6 +21,8 @@ static void CheckAnimationSerialization(GameSproutRuntime::IGameSproutRuntime& r
     geometry->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
     auto* skin=geometry->AddComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>();
     Check(skin&&skin->SetAnimatorObjectID(character->GetInstanceID()),"Cannot configure skinned renderer");
+    Check(skin->SetShadowCastingMode(GameSproutRuntime::ShadowCastingMode::ShadowsOnly),"Cannot set skinned shadow mode");
+    skin->SetReceiveShadows(false);
     // Node names may change after import; bindings must retain stable object identities.
     bone->SetName("Renamed bone");
     SceneDocument::ObjectIDs ids;Json::Value saved;std::string error;
@@ -34,6 +36,8 @@ static void CheckAnimationSerialization(GameSproutRuntime::IGameSproutRuntime& r
     Check(animatorFile&&skinFile,"Animation component source data was omitted");
     Check((*animatorFile)["Bindings"][0]["ObjectFileID"]==boneFile["ID"],"Animation binding saved a Runtime ID instead of File ID");
     Check((*skinFile)["AnimatorObjectFileID"]==characterFile["ID"],"Skin binding saved a Runtime ID instead of File ID");
+    Check(!skinFile->isMember("ShadowCastingMode")&&!skinFile->isMember("ReceiveShadows"),
+        "SkinnedMeshRenderer duplicated its MeshRenderer's shadow fields");
     Check(!animatorFile->isMember("Time")&&!animatorFile->isMember("CurrentState")&&!animatorFile->isMember("Parameters"),"Live animation state leaked into scene source");
     Check((*animatorFile)["Avatar"]["Guid"]==avatar.Guid&&(*animatorFile)["Avatar"]["LocalID"].asUInt64()==avatar.LocalID,
         "Scene lost the authored Humanoid Avatar identity");
@@ -47,6 +51,8 @@ static void CheckAnimationSerialization(GameSproutRuntime::IGameSproutRuntime& r
     auto* loadedAnimator=loadedCharacter->GetComponent<GameSproutRuntime::IAnimatorComponent>();
     auto* loadedSkin=loadedGeometry->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>();
     Check(loadedAnimator&&loadedSkin,"Scene did not reconstruct animation components");
+    Check(loadedSkin->GetShadowCastingMode()==GameSproutRuntime::ShadowCastingMode::ShadowsOnly&&!loadedSkin->GetReceiveShadows(),
+        "Skinned renderer did not recover shadow settings from its MeshRenderer");
     Check(loadedAnimator->GetSkeleton()==skeleton&&loadedAnimator->GetController()==controller&&loadedAnimator->GetDefaultClip()==clip,"Animation resource identities were not restored");
     Check(loadedAnimator->GetAvatar()==avatar,"Humanoid Avatar identity was not restored");
     Check(loadedAnimator->GetSpeed()==1.25f&&!loadedAnimator->GetPlayOnStart()&&!loadedAnimator->GetLoop(),"Playback authoring settings were not restored");

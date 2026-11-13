@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RendererShadowControlsForm</class>
+ <widget class="QWidget" name="RendererShadowControlsForm">
+  <layout class="QFormLayout" name="shadowLayout">
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+   <item row="0" column="0"><widget class="QLabel" name="shadowCastingLabel"><property name="text"><string>投射阴影</string></property></widget></item>
+   <item row="0" column="1"><widget class="QComboBox" name="shadowCastingModeCombo">
+    <property name="accessibleName"><string>投射阴影</string></property>
+    <property name="toolTip"><string>双面模式让正反面都能投影。仅阴影模式隐藏物体表面并保留投影。</string></property>
+    <item><property name="text"><string>关闭</string></property></item>
+    <item><property name="text"><string>开启</string></property></item>
+    <item><property name="text"><string>双面</string></property></item>
+    <item><property name="text"><string>仅阴影</string></property></item>
+   </widget></item>
+   <item row="1" column="1"><widget class="QCheckBox" name="receiveShadowsCheck">
+    <property name="text"><string>接收阴影</string></property>
+    <property name="toolTip"><string>控制内置 Lit 材质是否在物体表面显示实时阴影。</string></property>
+   </widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

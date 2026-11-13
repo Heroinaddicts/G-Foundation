@@ -18,6 +18,10 @@ static void CheckSerialization(GameSproutRuntime::IGameSproutRuntime& runtime,co
     auto* renderer=first->GetComponent<GameSproutRuntime::IMeshRendererComponent>();
     Check(renderer->SetMaterials({material,{},material}),"Cannot configure material slot round trip");
     renderer->SetVisible(false);
+    Check(renderer->GetShadowCastingMode()==GameSproutRuntime::ShadowCastingMode::On&&renderer->GetReceiveShadows(),
+        "Renderer shadow defaults were not restored from omitted fields");
+    Check(renderer->SetShadowCastingMode(GameSproutRuntime::ShadowCastingMode::TwoSided),"Cannot configure shadow casting for round trip");
+    renderer->SetReceiveShadows(false);
     first->GetComponent<GameSproutRuntime::IImageComponent>()->SetUVRect({{0.2f,0.3f},{0.4f,0.5f}});
     const auto addedFileID=ids.Next;
     auto* added=scene->CreateGameObject("Added",parent);
@@ -30,6 +34,9 @@ static void CheckSerialization(GameSproutRuntime::IGameSproutRuntime& runtime,co
     Check(FileNode(saved,"Added")["Components"][0]["ID"].asUInt64()>addedFileID,"Intrinsic component has no stable ID");
     Check(FileNode(saved,"First")["Components"][4]["Mesh"]["LocalID"].asUInt64()==91,"Mesh resource identity lost");
     Check(FileNode(saved,"First")["Components"][5]["Materials"][1].isNull(),"Unbound slot must remain null");
+    const auto& rendererDocument=FileNode(saved,"First")["Components"][5];
+    Check(rendererDocument["ShadowCastingMode"]=="TwoSided"&&rendererDocument["ReceiveShadows"].isBool()&&
+          !rendererDocument["ReceiveShadows"].asBool(),"MeshRenderer shadow settings were not serialized");
     Check(!FileNode(saved,"First")["Components"][4].isMember("Bounds"),"Derived mesh data was written to source");
     GameSproutRuntime::IScene* loaded=nullptr;
     SceneDocument::ObjectIDs loadedIDs;
@@ -42,6 +49,9 @@ static void CheckSerialization(GameSproutRuntime::IGameSproutRuntime& runtime,co
     Check(loadedFirst->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetMaterialCount()==3 &&
           !loadedFirst->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->IsVisible() &&
           loadedFirst->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetMaterial(2)==material,"Material slot round trip failed");
+    const auto* loadedRenderer=loadedFirst->GetComponent<GameSproutRuntime::IMeshRendererComponent>();
+    Check(loadedRenderer->GetShadowCastingMode()==GameSproutRuntime::ShadowCastingMode::TwoSided&&
+          !loadedRenderer->GetReceiveShadows(),"MeshRenderer shadow settings round trip failed");
     Json::Value savedAgain;
     Check(SceneDocument::Serialize(*loaded,loadedIDs,savedAgain,error),error);
     Check(savedAgain==saved,"Reopen and save changed canonical scene document");

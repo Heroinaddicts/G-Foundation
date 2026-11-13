@@ -3,6 +3,7 @@
 #include "ColliderComponentEditor.h"
 #include "ScriptComponentEditor.h"
 #include "AnimatorComponentEditor.h"
+#include "SkinnedMeshRendererComponentEditor.h"
 #include "ScriptPropertyRow.h"
 #include "GameSproutRuntimeExport.h"
 #include "Internal/RuntimeScriptBindings.h"
@@ -33,6 +34,7 @@ public:
         if(type==typeid(GameSproutRuntime::IBoxColliderComponent))return new ColliderComponentEditor(parent);
         if(type==typeid(GameSproutRuntime::IScriptComponent))return new ScriptComponentEditor(parent);
         if(type==typeid(GameSproutRuntime::IAnimatorComponent))return new AnimatorComponentEditor(parent);
+        if(type==typeid(GameSproutRuntime::ISkinnedMeshRendererComponent))return new SkinnedMeshRendererComponentEditor(parent);
         return nullptr;
     }
 };
@@ -57,12 +59,33 @@ int main(int argc,char** argv) {
         IScriptEditor* scripts=CreateFieldsFixture(runtime,&scenes,&selection,&editing,registration.Info);FieldsOwner fieldsOwner{scripts};editor.Modules["ScriptEditor"]=scripts;
         auto* author=scenes.GetActiveScene()->CreateGameObject("Author");auto* other=scenes.GetActiveScene()->CreateGameObject("Other");
         author->AddComponent<GameSproutRuntime::IBoxColliderComponent>();auto* body=author->AddComponent<GameSproutRuntime::IRigidbodyComponent>();auto settings=body->GetSettings();settings.GravityFactor=0;Check(body->SetSettings(settings),"Body fixture invalid");
-        author->AddComponent<GameSproutRuntime::IMeshRendererComponent>();author->AddComponent<GameSproutRuntime::ICameraComponent>();author->AddComponent<GameSproutRuntime::IAnimatorComponent>();
+        auto* meshRenderer=author->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
+        author->AddComponent<GameSproutRuntime::ICameraComponent>();author->AddComponent<GameSproutRuntime::IAnimatorComponent>();
+        other->AddComponent<GameSproutRuntime::IMeshComponent>();
+        other->AddComponent<GameSproutRuntime::IMeshRendererComponent>();
+        auto* skin=other->AddComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>();Check(meshRenderer&&skin,"Shadow editor fixtures unavailable");
         Check(runtime->AddScriptComponent(author,registration.Info.TypeID,{registration.Info.TypeID,1},1,error),error.c_str());
         Check(scenes.SaveSceneAs("Inspector.scene",error),error.c_str());const auto authorFile=scenes.GetObjectFileID(author->GetInstanceID());
         Check(GameSproutEditor::GameSproutEditorFinal::Start(inspector,editor),"Inspector failed");Check(GameSproutEditor::GameSproutEditorFinal::Start(sceneUI,editor),"SceneObjectUI failed");
         Check(inspector.RegisterExtension(&editors),"Component editors did not register");GameSproutEditor::GameSproutEditorFinal::Finished(inspector,editor);
         selection.SetSceneObjectSelection({scenes.GetActiveScene()->GetInstanceID(),author->GetInstanceID()});Pump(*runtime);inspector.Show();auto* root=ide.Inspector.Widget;root->resize(440,900);Pump(*runtime);
+        using GameSproutRuntime::ShadowCastingMode;
+        const auto activateCasting=[](QWidget* panel,int index) {
+            auto* combo=Find<QComboBox>(panel,"shadowCastingModeCombo");
+            combo->setCurrentIndex(index);QMetaObject::invokeMethod(combo,"activated",Qt::DirectConnection,Q_ARG(int,index));
+        };
+        activateCasting(Find<QWidget>(root,"rendererShadows"),2);Pump(*runtime);
+        Check(meshRenderer->GetShadowCastingMode()==ShadowCastingMode::TwoSided,"MeshRenderer Inspector did not update cast mode");
+        Check(scenes.Undo(error)&&meshRenderer->GetShadowCastingMode()==ShadowCastingMode::On,error.c_str());
+        selection.SetSceneObjectSelection({scenes.GetActiveScene()->GetInstanceID(),other->GetInstanceID()});Pump(*runtime);
+        auto* skinnedPanel=Find<QWidget>(root,"skinnedRendererShadows");
+        Check(Find<QWidget>(root,"rendererShadows")->isHidden()&&!skinnedPanel->isHidden(),"Skinned object shows duplicate shadow controls");
+        activateCasting(skinnedPanel,3);Pump(*runtime);
+        Find<QCheckBox>(skinnedPanel,"receiveShadowsCheck")->click();Pump(*runtime);
+        Check(skin->GetShadowCastingMode()==ShadowCastingMode::ShadowsOnly&&!skin->GetReceiveShadows(),"Skinned Inspector did not update shadow settings");
+        Check(scenes.Undo(error)&&skin->GetReceiveShadows(),error.c_str());Pump(*runtime);
+        Check(Find<QCheckBox>(skinnedPanel,"receiveShadowsCheck")->isChecked(),"MeshRenderer change event did not refresh the Skinned Inspector");
+        selection.SetSceneObjectSelection({scenes.GetActiveScene()->GetInstanceID(),author->GetInstanceID()});Pump(*runtime);
         play.Emit(EditorPlayState::EnteringPlay);Check(Find<QLineEdit>(root,"objectNameEdit")->isReadOnly(),"EnteringPlay permits writes");
         Check(scenes.BeginPlaySession(error),error.c_str());Check(runtime->BeginExecution(error),error.c_str());play.Emit(EditorPlayState::Playing);
         auto* world=scenes.GetActiveScene();auto* object=scenes.QueryObjectByFileID(authorFile);Check(object,"Play clone missing");
@@ -70,6 +93,8 @@ int main(int argc,char** argv) {
         Check(!Find<QLineEdit>(root,"objectNameEdit")->isReadOnly()&&!Find<QPushButton>(root,"addComponentButton")->isEnabled(),"Property and structure permissions were not split");
         Check(!Find<QToolButton>(root,"removeButton")->isEnabled(),"Play script remove enabled");
         Check(!Find<QWidget>(root,"previewGroup")->isEnabled(),"Edit animation preview can drive Play world");
+        Find<QCheckBox>(Find<QWidget>(root,"rendererShadows"),"receiveShadowsCheck")->click();Pump(*runtime);
+        Check(!object->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetReceiveShadows(),"Play Inspector did not update receive shadows");
         Edit(Find<QLineEdit>(root,"objectNameEdit"),"Live");Pump(*runtime);Check(object->GetName()=="Live", "Play name edit failed");
         auto* position=Find<QLineEdit>(root,"transformPositionXEdit");position->setFocus();position->selectAll();QTest::keyClicks(position,"12");
         object->GetTransform()->SetLocalPosition({0,37,0});Pump(*runtime);
@@ -94,6 +119,7 @@ int main(int argc,char** argv) {
         Find<QPushButton>(root,"setMainCameraButton")->click();Pump(*runtime);Check(world->GetMainCamera()==temporaryObject->GetComponent<GameSproutRuntime::ICameraComponent>(),"Runtime-only camera required author FileID");
         play.Emit(EditorPlayState::ExitingPlay);Check(Find<QLineEdit>(root,"objectNameEdit")->isReadOnly(),"ExitingPlay permits writes");Check(runtime->EndExecution(error),error.c_str());Check(scenes.EndPlaySession(error),error.c_str());play.Emit(EditorPlayState::Edit);
         auto* restored=scenes.QueryObjectByFileID(authorFile);Check(restored&&restored->GetName()=="Author"&&restored->GetTransform()->GetLocalPosition().X==0&&restored->GetComponent<GameSproutRuntime::IRigidbodyComponent>()->GetSettings().Mass==1,"Stop did not restore author snapshot");
+        Check(restored->GetComponent<GameSproutRuntime::IMeshRendererComponent>()->GetReceiveShadows(),"Play shadow change leaked into edit scene");
         selection.SetSceneObjectSelection({scenes.GetActiveScene()->GetInstanceID(),restored->GetInstanceID()});Pump(*runtime);Check(!Find<QLineEdit>(root,"objectNameEdit")->isReadOnly()&&Find<QPushButton>(root,"addComponentButton")->isEnabled(),"Stop did not restore authoring permissions");
         inspector.UnregisterExtension(&editors);GameSproutEditor::GameSproutEditorFinal::Stop(sceneUI,editor);GameSproutEditor::GameSproutEditorFinal::Stop(inspector,editor);
         DestroyFieldsFixture(scripts);fieldsOwner.Pointer=nullptr;editor.Modules.erase("ScriptEditor");GameSproutEditor::GameSproutEditorFinal::Stop(editing,api);GameSproutEditor::GameSproutEditorFinal::Stop(scenes,api);

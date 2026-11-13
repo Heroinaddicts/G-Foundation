@@ -85,6 +85,8 @@ bool GameObjectInspector::RefreshProperties(const InspectorObjectChanges& change
         if(changes.ComponentIDs.contains(component->GetComponentInstanceID())||
            (type&&changes.ComponentTypes.contains(type)))
             _Sections[index]->Load(*component);
+        else
+            _Sections[index]->OnSiblingComponentChanged(changes);
     }
     return true;
 }

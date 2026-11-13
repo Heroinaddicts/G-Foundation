@@ -208,6 +208,9 @@ void ComponentInfoSection::UpdateHeight() {
 void ComponentInfoSection::OnAnimationEvent(const GameSproutRuntime::AnimationNotification& event) {
     if(_Editor)_Editor->OnAnimationEvent(event);
 }
+void ComponentInfoSection::OnSiblingComponentChanged(const InspectorObjectChanges& changes) {
+    if(_Editor)_Editor->OnSiblingComponentChanged(changes);
+}
 
 void ComponentInfoSection::SetReadOnly(bool value){SetEditability(!value,!value);}
 void ComponentInfoSection::SetEditability(bool properties,bool structure) {

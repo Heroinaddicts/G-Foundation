@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <initializer_list>
 class QLineEdit;
+struct InspectorObjectChanges;
 
 class ComponentEditor : public QWidget {
 public:
@@ -14,6 +15,7 @@ public:
     void Reload();
     void SetEditability(bool properties,bool structure);
     virtual void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&) {}
+    virtual void OnSiblingComponentChanged(const InspectorObjectChanges&) {}
 protected:
     virtual void ReadValues(GameSproutRuntime::IComponent& component) = 0;
     virtual void ContextChanged() {}

@@ -44,6 +44,7 @@ GameSproutRuntime.ScriptComponent
 
 资源引用使用 {"Guid":"32位十六进制字符串","LocalID":非零整数}。
 未绑定资源时省略该字段或使用 null，不能写空 Guid 和 LocalID=0 的引用对象。
+MeshRenderer 可保存 ShadowCastingMode（Off、On、TwoSided、ShadowsOnly）与 ReceiveShadows（布尔值）。默认值 On 和 true 在源文档中省略。SkinnedMeshRenderer 使用同节点 MeshRenderer 的阴影配置。
 Text 保存 Text（UTF-8）、Font（字体资源引用）、Color（线性 RGBA）和 FontSize（画布单位，默认 24）。
 Button 保存 Interactable（默认 true）。按下、悬停等临时状态及脚本订阅只存在于运行会话。
 MainCameraID 指向包含 Camera 组件的节点。

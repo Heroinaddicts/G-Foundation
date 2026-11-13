@@ -4,6 +4,7 @@
 #include "ScenePhysicsDocument.h"
 #include "SceneLightingDocument.h"
 #include "SceneEnvironmentLightingDocument.h"
+#include "SceneRendererShadows.h"
 #include "PrefabDocument.h"
 #include "RuntimeUIApi.h"
 
@@ -250,8 +251,9 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
         const auto mesh=Resource(value["Mesh"],path+".Mesh");
         if (object) Component<GameSproutRuntime::IMeshComponent>(object,path)->SetMesh(mesh);
     } else if (type=="GameSproutRuntime.MeshRenderer") {
-        Members(value,path,{"ID","Type","Materials","Visible"});
+        Members(value,path,{"ID","Type","Materials","Visible","ShadowCastingMode","ReceiveShadows"});
         const bool visible=BoolMember(value,"Visible",true,path);
+        const auto shadows=SceneRendererShadows::Read(value,path);
         std::vector<GameSproutRuntime::ResourceReference> materials;
         if (value.isMember("Materials")) {
             const auto& array=value["Materials"];
@@ -263,6 +265,8 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             auto* component=Component<GameSproutRuntime::IMeshRendererComponent>(object,path);
             if (!component->SetMaterials(materials)) Fail(path,"Runtime rejected material slots");
             component->SetVisible(visible);
+            if (!component->SetShadowCastingMode(shadows.Casting)) Fail(path+".ShadowCastingMode","Runtime rejected shadow mode");
+            component->SetReceiveShadows(shadows.Receive);
         }
     } else if (SceneLightingDocument::Handles(type)) {
         SceneLightingDocument::Validate(value,path);

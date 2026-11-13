@@ -5,6 +5,7 @@
 namespace Ui { class ComponentInfoSectionForm; }
 class QTreeWidgetItem;
 class ComponentEditor;
+struct InspectorObjectChanges;
 
 class ComponentInfoSection final : public QWidget {
 public:
@@ -21,6 +22,7 @@ public:
     void SetReadOnly(bool value);
     void SetEditability(bool properties,bool structure);
     void OnAnimationEvent(const GameSproutRuntime::AnimationNotification&);
+    void OnSiblingComponentChanged(const InspectorObjectChanges&);
 private:
     bool eventFilter(QObject*,QEvent*) override;
     QPoint _DragStart;

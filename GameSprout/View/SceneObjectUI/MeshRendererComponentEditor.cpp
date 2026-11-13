@@ -25,7 +25,11 @@ void MeshRendererComponentEditor::Modify(const std::function<void(InspectorValue
     Commit<GameSproutRuntime::IMeshRendererComponent>(next,label);
 }
 void MeshRendererComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) {
-    const auto v=InspectorValues::Read(static_cast<GameSproutRuntime::IMeshRendererComponent&>(component));
+    const auto& renderer=static_cast<GameSproutRuntime::IMeshRendererComponent&>(component);
+    const auto v=InspectorValues::Read(renderer);
+    const bool skinned=renderer.GetGameObject()->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>()!=nullptr;
+    _Ui->rendererShadows->setVisible(!skinned);
+    _Ui->rendererShadows->Load(_Context,skinned?nullptr:&renderer);
     _Ui->rendererVisibleCheck->setChecked(v.Visible);
     _Ui->addMaterialButton->setEnabled(v.Materials.size()<1024);
     while(_Slots.size()>v.Materials.size()) {

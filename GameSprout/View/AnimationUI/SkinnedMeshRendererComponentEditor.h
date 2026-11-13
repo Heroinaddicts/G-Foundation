@@ -5,6 +5,7 @@ class SkinnedMeshRendererComponentEditor final : public ComponentEditor {
 public:
     explicit SkinnedMeshRendererComponentEditor(QWidget*);
     ~SkinnedMeshRendererComponentEditor() override;
+    void OnSiblingComponentChanged(const InspectorObjectChanges&) override;
 protected:
     void ReadValues(GameSproutRuntime::IComponent&) override;
 private:

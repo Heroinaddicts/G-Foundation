@@ -1,4 +1,5 @@
 #include "SkinnedMeshRendererComponentEditor.h"
+#include "InspectorPanel.h"
 #include "ui_SkinnedMeshRendererComponentEditor.h"
 
 SkinnedMeshRendererComponentEditor::SkinnedMeshRendererComponentEditor(QWidget* parent)
@@ -9,6 +10,7 @@ SkinnedMeshRendererComponentEditor::SkinnedMeshRendererComponentEditor(QWidget* 
 SkinnedMeshRendererComponentEditor::~SkinnedMeshRendererComponentEditor(){delete _Ui;}
 void SkinnedMeshRendererComponentEditor::ReadValues(GameSproutRuntime::IComponent& component) {
     auto& skin=static_cast<GameSproutRuntime::ISkinnedMeshRendererComponent&>(component);
+    _Ui->skinnedRendererShadows->Load(_Context,skin.GetGameObject()->GetComponent<GameSproutRuntime::IMeshRendererComponent>());
     _Ui->animatorCombo->clear();_Ui->animatorCombo->addItem(tr("未绑定"),QVariant::fromValue<qulonglong>(0));
     auto* object=_Context.Resolve();if(!object)return;
     std::vector<GameSproutRuntime::IGameObject*> nodes{object->GetScene()};
@@ -23,6 +25,13 @@ void SkinnedMeshRendererComponentEditor::ReadValues(GameSproutRuntime::IComponen
         for(std::size_t i=node->GetChildCount();i>0;--i)nodes.push_back(node->GetChild(i-1));
     }
     _Ui->animatorCombo->setCurrentIndex(selected);
+}
+void SkinnedMeshRendererComponentEditor::OnSiblingComponentChanged(const InspectorObjectChanges& changes) {
+    if(changes.ComponentIDs.empty()&&!changes.ComponentTypes.contains("GameSproutRuntime.MeshRenderer"))return;
+    const auto* object=_Context.Resolve();
+    const auto* renderer=object?object->GetComponent<GameSproutRuntime::IMeshRendererComponent>():nullptr;
+    if(renderer&&(changes.ComponentTypes.contains("GameSproutRuntime.MeshRenderer")||
+        changes.ComponentIDs.contains(renderer->GetComponentInstanceID())))_Ui->skinnedRendererShadows->Load(_Context,renderer);
 }
 void SkinnedMeshRendererComponentEditor::CommitAnimator() {
     if(_Loading||!_Context.Scenes)return;
