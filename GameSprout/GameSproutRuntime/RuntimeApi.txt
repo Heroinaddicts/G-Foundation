@@ -151,17 +151,23 @@ Grid 是世界 Y=0、X/Z 各 [-50,50] 米参考线；多 View 复用按尺寸缓
 RuntimeGenerateShaders 显式重新生成，或运行 GenerateShaders.py --shadercross 工具路径。
 Runtime.RendererGPU 使用实际 GRHI/Metal 离屏像素验证矩阵/纹理/sRGB、四种属性布局、depth、法线、负/零缩放、grid/resize与缓存。
 
-宿主控制阴影复用
+方向光阴影设置
 方向光的 LightShadowSettings::CacheStaticCasters 默认关闭。通过 ILightComponent::SetShadows 开启后，带 StaticFlags::ShadowCasterStatic 的非蒙皮网格进入静态层，其他网格和蒙皮网格进入动态层。
 通过 IGameObject::SetStaticFlags 标记投影物体，保留节点原有的其他标记。静态投影物体的变换、几何或投影状态变化后会重新生成静态层。仅动态物体移动时复用静态层。
-Editor 在方向光 Inspector 的阴影设置中提供「缓存静态阴影」，节点的 Static 菜单提供「Shadow Caster Static」。两项均保存在场景中。
+StaticUpdateMode 默认为 AutomaticIncremental。级联投影能按整纹素平移时，保留重叠深度，只重绘新增边缘。FullCascade 完整重绘失效级联，其他级联仍可复用。
+CascadeSplits 全零时自动分割。手动设置时，从近到远填入 CascadeCount - 1 个严格递增的 0 到 1 之间的分数，其余元素填零。分割范围从相机近裁剪面到阴影距离与相机远裁剪距离的较小值。
+FadeStart 是有效最大阴影距离的比例，默认 0.9，1 表示在最大距离直接截止。Soft 开启后可通过 FilterQuality 选择 Low（4 次采样）、Medium（9 次，默认）或 High（25 次）。
+ILightComponent::RequestShadowRefresh() 请求每个使用该方向光的视口在下一次成功绘制阴影时重建所有级联。连续请求会合并，临时不可绘制的视口会在恢复后执行。请求通过场景视觉事件通知按需绘制的宿主。
+Editor 方向光 Inspector 的「实时阴影」提供缓存开关及高级设置。节点的 Static 菜单提供「Shadow Caster Static」。这些设置会保存进场景，手动重建按钮只发出一次视觉刷新请求。
+
+宿主控制阴影复用
 RenderView::ReuseShadowsWhileNavigating 默认 false，镜头改变时按当前视角更新阴影。
 自定义宿主可以给每次 Render 调用传入 `view.ReuseShadowsWhileNavigating = cameraNavigationActive;`。
 true 时，同一 viewport 可以复用上次提交的阴影图及采样参数。开启分层时，动态投影物体仍会更新，并沿用缓存的级联位置。
 首次绘制或缓存失效仍会生成阴影。超出旧图覆盖范围的部分可能暂时无阴影，导航结束时以 false 提交一帧更新覆盖。
 GetStatistics().ShadowMapUpdates 和 ShadowDrawCalls 报告本帧各层合计的重建次数和阴影绘制数。开启分层时可分别读取 StaticShadowMapUpdates、DynamicShadowMapUpdates、StaticShadowDrawCalls 和 DynamicShadowDrawCalls。
 GameSprout Editor 在 Scene 工具栏提供「导航时复用阴影」，覆盖镜头拖动及滚动缩放。编辑器扩展可通过 ISceneViewUI 读写这个选项。
-拖拽物体时，编辑宿主可在变换实际改变后给 RenderView::TransformPreviewObjectID 传入节点 ID。Runtime 将该节点和子节点的阴影单独更新。已有阴影图可用时，首次移动仅修补投影物进出主层影响的区域。提交最终变换帧后传 0，下一次阴影失效时按方向光设置重建。
+拖拽物体时，编辑宿主可在变换实际改变后给 RenderView::TransformPreviewObjectID 传入节点 ID。Runtime 将该节点和子节点的阴影单独更新。采用 AutomaticIncremental 且已有阴影图可用时，首次移动仅修补投影物进出主层影响的区域。提交最终变换帧后传 0，下一次阴影失效时按方向光设置重建。
 
 临时调试几何与Mesh拾取
 RenderView.DebugDraw 同步借用 DebugDrawList；世界坐标 Lines/Triangles 各自带线性 Tint 和 DepthTest。

@@ -52,7 +52,7 @@ bool Renderer::ExtractLights(IScene* scene,std::vector<DirectionalLight>& lights
         if(!direction.TryNormalize(normalized)||!RuntimeMath::IsFinite(radiance)) {
             Diagnostic("Skipped nonfinite directional light radiance/orientation: "+object->GetName());continue;
         }
-        lights.push_back({normalized,radiance,settings.CullingMask,settings.Shadows});
+        lights.push_back({normalized,radiance,settings.CullingMask,settings.Shadows,object->GetInstanceID()});
     }
     // Highest linear luminance first; hierarchy order resolves exact ties.
     std::stable_sort(lights.begin(),lights.end(),[](const DirectionalLight& left,const DirectionalLight& right){

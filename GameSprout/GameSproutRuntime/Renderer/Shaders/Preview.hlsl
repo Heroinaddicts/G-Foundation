@@ -218,8 +218,8 @@ cbuffer ShadowUniform : register(b2, space3)
     float4x4 WorldToShadow[4];
     float4x4 ShadowCameraView;
     float4 CascadeSplits;
-    float4 ShadowInfo;
-    float4 CascadeBias[4]; // Depth bias, normal bias, soft filtering. Entry 0 W enables dynamic sampling.
+    float4 ShadowInfo; // Cascade count, strength, maximum distance, fade start distance.
+    float4 CascadeBias[4]; // Depth bias, normal bias, filter tier (hard/low/medium/high). Entry 0 W enables dynamic sampling.
     float4 CascadeAtlas[4];
     float4 DynamicDepth[4]; // Clip Z row for each dynamic cascade.
     float4 DynamicDepthBias;
@@ -246,16 +246,39 @@ float2 ScrollStaticShadowUV(float2 logicalUV, float4 tile, float2 offset)
     return staticUV - step(tile.zw + tile.xy, staticUV) * tile.xy;
 }
 
-float FilterShadowVisibility(float2 uv, float2 reference, bool sampleDynamic, bool soft,
+float2 WrapShadowAxis(float2 taps, float extent, float origin, float offset)
+{
+    float2 physical = taps + offset;
+    return physical - step(origin + extent, physical) * extent;
+}
+
+float FilterShadowVisibility(float2 uv, float2 reference, bool sampleDynamic, float quality,
     float4 tile, float2 texel, float2 staticOffset)
 {
     const bool scrollStatic = any(staticOffset != 0.0);
     float2 lower = tile.zw + texel * 0.5;
     float2 upper = tile.zw + tile.xy - texel * 0.5;
-    if (!soft)
+    [branch] if (quality < 0.5)
     {
-        float2 staticUV = scrollStatic ? ScrollStaticShadowUV(clamp(uv, lower, upper), tile, staticOffset) : uv;
-        return SampleShadowVisibility(staticUV, uv, reference, sampleDynamic);
+        float2 tap = clamp(uv, lower, upper);
+        float2 staticUV = scrollStatic ? ScrollStaticShadowUV(tap, tile, staticOffset) : tap;
+        return SampleShadowVisibility(staticUV, tap, reference, sampleDynamic);
+    }
+    [branch] if (quality < 1.5)
+    {
+        const float2 neighbors = float2(-0.5, 0.5);
+        float2 tapX = clamp(uv.x + neighbors * texel.x, lower.x, upper.x);
+        float2 tapY = clamp(uv.y + neighbors * texel.y, lower.y, upper.y);
+        float2 staticX = WrapShadowAxis(tapX, tile.x, tile.z, staticOffset.x);
+        float2 staticY = WrapShadowAxis(tapY, tile.y, tile.w, staticOffset.y);
+        float visibility = 0.0;
+        [unroll] for (int y = 0; y < 2; ++y)
+        [unroll] for (int x = 0; x < 2; ++x)
+        {
+            visibility += SampleShadowVisibility(float2(staticX[x], staticY[y]), float2(tapX[x], tapY[y]),
+                reference, sampleDynamic);
+        }
+        return visibility * 0.25;
     }
 
     // A 3x3 footprint only needs three coordinates per axis. Clamp each
@@ -278,7 +301,30 @@ float FilterShadowVisibility(float2 uv, float2 reference, bool sampleDynamic, bo
         visibility += SampleShadowVisibility(float2(staticX[x], staticY[y]), float2(tapX[x], tapY[y]),
             reference, sampleDynamic);
     }
-    return visibility / 9.0;
+    [branch] if (quality < 2.5) return visibility / 9.0;
+
+    // High adds the 16 texels on the perimeter of the 5x5 footprint.
+    const float2 border = float2(-2.0, 2.0);
+    float2 edgeX = clamp(uv.x + border * texel.x, lower.x, upper.x);
+    float2 edgeY = clamp(uv.y + border * texel.y, lower.y, upper.y);
+    float2 staticEdgeX = WrapShadowAxis(edgeX, tile.x, tile.z, staticOffset.x);
+    float2 staticEdgeY = WrapShadowAxis(edgeY, tile.y, tile.w, staticOffset.y);
+    [unroll] for (int edge = 0; edge < 2; ++edge)
+    {
+        [unroll] for (int tap = 0; tap < 3; ++tap)
+        {
+            visibility += SampleShadowVisibility(float2(staticX[tap], staticEdgeY[edge]), float2(tapX[tap], edgeY[edge]),
+                reference, sampleDynamic);
+            visibility += SampleShadowVisibility(float2(staticEdgeX[edge], staticY[tap]), float2(edgeX[edge], tapY[tap]),
+                reference, sampleDynamic);
+        }
+        [unroll] for (int corner = 0; corner < 2; ++corner)
+        {
+            visibility += SampleShadowVisibility(float2(staticEdgeX[corner], staticEdgeY[edge]), float2(edgeX[corner], edgeY[edge]),
+                reference, sampleDynamic);
+        }
+    }
+    return visibility / 25.0;
 }
 
 float DirectionalShadow(float3 worldPosition, float3 normal)
@@ -315,10 +361,12 @@ float DirectionalShadow(float3 worldPosition, float3 normal)
     // static test outside its fitted depth range without rejecting dynamic Z.
     float2 reference = float2(sampleStatic ? ndc.z - CascadeBias[cascade].x : 0.0,
                               dynamicZ - DynamicDepthBias[cascade]);
-    bool soft = CascadeBias[cascade].z >= 0.5;
     float2 staticOffset = StaticScroll[cascade].xy * tile.xy;
-    float visibility = FilterShadowVisibility(uv, reference, sampleDynamic, soft, tile, texel, staticOffset);
-    float fade = saturate((ShadowInfo.z - depth) / max(ShadowInfo.z - ShadowInfo.w, 0.0001));
+    float visibility = FilterShadowVisibility(uv, reference, sampleDynamic, CascadeBias[cascade].z, tile, texel, staticOffset);
+    // A fade starting at the maximum distance leaves the in-range shadow at full strength.
+    float fade = 1.0;
+    if (depth > ShadowInfo.w)
+        fade = saturate((ShadowInfo.z - depth) / (ShadowInfo.z - ShadowInfo.w));
     return 1.0 - (1.0 - visibility) * ShadowInfo.y * fade;
 }
 

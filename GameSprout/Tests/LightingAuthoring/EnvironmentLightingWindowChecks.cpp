@@ -25,6 +25,7 @@ public:
     bool CreateDirectionalLight(std::uint64_t,std::uint64_t,std::uint64_t&,std::string&) override{return false;}
     bool ReadLight(const ObjectEditTarget&,GameSproutRuntime::LightSettings&,std::string&)const override{return false;}
     bool SetLight(const ObjectEditTarget&,const GameSproutRuntime::LightSettings&,std::string&)override{return false;}
+    bool RequestShadowRefresh(const ObjectEditTarget&,std::string&)override{return false;}
     bool ReadEnvironment(EnvironmentLightingSnapshot& out,std::string& error)const override{++Reads;out=Value;error.clear();return true;}
     bool SetEnvironment(std::uint64_t id,const GameSproutRuntime::EnvironmentLightingSettings& value,std::string& error)override {
         if(id!=Value.SceneID||!Value.Available||!Value.Editable||!GameSproutRuntime::IsValidEnvironmentLighting(value)) {error="Rejected environment transaction";return false;}

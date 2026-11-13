@@ -10,6 +10,8 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QComboBox>
+#include <QPushButton>
+#include <QToolButton>
 #include <QTest>
 #include "ObjectEditing.h"
 #include "SceneManager.h"
@@ -133,6 +135,12 @@ class EnvironmentRecorder final:public ILightingEnvironmentListener {public:
     std::vector<EnvironmentLightingSnapshot> Events;
     void OnEnvironmentLightingChanged(const EnvironmentLightingSnapshot& value)override{Events.push_back(value);}
 };
+class ShadowRefreshRecorder final:public GameSproutRuntime::IRuntimeListener {
+public:
+    std::vector<std::uint64_t> InvalidatedScenes;
+    void OnSceneNodeEvent(const GameSproutRuntime::SceneNodeEvent&) override {}
+    void OnSceneVisualChanged(std::uint64_t sceneID) override {InvalidatedScenes.push_back(sceneID);}
+};
 }
 int main(int argc,char** argv) {
     QApplication app(argc,argv);GameSproutRuntime::IGameSproutRuntime* runtime=nullptr;
@@ -210,10 +218,27 @@ int main(int argc,char** argv) {
         auto* shadowResolution=panel->findChild<QComboBox*>("shadowResolutionCombo");auto* shadowCascades=panel->findChild<QComboBox*>("shadowCascadesCombo");
         auto* shadowSoft=panel->findChild<QCheckBox*>("softShadowsCheck");
         auto* cacheStaticCasters=panel->findChild<QCheckBox*>("cacheStaticCastersCheck");
-        Check(shadows&&shadowDistance&&shadowResolution&&shadowCascades&&shadowSoft&&cacheStaticCasters,"Designer shadow controls missing");
+        auto* shadowUpdateMode=panel->findChild<QComboBox*>("shadowUpdateModeCombo");
+        auto* splitMode=panel->findChild<QComboBox*>("shadowSplitModeCombo");
+        auto* split1=panel->findChild<QLineEdit*>("shadowSplit1Edit");
+        auto* split2=panel->findChild<QLineEdit*>("shadowSplit2Edit");
+        auto* split3=panel->findChild<QLineEdit*>("shadowSplit3Edit");
+        auto* fadeStart=panel->findChild<QLineEdit*>("shadowFadeStartEdit");
+        auto* filterQuality=panel->findChild<QComboBox*>("shadowFilterQualityCombo");
+        auto* rebuild=panel->findChild<QPushButton*>("rebuildShadowsButton");
+        auto* shadowAdvancedToggle=panel->findChild<QToolButton*>("shadowAdvancedToggle");
+        Check(shadows&&shadowDistance&&shadowResolution&&shadowCascades&&shadowSoft&&cacheStaticCasters&&shadowUpdateMode&&
+            splitMode&&split1&&split2&&split3&&fadeStart&&filterQuality&&rebuild&&shadowAdvancedToggle,"Designer shadow controls missing");
+        using GameSproutRuntime::ShadowFilterQuality;
+        using GameSproutRuntime::StaticShadowUpdateMode;
+        Check(shadowUpdateMode->currentIndex()==0&&splitMode->currentIndex()==0&&split1->isHidden()&&
+            fadeStart->text().toFloat()==90&&filterQuality->currentIndex()==1,"Advanced shadow defaults not loaded in Inspector");
         Check(!cacheStaticCasters->isChecked(),"Static shadow caching was unexpectedly enabled by default");
         QTest::mouseClick(shadows,Qt::LeftButton,Qt::NoModifier,QPoint(8,12));
         Check(light->GetShadows().Enabled,"Shadow enable did not reach authoring transaction");
+        Check(!fadeStart->isVisibleTo(panel),"Advanced shadow options should start collapsed");
+        shadowAdvancedToggle->click();QCoreApplication::processEvents();
+        Check(fadeStart->isVisibleTo(panel)&&panel->minimumSizeHint().width()<=280,"Expanded shadow options do not fit a narrow Inspector");
         shadowDistance->setText("75");QMetaObject::invokeMethod(shadowDistance,"editingFinished");
         shadowResolution->setCurrentIndex(2);shadowCascades->setCurrentIndex(1);
         QTest::mouseClick(shadowSoft,Qt::LeftButton,Qt::NoModifier,QPoint(8,shadowSoft->height()/2));
@@ -225,6 +250,41 @@ int main(int argc,char** argv) {
         Check(light->GetShadows().CacheStaticCasters,"Inspector static shadow caching edit did not reach authoring transaction");
         Check(scenes.Undo(error)&&!light->GetShadows().CacheStaticCasters,"Static shadow caching Undo failed: "+error);
         Check(scenes.Redo(error)&&light->GetShadows().CacheStaticCasters,"Static shadow caching Redo failed: "+error);
+        shadowUpdateMode->setCurrentIndex(1);
+        Check(light->GetShadows().StaticUpdateMode==StaticShadowUpdateMode::FullCascade,"Inspector shadow update policy did not reach Runtime");
+        Check(scenes.Undo(error)&&light->GetShadows().StaticUpdateMode==StaticShadowUpdateMode::AutomaticIncremental,"Shadow update policy Undo failed");
+        Check(scenes.Redo(error)&&light->GetShadows().StaticUpdateMode==StaticShadowUpdateMode::FullCascade,"Shadow update policy Redo failed");
+        panel->Reload();
+        splitMode->setCurrentIndex(1);
+        Check(!split1->isHidden()&&split2->isHidden()&&split3->isHidden()&&light->GetShadows().CascadeSplits[0]==.5f,
+            "Manual two-cascade split controls/default are wrong");
+        split1->setText("30");QMetaObject::invokeMethod(split1,"editingFinished");
+        Check(light->GetShadows().CascadeSplits[0]==.3f,"Manual split percentage did not reach Runtime");
+        shadowCascades->setCurrentIndex(2);
+        Check(!split2->isHidden()&&!split3->isHidden()&&light->GetShadows().CascadeSplits[1]==.3f,
+            "Changing cascade count did not preserve the middle boundary");
+        const auto orderedSplits=light->GetShadows().CascadeSplits;
+        split3->setText("20");QMetaObject::invokeMethod(split3,"editingFinished");
+        Check(light->GetShadows().CascadeSplits==orderedSplits,"Inspector accepted unordered cascade boundaries");
+        shadowCascades->setCurrentIndex(1);
+        Check(light->GetShadows().CascadeSplits==std::array{.3f,0.f,0.f},"Two-cascade split retained hidden entries");
+        fadeStart->setText("80");QMetaObject::invokeMethod(fadeStart,"editingFinished");
+        Check(light->GetShadows().FadeStart==.8f,"Shadow fade percentage did not reach Runtime");
+        Check(!filterQuality->isEnabled(),"Hard shadow controls should disable the soft filter quality");
+        shadowSoft->click();filterQuality->setCurrentIndex(2);shadowSoft->click();
+        Check(!light->GetShadows().Soft&&light->GetShadows().FilterQuality==ShadowFilterQuality::High,
+            "Changing the soft filter quality did not survive toggling the soft shadow switch");
+        Check(scenes.SaveScene(error),error);
+        runtime->ProcessPendingEvents();
+        ShadowRefreshRecorder refreshEvents;
+        Check(runtime->RegisterListener(&refreshEvents),"Could not register shadow refresh observer");
+        Check(rebuild->isEnabled(),"Manual shadow rebuild is unavailable for a valid shadow light");
+        rebuild->click();
+        runtime->ProcessPendingEvents();
+        Check(error.empty()&&!scenes.HasUnsavedChanges(),"Manual shadow rebuild created an authoring transaction");
+        Check(refreshEvents.InvalidatedScenes==std::vector{target.SceneID},"Manual shadow rebuild did not wake the scene viewport");
+        runtime->UnregisterListener(&refreshEvents);
+        Check(!lighting.RequestShadowRefresh({target.SceneID+1,target.ObjectID,target.ComponentID},error),"Stale shadow rebuild target accepted");
         QTest::mouseClick(enabled,Qt::LeftButton,Qt::NoModifier,QPoint(8,enabled->height()/2));Check(!light->GetSettings().Enabled,"Inspector enabled toggle failed");
         delete panel;Check(scenes.SaveScene(error),error);const auto source=Read(temporary.path()+"/Assets/Light.scene");
         const auto objectFile=scenes.GetObjectFileID(object->GetInstanceID()),componentFile=scenes.GetComponentFileID(object->GetInstanceID(),light->GetComponentInstanceID());
@@ -234,20 +294,43 @@ int main(int argc,char** argv) {
         Check(lighting.SetEnvironment(environment.SceneID,playEnvironment,error)&&scenes.GetActiveScene()->GetEnvironmentLighting().Intensity==9,error);
         object=scenes.QueryObjectByFileID(objectFile);light=dynamic_cast<GameSproutRuntime::ILightComponent*>(scenes.QueryComponentByFileID(object->GetInstanceID(),componentFile));
         Check(light,"Play lost Light component identity");target={scenes.GetActiveScene()->GetInstanceID(),object->GetInstanceID(),light->GetComponentInstanceID()};
-        value=light->GetSettings();value.Intensity=7;Check(lighting.SetLight(target,value,error),error);
+        value=light->GetSettings();
+        Check(value.Shadows.StaticUpdateMode==StaticShadowUpdateMode::FullCascade&&value.Shadows.CascadeSplits==std::array{.3f,0.f,0.f}&&
+            value.Shadows.FadeStart==.8f&&value.Shadows.FilterQuality==ShadowFilterQuality::High,"Play lost authored shadow policy");
+        value.Intensity=7;value.Shadows.FadeStart=.6f;
+        Check(lighting.SetLight(target,value,error)&&light->GetShadows().FadeStart==.6f,error);
         Check(!scenes.HasUnsavedChanges()&&Read(temporary.path()+"/Assets/Light.scene")==source,"Play Light edit wrote authoring file");
         Check(!lighting.CanCreate(target.SceneID,0,error),"Play permitted author Light creation");
         mode.Change(EditorPlayState::ExitingPlay);Check(scenes.EndPlaySession(error),error);mode.Change(EditorPlayState::Edit);
         Check(lighting.ReadEnvironment(environment,error)&&environment.Editable&&environment.Settings.Intensity==2,"Play environment leaked into author world");
         object=scenes.QueryObjectByFileID(objectFile);light=object->GetComponent<GameSproutRuntime::ILightComponent>();
-        Check(light&&light->GetSettings().Intensity==2.5f,"Play Light edit leaked into author world");
+        Check(light&&light->GetSettings().Intensity==2.5f&&light->GetShadows().FadeStart==.8f,"Play Light edit leaked into author world");
         Check(scenes.OpenScene("Light.scene",error),error);object=scenes.GetActiveScene()->FindChild("Directional Light");
         Check(lighting.ReadEnvironment(environment,error)&&environment.Settings.Mode==GameSproutRuntime::AmbientLightMode::Gradient&&environment.Settings.SkyColor.R==2,"Saved scene lost environment");
         Check(object&&object->GetComponent<GameSproutRuntime::ILightComponent>()->GetSettings().Color.B==.8f,"Saved light round-trip failed");
         const auto savedShadows=object->GetComponent<GameSproutRuntime::ILightComponent>()->GetShadows();
         Check(savedShadows.Enabled&&savedShadows.Distance==75&&savedShadows.Resolution==1024&&savedShadows.CascadeCount==2&&
-            !savedShadows.Soft&&savedShadows.CacheStaticCasters,
+            !savedShadows.Soft&&savedShadows.CacheStaticCasters&&savedShadows.StaticUpdateMode==StaticShadowUpdateMode::FullCascade&&
+            savedShadows.CascadeSplits==std::array{.3f,0.f,0.f}&&savedShadows.FadeStart==.8f&&savedShadows.FilterQuality==ShadowFilterQuality::High,
             "Saved light lost Inspector shadow settings");
+        auto* savedLight=object->GetComponent<GameSproutRuntime::ILightComponent>();
+        const auto serialized=SceneDocument::SerializeComponent(*savedLight,{});
+        auto* validationScene=runtime->CreateScene("Shadow document validation");
+        auto* validationObject=validationScene?validationScene->CreateGameObject("Invalid Light"):nullptr;
+        Check(validationObject,"Cannot create light document validation fixture");
+        const auto rejectsShadowField=[&](const char* name,const Json::Value& value) {
+            auto rejected=serialized;
+            rejected["Settings"]["Shadows"][name]=value;
+            Check(!SceneDocument::RestoreComponent(rejected,*validationObject,*runtime,error)&&
+                error.find(name)!=std::string::npos&&!validationObject->GetComponent<GameSproutRuntime::ILightComponent>(),
+                std::string("Invalid shadow setting was accepted or misreported: ")+name);
+        };
+        rejectsShadowField("StaticUpdateMode","Unknown");
+        rejectsShadowField("FilterQuality",2);
+        rejectsShadowField("FadeStart",1.5);
+        Json::Value invalidSplits(Json::arrayValue);invalidSplits.append(.3);invalidSplits.append(.6);
+        rejectsShadowField("CascadeSplits",invalidSplits);
+        Check(runtime->DestroyScene(validationScene),"Cannot release light document validation fixture");
         Json::StreamWriterBuilder environmentWriter;SceneDocumentSessionRequest prefabSession;
         prefabSession.DocumentJson=Json::writeString(environmentWriter,SceneDocument::CreateDefault("Environment Prefab Stage"));prefabSession.ContentRootFileID=1;
         Check(scenes.BeginDocumentSession(prefabSession,error),error);

@@ -9,6 +9,7 @@ public:
 private:
     void ReadValues(GameSproutRuntime::IComponent&) override;
     void CommitValues(QWidget*);
+    void RebuildShadows();
     void ChooseColor();
     void UpdateColor();
     Ui::LightComponentEditorForm* _Ui;

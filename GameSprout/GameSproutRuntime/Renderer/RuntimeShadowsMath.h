@@ -84,12 +84,12 @@ inline bool TryShadowScroll(const Mat4& previous,const Mat4& current,std::uint32
 // Retaining a map is safe while each of the current camera's receiver slices
 // fits inside its old light tile and depth range, including the shader's offset.
 inline std::uint32_t CoveredCascades(const RenderCamera& camera,float aspect,const Mat4* projection,const float* splits,
-    std::uint32_t count,std::uint32_t tile,float normalBias,bool soft) {
+    std::uint32_t count,std::uint32_t tile,float normalBias,float filterRadius) {
     Mat4 inverseView;
     if(!RuntimeMath::TryInverseAffine(camera.View,inverseView))return 0;
     const bool perspective=camera.Projection.Projection==CameraProjection::Perspective;
     const double tangent=perspective?std::tan(double(camera.Projection.VerticalFovRadians)*.5):0;
-    const double xyLimit=1-2*(double(normalBias)+(soft?1:0))/tile;
+    const double xyLimit=1-2*(double(normalBias)+filterRadius)/tile;
     double nearDepth=camera.Projection.NearPlane;
     std::uint32_t covered=0;
     for(std::uint32_t cascade=0;cascade<count;++cascade) {
@@ -117,8 +117,9 @@ inline std::uint32_t CoveredCascades(const RenderCamera& camera,float aspect,con
 }
 
 // Fits one square, stable light projection per camera depth slice. Perspective
-// splits blend logarithmic and uniform distances equally; orthographic splits
-// are uniform. Camera projection is limited by shadowDistance, never extended.
+// Automatic perspective splits blend logarithmic and uniform distances equally;
+// orthographic splits are uniform. Manual splits are fractions of the effective
+// range. Camera projection is limited by shadowDistance, never extended.
 //
 // casterWorldBounds must include candidate casters outside the camera frustum:
 // a directional shadow may enter the view from an invisible caster. Bounds
@@ -132,10 +133,11 @@ inline std::uint32_t CoveredCascades(const RenderCamera& camera,float aspect,con
 inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,float shadowDistance,
     std::uint32_t cascadeCount,std::uint32_t tileResolution,const Bounds* casterWorldBounds,
     std::size_t casterCount,CascadeSet& output,double receiverFitScale=1,const Mat4* retainedXY=nullptr,
-    std::uint32_t fitMask=0xF,std::uint32_t rotationStableMask=0) {
-    if((cascadeCount!=1&&cascadeCount!=2&&cascadeCount!=4)||tileResolution<8||tileResolution>32768||
+    std::uint32_t fitMask=0xF,std::uint32_t rotationStableMask=0,
+    const std::array<float,3>& cascadeSplits={},float filterRadius=1.0f) {
+    if(!IsValidShadowCascadeSplits(cascadeCount,cascadeSplits)||tileResolution<8||tileResolution>32768||
        !std::isfinite(aspect)||aspect<=0||!std::isfinite(shadowDistance)||
-       !std::isfinite(receiverFitScale)||receiverFitScale<1||
+       !std::isfinite(receiverFitScale)||receiverFitScale<1||!(filterRadius>=0&&filterRadius<=2)||
        (casterCount&&!casterWorldBounds))return false;
     const auto& projection=camera.Projection;
     const bool perspective=projection.Projection==CameraProjection::Perspective;
@@ -165,12 +167,14 @@ inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,f
            bound.Extents.X<0||bound.Extents.Y<0||bound.Extents.Z<0)return false;
     }
     CascadeSet result;result.Count=cascadeCount;
+    const bool manualSplits=cascadeSplits[0]!=0;
     double sliceNear=nearDepth;
     for(std::uint32_t cascade=0;cascade<cascadeCount;++cascade) {
-        const double fraction=double(cascade+1)/cascadeCount;
+        const bool finalCascade=cascade+1==cascadeCount;
+        const double fraction=manualSplits&&!finalCascade?cascadeSplits[cascade]:double(cascade+1)/cascadeCount;
         const double uniform=nearDepth+(farDepth-nearDepth)*fraction;
-        const double sliceFar=cascade+1==cascadeCount?farDepth:
-            (perspective?.5*(uniform+nearDepth*std::pow(farDepth/nearDepth,fraction)):uniform);
+        const double sliceFar=finalCascade?farDepth:
+            (perspective&&!manualSplits?.5*(uniform+nearDepth*std::pow(farDepth/nearDepth,fraction)):uniform);
         auto& entry=result.Entries[cascade];
         if(!Detail::Float(sliceNear,entry.NearDepth)||!Detail::Float(sliceFar,entry.FarDepth)||entry.FarDepth<=entry.NearDepth)return false;
         if(!(fitMask&(std::uint32_t{1}<<cascade))) {
@@ -189,14 +193,15 @@ inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,f
         double radiusSquared=0;
         for(const auto corner:corners){const auto d=corner-center;radiusSquared=std::max(radiusSquared,d.X*d.X+d.Y*d.Y+d.Z*d.Z);}
         // Quantization removes rotation/translation rounding noise from the fit.
-        // Two texels of padding retain the receiver after center snapping and
-        // leave room for a one-texel 3x3 PCF footprint inside the cascade tile.
+        // Leave room for center snapping and the PCF footprint. Retain the
+        // standard two-texel padding for hard, low and medium quality.
         // Allow the eye to move within the larger cached volume between fits,
         // particularly when a third-person camera orbits a stationary player.
         const double fitScale=stable?std::max(receiverFitScale,1.15):receiverFitScale;
         const double receiverRadius=std::max(1.0/16.0,std::ceil(std::sqrt(radiusSquared)*fitScale*16.0)/16.0);
         const auto* previous=retainedXY?&retainedXY[cascade]:nullptr;
-        const double radius=previous?1/Detail::RowLength(*previous,0):receiverRadius*tileResolution/(tileResolution-4.0);
+        const double border=1+std::max(1.0,double(filterRadius));
+        const double radius=previous?1/Detail::RowLength(*previous,0):receiverRadius*tileResolution/(tileResolution-2*border);
         const double texel=radius*2/tileResolution;
         if(!std::isfinite(radius)||!std::isfinite(texel)||texel<=0)return false;
         const double centerX=previous?-(*previous)(0,3)*radius:std::round(Detail::Dot(right,center)/texel)*texel;

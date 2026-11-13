@@ -96,6 +96,7 @@ IGameObject* MeshObject(IScene& scene,const char* name,std::uint64_t mesh){
 Quaternion Yaw(float degrees){const float half=DegreesToRadians(degrees)*.5f;return {0,std::sin(half),0,std::cos(half)};}
 
 void CheckScrollingShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
+    struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
     std::string error;
     Check(viewport.Resize(256,256,error),error);
     provider.CubeHalfSize=.28f;
@@ -164,7 +165,6 @@ void CheckScrollingShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewpor
         Vector2{6,6},Vector2{7.5f,7.5f},Vector2{6,6},Vector2{4.5f,4.5f},Vector2{3,3},Vector2{1.5f,1.5f},Vector2{0,0}}) {
         move(offset.X,offset.Y);
         const auto scrolled=Render(viewport,view);
-        struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
         const OwnedViewport fresh{runtime.CreateOffscreenRenderer(256,256,&provider,error)};
         Check(fresh.Pointer,error);
         const auto rebuilt=Render(*fresh.Pointer,view);
@@ -174,6 +174,20 @@ void CheckScrollingShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewpor
             "Scrolled shadow atlas changed overlapping or newly exposed shadow pixels");
     }
     Check(scrollCount>=6,"Camera motion did not reuse static depth across repeated signed texel wraps");
+
+    settings.Shadows.StaticUpdateMode=StaticShadowUpdateMode::FullCascade;
+    Check(sun->SetShadows(settings.Shadows),"Cannot select full-cascade shadow updates");
+    Render(viewport,view);
+    move(1.5f,1.5f);
+    const auto fullUpdate=Render(viewport,view);
+    const OwnedViewport fresh{runtime.CreateOffscreenRenderer(256,256,&provider,error)};
+    Check(fresh.Pointer,error);
+    const auto rebuilt=Render(*fresh.Pointer,view);
+    Check(fullUpdate.Statistics.StaticShadowCascadesUpdated==1&&rebuilt.Statistics.StaticShadowDrawCalls>20&&
+        fullUpdate.Statistics.StaticShadowDrawCalls==rebuilt.Statistics.StaticShadowDrawCalls,
+        "Full-cascade policy used a regional redraw on camera motion");
+    Check(Difference(fullUpdate,rebuilt,8)<100,"Full-cascade redraw changed the rebuilt shadow silhouette");
+    Check(Render(viewport,view).Statistics.ShadowMapUpdates==0,"Full-cascade policy kept redrawing a valid atlas");
 }
 
 void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
@@ -239,6 +253,40 @@ void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,
     EffectiveShadow(unshadowed,layered,"Combined static/dynamic PCF");
     Check(Darkened(unified,layered).Count<100&&Darkened(layered,unified).Count<100,
         "Combined PCF lost or introduced a significant shadow compared with unified rendering");
+
+    {
+        struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
+        const OwnedViewport second{runtime.CreateOffscreenRenderer(256,256,&provider,error)};
+        Check(second.Pointer,error);
+        Render(*second.Pointer,view);
+        runtime.ProcessPendingEvents();
+        struct RefreshListener final:IRuntimeListener {
+            IGameSproutRuntime& Runtime;
+            std::uint64_t SceneID;
+            unsigned Visuals=0,NodeEvents=0;
+            RefreshListener(IGameSproutRuntime& runtime,std::uint64_t id):Runtime(runtime),SceneID(id) {}
+            ~RefreshListener() override {Runtime.UnregisterListener(this);}
+            void OnSceneVisualChanged(std::uint64_t id) override {if(id==SceneID)++Visuals;}
+            void OnSceneNodeEvent(const SceneNodeEvent& event) override {if(event.SceneID==SceneID)++NodeEvents;}
+        } listener(runtime,scene->GetInstanceID());
+        Check(runtime.RegisterListener(&listener),"Cannot register shadow refresh fixture");
+        const auto authoringRevision=scene->GetAuthoringRevision();
+        sun->RequestShadowRefresh();
+        runtime.ProcessPendingEvents();
+        Check(listener.Visuals==1&&listener.NodeEvents==0&&scene->GetAuthoringRevision()==authoringRevision,
+            "Manual shadow refresh did not request an on-demand viewport render or changed scene authoring");
+        auto clearOnly=view;
+        clearOnly.DrawScene=false;
+        Check(Render(viewport,clearOnly).Statistics.ShadowMapUpdates==0,"Clear-only frame attempted a shadow refresh");
+        for(auto* activeViewport:{&viewport,second.Pointer}) {
+            const auto refreshed=Render(*activeViewport,view);
+            Check(refreshed.Statistics.StaticShadowMapUpdates==1&&refreshed.Statistics.DynamicShadowMapUpdates==1&&
+                refreshed.Statistics.StaticShadowDrawCalls==layered.Statistics.StaticShadowDrawCalls&&
+                refreshed.Statistics.DynamicShadowDrawCalls==layered.Statistics.DynamicShadowDrawCalls&&
+                Difference(layered,refreshed)==0,"Manual refresh did not rebuild both shadow layers in this viewport");
+            Check(Render(*activeViewport,view).Statistics.ShadowMapUpdates==0,"Manual refresh repeated for an unchanged viewport");
+        }
+    }
 
     // A Canvas insert emits Create/LayerChanged before its UI components are
     // installed. These events must preserve the 3D extraction and shadow fit.
@@ -425,6 +473,49 @@ void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,
     Check(allMoving.Statistics.StaticShadowMapUpdates==1&&allMoving.Statistics.StaticShadowDrawCalls==0&&
         allMoving.Statistics.DynamicShadowDrawCalls>0,"An empty static layer retained unified depth from its previous contents");
 }
+
+void CheckShadowSamplingControls(ILightComponent& sun,IRuntimeViewport& viewport,const RenderView& view,
+    const Frame& unshadowed,LightShadowSettings settings) {
+    settings.Enabled=true;
+    settings.CascadeCount=1;
+    settings.Distance=10;
+    settings.FadeStart=1;
+    // The receiver is at 45 degrees to the light. Keep its own depth out of
+    // the comparison at the outer 5x5 taps so this test isolates the cast edge.
+    settings.DepthBias=2;
+    settings.Soft=false;
+    Check(sun.SetShadows(settings),"Cannot disable distance fade");
+    auto invalid=settings;
+    invalid.FadeStart=-.1f;
+    Check(!sun.SetShadows(invalid)&&sun.GetShadows()==settings,"Invalid shadow settings modified the active light");
+    const auto noFade=Render(viewport,view);
+    EffectiveShadow(unshadowed,noFade,"Shadow without distance fade");
+
+    settings.FadeStart=0;
+    Check(sun.SetShadows(settings),"Cannot enable full-range distance fade");
+    const auto faded=Render(viewport,view);
+    Check(Difference(noFade,faded)>100&&Difference(unshadowed,faded)>100,
+        "Full-range fade did not partially attenuate the shadow");
+    Check(Darkened(faded,noFade).Count>100&&Darkened(noFade,faded).Count==0,
+        "Moving the fade start earlier did not lighten the shadow");
+
+    settings.FadeStart=1;
+    settings.Soft=true;
+    settings.FilterQuality=ShadowFilterQuality::Low;
+    Check(sun.SetShadows(settings),"Cannot select low-quality shadow filter");
+    const auto low=Render(viewport,view);
+    settings.FilterQuality=ShadowFilterQuality::Medium;
+    Check(sun.SetShadows(settings),"Cannot select medium-quality shadow filter");
+    const auto medium=Render(viewport,view);
+    settings.FilterQuality=ShadowFilterQuality::High;
+    Check(sun.SetShadows(settings),"Cannot select high-quality shadow filter");
+    const auto high=Render(viewport,view);
+    EffectiveShadow(unshadowed,high,"High-quality PCF");
+    Check(Difference(low,medium)>16&&Difference(medium,high)>16,"Soft shadow quality did not change the filtering footprint");
+    settings.Soft=false;
+    Check(sun.SetShadows(settings),"Cannot restore hard shadows with high filter quality");
+    Check(Difference(noFade,Render(viewport,view))==0,"Soft filter quality changed hard shadow sampling");
+}
 }
 
 int main(int argc,char** argv){
@@ -474,6 +565,7 @@ int main(int argc,char** argv){
             settings.Shadows.Soft=true;Check(sun->SetSettings(settings),"Cannot enable PCF");
             const auto soft=Render(*viewport,view);EffectiveShadow(baseline,soft,"Soft cascades");
         }
+        CheckShadowSamplingControls(*sun,*viewport,view,baseline,settings.Shadows);
 
         settings.Shadows.CascadeCount=1;settings.Shadows.Soft=false;Check(sun->SetSettings(settings),"Cannot restore hard shadow");
         hard=Render(*viewport,view);const auto originalRegion=Darkened(baseline,hard);
@@ -564,6 +656,12 @@ int main(int argc,char** argv){
         const auto cachedShifted=Render(*viewport,view);
         Check(cachedShifted.Statistics.StaticShadowCascadesUpdated==0&&Difference(shiftedCascades,cachedShifted)==0,
             "Partial update was not retained in the next unchanged frame");
+        sun->RequestShadowRefresh();
+        const auto refreshedCascades=Render(*viewport,view);
+        Check(refreshedCascades.Statistics.StaticShadowCascadesUpdated==4,
+            "Manual refresh of a stationary view did not redraw all four cascades");
+        Check(Render(*viewport,view).Statistics.StaticShadowCascadesUpdated==0,
+            "Manual refresh did not return to ordinary cascade caching");
         for(const Vector3 direction: {Vector3{1,.2f,0},Vector3{0,-.3f,1},Vector3{-1,0,0},Vector3{0,0,-1}}) {
             Check(TryMakeLookAt(view.Camera.Position,view.Camera.Position+direction,{0,1,0},view.Camera.View),
                 "Cannot rotate cascade retention camera");
@@ -575,7 +673,7 @@ int main(int argc,char** argv){
         CheckLayeredShadows(*runtime,*viewport,provider);
         CheckScrollingShadows(*runtime,*viewport,provider);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS directional shadows GPU: off-camera casters, hard/PCF 1/2/4 cascades, strength/toggle/layers, parent rotation, resource and transform revisions, camera/aspect, and static/dynamic atlas reuse\n";
+        std::cout<<"PASS directional shadows GPU: cascade fitting, filter quality, distance fade, automatic/full updates, one-shot refresh per viewport, and static/dynamic atlas reuse\n";
         return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete viewport;delete runtime;return 1;}
 }

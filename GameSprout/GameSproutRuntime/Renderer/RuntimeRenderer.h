@@ -132,7 +132,13 @@ private:
     struct FrameUniform {Vector4 Time,CameraPosition,MainLightDirection,MainLightColor;};
     static_assert(sizeof(FrameUniform)==64);
     static constexpr std::size_t MaxDirectionalLights=4;
-    struct DirectionalLight {Vector3 TowardsLight;Color Radiance;std::uint32_t CullingMask=0;LightShadowSettings Shadows;};
+    struct DirectionalLight {
+        Vector3 TowardsLight;
+        Color Radiance;
+        std::uint32_t CullingMask=0;
+        LightShadowSettings Shadows;
+        std::uint64_t ObjectID=0;
+    };
     struct LitUniform {
         Vector4 CameraPosition;
         Vector4 Directions[MaxDirectionalLights]; // W is one for an active slot.
@@ -362,6 +368,7 @@ private:
     std::vector<DrawObject*> _DynamicShadowObjects;
     float _ShadowAspect=0;
     std::uint64_t _ShadowSceneID=0,_ShadowSceneRevision=0;
+    std::uint64_t _ShadowLightObjectID=0,_ShadowLightComponentID=0,_ShadowRefreshRevision=0;
     bool _ShadowValid=false,_ShadowRecorded=false,_ShadowNavigationApproximate=false;
     GRHI::IBuffer* _InstanceTransformsBuffer=nullptr;
     std::vector<InstanceVertex> _InstanceTransforms;

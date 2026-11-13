@@ -15,6 +15,7 @@ public:
     bool CreateDirectionalLight(std::uint64_t,std::uint64_t,std::uint64_t&,std::string&) override;
     bool ReadLight(const ObjectEditTarget&,GameSproutRuntime::LightSettings&,std::string&) const override;
     bool SetLight(const ObjectEditTarget&,const GameSproutRuntime::LightSettings&,std::string&) override;
+    bool RequestShadowRefresh(const ObjectEditTarget&,std::string&) override;
     bool ReadEnvironment(EnvironmentLightingSnapshot&,std::string&) const override;
     bool SetEnvironment(std::uint64_t,const GameSproutRuntime::EnvironmentLightingSettings&,std::string&) override;
     bool RegisterEnvironmentListener(ILightingEnvironmentListener*) override;

@@ -19,15 +19,6 @@ Json::Value LightDocument(const std::string& name) {
     transform["Type"]="GameSproutRuntime.Transform";transform["Position"]=Values({0,0,0});
     transform["Rotation"]=Values({0,0,0,1});transform["Scale"]=Values({1,1,1});
     light["Type"]="GameSproutRuntime.Light";
-    light["Settings"]["Type"]="Directional";light["Settings"]["Enabled"]=true;
-    light["Settings"]["Color"]=Values({1,1,1,1});light["Settings"]["Intensity"]=1.0;
-    light["Settings"]["CullingMask"]=Json::UInt(0xffffffffu);
-    const GameSproutRuntime::LightShadowSettings shadows;
-    auto& shadowData=light["Settings"]["Shadows"];
-    shadowData["Enabled"]=shadows.Enabled;shadowData["Strength"]=shadows.Strength;shadowData["Distance"]=shadows.Distance;
-    shadowData["Resolution"]=Json::UInt(shadows.Resolution);shadowData["CascadeCount"]=Json::UInt(shadows.CascadeCount);
-    shadowData["DepthBias"]=shadows.DepthBias;shadowData["NormalBias"]=shadows.NormalBias;shadowData["Soft"]=shadows.Soft;
-    shadowData["CacheStaticCasters"]=shadows.CacheStaticCasters;
     node["Components"].append(std::move(transform));node["Components"].append(std::move(light));
     document["Objects"].append(std::move(node));return document;
 }
@@ -107,6 +98,14 @@ bool LightingAuthoring::SetLight(const ObjectEditTarget& target,const GameSprout
         };
     };
     return _Objects->EditObject(target,"修改方向光",operation(value),operation(previous),error);
+}
+bool LightingAuthoring::RequestShadowRefresh(const ObjectEditTarget& target,std::string& error) {
+    if(!_Objects){error="方向光编辑模块尚未就绪。";return false;}
+    if(!_Objects->CanEdit(target,error))return false;
+    auto* light=Resolve(target);
+    if(!light){error="方向光已失效或场景已切换。";return false;}
+    light->RequestShadowRefresh();
+    return true;
 }
 void LightingAuthoring::Release(GameSproutEditor::GameSproutModuleApi*) {
     if(_RuntimeSubscribed&&_Runtime)_Runtime->UnregisterListener(this);

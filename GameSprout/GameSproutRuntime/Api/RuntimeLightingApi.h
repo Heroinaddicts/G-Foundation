@@ -63,6 +63,17 @@ enum class LightType : std::uint8_t {
     Directional = 0
 };
 
+enum class StaticShadowUpdateMode : std::uint8_t {
+    AutomaticIncremental = 0, // Reuse overlap and redraw newly covered texels when possible.
+    FullCascade = 1           // Redraw each invalidated cascade in full; reuse valid cascades.
+};
+
+enum class ShadowFilterQuality : std::uint8_t {
+    Low = 0,    // 2x2 PCF.
+    Medium = 1, // 3x3 PCF.
+    High = 2    // 5x5 PCF.
+};
+
 struct LightShadowSettings {
     bool Enabled = false;
     float Strength = 1;
@@ -79,17 +90,47 @@ struct LightShadowSettings {
     // Cache rigid meshes marked ShadowCasterStatic separately. Other meshes
     // and skinned meshes update the dynamic atlas as the scene/view changes.
     bool CacheStaticCasters = false;
+    StaticShadowUpdateMode StaticUpdateMode = StaticShadowUpdateMode::AutomaticIncremental;
+    // All zero selects automatic splits. Otherwise provide CascadeCount - 1
+    // increasing fractions of the camera's near-to-effective-far shadow range.
+    // Unused entries must be zero. The last cascade always ends at effective far.
+    std::array<float,3> CascadeSplits{};
+    // Fraction of effective maximum camera-space shadow distance. 1 disables
+    // fading inside the shadow range, 0 fades over the entire distance.
+    float FadeStart = .9f;
+    ShadowFilterQuality FilterQuality = ShadowFilterQuality::Medium; // Used when Soft is true.
     bool operator==(const LightShadowSettings&) const = default;
 };
+
+inline bool IsValidShadowCascadeSplits(std::uint32_t cascadeCount,const std::array<float,3>& splits) {
+    if(cascadeCount!=1&&cascadeCount!=2&&cascadeCount!=4)return false;
+    if(splits==std::array<float,3>{})return true;
+    float previous=0;
+    for(std::size_t index=0;index<splits.size();++index) {
+        const float split=splits[index];
+        if(index>=cascadeCount-1) {
+            if(split!=0)return false;
+            continue;
+        }
+        if(!(split>previous&&split<1))return false;
+        previous=split;
+    }
+    return true;
+}
 
 inline bool IsValidLightShadows(const LightShadowSettings& settings) {
     return std::isfinite(settings.Strength)&&settings.Strength>=0&&settings.Strength<=1&&
         std::isfinite(settings.Distance)&&settings.Distance>0&&
         (settings.Resolution==256||settings.Resolution==512||settings.Resolution==1024||
          settings.Resolution==2048||settings.Resolution==4096)&&
-        (settings.CascadeCount==1||settings.CascadeCount==2||settings.CascadeCount==4)&&
+        IsValidShadowCascadeSplits(settings.CascadeCount,settings.CascadeSplits)&&
         std::isfinite(settings.DepthBias)&&settings.DepthBias>=0&&settings.DepthBias<=10&&
-        std::isfinite(settings.NormalBias)&&settings.NormalBias>=0&&settings.NormalBias<=10;
+        std::isfinite(settings.NormalBias)&&settings.NormalBias>=0&&settings.NormalBias<=10&&
+        std::isfinite(settings.FadeStart)&&settings.FadeStart>=0&&settings.FadeStart<=1&&
+        (settings.StaticUpdateMode==StaticShadowUpdateMode::AutomaticIncremental||
+         settings.StaticUpdateMode==StaticShadowUpdateMode::FullCascade)&&
+        (settings.FilterQuality==ShadowFilterQuality::Low||settings.FilterQuality==ShadowFilterQuality::Medium||
+         settings.FilterQuality==ShadowFilterQuality::High);
 }
 
 struct LightSettings {
@@ -126,6 +167,9 @@ public:
     bool SetCullingMask(std::uint32_t mask) { auto settings=GetSettings();settings.CullingMask=mask;return SetSettings(settings); }
     const LightShadowSettings& GetShadows() const { return GetSettings().Shadows; }
     bool SetShadows(const LightShadowSettings& shadows) { auto settings=GetSettings();settings.Shadows=shadows;return SetSettings(settings); }
+    // Rebuild all cascades on the next submitted shadow render for this light
+    // in each viewport. Requests coalesce and do not change authored settings.
+    virtual void RequestShadowRefresh() = 0;
 
 protected:
     using IComponent::IComponent;

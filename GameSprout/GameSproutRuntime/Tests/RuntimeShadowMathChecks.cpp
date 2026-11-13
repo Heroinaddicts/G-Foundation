@@ -57,6 +57,68 @@ int main(){
             CheckReceiverCorners(camera,2,cascades.Entries[index]);
         }
 
+        camera.Projection.NearPlane=2;
+        constexpr std::array<float,3> authoredSplits{.125f,.375f,.75f};
+        for(auto projection:{CameraProjection::Perspective,CameraProjection::Orthographic}) {
+            camera.Projection.Projection=projection;
+            Check(RuntimeShadowMath::Build(camera,2,{0,1,0},80,4,512,nullptr,0,cascades,1,nullptr,0xF,0,authoredSplits),
+                "Manual cascade splits failed");
+            constexpr std::array<float,4> depths{6.75f,16.25f,30.5f,40};
+            for(unsigned index=0;index<4;++index) {
+                const auto& cascade=cascades.Entries[index];
+                Check(Close(cascade.NearDepth,index?depths[index-1]:2)&&Close(cascade.FarDepth,depths[index]),
+                    "Manual splits did not use the effective near-to-far interval");
+                CheckReceiverCorners(camera,2,cascade);
+            }
+        }
+        const auto manual=cascades;
+        Check(RuntimeShadowMath::Build(camera,2,{0,1,0},80,4,512,nullptr,0,cascades,1,nullptr,0x6,0,authoredSplits),
+            "Selective fitting with manual splits failed");
+        for(unsigned index=0;index<4;++index)
+            Check(cascades.Entries[index].NearDepth==manual.Entries[index].NearDepth&&
+                cascades.Entries[index].FarDepth==manual.Entries[index].FarDepth,"Selective fitting changed the manual depth partition");
+        Check(RuntimeShadowMath::Build(camera,2,{0,1,0},30,2,512,nullptr,0,cascades,1,nullptr,0xF,0,{.25f,0,0})&&
+            Close(cascades.Entries[0].FarDepth,9)&&Close(cascades.Entries[1].FarDepth,30),
+            "Manual split did not respect a shorter shadow distance");
+        const float mediumRadius=cascades.Entries[0].Radius;
+        Check(RuntimeShadowMath::Build(camera,2,{0,1,0},30,2,512,nullptr,0,cascades,1,nullptr,0xF,0,{.25f,0,0},2.0f)&&
+            cascades.Entries[0].Radius>mediumRadius,"High-quality filter footprint did not increase receiver padding");
+
+        const LightShadowSettings defaults;
+        Check(defaults.StaticUpdateMode==StaticShadowUpdateMode::AutomaticIncremental&&
+            defaults.FilterQuality==ShadowFilterQuality::Medium&&defaults.CascadeSplits==std::array<float,3>{}&&
+            Close(defaults.FadeStart,.9f)&&IsValidLightShadows(defaults),"Incorrect public shadow defaults");
+        auto custom=defaults;
+        custom.CascadeSplits=authoredSplits;
+        custom.StaticUpdateMode=StaticShadowUpdateMode::FullCascade;
+        custom.FilterQuality=ShadowFilterQuality::High;
+        for(float fade:{0.f,1.f}) {
+            custom.FadeStart=fade;
+            Check(IsValidLightShadows(custom),"Manual cascade splits or fade endpoint were rejected");
+        }
+        constexpr std::array<std::array<float,3>,5> invalidSplits{{{.25f,0,.75f},
+            {.25f,.25f,.75f},{.5f,.25f,.75f},{.25f,.5f,1},{-.25f,.5f,.75f}}};
+        for(const auto& invalid:invalidSplits) {
+            custom.CascadeSplits=invalid;
+            Check(!IsValidLightShadows(custom),"Partial, unsorted or out-of-range cascade splits were accepted");
+        }
+        custom.CascadeCount=2;
+        custom.CascadeSplits={.25f,0,0};
+        Check(IsValidLightShadows(custom),"Two cascades must accept a single manual split");
+        custom.CascadeSplits[1]=.75f;
+        Check(!IsValidLightShadows(custom),"Unused split entry was accepted");
+        custom.CascadeSplits={};
+        custom.FadeStart=std::numeric_limits<float>::quiet_NaN();
+        Check(!IsValidLightShadows(custom),"Nonfinite fade start was accepted");
+        custom.FadeStart=1.01f;
+        Check(!IsValidLightShadows(custom),"Out-of-range fade start was accepted");
+        custom.FadeStart=.9f;
+        custom.FilterQuality=static_cast<ShadowFilterQuality>(255);
+        Check(!IsValidLightShadows(custom),"Unknown shadow filter quality was accepted");
+        custom.FilterQuality=ShadowFilterQuality::Low;
+        custom.StaticUpdateMode=static_cast<StaticShadowUpdateMode>(255);
+        Check(!IsValidLightShadows(custom),"Unknown static shadow update mode was accepted");
+
         camera={};camera.Projection.FarPlane=50;
         Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,1,1024,nullptr,0,cascades),"Stable fit setup failed");
         const auto original=cascades.Entries[0];
@@ -75,7 +137,7 @@ int main(){
             splits[index]=guarded.Entries[index].FarDepth;
         }
         camera.View(0,3)=-.25f;
-        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0xF,
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,1.0f)==0xF,
             "Small camera motion escaped guarded coverage");
         const Bounds movingCaster{{.25f,20,-6},{.5f,.8f,.5f}};
         Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,4,512,&movingCaster,1,cascades,1,staticProjection),
@@ -87,7 +149,7 @@ int main(){
             CheckReceiverCorners(camera,1,cascades.Entries[index]);
         }
         camera.View(0,3)=-4;
-        const auto covered=RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true);
+        const auto covered=RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,1.0f);
         Check(covered==0xE,"Moderate movement should invalidate only the nearest cascade");
         Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,4,512,nullptr,0,cascades,1.125,nullptr,0xF&~covered),
             "Refitting only the uncovered cascade failed");
@@ -95,13 +157,13 @@ int main(){
             Check(cascades.Entries[index].FarDepth==splits[index],"Partial fitting changed the depth partition");
             if(!(covered&(1u<<index)))staticProjection[index]=cascades.Entries[index].ViewProjection;
         }
-        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0xF,
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,1.0f)==0xF,
             "Retaining three projections after partial fitting left missing coverage");
         camera.View(0,3)=-100;
-        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0,
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,1.0f)==0,
             "Camera teleport reused an uncovered light tile");
         camera.View(0,3)=0;camera.View(1,3)=-100;
-        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0,
+        Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,1.0f)==0,
             "Camera motion escaped only light depth without refitting");
 
         // A wide Game view should keep the far shadow footprint when yawing
@@ -122,12 +184,12 @@ int main(){
             const Vector3 direction{std::sin(yaw),.55f*std::sin(yaw*2),std::cos(yaw)};
             const auto offset=Vector3{std::cos(yaw)*4,0,std::sin(yaw)*4};
             Check(TryMakeLookAt(eye+offset,eye+offset+direction,{0,1,0},camera.View),"Rotated orbit view failed");
-            const auto mask=RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,true);
+            const auto mask=RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,1.0f);
             Check((mask&farCascades)==farCascades,"Turn or small orbit escaped a rotation-stable far cascade");
         }
         const Vector3 distantEye{500,7,-19};
         Check(TryMakeLookAt(distantEye,distantEye+Vector3{0,0,1},{0,1,0},camera.View),"Teleported orbit view failed");
-        Check((RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,true)&farCascades)==0,
+        Check((RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,1.0f)&farCascades)==0,
             "A large translation incorrectly retained rotation-stable far cascades");
 
         constexpr unsigned scrollTile=1024;
@@ -209,7 +271,7 @@ int main(){
         invalid=camera;invalid.Projection.VerticalFovRadians=Pi;rejected(invalid,1,{0,1,0},50,4,1024);
         invalid=camera;invalid.Projection.FarPlane=std::numeric_limits<float>::infinity();rejected(invalid,1,{0,1,0},50,4,1024);
         const Bounds negative{{},{-1,1,1}};rejected(camera,1,{0,1,0},50,4,1024,&negative,1);
-        std::cout<<"PASS directional shadow math: 1/2/4 cascades, perspective/orthographic, canonical containment, texel stability, off-camera casters and transactional rejection\n";
+        std::cout<<"PASS directional shadow math: automatic/manual cascades, shadow controls validation, canonical containment, texel stability, off-camera casters and transactional rejection\n";
         return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';return 1;}
 }

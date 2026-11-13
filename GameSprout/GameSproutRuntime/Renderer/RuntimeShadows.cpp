@@ -1,4 +1,5 @@
 #include "RuntimeRenderer.h"
+#include "Components/LightComponent.h"
 #include "RuntimeShadowsMath.h"
 #include "GameSproutRuntime.h"
 #include "Scene.h"
@@ -204,6 +205,16 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
 
     const auto& light=_SceneLights[_ShadowLightIndex];
     const auto& settings=light.Shadows;
+    const auto* lightObject=_Runtime.QueryGameObject(light.ObjectID);
+    const auto* lightComponent=lightObject?static_cast<const LightComponent*>(lightObject->GetComponent<ILightComponent>()):nullptr;
+    const auto componentID=lightComponent?lightComponent->GetComponentInstanceID():0;
+    const auto refreshRevision=lightComponent?lightComponent->GetShadowRefreshRevision():0;
+    const bool sameLight=_ShadowLightObjectID==light.ObjectID&&_ShadowLightComponentID==componentID;
+    const bool refreshRequested=sameLight&&_ShadowRefreshRevision!=refreshRevision;
+    const bool incremental=settings.StaticUpdateMode==StaticShadowUpdateMode::AutomaticIncremental;
+    const auto filterTier=settings.Soft?static_cast<std::size_t>(settings.FilterQuality)+1:0;
+    constexpr float filterRadii[]{0.0f,0.5f,1.0f,2.0f};
+    const float filterRadius=filterRadii[filterTier];
     auto* preview=view.TransformPreviewObjectID?_Runtime.QueryGameObject(view.TransformPreviewObjectID):nullptr;
     if(preview&&(preview==view.Scene||preview->GetScene()!=view.Scene))preview=nullptr;
     const auto previewID=preview?preview->GetInstanceID():0;
@@ -219,11 +230,11 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const float tileScale=float(tile)/settings.Resolution;
     const bool sameView=std::memcmp(_ShadowCamera.View.Data,view.Camera.View.Data,sizeof(view.Camera.View.Data))==0;
     const bool samePreview=_ShadowPreviewObjectID==previewID;
-    const bool sameFitSettings=_ShadowValid&&_ShadowSceneID==sceneID&&_ShadowAspect==aspect&&
+    const bool sameFitSettings=_ShadowValid&&sameLight&&!refreshRequested&&_ShadowSceneID==sceneID&&_ShadowAspect==aspect&&
         _ShadowSettings==settings&&_ShadowLightMask==light.CullingMask&&
         SameVector(_ShadowDirection,light.TowardsLight)&&
         SameShadowProjection(_ShadowCamera.Projection,view.Camera.Projection);
-    const bool navigationReuse=!sameView&&view.ReuseShadowsWhileNavigating;
+    const bool navigationReuse=!refreshRequested&&!sameView&&view.ReuseShadowsWhileNavigating;
     // Authored static maps have a small guard band. The current camera still
     // chooses the cascade, and the atlas is refit before coverage runs out.
     const float splits[]{_ShadowUniform.Splits.X,_ShadowUniform.Splits.Y,_ShadowUniform.Splits.Z,_ShadowUniform.Splits.W};
@@ -232,7 +243,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         settings.CacheStaticCasters&&!previewID&&!_ShadowPreviewObjectID;
     if(checkCoverage) {
         coveredCascades=RuntimeShadowMath::CoveredCascades(view.Camera,aspect,_ShadowUniform.WorldToShadow,splits,
-            settings.CascadeCount,tile,settings.NormalBias,settings.Soft);
+            settings.CascadeCount,tile,settings.NormalBias,filterRadius);
     }
     const bool reuseFit=sameFitSettings&&(sameView||navigationReuse||coveredCascades==allCascades);
     const auto& samplingCamera=navigationReuse&&reuseFit?_ShadowCamera:view.Camera;
@@ -356,7 +367,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const bool reuseStatic=reuseFit&&(onlyPreviewMoved||sameCasters);
     std::vector<ShadowRegion> repair;
     bool repairStatic=false;
-    if(!reuseStatic&&previewChangesOnly&&!samePreview) {
+    if(incremental&&!reuseStatic&&previewChangesOnly&&!samePreview) {
         // A change of the dragged subtree affects the primary atlas only where
         // a caster entered or left it. Retain the previous depth normalization.
         std::unordered_map<std::uint64_t,Bounds> previous;
@@ -399,9 +410,9 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const bool retainedPrimary=reuseStatic||repairStatic;
     const RenderCamera& fitCamera=retainedPrimary?samplingCamera:view.Camera;
     std::uint32_t refitMask=allCascades;
-    const bool canScroll=!retainedPrimary&&sameCasters&&checkCoverage;
+    const bool canReuseCovered=!retainedPrimary&&sameCasters&&checkCoverage;
     bool canUpdateRegions=false;
-    if(canScroll) {
+    if(canReuseCovered&&(incremental||coveredCascades)) {
         // If the regional clear is unavailable, a full clear/refit remains safe.
         const auto diagnostic=_Error;
         canUpdateRegions=PrepareShadowRepair()!=nullptr;
@@ -423,11 +434,11 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         const auto& fittingCasters=unchangedStatic?_StaticShadowCandidates:staticCasters;
         if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
             settings.CascadeCount,tile,fittingBounds.data(),fittingBounds.size(),cascades,fitScale,nullptr,refitMask,
-            rotationStableMask))
+            rotationStableMask,settings.CascadeSplits,filterRadius))
             return Fail("Could not fit directional shadow cascades");
 
         const float maxDistance=cascades.Entries[settings.CascadeCount-1].FarDepth;
-        uniform.Info={float(settings.CascadeCount),settings.Strength,maxDistance,maxDistance*.9f};
+        uniform.Info={float(settings.CascadeCount),settings.Strength,maxDistance,maxDistance*settings.FadeStart};
         float splits[4]{};
         std::vector<ShadowRegion> updates;
         std::uint32_t fullMask=0,scrollMask=0;
@@ -437,7 +448,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             const auto bit=std::uint32_t{1}<<index;
             if(!(refitMask&bit))continue;
             const auto previous=uniform.WorldToShadow[index];
-            if(canUpdateRegions&&AppendShadowScrollRegions(updates,index,tile,columns,previous,fitted.ViewProjection,uniform.StaticScroll[index]))
+            if(incremental&&canUpdateRegions&&AppendShadowScrollRegions(updates,index,tile,columns,previous,fitted.ViewProjection,uniform.StaticScroll[index]))
                 scrollMask|=bit;
             else {
                 uniform.StaticScroll[index]={};
@@ -445,7 +456,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             }
             uniform.WorldToShadow[index]=fitted.ViewProjection;
             uniform.Bias[index]={settings.DepthBias*fitted.WorldUnitsPerTexel/fitted.DepthRange,
-                settings.NormalBias*fitted.WorldUnitsPerTexel,settings.Soft?1.0f:0.0f,0};
+                settings.NormalBias*fitted.WorldUnitsPerTexel,float(filterTier),0};
             uniform.Atlas[index]={tileScale,tileScale,float(index%columns)*tileScale,float(index/columns)*tileScale};
         }
         uniform.Splits={splits[0],splits[1],splits[2],splits[3]};
@@ -480,7 +491,8 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         }
         RuntimeShadowMath::CascadeSet cascades;
         if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
-            settings.CascadeCount,tile,dynamicBounds.data(),dynamicBounds.size(),cascades,1,uniform.WorldToShadow))
+            settings.CascadeCount,tile,dynamicBounds.data(),dynamicBounds.size(),cascades,1,uniform.WorldToShadow,
+            allCascades,0,settings.CascadeSplits,filterRadius))
             return Fail("Could not fit dynamic directional shadow cascades");
         float depthBias[4]{};
         for(std::uint32_t index=0;index<cascades.Count;++index) {
@@ -506,6 +518,9 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     _ShadowAspect=aspect;
     _ShadowSceneID=sceneID;
     _ShadowSceneRevision=sceneRevision;
+    _ShadowLightObjectID=light.ObjectID;
+    _ShadowLightComponentID=componentID;
+    _ShadowRefreshRevision=refreshRevision;
     _ShadowNavigationApproximate=retainedPrimary&&navigationReuse;
     if(!skipStatic) {
         _StaticShadowCasters=std::move(staticKeys);

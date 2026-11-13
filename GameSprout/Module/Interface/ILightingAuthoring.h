@@ -24,6 +24,7 @@ public:
         std::uint64_t& createdObjectID,std::string& error) = 0;
     virtual bool ReadLight(const ObjectEditTarget&,GameSproutRuntime::LightSettings&,std::string& error) const = 0;
     virtual bool SetLight(const ObjectEditTarget&,const GameSproutRuntime::LightSettings&,std::string& error) = 0;
+    virtual bool RequestShadowRefresh(const ObjectEditTarget&,std::string& error) = 0;
     virtual bool ReadEnvironment(EnvironmentLightingSnapshot&,std::string& error) const = 0;
     virtual bool SetEnvironment(std::uint64_t sceneID,const GameSproutRuntime::EnvironmentLightingSettings&,std::string& error) = 0;
     // Main thread; subscribe then read once. Later changes are pushed as values.

@@ -1,5 +1,6 @@
 #include "LightComponent.h"
 #include "ComponentFactory.h"
+#include "Scene.h"
 #include <cmath>
 
 namespace GameSproutRuntime {
@@ -19,5 +20,10 @@ bool LightComponent::SetSettings(const LightSettings& settings) {
     _Settings=settings;
     NotifyComponentChanged(_GameObject,this);
     return true;
+}
+
+void LightComponent::RequestShadowRefresh() {
+    ++_ShadowRefreshRevision;
+    if(auto* scene=static_cast<Scene*>(_GameObject->GetScene()))scene->InvalidateVisual();
 }
 }
