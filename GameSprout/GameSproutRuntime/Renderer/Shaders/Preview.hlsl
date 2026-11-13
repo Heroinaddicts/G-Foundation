@@ -223,20 +223,62 @@ cbuffer ShadowUniform : register(b2, space3)
     float4 CascadeAtlas[4];
     float4 DynamicDepth[4]; // Clip Z row for each dynamic cascade.
     float4 DynamicDepthBias;
+    float4 StaticScroll[4]; // XY offsets in logical tile UV, wrapped to [0,1).
 };
 Texture2D<float> ShadowTexture : register(t2, space2);
 SamplerState ShadowSampler : register(s2, space2);
 Texture2D<float> DynamicShadowTexture : register(t3, space2);
 SamplerState DynamicShadowSampler : register(s3, space2);
 
-float SampleShadowVisibility(float2 uv, float2 reference, bool sampleDynamic)
+float SampleShadowVisibility(float2 staticUV, float2 dynamicUV, float2 reference, bool sampleDynamic)
 {
     // The layers share a tile but normalize Z independently. A tap is lit
     // only if neither depth test is occluded, before averaging PCF taps.
-    float visibility = reference.x <= ShadowTexture.SampleLevel(ShadowSampler, uv, 0).r ? 1.0 : 0.0;
+    float visibility = reference.x <= ShadowTexture.SampleLevel(ShadowSampler, staticUV, 0).r ? 1.0 : 0.0;
     if (sampleDynamic)
-        visibility *= reference.y <= DynamicShadowTexture.SampleLevel(DynamicShadowSampler, uv, 0).r ? 1.0 : 0.0;
+        visibility *= reference.y <= DynamicShadowTexture.SampleLevel(DynamicShadowSampler, dynamicUV, 0).r ? 1.0 : 0.0;
     return visibility;
+}
+
+float2 ScrollStaticShadowUV(float2 logicalUV, float4 tile, float2 offset)
+{
+    float2 staticUV = logicalUV + offset;
+    return staticUV - step(tile.zw + tile.xy, staticUV) * tile.xy;
+}
+
+float FilterShadowVisibility(float2 uv, float2 reference, bool sampleDynamic, bool soft,
+    float4 tile, float2 texel, float2 staticOffset)
+{
+    const bool scrollStatic = any(staticOffset != 0.0);
+    float2 lower = tile.zw + texel * 0.5;
+    float2 upper = tile.zw + tile.xy - texel * 0.5;
+    if (!soft)
+    {
+        float2 staticUV = scrollStatic ? ScrollStaticShadowUV(clamp(uv, lower, upper), tile, staticOffset) : uv;
+        return SampleShadowVisibility(staticUV, uv, reference, sampleDynamic);
+    }
+
+    // A 3x3 footprint only needs three coordinates per axis. Clamp each
+    // logical axis before wrapping the static tile, leaving dynamic taps intact.
+    const float3 neighbors = float3(-1.0, 0.0, 1.0);
+    float3 tapX = clamp(uv.x + neighbors * texel.x, lower.x, upper.x);
+    float3 tapY = clamp(uv.y + neighbors * texel.y, lower.y, upper.y);
+    float3 staticX = tapX, staticY = tapY;
+    if (scrollStatic)
+    {
+        staticX += staticOffset.x;
+        staticY += staticOffset.y;
+        staticX -= step(tile.z + tile.x, staticX) * tile.x;
+        staticY -= step(tile.w + tile.y, staticY) * tile.y;
+    }
+    float visibility = 0.0;
+    [unroll] for (int y = 0; y < 3; ++y)
+    [unroll] for (int x = 0; x < 3; ++x)
+    {
+        visibility += SampleShadowVisibility(float2(staticX[x], staticY[y]), float2(tapX[x], tapY[y]),
+            reference, sampleDynamic);
+    }
+    return visibility / 9.0;
 }
 
 float DirectionalShadow(float3 worldPosition, float3 normal)
@@ -273,19 +315,9 @@ float DirectionalShadow(float3 worldPosition, float3 normal)
     // static test outside its fitted depth range without rejecting dynamic Z.
     float2 reference = float2(sampleStatic ? ndc.z - CascadeBias[cascade].x : 0.0,
                               dynamicZ - DynamicDepthBias[cascade]);
-    float visibility = 0.0;
-    if (CascadeBias[cascade].z < 0.5)
-        visibility = SampleShadowVisibility(uv, reference, sampleDynamic);
-    else
-    {
-        [unroll] for (int y = -1; y <= 1; ++y)
-        [unroll] for (int x = -1; x <= 1; ++x)
-        {
-            float2 tap = clamp(uv + float2(x, y) * texel, tile.zw + texel * 0.5, tile.zw + tile.xy - texel * 0.5);
-            visibility += SampleShadowVisibility(tap, reference, sampleDynamic);
-        }
-        visibility /= 9.0;
-    }
+    bool soft = CascadeBias[cascade].z >= 0.5;
+    float2 staticOffset = StaticScroll[cascade].xy * tile.xy;
+    float visibility = FilterShadowVisibility(uv, reference, sampleDynamic, soft, tile, texel, staticOffset);
     float fade = saturate((ShadowInfo.z - depth) / max(ShadowInfo.z - ShadowInfo.w, 0.0001));
     return 1.0 - (1.0 - visibility) * ShadowInfo.y * fade;
 }

@@ -95,6 +95,87 @@ IGameObject* MeshObject(IScene& scene,const char* name,std::uint64_t mesh){
 }
 Quaternion Yaw(float degrees){const float half=DegreesToRadians(degrees)*.5f;return {0,std::sin(half),0,std::cos(half)};}
 
+void CheckScrollingShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
+    std::string error;
+    Check(viewport.Resize(256,256,error),error);
+    provider.CubeHalfSize=.28f;
+    ++provider.Revision;
+    auto* scene=runtime.CreateScene("Scrolling directional shadow GPU checks");
+    Check(scene,"Cannot create scrolling shadow scene");
+    auto* receiver=MeshObject(*scene,"Scrolling shadow receiver",1);
+    receiver->GetTransform()->SetLocalScale({5,5,1});
+    Check(receiver->SetStaticFlags(StaticFlags::ShadowCasterStatic),"Cannot mark scrolling receiver static");
+    for(int y=-3;y<=9;++y)for(int x=-3;x<=9;++x) {
+        auto* caster=MeshObject(*scene,"Shadow scroll sample caster",2);
+        caster->GetTransform()->SetLocalPosition({x*1.05f+.27f,y*1.05f+.14f,.75f});
+        Check(caster->SetStaticFlags(StaticFlags::ShadowCasterStatic),"Cannot mark scrolling caster static");
+    }
+    auto* edge=MeshObject(*scene,"Caster in entering shadow strip",2);
+    edge->GetTransform()->SetLocalPosition({4.33f,.5f,.7f});
+    Check(edge->SetStaticFlags(StaticFlags::ShadowCasterStatic),"Cannot mark entering caster static");
+    // Identical caster depth extrema remain in every tile along this path.
+    // This exercises scrolling rather than the changed-depth fallback.
+    for(float diagonal:{0.f,3.f,6.f,9.f})for(float z:{-5.f,5.f}) {
+        auto* anchor=MeshObject(*scene,"Scroll depth anchor",2);
+        anchor->GetTransform()->SetLocalPosition({diagonal,diagonal,z});
+        Check(anchor->SetStaticFlags(StaticFlags::ShadowCasterStatic),"Cannot mark depth anchor static");
+    }
+    auto* sunObject=scene->CreateGameObject("Scroll sun");
+    Check(sunObject,"Cannot create scroll light object");
+    auto* sun=sunObject->AddComponent<ILightComponent>();
+    Check(sun&&sunObject->GetTransform()->SetLocalRotation({0,1,0,0}),"Cannot aim scroll light");
+    auto settings=sun->GetSettings();
+    settings.Intensity=.5f;
+    settings.Shadows.Enabled=false;
+    settings.Shadows.CacheStaticCasters=true;
+    settings.Shadows.Resolution=256;
+    settings.Shadows.CascadeCount=1;
+    settings.Shadows.Distance=3.5f;
+    settings.Shadows.NormalBias=0;
+    settings.Shadows.DepthBias=1;
+    settings.Shadows.Soft=true;
+    Check(sun->SetSettings(settings),"Cannot configure scroll lighting");
+
+    RenderView view;
+    view.Scene=scene;
+    view.DrawGrid=false;
+    view.EnableGPUInstancing=false;
+    view.Camera.Projection.Projection=CameraProjection::Orthographic;
+    view.Camera.Projection.OrthographicHeight=4;
+    view.Camera.Projection.NearPlane=.5f;
+    view.Camera.Projection.FarPlane=4;
+    Mat4 baseView;
+    Check(TryMakeLookAt({0,0,3},{.6f,0,0},{0,1,0},baseView),"Cannot aim scroll camera");
+    const auto move=[&](float x,float y) {
+        view.Camera.Position={x,y,3};
+        view.Camera.View=baseView;
+        for(std::size_t row=0;row<3;++row)
+            view.Camera.View(row,3)-=baseView(row,0)*x+baseView(row,1)*y;
+    };
+    move(0,0);
+    const auto unshadowed=Render(viewport,view);
+    settings.Shadows.Enabled=true;
+    Check(sun->SetSettings(settings),"Cannot enable scroll shadows");
+    const auto initial=Render(viewport,view);
+    Check(initial.Statistics.StaticShadowDrawCalls>20,"Scrolling fixture did not populate a static shadow map");
+    EffectiveShadow(unshadowed,initial,"Initial scrolling shadow atlas");
+    unsigned scrollCount=0;
+    for(const Vector2 offset: {Vector2{1.5f,1.5f},Vector2{3,3},Vector2{4.5f,4.5f},
+        Vector2{6,6},Vector2{7.5f,7.5f},Vector2{6,6},Vector2{4.5f,4.5f},Vector2{3,3},Vector2{1.5f,1.5f},Vector2{0,0}}) {
+        move(offset.X,offset.Y);
+        const auto scrolled=Render(viewport,view);
+        struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
+        const OwnedViewport fresh{runtime.CreateOffscreenRenderer(256,256,&provider,error)};
+        Check(fresh.Pointer,error);
+        const auto rebuilt=Render(*fresh.Pointer,view);
+        if(scrolled.Statistics.StaticShadowCascadesUpdated==1&&
+            scrolled.Statistics.StaticShadowDrawCalls<rebuilt.Statistics.StaticShadowDrawCalls)++scrollCount;
+        Check(Difference(scrolled,rebuilt,8)<100,
+            "Scrolled shadow atlas changed overlapping or newly exposed shadow pixels");
+    }
+    Check(scrollCount>=6,"Camera motion did not reuse static depth across repeated signed texel wraps");
+}
+
 void CheckLayeredShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
     std::string error;
     Check(viewport.Resize(256,256,error),error);
@@ -492,6 +573,7 @@ int main(int argc,char** argv){
         }
 
         CheckLayeredShadows(*runtime,*viewport,provider);
+        CheckScrollingShadows(*runtime,*viewport,provider);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
         std::cout<<"PASS directional shadows GPU: off-camera casters, hard/PCF 1/2/4 cascades, strength/toggle/layers, parent rotation, resource and transform revisions, camera/aspect, and static/dynamic atlas reuse\n";
         return 0;

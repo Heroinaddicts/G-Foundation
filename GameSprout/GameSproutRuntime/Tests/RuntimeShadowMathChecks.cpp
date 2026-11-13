@@ -130,6 +130,36 @@ int main(){
         Check((RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,true)&farCascades)==0,
             "A large translation incorrectly retained rotation-stable far cascades");
 
+        constexpr unsigned scrollTile=1024;
+        Mat4 oldScroll,newScroll;
+        oldScroll(0,3)=.125f;oldScroll(1,3)=-.25f;
+        newScroll=oldScroll;
+        newScroll(0,3)-=76.f*2/scrollTile;
+        newScroll(1,3)+=19.f*2/scrollTile;
+        int scrollX=0,scrollY=0;
+        Check(RuntimeShadowMath::TryShadowScroll(oldScroll,newScroll,scrollTile,scrollX,scrollY)&&scrollX==-76&&scrollY==-19,
+            "Integer light-space translation returned wrong top-first texel offset");
+        Check(RuntimeShadowMath::TryShadowScroll(newScroll,oldScroll,scrollTile,scrollX,scrollY)&&scrollX==76&&scrollY==19,
+            "Reversing a scroll did not reverse its texel offset");
+        Check(RuntimeShadowMath::TryShadowScroll(oldScroll,oldScroll,scrollTile,scrollX,scrollY)&&!scrollX&&!scrollY,
+            "Unchanged projection returned a scroll");
+        const auto rejectScroll=[&](Mat4 candidate,std::size_t row,std::size_t column,float change) {
+            candidate(row,column)+=change;
+            Check(!RuntimeShadowMath::TryShadowScroll(oldScroll,candidate,scrollTile,scrollX,scrollY),
+                "Projection requiring a full redraw was accepted for scrolling");
+        };
+        rejectScroll(newScroll,0,0,.25f);
+        rejectScroll(newScroll,1,2,.25f);
+        rejectScroll(newScroll,2,3,.25f);
+        rejectScroll(newScroll,3,2,.25f);
+        rejectScroll(oldScroll,1,3,1.f/scrollTile);
+        rejectScroll(oldScroll,0,3,257.f*2/scrollTile);
+        Check(RuntimeShadowMath::WrapShadowTexel(-1,scrollTile)==1023&&
+            RuntimeShadowMath::WrapShadowTexel(1024,scrollTile)==0&&
+            RuntimeShadowMath::WrapShadowTexel(2049,scrollTile)==1&&
+            RuntimeShadowMath::WrapShadowTexel(-2049,scrollTile)==1023,
+            "Physical shadow texel did not wrap at either edge");
+
         camera.View={};
         camera.Projection.FarPlane=50;
         const Bounds aboveView{{0,100,-10},{1,1,1}};

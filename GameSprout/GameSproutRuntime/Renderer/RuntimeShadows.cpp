@@ -142,7 +142,7 @@ bool Renderer::DrawShadowAtlas(GRHI::ICommandBuffer& command,GRHI::ITexture& atl
         const auto firstPatch=tiles.size();
         for(const auto& region:*repair)if(region.Cascade==cascade) {
             const auto& viewport=region.Viewport;
-            const double left=viewport.X-x,top=viewport.Y-y;
+            const double left=region.LogicalLeft,top=region.LogicalTop;
             patches.push_back({2*left/tile-1,2*(left+viewport.Width)/tile-1,
                 1-2*(top+viewport.Height)/tile,1-2*top/tile});
             tiles.push_back({viewport,region.Projection,{},{}});
@@ -228,8 +228,9 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     // chooses the cascade, and the atlas is refit before coverage runs out.
     const float splits[]{_ShadowUniform.Splits.X,_ShadowUniform.Splits.Y,_ShadowUniform.Splits.Z,_ShadowUniform.Splits.W};
     std::uint32_t coveredCascades=0;
-    if(!sameView&&!navigationReuse&&!_ShadowNavigationApproximate&&sameFitSettings&&
-       settings.CacheStaticCasters&&!previewID&&!_ShadowPreviewObjectID) {
+    const bool checkCoverage=!sameView&&!navigationReuse&&!_ShadowNavigationApproximate&&sameFitSettings&&
+        settings.CacheStaticCasters&&!previewID&&!_ShadowPreviewObjectID;
+    if(checkCoverage) {
         coveredCascades=RuntimeShadowMath::CoveredCascades(view.Camera,aspect,_ShadowUniform.WorldToShadow,splits,
             settings.CascadeCount,tile,settings.NormalBias,settings.Soft);
     }
@@ -374,7 +375,8 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             }
         }
         for(const auto& entry:previous)removed.push_back(entry.second);
-        repairStatic=BuildShadowRepairRegions(_ShadowUniform.WorldToShadow,removed,added,tile,columns,settings.CascadeCount,repair);
+        repairStatic=BuildShadowRepairRegions(_ShadowUniform.WorldToShadow,removed,added,_ShadowUniform.StaticScroll,
+            tile,columns,settings.CascadeCount,repair);
         if(repairStatic&&!repair.empty()) {
             const auto diagnostic=_Error;
             repairStatic=PrepareShadowRepair()!=nullptr;
@@ -397,13 +399,16 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const bool retainedPrimary=reuseStatic||repairStatic;
     const RenderCamera& fitCamera=retainedPrimary?samplingCamera:view.Camera;
     std::uint32_t refitMask=allCascades;
-    if(!retainedPrimary&&sameCasters&&coveredCascades) {
+    const bool canScroll=!retainedPrimary&&sameCasters&&checkCoverage;
+    bool canUpdateRegions=false;
+    if(canScroll) {
         // If the regional clear is unavailable, a full clear/refit remains safe.
         const auto diagnostic=_Error;
-        if(PrepareShadowRepair())refitMask&=~coveredCascades;
+        canUpdateRegions=PrepareShadowRepair()!=nullptr;
+        if(canUpdateRegions)refitMask&=~coveredCascades;
         _Error=diagnostic;
     }
-    ShadowUniform uniform=(retainedPrimary||refitMask!=allCascades)?_ShadowUniform:ShadowUniform{};
+    ShadowUniform uniform=(retainedPrimary||canUpdateRegions)?_ShadowUniform:ShadowUniform{};
     uniform.CameraView=fitCamera.View;
     if(!retainedPrimary) {
         RuntimeShadowMath::CascadeSet cascades;
@@ -424,17 +429,34 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         const float maxDistance=cascades.Entries[settings.CascadeCount-1].FarDepth;
         uniform.Info={float(settings.CascadeCount),settings.Strength,maxDistance,maxDistance*.9f};
         float splits[4]{};
+        std::vector<ShadowRegion> updates;
+        std::uint32_t fullMask=0,scrollMask=0;
         for(std::uint32_t index=0;index<cascades.Count;++index) {
             const auto& fitted=cascades.Entries[index];
             splits[index]=fitted.FarDepth;
-            if(!(refitMask&(std::uint32_t{1}<<index)))continue;
+            const auto bit=std::uint32_t{1}<<index;
+            if(!(refitMask&bit))continue;
+            const auto previous=uniform.WorldToShadow[index];
+            if(canUpdateRegions&&AppendShadowScrollRegions(updates,index,tile,columns,previous,fitted.ViewProjection,uniform.StaticScroll[index]))
+                scrollMask|=bit;
+            else {
+                uniform.StaticScroll[index]={};
+                fullMask|=bit;
+            }
             uniform.WorldToShadow[index]=fitted.ViewProjection;
             uniform.Bias[index]={settings.DepthBias*fitted.WorldUnitsPerTexel/fitted.DepthRange,
                 settings.NormalBias*fitted.WorldUnitsPerTexel,settings.Soft?1.0f:0.0f,0};
             uniform.Atlas[index]={tileScale,tileScale,float(index%columns)*tileScale,float(index/columns)*tileScale};
         }
         uniform.Splits={splits[0],splits[1],splits[2],splits[3]};
-        if(!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,fittingCasters,_StaticShadowInstances,refitMask))return false;
+        auto drawMask=fullMask;
+        if(scrollMask) {
+            for(const auto& region:updates)drawMask|=std::uint32_t{1}<<region.Cascade;
+            for(std::uint32_t index=0;index<cascades.Count;++index)if(fullMask&(std::uint32_t{1}<<index))
+                AppendShadowRegion(updates,cascades.Entries[index].ViewProjection,index,tile,columns,0,0,tile,tile,0,0);
+        }
+        if(drawMask&&!DrawShadowAtlas(command,*_ShadowAtlas,view,cascades,tile,columns,fittingCasters,
+            _StaticShadowInstances,drawMask,scrollMask?&updates:nullptr))return false;
         // Warm the small clear pipeline outside a drag. Partial repair remains
         // optional if this backend cannot allocate its resources.
         if(!preview) {
@@ -442,10 +464,10 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             PrepareShadowRepair();
             _Error=diagnostic;
         }
-        if(layered) {
+        if(layered&&drawMask) {
             ++_Statistics.StaticShadowMapUpdates;
             _Statistics.StaticShadowDrawCalls=_Statistics.ShadowDrawCalls;
-            _Statistics.StaticShadowCascadesUpdated=std::popcount(refitMask);
+            _Statistics.StaticShadowCascadesUpdated=std::popcount(drawMask);
         }
     }
 

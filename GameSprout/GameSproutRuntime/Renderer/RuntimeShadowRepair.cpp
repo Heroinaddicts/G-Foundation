@@ -1,4 +1,5 @@
 #include "RuntimeRenderer.h"
+#include "RuntimeShadowsMath.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -59,8 +60,63 @@ void MergeLeastArea(std::vector<PixelRect>& regions) {
 }
 }
 
+void Renderer::AppendShadowRegion(std::vector<ShadowRegion>& regions,const Mat4& matrix,std::uint32_t cascade,
+    std::uint32_t tile,std::uint32_t columns,std::uint32_t left,std::uint32_t top,std::uint32_t width,std::uint32_t height,
+    std::uint32_t physicalX,std::uint32_t physicalY) {
+    const auto x=(cascade%columns)*tile+physicalX,y=(cascade/columns)*tile+physicalY;
+    ShadowRegion region{cascade,{float(x),float(y),float(width),float(height),0,1},matrix,left,top};
+    // Clip to the logical subrectangle and rasterize it in its physical slot.
+    for(std::size_t column=0;column<4;++column) {
+        region.Projection(0,column)=float((tile*double(matrix(0,column))+
+            (double(tile)-2.0*left-width)*matrix(3,column))/width);
+        region.Projection(1,column)=float((tile*double(matrix(1,column))+
+            (2.0*top+height-tile)*matrix(3,column))/height);
+    }
+    regions.push_back(region);
+}
+
+void Renderer::AppendWrappedShadowRegions(std::vector<ShadowRegion>& regions,const Mat4& matrix,
+    std::uint32_t cascade,std::uint32_t tile,std::uint32_t columns,int left,int top,int right,int bottom,
+    int offsetX,int offsetY) {
+    const auto size=static_cast<int>(tile);
+    // A logical rectangle can cross the physical wrap on either axis.
+    // Split at those boundaries so no viewport touches an adjacent tile.
+    for(int y=top;y<bottom;) {
+        const int physicalY=RuntimeShadowMath::WrapShadowTexel(y+offsetY,size);
+        const int height=std::min(bottom-y,size-physicalY);
+        for(int x=left;x<right;) {
+            const int physicalX=RuntimeShadowMath::WrapShadowTexel(x+offsetX,size);
+            const int width=std::min(right-x,size-physicalX);
+            AppendShadowRegion(regions,matrix,cascade,tile,columns,x,y,width,height,physicalX,physicalY);
+            x+=width;
+        }
+        y+=height;
+    }
+}
+
+bool Renderer::AppendShadowScrollRegions(std::vector<ShadowRegion>& regions,std::uint32_t cascade,std::uint32_t tile,
+    std::uint32_t columns,const Mat4& previous,const Mat4& current,Vector4& scroll) {
+    int dx,dy;
+    if(!RuntimeShadowMath::TryShadowScroll(previous,current,tile,dx,dy))return false;
+    const auto size=static_cast<int>(tile);
+    const int offsetX=RuntimeShadowMath::WrapShadowTexel(static_cast<int>(std::lround(scroll.X*tile))-dx,size);
+    const int offsetY=RuntimeShadowMath::WrapShadowTexel(static_cast<int>(std::lround(scroll.Y*tile))-dy,size);
+    scroll={float(offsetX)/tile,float(offsetY)/tile,0,0};
+    const auto append=[&](int left,int top,int right,int bottom) {
+        AppendWrappedShadowRegions(regions,current,cascade,tile,columns,left,top,right,bottom,offsetX,offsetY);
+    };
+    const int overlapLeft=std::max(0,dx),overlapRight=size+std::min(0,dx);
+    const int overlapTop=std::max(0,dy),overlapBottom=size+std::min(0,dy);
+    if(dx>0)append(0,0,overlapLeft,size);
+    if(dx<0)append(overlapRight,0,size,size);
+    if(dy>0)append(overlapLeft,0,overlapRight,overlapTop);
+    if(dy<0)append(overlapLeft,overlapBottom,overlapRight,size);
+    return true;
+}
+
 bool Renderer::BuildShadowRepairRegions(const Mat4* matrices,const std::vector<Bounds>& removedBounds,
-    const std::vector<Bounds>& addedBounds,std::uint32_t tile,std::uint32_t columns,std::uint32_t count,std::vector<ShadowRegion>& regions) {
+    const std::vector<Bounds>& addedBounds,const Vector4* scroll,std::uint32_t tile,std::uint32_t columns,
+    std::uint32_t count,std::vector<ShadowRegion>& regions) {
     regions.clear();
     std::vector<PixelRect> candidates;
     candidates.reserve(MaxRegionCandidates);
@@ -97,17 +153,11 @@ bool Renderer::BuildShadowRepairRegions(const Mat4* matrices,const std::vector<B
         };
         if(!include(removedBounds,false)||!include(addedBounds,true))return false;
         while(candidates.size()>MaxRegionsPerCascade)MergeLeastArea(candidates);
-        const auto tileX=(cascade%columns)*tile,tileY=(cascade/columns)*tile;
+        const auto offsetX=static_cast<int>(std::lround(scroll[cascade].X*tile));
+        const auto offsetY=static_cast<int>(std::lround(scroll[cascade].Y*tile));
         for(const auto& rect:candidates) {
-            const double left=rect.Left,top=rect.Top,width=rect.Right-rect.Left,height=rect.Bottom-rect.Top;
-            ShadowRegion region{cascade,{float(tileX+left),float(tileY+top),float(width),float(height),0,1},matrix};
-            // Remap the old rectangle to full clip XY before the new viewport maps
-            // it back to the same atlas pixels. Depth and bias remain unchanged.
-            for(std::size_t column=0;column<4;++column) {
-                region.Projection(0,column)=float((tile*double(matrix(0,column))+(tile-2*left-width)*matrix(3,column))/width);
-                region.Projection(1,column)=float((tile*double(matrix(1,column))+(2*top+height-tile)*matrix(3,column))/height);
-            }
-            regions.push_back(region);
+            AppendWrappedShadowRegions(regions,matrix,cascade,tile,columns,
+                rect.Left,rect.Top,rect.Right,rect.Bottom,offsetX,offsetY);
         }
     }
     return true;

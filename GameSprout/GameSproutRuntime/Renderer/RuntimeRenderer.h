@@ -154,8 +154,9 @@ private:
         Vector4 Atlas[4]; // UV scale XY and top-first tile origin ZW.
         Vector4 DynamicDepth[4]; // Clip-space Z row per cascade. XY matches the static atlas.
         Vector4 DynamicDepthBias;
+        Vector4 StaticScroll[4]; // Wrapped tile-local offset for the static layer.
     };
-    static_assert(sizeof(ShadowUniform)==560,"Shadow fragment block must match HLSL packing");
+    static_assert(sizeof(ShadowUniform)==624,"Shadow fragment block must match HLSL packing");
     bool RenderShadows(GRHI::ICommandBuffer&,const RenderView&,float aspect);
     struct InstanceDraw {
         std::size_t First;
@@ -197,6 +198,7 @@ private:
         std::uint32_t Cascade;
         GRHI::Viewport Viewport;
         Mat4 Projection;
+        std::uint32_t LogicalLeft,LogicalTop;
     };
     static void SortShadowCandidates(std::vector<ShadowCandidate>&);
     bool DrawShadowAtlas(GRHI::ICommandBuffer&,GRHI::ITexture&,const RenderView&,
@@ -204,7 +206,15 @@ private:
         const std::vector<ShadowCandidate>&,InstanceStream&,std::uint32_t cascadeMask=0xF,
         const std::vector<ShadowRegion>* repair=nullptr);
     static bool BuildShadowRepairRegions(const Mat4*,const std::vector<Bounds>& removedBounds,
-        const std::vector<Bounds>& addedBounds,std::uint32_t tile,std::uint32_t columns,std::uint32_t count,std::vector<ShadowRegion>&);
+        const std::vector<Bounds>& addedBounds,const Vector4* scroll,std::uint32_t tile,std::uint32_t columns,
+        std::uint32_t count,std::vector<ShadowRegion>&);
+    static void AppendShadowRegion(std::vector<ShadowRegion>&,const Mat4&,std::uint32_t cascade,std::uint32_t tile,
+        std::uint32_t columns,std::uint32_t left,std::uint32_t top,std::uint32_t width,std::uint32_t height,
+        std::uint32_t physicalX,std::uint32_t physicalY);
+    static bool AppendShadowScrollRegions(std::vector<ShadowRegion>&,std::uint32_t cascade,std::uint32_t tile,
+        std::uint32_t columns,const Mat4& previous,const Mat4& current,Vector4& scroll);
+    static void AppendWrappedShadowRegions(std::vector<ShadowRegion>&,const Mat4&,std::uint32_t cascade,
+        std::uint32_t tile,std::uint32_t columns,int left,int top,int right,int bottom,int offsetX,int offsetY);
     GRHI::IGraphicsPipeline* PrepareShadowRepair();
     bool ClearShadowRegion(GRHI::IRenderPass&);
     GRHI::IBuffer* _ShadowRepairVertices=nullptr;

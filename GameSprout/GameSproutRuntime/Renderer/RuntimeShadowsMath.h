@@ -56,6 +56,31 @@ inline Point SliceCorner(const Mat4& inverseView,float aspect,bool perspective,d
 }
 }
 
+inline int WrapShadowTexel(int pixel,int tile) {
+    const int wrapped=pixel%tile;
+    return wrapped<0?wrapped+tile:wrapped;
+}
+
+// The same world position must still address the same physical texel and
+// store the same depth. Reject anything beyond a small integer translation.
+inline bool TryShadowScroll(const Mat4& previous,const Mat4& current,std::uint32_t tile,int& x,int& y) {
+    if(tile<8||tile>32768)return false;
+    if(previous(3,0)!=0||previous(3,1)!=0||previous(3,2)!=0||previous(3,3)!=1)return false;
+    for(std::size_t column=0;column<4;++column) {
+        if(previous(2,column)!=current(2,column)||previous(3,column)!=current(3,column)||
+            (column<3&&(previous(0,column)!=current(0,column)||previous(1,column)!=current(1,column))))return false;
+    }
+    const double limit=tile/4.0;
+    const double deltaX=(double(current(0,3))-previous(0,3))*tile*.5;
+    const double deltaY=(double(previous(1,3))-current(1,3))*tile*.5;
+    if(!(std::fabs(deltaX)<=limit&&std::fabs(deltaY)<=limit))return false;
+    const auto roundedX=std::round(deltaX),roundedY=std::round(deltaY);
+    // Snapped world projections are stored as floats; keep well below a pixel.
+    if(std::fabs(deltaX-roundedX)>.001||std::fabs(deltaY-roundedY)>.001)return false;
+    x=static_cast<int>(roundedX);y=static_cast<int>(roundedY);
+    return true;
+}
+
 // Retaining a map is safe while each of the current camera's receiver slices
 // fits inside its old light tile and depth range, including the shader's offset.
 inline std::uint32_t CoveredCascades(const RenderCamera& camera,float aspect,const Mat4* projection,const float* splits,
