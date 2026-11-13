@@ -73,7 +73,7 @@ const Json::Value* FindComponent(const Json::Value& node, const char* type) {
 }
 
 namespace SceneAnimationDocument {
-bool Handles(const std::string& type) {
+bool Handles(std::string_view type) {
     return type=="GameSproutRuntime.Animator"||type=="GameSproutRuntime.SkinnedMeshRenderer";
 }
 void Validate(const Json::Value& data, const std::string& path) {
@@ -183,25 +183,33 @@ void RestoreBindings(const Json::Value& snapshot,GameSproutRuntime::IGameSproutR
             if(!skin->SetAnimatorObjectID(target?target->GetInstanceID():0))Reject("Undo skin binding","Runtime rejected restored Animator");
     }
 }
+void BindAnimator(const Json::Value& component,GameSproutRuntime::IGameObject& object,
+    const std::map<std::uint64_t,GameSproutRuntime::IGameObject*>& objects) {
+    std::vector<GameSproutRuntime::AnimationNodeBinding> bindings;
+    for(const auto& binding:component["Bindings"]) {
+        const auto id=binding["ObjectFileID"].asUInt64();
+        bindings.push_back({binding["Path"].asString(),id?objects.at(id)->GetInstanceID():0});
+    }
+    if(!object.GetComponent<GameSproutRuntime::IAnimatorComponent>()->SetNodeBindings(bindings))
+        Reject("Animator.Bindings","Runtime rejected node mapping");
+}
+void BindSkinnedRenderer(const Json::Value& component,GameSproutRuntime::IGameObject& object,
+    const std::map<std::uint64_t,GameSproutRuntime::IGameObject*>& objects) {
+    const auto id=component["AnimatorObjectFileID"].asUInt64();
+    if(!object.GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>()->SetAnimatorObjectID(id?objects.at(id)->GetInstanceID():0))
+        Reject("SkinnedMeshRenderer","Runtime rejected Animator binding");
+}
 void Bind(const Json::Value& document, GameSproutRuntime::IScene& scene,
     const std::map<std::uint64_t,GameSproutRuntime::IGameObject*>& objects) {
-    const auto bind=[&](const Json::Value& components,GameSproutRuntime::IGameObject* object) {
-        for (const auto& component:components) {
-            if (component["Type"]=="GameSproutRuntime.Animator") {
-                std::vector<GameSproutRuntime::AnimationNodeBinding> bindings;
-                for (const auto& binding:component["Bindings"]) bindings.push_back({binding["Path"].asString(),(binding["ObjectFileID"].asUInt64()?objects.at(binding["ObjectFileID"].asUInt64())->GetInstanceID():0)});
-                if (!object->GetComponent<GameSproutRuntime::IAnimatorComponent>()->SetNodeBindings(bindings))
-                    Reject("Animator.Bindings","Runtime rejected node mapping");
-            }
+    const auto bind=[&](const Json::Value& components,GameSproutRuntime::IGameObject& object) {
+        for(const auto& component:components) {
+            if(component["Type"]=="GameSproutRuntime.Animator")BindAnimator(component,object,objects);
         }
     };
-    bind(document["RootComponents"],&scene);
-    for (const auto& node:document["Objects"]) bind(node["Components"],objects.at(node["ID"].asUInt64()));
-    for (const auto& node:document["Objects"]) for (const auto& component:node["Components"])
-        if (component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer") {
-            const auto id=component["AnimatorObjectFileID"].asUInt64();
-            if (!objects.at(node["ID"].asUInt64())->GetComponent<GameSproutRuntime::ISkinnedMeshRendererComponent>()->SetAnimatorObjectID(id?objects.at(id)->GetInstanceID():0))
-                Reject("SkinnedMeshRenderer","Runtime rejected Animator binding");
-        }
+    bind(document["RootComponents"],scene);
+    for(const auto& node:document["Objects"])bind(node["Components"],*objects.at(node["ID"].asUInt64()));
+    for(const auto& node:document["Objects"])for(const auto& component:node["Components"])
+        if(component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer")
+            BindSkinnedRenderer(component,*objects.at(node["ID"].asUInt64()),objects);
 }
 }

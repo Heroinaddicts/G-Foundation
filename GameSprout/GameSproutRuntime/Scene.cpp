@@ -1,6 +1,22 @@
 #include "Scene.h"
 
 namespace GameSproutRuntime {
+void Scene::RecordAuthoringChange(std::uint64_t objectID,SceneNodeEventType type,const char* component,std::uint64_t batch) {
+    if(type==SceneNodeEventType::OperationFailed)return;
+    ++_AuthoringRevision;
+    try {
+        _AuthoringChanges.push_back({{objectID,type,component?component:""},batch});
+        constexpr std::size_t historyWindow=2048;
+        if(_AuthoringChanges.size()<=historyWindow)return;
+        // Keep the entire structural edit that overlaps the recent history.
+        // Deleting or restoring thousands of nodes must not evict its own changes.
+        const auto oldestRetainedBatch=_AuthoringChanges[_AuthoringChanges.size()-historyWindow].Batch;
+        while(_AuthoringChanges.size()>historyWindow&&
+              (!oldestRetainedBatch||_AuthoringChanges.front().Batch!=oldestRetainedBatch))
+            _AuthoringChanges.pop_front();
+    } catch(...) {_AuthoringChanges.clear();}
+}
+
 void Scene::InvalidateRenderSnapshot(std::uint64_t transformObjectID) {
     ++_RenderRevision;
     _VisualPending=true;

@@ -49,6 +49,14 @@ target_include_directories(GameSproutRuntime PRIVATE
 )
 target_compile_definitions(GameSproutRuntime PRIVATE GAMESPROUT_RUNTIME_EXPORTS)
 
+# Keep Debug symbols while optimizing the Runtime paths used by large scene edits.
+if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    set_property(SOURCE
+        GameObject.cpp GameSproutRuntime.cpp RuntimeCommands.cpp RuntimeEvents.cpp
+        RuntimeInitialization.cpp RuntimeObjectReferences.cpp Scene.cpp
+        APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+endif()
+
 get_filename_component(gamesprout_runtime_output_directory
     "${CMAKE_CURRENT_SOURCE_DIR}/../../Bin" ABSOLUTE)
 set(GAMESPROUT_RUNTIME_OUTPUT_DIRECTORY "${gamesprout_runtime_output_directory}" CACHE PATH

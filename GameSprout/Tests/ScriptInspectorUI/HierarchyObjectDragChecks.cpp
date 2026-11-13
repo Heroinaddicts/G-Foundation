@@ -15,6 +15,7 @@ int main(int argc,char** argv) {
         runtime=Export(argv[1]);Check(runtime,"Cannot load Runtime");
         auto* scene=runtime->CreateScene("Source world");
         auto* child=scene->CreateGameObject("Dragged node");
+        int resets=0,inserted=0,removed=0;
         HierarchyTreeModel model(nullptr);
         std::uint64_t sessionID=1;
         model.SetDragSource([&](std::uint64_t worldID,std::uint64_t objectID){
@@ -22,9 +23,14 @@ int main(int argc,char** argv) {
             if(!object||!object->GetScene()||object->GetScene()->GetInstanceID()!=worldID)return static_cast<QMimeData*>(nullptr);
             return SceneObjectDragPayload::Encode({sessionID,worldID,objectID});
         });
-        model.Build(scene,QColor("#8899aa"));
+        QObject::connect(&model,&QAbstractItemModel::modelReset,[&]{++resets;});
+        QObject::connect(&model,&QAbstractItemModel::rowsInserted,[&](const QModelIndex&,int first,int last){inserted+=last-first+1;});
+        QObject::connect(&model,&QAbstractItemModel::rowsRemoved,[&](const QModelIndex&,int first,int last){removed+=last-first+1;});
         QSortFilterProxyModel proxy;proxy.setSourceModel(&model);proxy.setRecursiveFilteringEnabled(true);
         proxy.setFilterFixedString("Dragged");
+        model.Build(scene,QColor("#8899aa"));
+        Check(inserted==1,"Building a hierarchy announced individual descendants");
+        resets=0;inserted=0;
         const QModelIndex source=model.FindNode(child->GetInstanceID());
         const QModelIndex filtered=proxy.mapFromSource(source);
         Check(filtered.isValid(),"Filtered hierarchy did not preserve child");
@@ -38,17 +44,19 @@ int main(int argc,char** argv) {
         Check(SceneObjectDragPayload::Decode(mime,value)&&value.WorldID==value.ObjectID,"Scene-root drag lost identity");delete mime;
         Check(!model.mimeData({source,model.FindNode(scene->GetInstanceID())}),"Multiple scene objects were silently collapsed");
 
-        int resets=0,inserted=0;
-        QObject::connect(&model,&QAbstractItemModel::modelReset,[&]{++resets;});
-        QObject::connect(&model,&QAbstractItemModel::rowsInserted,[&](const QModelIndex&,int first,int last){inserted+=last-first+1;});
         const auto rootID=scene->GetInstanceID();
         const QPersistentModelIndex stableRoot(model.FindNode(rootID));
+        auto* older=scene->CreateGameObject("Older descendant");
+        model.SyncStructure(*runtime,{older->GetInstanceID()});
+        inserted=0;
         auto* moved=scene->CreateGameObject("Moved");
         auto* parent=scene->CreateGameObject("Parent");
         auto* sibling=scene->CreateGameObject("Sibling");
         auto* descendant=scene->CreateGameObject("Descendant",moved);
         model.SyncStructure(*runtime,{moved->GetInstanceID(),parent->GetInstanceID(),sibling->GetInstanceID(),descendant->GetInstanceID()});
-        Check(inserted==4&&stableRoot.isValid(),"Insertion rebuilt existing hierarchy rows");
+        Check(inserted==3&&stableRoot.isValid()&&
+              model.FindNode(descendant->GetInstanceID()).parent()==model.FindNode(moved->GetInstanceID()),
+              "Insertion announced individual descendants or lost existing rows");
         const QPersistentModelIndex stableChild(model.FindNode(child->GetInstanceID()));
         Check(parent->AddChild(moved)&&parent->AddChild(sibling)&&sibling->SetSiblingIndex(0),"Cannot create batched move fixture");
         model.SyncStructure(*runtime,{moved->GetInstanceID(),sibling->GetInstanceID()});
@@ -62,10 +70,15 @@ int main(int argc,char** argv) {
         Check(!model.FindNode(descendant->GetInstanceID()).data(HierarchyTreeModel::ActiveRole).toBool()&&
               model.FindNode(moved->GetInstanceID()).data().toString()=="Renamed",
               "Incremental refresh missed descendant activation or rename");
-        const auto movedID=moved->GetInstanceID(),descendantID=descendant->GetInstanceID();
+        const auto movedID=moved->GetInstanceID(),descendantID=descendant->GetInstanceID(),olderID=older->GetInstanceID();
+        Check(moved->AddChild(older),"Cannot move an older node under the subtree");
+        model.SyncStructure(*runtime,{olderID});
+        Check(model.FindNode(olderID).parent()==model.FindNode(movedID),"Cannot show the reparented older node");
         Check(scene->DestroyGameObject(moved),"Cannot destroy moved subtree");
-        model.SyncStructure(*runtime,{movedID,descendantID});
-        Check(!model.FindNode(movedID).isValid()&&!model.FindNode(descendantID).isValid()&&resets==0&&
+        removed=0;
+        model.SyncStructure(*runtime,{movedID,descendantID,olderID});
+        Check(removed==1&&!model.FindNode(olderID).isValid()&&
+              !model.FindNode(movedID).isValid()&&!model.FindNode(descendantID).isValid()&&resets==0&&
               stableChild.isValid()&&stableRoot.isValid(),"Incremental edits rebuilt or lost unrelated rows");
 
         auto* replacement=runtime->CreateScene("Replacement");++sessionID;model.Build(replacement,QColor());

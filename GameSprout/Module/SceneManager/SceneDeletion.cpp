@@ -36,7 +36,10 @@ bool SceneManager::CaptureDeletion(GameSproutRuntime::IGameObject& object,Edit& 
     if(IsTemporaryDocumentContext() && &object==GetDocumentContentRoot()){error="不能删除临时文档的内容根。";return false;}
     if(!scene||&object==scene||object.GetScene()!=scene||!parent){error="不能删除场景根或无效节点。";return false;}
     Json::Value subtree;
-    if(!CaptureSubtree(object,subtree,error))return false;
+    // CaptureSubtree synchronizes the validated authoring snapshot before
+    // reading the same live rows. The history entry only clears the root's
+    // ParentID, and RestoreSubtree validates it again before Undo mutates Runtime.
+    if(!CaptureSubtree(object,subtree,error,false))return false;
     edit.Type=Edit::Kind::Deletion;edit.FileID=_ObjectIDs.RuntimeToFile.at(object.GetInstanceID());
     edit.ParentFileID=parent==scene?0:_ObjectIDs.RuntimeToFile.at(parent->GetInstanceID());
     edit.SiblingIndex=parent->GetChildCount();

@@ -118,7 +118,7 @@ GameSproutRuntime::LightSettings Read(const Json::Value& component,const std::st
 }
 
 namespace SceneLightingDocument {
-bool Handles(const std::string& type) {return type=="GameSproutRuntime.Light";}
+bool Handles(std::string_view type) {return type=="GameSproutRuntime.Light";}
 void Validate(const Json::Value& component,const std::string& path) {(void)Read(component,path);}
 GameSproutRuntime::IComponent* Create(const Json::Value& component,GameSproutRuntime::IGameObject& object) {
     const auto settings=Read(component,"Light");

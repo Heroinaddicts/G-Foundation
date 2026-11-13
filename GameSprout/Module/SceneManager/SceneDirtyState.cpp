@@ -1,9 +1,13 @@
 #include "SceneManager.h"
 #include "SceneSaveSnapshot.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <set>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 Json::Value Header(const Json::Value& document) {
@@ -41,6 +45,66 @@ bool CheckAnimationTargets(GameSproutRuntime::IGameObject& object,GameSproutRunt
     }
     return true;
 }
+
+struct SceneRow {
+    std::uint64_t ID;
+    Json::Value Properties;
+    std::string Text;
+};
+struct SceneRowBatch {
+    std::vector<SceneRow> Rows;
+    std::future<void> Worker;
+
+    void Encode() {
+        for(auto& row:Rows)row.Text=SceneSaveSnapshot::Row(row.Properties);
+    }
+    void EncodeAsync() {
+        try { Worker=std::async(std::launch::async,[this]{Encode();}); }
+        catch(const std::system_error&) {Encode();}
+    }
+    template<class Consumer>
+    void Collect(Consumer& consume) {
+        if(Worker.valid())Worker.get();
+        for(auto& row:Rows)consume(row.ID,std::move(row.Text));
+        Rows.clear();
+    }
+};
+
+// Runtime values are read on the calling thread. Workers only own and format
+// bounded batches of JSON. The consumer always runs on the calling thread.
+template<class Consumer>
+class SceneRowEncoder {
+public:
+    SceneRowEncoder(std::size_t rowCount,Consumer consume)
+        :_Consume(std::move(consume)),_BatchCount(rowCount<2*BatchSize?0:
+            std::min({_Batches.size(),rowCount/BatchSize,static_cast<std::size_t>(std::thread::hardware_concurrency())})) {}
+
+    void Add(std::uint64_t id,Json::Value&& properties) {
+        if(_BatchCount<2) {
+            _Consume(id,SceneSaveSnapshot::Row(properties));
+            return;
+        }
+        auto& batch=_Batches[_BatchIndex];
+        batch.Rows.push_back({id,std::move(properties),{}});
+        if(batch.Rows.size()==BatchSize) {
+            batch.EncodeAsync();
+            _BatchIndex=(_BatchIndex+1)%_BatchCount;
+            _Batches[_BatchIndex].Collect(_Consume);
+        }
+    }
+
+    void Finish() {
+        _Batches[_BatchIndex].Encode();
+        for(auto& batch:_Batches)batch.Collect(_Consume);
+    }
+
+private:
+    static constexpr std::size_t BatchSize=256;
+    Consumer _Consume;
+    std::array<SceneRowBatch,3> _Batches;
+    std::size_t _BatchCount;
+    std::size_t _BatchIndex=0;
+};
 }
 
 SceneDirtyState SceneManager::MakeDirtyBaseline(const Json::Value& document) const {
@@ -186,6 +250,14 @@ bool SceneManager::SynchronizeDirtyState(std::string& error) const {
         _DirtyState.OrderDifferent=order!=_DirtyState.BaselineOrder;
         _DirtyState.CurrentOrder.swap(order);
     }
+    SceneRowEncoder rows(changedObjects.size(),[this](std::uint64_t file,std::string text) {
+        const auto baseline=_DirtyState.BaselineNodes.find(file);
+        if(baseline!=_DirtyState.BaselineNodes.end()&&baseline->second==text) {
+            _DirtyState.DifferentNodes.erase(file);_DirtyState.ChangedNodes.erase(file);
+        } else {
+            _DirtyState.DifferentNodes.insert(file);_DirtyState.ChangedNodes[file]=std::move(text);
+        }
+    });
     for(const auto& [id,transformChanged]:targets) {
         auto* object=Runtime()->QueryGameObject(id);
         if(!object||object->GetScene()!=scene) {
@@ -217,14 +289,9 @@ bool SceneManager::SynchronizeDirtyState(std::string& error) const {
         _DirtyState.Errors.erase(file);
         if(HasAnimationBindings(properties))_DirtyState.AnimationOwners.insert(file);
         else _DirtyState.AnimationOwners.erase(file);
-        const auto baseline=_DirtyState.BaselineNodes.find(file);
-        auto text=SceneSaveSnapshot::Row(properties);
-        if(baseline!=_DirtyState.BaselineNodes.end()&&baseline->second==text) {
-            _DirtyState.DifferentNodes.erase(file);_DirtyState.ChangedNodes.erase(file);
-        } else {
-            _DirtyState.DifferentNodes.insert(file);_DirtyState.ChangedNodes[file]=std::move(text);
-        }
+        rows.Add(file,std::move(properties));
     }
+    rows.Finish();
     if(targets.contains(scene->GetInstanceID())||_DirtyState.CurrentRoot["NextObjectID"].asUInt64()!=_ObjectIDs.Next)
         RefreshDirtyRoot(error);
     if(IsTemporaryDocumentContext()&&_DocumentSession->ContentRootFileID&&orderChanged) {

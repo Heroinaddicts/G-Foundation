@@ -291,6 +291,9 @@ private:
     std::uint64_t _NextListener = 0;
     std::size_t _Depth = 0;
     std::size_t _ConstructionDepth = 0;
+    std::uint64_t _NextAuthoringBatch = 0;
+    std::uint64_t _ConstructionAuthoringBatch = 0;
+    std::uint64_t _CommandAuthoringBatch = 0;
     bool _Flushing = false;
     bool _Updating = false;
     void AdvanceShaderClock(float deltaSeconds);

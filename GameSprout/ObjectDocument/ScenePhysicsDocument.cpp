@@ -158,8 +158,8 @@ void ApplySettings(const Settings& settings,const std::string& type,GameSproutRu
 }
 }
 namespace ScenePhysicsDocument {
-bool IsCollider(const std::string& type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider"||type=="GameSproutRuntime.MeshCollider";}
-bool Handles(const std::string& type) {return type=="GameSproutRuntime.Rigidbody"||IsCollider(type);}
+bool IsCollider(std::string_view type) {return type=="GameSproutRuntime.BoxCollider"||type=="GameSproutRuntime.SphereCollider"||type=="GameSproutRuntime.CapsuleCollider"||type=="GameSproutRuntime.MeshCollider";}
+bool Handles(std::string_view type) {return type=="GameSproutRuntime.Rigidbody"||IsCollider(type);}
 void Validate(const Json::Value& value,const std::string& path){Read(value,path);}
 void Apply(const Json::Value& value,GameSproutRuntime::IComponent& component) {
     const auto settings=Read(value,"PhysicsComponent");

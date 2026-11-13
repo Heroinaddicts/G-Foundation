@@ -89,7 +89,7 @@ private:
     bool RefreshDirtyDocument(const Json::Value&,std::string& error) const;
     bool RefreshDirtyRoot(std::string& error) const;
     bool PublishNewIdentities(const std::vector<GameSproutRuntime::IGameObject*>&,std::string& error) const;
-    bool CaptureSubtree(GameSproutRuntime::IGameObject&,Json::Value&,std::string& error) const;
+    bool CaptureSubtree(GameSproutRuntime::IGameObject&,Json::Value&,std::string& error,bool validateDocument=true) const;
     bool DirtyFromSnapshot() const;
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);

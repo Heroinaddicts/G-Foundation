@@ -107,7 +107,8 @@ void Runtime::Notify(GameObjectState& object,SceneNodeEventType type,const char*
                 object.SceneOwner->InvalidateUI();
         }
     }
-    object.SceneOwner->RecordAuthoringChange(object.ID,type,component);
+    const auto authoringBatch=_ConstructionDepth?_ConstructionAuthoringBatch:_CommandAuthoringBatch;
+    object.SceneOwner->RecordAuthoringChange(object.ID,type,component,authoringBatch);
     MarkObjectPropertiesChanged(object.ID,RuntimePropertyChange::Authored);
     // 通知失败不能破坏已提交的对象/组件状态，事件本身不借用节点或组件指针。
     try {

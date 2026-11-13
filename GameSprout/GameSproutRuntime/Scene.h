@@ -32,17 +32,10 @@ public:
         if(after>_AuthoringRevision||_AuthoringRevision-after>_AuthoringChanges.size())return false;
         const auto start=_AuthoringChanges.size()-static_cast<std::size_t>(_AuthoringRevision-after);
         changes.reserve(_AuthoringChanges.size()-start);
-        for(auto index=start;index<_AuthoringChanges.size();++index)changes.push_back(_AuthoringChanges[index]);
+        for(auto index=start;index<_AuthoringChanges.size();++index)changes.push_back(_AuthoringChanges[index].Change);
         return true;
     }
-    void RecordAuthoringChange(std::uint64_t objectID,SceneNodeEventType type,const char* component) {
-        if(type==SceneNodeEventType::OperationFailed)return;
-        ++_AuthoringRevision;
-        try {
-            _AuthoringChanges.push_back({objectID,type,component?component:""});
-            if(_AuthoringChanges.size()>2048)_AuthoringChanges.pop_front();
-        } catch(...) {_AuthoringChanges.clear();}
-    }
+    void RecordAuthoringChange(std::uint64_t objectID,SceneNodeEventType type,const char* component,std::uint64_t batch);
     void ClearMainCameraForNode(std::uint64_t id);
     bool BindObjectIdentity(IGameObject* object,std::uint64_t fileID,std::string& error) override {
         auto* node=State().Owner.Find(object);
@@ -69,7 +62,8 @@ private:
     std::uint64_t _UIRevision=1;
     std::deque<std::uint64_t> _RenderTransformChanges;
     std::uint64_t _AuthoringRevision=1;
-    std::deque<SceneAuthoringChange> _AuthoringChanges;
+    struct AuthoringRecord {SceneAuthoringChange Change;std::uint64_t Batch;};
+    std::deque<AuthoringRecord> _AuthoringChanges;
     bool _VisualPending=false;
 };
 }

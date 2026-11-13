@@ -12,10 +12,13 @@ inline std::string Row(const Json::Value& node) {
     if(!source.empty()&&source.back()=='\n')source.pop_back();
     result.reserve(source.size()+128);
     result="        ";
-    for(std::size_t index=0;index<source.size();++index) {
-        result.push_back(source[index]);
-        if(source[index]=='\n')result+="        ";
+    std::size_t first=0;
+    for(std::size_t newline=source.find('\n');newline!=std::string::npos;newline=source.find('\n',first)) {
+        result.append(source,first,newline-first+1);
+        result+="        ";
+        first=newline+1;
     }
+    result.append(source,first,std::string::npos);
     return result;
 }
 inline const std::string& CurrentRow(const SceneDirtyState& state,std::uint64_t id) {

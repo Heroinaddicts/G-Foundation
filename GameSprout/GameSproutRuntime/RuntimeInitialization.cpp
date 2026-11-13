@@ -11,6 +11,8 @@ bool Runtime::BeginConstruction(std::string& error) {
     if(_ShuttingDown || _ConstructionDepth==std::numeric_limits<std::size_t>::max()) {
         error="Runtime cannot begin object construction";return false;
     }
+    if(!_ConstructionDepth)
+        _ConstructionAuthoringBatch=_CommandAuthoringBatch?_CommandAuthoringBatch:++_NextAuthoringBatch;
     ++_ConstructionDepth;
     return true;
 }

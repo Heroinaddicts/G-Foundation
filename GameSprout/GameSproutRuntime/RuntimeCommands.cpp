@@ -144,8 +144,9 @@ void Runtime::DestroyNow(GameObjectState& state) {
     }
 }
 void Runtime::FlushCommands() noexcept {
-    if(_Flushing || _Depth) return;
+    if(_Flushing || _Depth || _Commands.empty()) return;
     _Flushing=true;
+    _CommandAuthoringBatch=_ConstructionDepth?_ConstructionAuthoringBatch:++_NextAuthoringBatch;
     while(!_Commands.empty()) {
         const Command command=_Commands.front();_Commands.pop_front();
         GameObjectState* object=Find(command.ObjectID);
@@ -179,6 +180,7 @@ void Runtime::FlushCommands() noexcept {
             }
         }
     }
+    _CommandAuthoringBatch=0;
     _Flushing=false;
 }
 }

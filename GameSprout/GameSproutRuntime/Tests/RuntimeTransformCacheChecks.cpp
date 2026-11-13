@@ -140,6 +140,31 @@ void VisualAuthoringBoundary(Runtime& runtime) {
     Check(listener.Nodes==1&&listener.Visuals==2,"Visual self-unsubscribe retained the listener");
     Check(runtime.DestroyScene(scene),"Cannot clean visual fixture");
 }
+void LargeAuthoringBatches(Runtime& runtime) {
+    auto* scene=runtime.CreateScene("Large authoring batches");
+    auto* unaffected=scene->CreateGameObject("Unchanged sibling");
+    const auto beforeCreate=scene->GetAuthoringRevision();
+    std::string error;
+    Check(runtime.BeginConstruction(error),error);
+    auto* root=scene->CreateGameObject("Wide subtree");
+    constexpr unsigned children=2200;
+    for(unsigned index=0;index<children;++index)
+        Check(scene->CreateGameObject("Child",root),"Cannot create authoring fixture child");
+    Check(runtime.EndConstruction(error),error);
+    unaffected->SetName("Following ordinary edit");
+    std::vector<SceneAuthoringChange> changes;
+    Check(scene->GetAuthoringChanges(beforeCreate,changes)&&changes.size()==children+2&&
+          changes.front().ObjectID==root->GetInstanceID()&&changes.back().Type==SceneNodeEventType::Rename,
+          "A large construction lost its initial authoring changes");
+    const auto rootID=root->GetInstanceID();
+    const auto beforeDelete=scene->GetAuthoringRevision();
+    Check(scene->DestroyGameObject(root),"Cannot delete authoring fixture");
+    Check(scene->GetAuthoringChanges(beforeDelete,changes)&&changes.size()==children+1&&
+          changes.back().ObjectID==rootID&&changes.back().Type==SceneNodeEventType::Destroy,
+          "A large deletion lost its initial authoring changes");
+    Check(!scene->GetAuthoringChanges(beforeCreate,changes),"Expired authoring batch was retained");
+    Check(runtime.DestroyScene(scene),"Cannot clean large authoring fixture");
+}
 void SuspendedScenes(Runtime& runtime) {
     Internal::RegisterScriptClass<TickScript>("tick-cache-fixture","TickScript",__FILE__,{"fixture",1},{});
     std::string error;Check(runtime.RegisterScriptType(Internal::ScriptModuleTypes().back(),error),error);
@@ -161,7 +186,7 @@ void SuspendedScenes(Runtime& runtime) {
 }
 }
 int main() {
-    try{Runtime runtime;Transforms(runtime);VisualAuthoringBoundary(runtime);SuspendedScenes(runtime);
+    try{Runtime runtime;Transforms(runtime);VisualAuthoringBoundary(runtime);LargeAuthoringBatches(runtime);SuspendedScenes(runtime);
         std::cout<<"PASS transform cache: ancestors, reparent/deferred/detached/deep trees, authored/animation/physics precedence, suspension preserves initialization/events and resumes ticks\n";return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
 }

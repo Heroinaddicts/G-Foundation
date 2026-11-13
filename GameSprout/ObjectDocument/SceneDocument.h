@@ -2,6 +2,7 @@
 
 #include "GameSproutRuntimeApi.h"
 #include "JsonCpp/json.hpp"
+#include <chrono>
 #include <string>
 #include <map>
 
@@ -37,6 +38,38 @@ private:
 };
 // 当前 Unity 坐标编辑器源场景。只生成数据，不做文件 IO，也不创建预处理产物。
 Json::Value CreateDefault(const std::string& name);
+
+class SceneAssembly;
+class PreparedScene {
+public:
+    PreparedScene() noexcept = default;
+    ~PreparedScene();
+    PreparedScene(PreparedScene&&) noexcept;
+    PreparedScene& operator=(PreparedScene&&) noexcept;
+    PreparedScene(const PreparedScene&) = delete;
+    PreparedScene& operator=(const PreparedScene&) = delete;
+    // After all assemblies finish, transfer the owned JSON without copying it.
+    Json::Value ReleaseDocument();
+private:
+    struct Data;
+    Data* _Data=nullptr;
+    friend bool Prepare(Json::Value&&,PreparedScene&,std::string&);
+    friend SceneAssembly* BeginAssembly(const PreparedScene&,GameSproutRuntime::IGameSproutRuntime&,std::string&);
+    friend bool Instantiate(const PreparedScene&,GameSproutRuntime::IGameSproutRuntime&,GameSproutRuntime::IScene*&,ObjectIDs&,std::string&);
+};
+
+// Pure data preparation. The result owns the JSON and may move between threads.
+bool Prepare(Json::Value&& document,PreparedScene& output,std::string& error);
+enum class AssemblyStatus { Pending,Complete,Failed };
+// All assembly operations run on the Runtime owner thread. The caller holds
+// the prepared document and excludes other world edits until completion.
+SceneAssembly* BeginAssembly(const PreparedScene&,GameSproutRuntime::IGameSproutRuntime&,std::string& error);
+AssemblyStatus AdvanceAssembly(SceneAssembly&,std::chrono::steady_clock::time_point deadline,
+                               GameSproutRuntime::IScene*& output,ObjectIDs&,std::string& error);
+// Rolls back an unfinished candidate and releases the construction barrier.
+void DestroyAssembly(SceneAssembly*) noexcept;
+bool Instantiate(const PreparedScene&,GameSproutRuntime::IGameSproutRuntime&,
+                 GameSproutRuntime::IScene*& output,ObjectIDs&,std::string& error);
 
 // 宿主线程调用，在 Runtime 更新/遍历/事件回调之外执行。
 // 先校验完整文档再创建候选场景；失败回收候选，output 保留原值。

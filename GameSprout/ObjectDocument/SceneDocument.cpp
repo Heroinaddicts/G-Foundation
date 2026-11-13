@@ -19,6 +19,8 @@
 #include <set>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -75,6 +77,12 @@ std::string Name(const Json::Value& value, const std::string& path) {
     if (result.empty() || result.size()>MaximumNameBytes || result.find('\0')!=std::string::npos)
         Fail(path,"name must contain 1..1024 bytes without NUL");
     return result;
+}
+std::string_view ComponentType(const Json::Value& component) {
+    const char* begin=nullptr;
+    const char* end=nullptr;
+    if(!component.isObject()||!component["Type"].getString(&begin,&end))return {};
+    return {begin,static_cast<std::size_t>(end-begin)};
 }
 float Number(const Json::Value& value, const std::string& path) {
     if (!value.isNumeric()) Fail(path,"expected number");
@@ -139,16 +147,17 @@ Interface* Component(GameSproutRuntime::IGameObject* object, const std::string& 
 }
 
 // object=nullptr 为纯校验；有对象时执行已经校验过的设置。所有可选字段均使用 API 默认值。
-void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* object, const std::string& path,
-                   GameSproutRuntime::IGameSproutRuntime* runtime=nullptr) {
+std::string_view ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* object, const std::string& path,
+                              GameSproutRuntime::IGameSproutRuntime* runtime=nullptr) {
     if(value.isObject()&&value.isMember("ID")) {
         if(!Unsigned(value["ID"],path+".ID"))Fail(path+".ID","component ID must be nonzero");
         // ID is document metadata, already validated here. Borrow the original
         // component instead of recursively deep-copying Settings/Shape/Fields
         // merely to remove that key during both validation and assembly.
     }
-    if (!value.isObject() || !value["Type"].isString()) Fail(path,"component requires Type string");
-    const std::string type=value["Type"].asString();
+    const auto type=ComponentType(value);
+    if(type.empty()&&(!value.isObject()||!value["Type"].isString()))
+        Fail(path,"component requires Type string");
     if (type=="GameSproutRuntime.Transform") {
         Members(value,path,{"ID","Type","Position","Rotation","Scale"});
         const auto position=Vector3Member(value,"Position",{},path);
@@ -312,7 +321,8 @@ void ComponentData(const Json::Value& value, GameSproutRuntime::IGameObject* obj
             if(!runtime)Fail(path,"script restoration requires Runtime");
             SceneScriptDocument::Create(value,*object,*runtime);
         }
-    } else Fail(path+".Type","unknown component: "+type);
+    } else Fail(path+".Type","unknown component: "+std::string(type));
+    return type;
 }
 
 struct Node {
@@ -341,6 +351,54 @@ struct Plan {
     std::vector<Node> Nodes;
     std::map<std::uint64_t,std::size_t> Indices;
 };
+Node ReadNode(const Json::Value& object,const std::string& path,std::vector<std::string_view>& types) {
+    Members(object,path,{"ID","ParentID","Name","Active","Layer","TagID","StaticFlags","Components"});
+    Node node;
+    node.ID=Unsigned(object["ID"],path+".ID");
+    if(!node.ID)Fail(path+".ID","zero or duplicate object ID");
+    if(object.isMember("ParentID"))node.ParentID=Unsigned(object["ParentID"],path+".ParentID");
+    node.Name=Name(object["Name"],path+".Name");
+    node.Active=BoolMember(object,"Active",true,path);
+    if(object.isMember("Layer")) {
+        const auto layer=Unsigned(object["Layer"],path+".Layer");
+        if(layer>31)Fail(path+".Layer","expected 0..31");
+        node.Layer=static_cast<std::uint8_t>(layer);
+    }
+    if(object.isMember("TagID"))node.TagID=Unsigned(object["TagID"],path+".TagID");
+    if(object.isMember("StaticFlags"))node.Static=StaticFlagsValue(object["StaticFlags"],path+".StaticFlags");
+    node.Components=&object["Components"];
+    if(!node.Components->isArray()||node.Components->size()>MaximumComponents)
+        Fail(path+".Components","expected at most 1024 components");
+    types.clear();
+    std::set<std::uint64_t> scriptInstances;
+    std::set<std::string> scriptTypes;
+    for(Json::ArrayIndex index=0;index<node.Components->size();++index) {
+        const auto& component=(*node.Components)[index];
+        const std::string componentPath=path+".Components["+std::to_string(index)+"]";
+        const auto type=ComponentData(component,nullptr,componentPath);
+        if(type=="GameSproutRuntime.ScriptComponent") {
+            if(!scriptInstances.insert(component["InstanceID"].asUInt64()).second)
+                Fail(componentPath+".Type","duplicate component identity");
+            if(!scriptTypes.insert(component["ScriptTypeID"].asString()).second)
+                Fail(componentPath+".ScriptTypeID","only one component of the same script type is allowed on an object");
+        } else if(!ScenePhysicsDocument::IsCollider(type)) {
+            if(std::find(types.begin(),types.end(),type)!=types.end())
+                Fail(componentPath+".Type","duplicate component identity");
+            types.push_back(type);
+        }
+        // Colliders may repeat. Explicit IDs are checked separately against
+        // the other authored object and component IDs.
+        node.Camera=node.Camera||type=="GameSproutRuntime.Camera";
+    }
+    return node;
+}
+void ValidateComponentIDs(const Json::Value& components,std::unordered_set<std::uint64_t>& stableIDs,std::uint64_t& maximum) {
+    for(const auto& component:components)if(component.isMember("ID")) {
+        const auto id=Unsigned(component["ID"],"Component.ID");
+        if(!id||!stableIDs.insert(id).second)Fail("Component.ID","zero or duplicate stable ID");
+        maximum=std::max(maximum,id);
+    }
+}
 // Project definitions are installed by the host before opening any document.
 // Reject undefined identities before creating nodes or running component hooks.
 void ValidateProjectTags(const Plan& plan,const GameSproutRuntime::IGameSproutRuntime& runtime) {
@@ -353,21 +411,29 @@ void ValidateProjectTags(const Plan& plan,const GameSproutRuntime::IGameSproutRu
 void ComponentIdentities(const Json::Value* data,GameSproutRuntime::IGameObject& object,SceneDocument::ObjectIDs& ids,
     std::vector<GameSproutRuntime::SceneComponentBinding>* bindings=nullptr) {
     std::bitset<MaximumComponents> consumed;
-    for(std::size_t index=0;index<object.GetComponentCount();++index) {
+    const auto entryCount=data?data->size():0;
+    const auto componentCount=object.GetComponentCount();
+    Json::ArrayIndex firstUnmatched=0;
+    for(std::size_t index=0;index<componentCount;++index) {
         auto* component=object.GetComponentAt(index);
         if(!component)Fail("Component.ID","invalid Runtime component");
+        const auto* typeName=component->GetTypeName();
+        if(!typeName)Fail("Component.ID","invalid Runtime component type");
+        const std::string_view type=typeName;
+        const auto* script=type=="GameSproutRuntime.ScriptComponent"?
+            dynamic_cast<GameSproutRuntime::IScriptComponent*>(component):nullptr;
+        const auto scriptInstance=script?script->GetScriptInstanceID():0;
+        // Saved scenes write components in Runtime slot order. Keep matching
+        // by identity when order differs, including repeatable colliders.
         std::uint64_t id=0;
-        if(data)for(Json::ArrayIndex entry=0;entry<data->size();++entry) {
+        for(Json::ArrayIndex entry=firstUnmatched;entry<entryCount;++entry) {
             if(consumed[entry])continue;
             const auto& fields=(*data)[entry];
-            const char* begin=nullptr;
-            const char* end=nullptr;
-            if(!fields["Type"].getString(&begin,&end) ||
-               std::string_view(begin,static_cast<std::size_t>(end-begin))!=component->GetTypeName())continue;
-            if(auto* script=dynamic_cast<GameSproutRuntime::IScriptComponent*>(component))
-                if(fields["InstanceID"].asUInt64()!=script->GetScriptInstanceID())continue;
-            if(fields.isMember("ID"))id=fields["ID"].asUInt64();
+            if(ComponentType(fields)!=type)continue;
+            if(script&&fields["InstanceID"].asUInt64()!=scriptInstance)continue;
+            id=fields["ID"].asUInt64();
             consumed.set(entry);
+            while(firstUnmatched<entryCount&&consumed[firstUnmatched])++firstUnmatched;
             break;
         }
         if(!id) {
@@ -418,16 +484,13 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     if (document.isMember("RootComponents")) {
         plan.RootComponents=&document["RootComponents"];
         if (!plan.RootComponents->isArray() || plan.RootComponents->size()>16) Fail("Scene.RootComponents","expected at most 16 components");
-        std::set<std::string> types;
+        std::set<std::string_view> types;
         for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c) {
             const auto& component=(*plan.RootComponents)[c];
             const std::string path="Scene.RootComponents["+std::to_string(c)+"]";
-            ComponentData(component,nullptr,path);
-            const std::string type=component["Type"].asString();
+            const auto type=ComponentData(component,nullptr,path);
             if(SceneAnimationDocument::Handles(type)||ScenePhysicsDocument::Handles(type)||SceneLightingDocument::Handles(type)||type=="GameSproutRuntime.ScriptComponent")Fail(path,"animation/physics/light/script components require a regular object, not the scene root");
-            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):
-                ScenePhysicsDocument::IsCollider(type)?type+":"+(component.isMember("ID")?std::to_string(component["ID"].asUInt64()):"new"+std::to_string(c)):type;
-            if (!types.insert(identity).second) Fail(path,"duplicate component identity");
+            if (!types.insert(type).second) Fail(path,"duplicate component identity");
             rootCamera=rootCamera || type=="GameSproutRuntime.Camera";
             if (type=="GameSproutRuntime.Transform") {
                 const auto p=Vector3Member(component,"Position",{},path);
@@ -446,55 +509,21 @@ Plan ValidatePlan(const Json::Value& document, bool checkReferences=true) {
     const auto& objects=document["Objects"];
     if (!objects.isArray() || objects.size()>MaximumObjects) Fail("Scene.Objects","expected array of at most 100000 objects");
     plan.Nodes.reserve(objects.size());
+    std::vector<std::string_view> types;
     for (Json::ArrayIndex i=0;i<objects.size();++i) {
-        const auto& object=objects[i];
         const std::string path="Objects["+std::to_string(i)+"]";
-        Members(object,path,{"ID","ParentID","Name","Active","Layer","TagID","StaticFlags","Components"});
-        Node node;
-        node.ID=Unsigned(object["ID"],path+".ID");
-        if (!node.ID || !plan.Indices.emplace(node.ID,plan.Nodes.size()).second) Fail(path+".ID","zero or duplicate object ID");
-        if (object.isMember("ParentID")) node.ParentID=Unsigned(object["ParentID"],path+".ParentID");
-        node.Name=Name(object["Name"],path+".Name");
-        node.Active=BoolMember(object,"Active",true,path);
-        if(object.isMember("Layer")) {
-            const auto layer=Unsigned(object["Layer"],path+".Layer");
-            if(layer>31)Fail(path+".Layer","expected 0..31");
-            node.Layer=static_cast<std::uint8_t>(layer);
-        }
-        if(object.isMember("TagID"))node.TagID=Unsigned(object["TagID"],path+".TagID");
-        if(object.isMember("StaticFlags"))node.Static=StaticFlagsValue(object["StaticFlags"],path+".StaticFlags");
-        node.Components=&object["Components"];
-        if (!node.Components->isArray() || node.Components->size()>MaximumComponents) Fail(path+".Components","expected at most 1024 components");
-        std::set<std::string> types;
-        for (Json::ArrayIndex c=0;c<node.Components->size();++c) {
-            const auto& component=(*node.Components)[c];
-            const std::string componentPath=path+".Components["+std::to_string(c)+"]";
-            ComponentData(component,nullptr,componentPath);
-            const std::string type=component["Type"].asString();
-            const auto identity=type=="GameSproutRuntime.ScriptComponent"?type+":"+std::to_string(component["InstanceID"].asUInt64()):
-                ScenePhysicsDocument::IsCollider(type)?type+":"+(component.isMember("ID")?std::to_string(component["ID"].asUInt64()):"new"+std::to_string(c)):type;
-            if (!types.insert(identity).second) Fail(componentPath+".Type","duplicate component identity");
-            if(type=="GameSproutRuntime.ScriptComponent" &&
-                !types.insert("ScriptType:"+component["ScriptTypeID"].asString()).second)
-                Fail(componentPath+".ScriptTypeID","only one component of the same script type is allowed on an object");
-            node.Camera=node.Camera || type=="GameSproutRuntime.Camera";
-        }
+        auto node=ReadNode(objects[i],path,types);
+        if(!plan.Indices.emplace(node.ID,plan.Nodes.size()).second)Fail(path+".ID","zero or duplicate object ID");
         plan.Nodes.push_back(std::move(node));
     }
     for (const auto& node:plan.Nodes)
         if (node.ParentID && !plan.Indices.count(node.ParentID)) Fail("Scene.Objects","missing parent for ID "+std::to_string(node.ID));
     std::uint64_t maximum=0;
-    std::set<std::uint64_t> stableIDs;
+    std::unordered_set<std::uint64_t> stableIDs;
+    stableIDs.reserve(plan.Nodes.size());
     for (const auto& node:plan.Nodes) {maximum=std::max(maximum,node.ID);stableIDs.insert(node.ID);}
-    const auto componentIDs=[&](const Json::Value& components) {
-        for(const auto& component:components)if(component.isMember("ID")) {
-            const auto id=Unsigned(component["ID"],"Component.ID");
-            if(!id||!stableIDs.insert(id).second)Fail("Component.ID","zero or duplicate stable ID");
-            maximum=std::max(maximum,id);
-        }
-    };
-    if(plan.RootComponents)componentIDs(*plan.RootComponents);
-    for(const auto& node:plan.Nodes)componentIDs(*node.Components);
+    if(plan.RootComponents)ValidateComponentIDs(*plan.RootComponents,stableIDs,maximum);
+    for(const auto& node:plan.Nodes)ValidateComponentIDs(*node.Components,stableIDs,maximum);
     plan.Next=maximum==std::numeric_limits<std::uint64_t>::max()?0:maximum+1;
     if (document.isMember("NextObjectID")) {
         plan.Next=Unsigned(document["NextObjectID"],"Scene.NextObjectID");
@@ -537,9 +566,90 @@ Json::Value Array(std::initializer_list<float> values) {
     for (float value:values) result.append(value);
     return result;
 }
+
+struct SceneAssemblyPlan {
+    struct AnimationBinding {
+        std::uint64_t Owner;
+        const Json::Value* Component;
+    };
+    Plan Values;
+    std::vector<const Node*> ParentFirst;
+    std::vector<AnimationBinding> Animation;
+    std::vector<const Node*> TagOwners;
+
+    explicit SceneAssemblyPlan(const Json::Value& document):Values(ValidatePlan(document)) {
+        // Retain source sibling order even when a child precedes its parent.
+        std::map<std::uint64_t,std::vector<const Node*>> children;
+        std::vector<AnimationBinding> skins;
+        std::unordered_set<std::uint64_t> tags{Values.RootTagID};
+        for(const auto& node:Values.Nodes) {
+            children[node.ParentID].push_back(&node);
+            if(tags.insert(node.TagID).second)TagOwners.push_back(&node);
+            for(const auto& component:*node.Components) {
+                const auto type=ComponentType(component);
+                if(type=="GameSproutRuntime.Animator")Animation.push_back({node.ID,&component});
+                else if(type=="GameSproutRuntime.SkinnedMeshRenderer")skins.push_back({node.ID,&component});
+            }
+        }
+        Animation.insert(Animation.end(),skins.begin(),skins.end());
+        if(const auto roots=children.find(0);roots!=children.end())ParentFirst=std::move(roots->second);
+        ParentFirst.reserve(Values.Nodes.size());
+        for(std::size_t index=0;index<ParentFirst.size();++index) {
+            const auto descendants=children.find(ParentFirst[index]->ID);
+            if(descendants!=children.end())
+                ParentFirst.insert(ParentFirst.end(),descendants->second.begin(),descendants->second.end());
+        }
+    }
+
+    void ValidateTags(const GameSproutRuntime::RuntimeProjectSettings& settings) const {
+        std::unordered_set<std::uint64_t> defined;
+        defined.reserve(settings.Tags.size());
+        for(const auto& tag:settings.Tags)defined.insert(tag.ID);
+        if(!defined.contains(Values.RootTagID))Fail("Scene.RootTagID","undefined project Tag identity");
+        for(const auto* node:TagOwners)if(!defined.contains(node->TagID))
+            Fail("Object "+std::to_string(node->ID)+".TagID","undefined project Tag identity");
+    }
+};
 }
 
 namespace SceneDocument {
+struct PreparedScene::Data {
+    Json::Value Document;
+    SceneAssemblyPlan Plan;
+
+    explicit Data(Json::Value&& document):Document(std::move(document)),Plan(Document) {}
+};
+
+PreparedScene::~PreparedScene() {delete _Data;}
+PreparedScene::PreparedScene(PreparedScene&& other) noexcept:_Data(std::exchange(other._Data,nullptr)) {}
+PreparedScene& PreparedScene::operator=(PreparedScene&& other) noexcept {
+    if(this!=&other) {
+        delete _Data;
+        _Data=std::exchange(other._Data,nullptr);
+    }
+    return *this;
+}
+Json::Value PreparedScene::ReleaseDocument() {
+    Json::Value document;
+    if(_Data) {
+        document.swap(_Data->Document);
+        delete std::exchange(_Data,nullptr);
+    }
+    return document;
+}
+
+bool Prepare(Json::Value&& document,PreparedScene& output,std::string& error) {
+    error.clear();
+    try {
+        auto* data=new PreparedScene::Data(std::move(document));
+        delete output._Data;
+        output._Data=data;
+        return true;
+    } catch(const std::exception& exception) {error=exception.what();}
+    catch(...) {error="Scene: unexpected preparation failure";}
+    return false;
+}
+
 bool RestoreComponent(const Json::Value& data,GameSproutRuntime::IGameObject& object,
                       GameSproutRuntime::IGameSproutRuntime& runtime,std::string& error) {
     error.clear();
@@ -693,116 +803,242 @@ bool ValidateSubtree(const Json::Value& document,std::string& error) {
     catch(const std::exception& exception){error=exception.what();return false;}
 }
 bool ValidateProperties(const Json::Value& properties,bool sceneRoot,std::string& error) {
-    Json::Value document(Json::objectValue);
     if(sceneRoot) {
-        document=properties;
+        auto document=properties;
         document["MainCameraID"]=Json::UInt64(0);
         document.removeMember("RootMainCamera");
         document.removeMember("Annotations");
-    } else {
-        document["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);document["Name"]="Property validation";
-        document["MainCameraID"]=Json::UInt64(0);
+        document["Objects"]=Json::Value(Json::arrayValue);
+        return ValidateSubtree(document,error);
     }
-    document["Objects"]=Json::Value(Json::arrayValue);
-    if(!sceneRoot) {
-        Json::Value node=properties;node["ParentID"]=Json::UInt64(0);document["Objects"].append(std::move(node));
-    }
-    return ValidateSubtree(document,error);
-}
-bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRuntime& runtime,
-                 GameSproutRuntime::IScene*& output, ObjectIDs& ids, std::string& error) {
-    GameSproutRuntime::IScene* candidate=nullptr;
-    std::uint64_t candidateID=0;
-    bool constructionOpen=false;
     error.clear();
-    if (runtime.IsExecuting()) {
-        error="Scene: Runtime is executing an update, render, traversal or event callback; synchronous scene loading is not allowed";
+    try {
+        std::vector<std::string_view> types;
+        const auto node=ReadNode(properties,"Objects[0]",types);
+        std::unordered_set<std::uint64_t> stableIDs{node.ID};
+        auto maximum=node.ID;
+        ValidateComponentIDs(*node.Components,stableIDs,maximum);
+        return true;
+    } catch(const std::exception& exception) {error=exception.what();}
+    catch(...) {error="Scene: unexpected property validation failure";}
+    return false;
+}
+class SceneAssembly {
+public:
+    SceneAssembly(const SceneAssemblyPlan& plan,GameSproutRuntime::IGameSproutRuntime& runtime,bool incremental)
+        :_Plan(plan),_Runtime(runtime),_BatchSize(incremental?256:std::numeric_limits<std::size_t>::max()) {}
+    ~SceneAssembly() {
+        if(!_Candidate&&!_ConstructionOpen)return;
+        try {std::string ignored;Rollback(ignored);}
+        catch(...) {}
+    }
+
+    bool Begin(std::string& error) {
+        error.clear();
+        if(_Runtime.IsExecuting()) {
+            error="Scene: Runtime is executing an update, render, traversal or event callback";return false;
+        }
+        try {
+            _Plan.ValidateTags(_Runtime.GetProjectSettings());
+            _IDs.Next=_Plan.Values.Next;
+            _ObjectBindings.reserve(std::min(_BatchSize,_Plan.Values.Nodes.size()+1));
+            _ComponentBindings.reserve(std::min(_BatchSize,_Plan.Values.Nodes.size()+1));
+            if(!_Runtime.BeginConstruction(error))return false;
+            _ConstructionOpen=true;
+            _Candidate=_Runtime.CreateScene(_Plan.Values.Name);
+            if(!_Candidate)Fail("Scene","Runtime could not create scene");
+            _CandidateID=_Candidate->GetInstanceID();
+            if(!_Candidate->SetEnvironmentLighting(_Plan.Values.EnvironmentLighting))
+                Fail("Scene.EnvironmentLighting","Runtime rejected environment lighting");
+            return true;
+        } catch(const std::exception& exception) {error=exception.what();}
+        catch(...) {error="Scene: unexpected instantiation failure";}
+        Rollback(error);
         return false;
     }
-    try {
-        const Plan plan=ValidatePlan(document);
-        ValidateProjectTags(plan,runtime);
-        if(!runtime.BeginConstruction(error))return false;
-        constructionOpen=true;
-        candidate=runtime.CreateScene(plan.Name);
-        if (!candidate) Fail("Scene","Runtime could not create scene");
-        candidateID=candidate->GetInstanceID();
-        if(!candidate->SetEnvironmentLighting(plan.EnvironmentLighting))Fail("Scene.EnvironmentLighting","Runtime rejected environment lighting");
-        std::map<std::uint64_t,GameSproutRuntime::IGameObject*> objects;
-        ObjectIDs candidateIDs;
-        candidateIDs.Next=plan.Next;
-        // Build each node under its final parent, after that parent exists.
-        // The per-parent lists retain file order even when children precede their
-        // parent in the source. Avoid a temporary N-wide root followed by N
-        // ordered erases/reparents and repeated subtree initialization requests.
-        std::map<std::uint64_t,std::vector<const Node*>> children;
-        for(const auto& node:plan.Nodes)children[node.ParentID].push_back(&node);
-        std::vector<const Node*> pending;
-        pending.reserve(plan.Nodes.size());
-        if(const auto roots=children.find(0);roots!=children.end())pending=roots->second;
-        for(std::size_t index=0;index<pending.size();++index) {
-            const auto& node=*pending[index];
-            auto* parent=node.ParentID?objects.at(node.ParentID):candidate;
-            auto* object=candidate->CreateGameObject(node.Name,parent);
-            if(!object)Fail("Object "+std::to_string(node.ID),"Runtime could not create object");
-            objects.emplace(node.ID,object);
-            candidateIDs.RuntimeToFile.emplace(object->GetInstanceID(),node.ID);
-            if(const auto descendants=children.find(node.ID);descendants!=children.end())
-                pending.insert(pending.end(),descendants->second.begin(),descendants->second.end());
+
+    AssemblyStatus Advance(std::chrono::steady_clock::time_point deadline,GameSproutRuntime::IScene*& output,
+                           ObjectIDs& ids,std::string& error) {
+        error.clear();
+        if(!_Candidate||!_ConstructionOpen) {
+            error="Scene: no open assembly";return AssemblyStatus::Failed;
         }
-        // Source identities are values; Runtime alone resolves them to native
-        // pointers once the complete assembly is ready for script callbacks.
-        std::vector<GameSproutRuntime::SceneObjectIdentity> identities;
-        identities.reserve(plan.Nodes.size()+1);
-        identities.push_back({candidate->GetInstanceID(),0});
-        for(const auto& node:plan.Nodes)identities.push_back({objects.at(node.ID)->GetInstanceID(),node.ID});
-        if(!runtime.BindSceneObjectIdentities(candidate,identities,error))Fail("Scene.Identity",error);
-        for (const auto& node:plan.Nodes) {
-            auto* object=objects.at(node.ID);
-            for (Json::ArrayIndex c=0;c<node.Components->size();++c)
-                ComponentData((*node.Components)[c],object,"Object "+std::to_string(node.ID)+".Components["+std::to_string(c)+"]",&runtime);
+        if(_Runtime.IsExecuting()) {
+            error="Scene: assembly must advance outside Runtime callbacks";return AssemblyStatus::Failed;
+        }
+        try {
+            if(_Runtime.QueryGameObject(_CandidateID)!=_Candidate)Fail("Scene","candidate scene no longer exists");
+            do {
+                if(Step(error)) {
+                    ids.RuntimeToFile.swap(_IDs.RuntimeToFile);ids.Next=_IDs.Next;
+                    ids.SwapComponentIdentities(_IDs);
+                    output=std::exchange(_Candidate,nullptr);
+                    return AssemblyStatus::Complete;
+                }
+            } while(deadline==std::chrono::steady_clock::time_point::max()||std::chrono::steady_clock::now()<deadline);
+            return AssemblyStatus::Pending;
+        } catch(const std::exception& exception) {error=exception.what();}
+        catch(...) {error="Scene: unexpected instantiation failure";}
+        Rollback(error);
+        return AssemblyStatus::Failed;
+    }
+
+private:
+    enum class Stage { Objects,ObjectIdentities,Components,ComponentIdentities,Animation,Transforms,Finish };
+
+    void Next(Stage stage) {_Stage=stage;_Index=0;}
+
+    bool Step(std::string& error) {
+        const auto& plan=_Plan.Values;
+        switch(_Stage) {
+        case Stage::Objects: {
+            if(_Index==_Plan.ParentFirst.size()) {Next(Stage::ObjectIdentities);return false;}
+            const auto& node=*_Plan.ParentFirst[_Index++];
+            auto* parent=node.ParentID?_Objects.at(node.ParentID):_Candidate;
+            auto* object=_Candidate->CreateGameObject(node.Name,parent);
+            if(!object)Fail("Object "+std::to_string(node.ID),"Runtime could not create object");
+            _Objects.emplace(node.ID,object);
+            _IDs.RuntimeToFile.emplace(object->GetInstanceID(),node.ID);
+            return false;
+        }
+        case Stage::ObjectIdentities: {
+            if(!_Index&&_ObjectBindings.empty())_ObjectBindings.push_back({_CandidateID,0});
+            while(_Index<plan.Nodes.size()&&_ObjectBindings.size()<_BatchSize) {
+                const auto& node=plan.Nodes[_Index++];
+                _ObjectBindings.push_back({_Objects.at(node.ID)->GetInstanceID(),node.ID});
+            }
+            if(!_Runtime.BindSceneObjectIdentities(_Candidate,_ObjectBindings,error))Fail("Scene.Identity",error);
+            _ObjectBindings.clear();
+            if(_Index==plan.Nodes.size())Next(Stage::Components);
+            return false;
+        }
+        case Stage::Components: {
+            if(_Index==plan.Nodes.size()) {
+                if(plan.RootComponents)for(Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
+                    ComponentData((*plan.RootComponents)[c],_Candidate,"Scene.RootComponents["+std::to_string(c)+"]",&_Runtime);
+                ComponentIdentities(plan.RootComponents,*_Candidate,_IDs,&_ComponentBindings);
+                Next(Stage::ComponentIdentities);
+                return false;
+            }
+            const auto& node=plan.Nodes[_Index++];
+            auto* object=_Objects.at(node.ID);
+            const std::string path="Object "+std::to_string(node.ID)+".Components[";
+            for(Json::ArrayIndex c=0;c<node.Components->size();++c)
+                ComponentData((*node.Components)[c],object,path+std::to_string(c)+"]",&_Runtime);
             if(!object->SetLayer(node.Layer)||!object->SetTagID(node.TagID))
                 Fail("Object.TagLayer","Runtime rejected Layer or undefined TagID");
             if(!object->SetStaticFlags(node.Static))Fail("Object.StaticFlags","Runtime rejected static authoring flags");
             object->SetActive(node.Active);
+            return false;
         }
-        if (plan.RootComponents) for (Json::ArrayIndex c=0;c<plan.RootComponents->size();++c)
-            ComponentData((*plan.RootComponents)[c],candidate,"Scene.RootComponents["+std::to_string(c)+"]",&runtime);
-        std::vector<GameSproutRuntime::SceneComponentBinding> componentBindings;
-        ComponentIdentities(plan.RootComponents,*candidate,candidateIDs,&componentBindings);
-        for(const auto& node:plan.Nodes)
-            ComponentIdentities(node.Components,*objects.at(node.ID),candidateIDs,&componentBindings);
-        if(!candidate->BindAuthoringIdentities({},componentBindings,error))Fail("Component.Identity",error);
-        SceneAnimationDocument::Bind(document,*candidate,objects);
-        if(!candidate->SetLayer(plan.RootLayer)||!candidate->SetTagID(plan.RootTagID))
-            Fail("Scene.TagLayer","Runtime rejected root Layer or undefined TagID");
-        if(!candidate->SetStaticFlags(plan.RootStatic))Fail("Scene.RootStaticFlags","Runtime rejected static authoring flags");
-        candidate->SetActive(plan.RootActive);
-        for (const auto& node:plan.Nodes) {
-            const auto world=objects.at(node.ID)->GetTransform()->GetWorldMatrix();
-            for (float value:world.Data) if (!std::isfinite(value)) Fail("Object "+std::to_string(node.ID),"world transform overflows");
+        case Stage::ComponentIdentities: {
+            if(_Index<plan.Nodes.size()) {
+                const auto& node=plan.Nodes[_Index++];
+                ComponentIdentities(node.Components,*_Objects.at(node.ID),_IDs,&_ComponentBindings);
+            }
+            if(_ComponentBindings.size()>=_BatchSize||_Index==plan.Nodes.size()) {
+                if(!_Candidate->BindAuthoringIdentities({},_ComponentBindings,error))Fail("Component.Identity",error);
+                _ComponentBindings.clear();
+            }
+            if(_Index==plan.Nodes.size())Next(Stage::Animation);
+            return false;
         }
-        auto* camera=plan.RootMainCamera?candidate->GetComponent<GameSproutRuntime::ICameraComponent>():
-            plan.CameraID?objects.at(plan.CameraID)->GetComponent<GameSproutRuntime::ICameraComponent>():nullptr;
-        if (!candidate->SetMainCamera(camera)) Fail("Scene.MainCameraID","Runtime rejected main camera");
-        constructionOpen=false;
-        if(!runtime.EndConstruction(error))Fail("Scene",error.empty()?"Runtime could not finish scene initialization":error);
-        if(runtime.QueryGameObject(candidateID)!=candidate)Fail("Scene","Scene was destroyed during initialization");
-        ids.RuntimeToFile.swap(candidateIDs.RuntimeToFile);ids.Next=candidateIDs.Next;
-        ids.SwapComponentIdentities(candidateIDs);
-        output=candidate;
-        return true;
-    } catch (const std::exception& exception) {
-        error=exception.what();
-    } catch (...) {
-        error="Scene: unexpected instantiation failure";
+        case Stage::Animation: {
+            if(_Index<_Plan.Animation.size()) {
+                const auto& binding=_Plan.Animation[_Index++];
+                auto& owner=*_Objects.at(binding.Owner);
+                if(ComponentType(*binding.Component)=="GameSproutRuntime.Animator")
+                    SceneAnimationDocument::BindAnimator(*binding.Component,owner,_Objects);
+                else SceneAnimationDocument::BindSkinnedRenderer(*binding.Component,owner,_Objects);
+                return false;
+            }
+            if(!_Candidate->SetLayer(plan.RootLayer)||!_Candidate->SetTagID(plan.RootTagID))
+                Fail("Scene.TagLayer","Runtime rejected root Layer or undefined TagID");
+            if(!_Candidate->SetStaticFlags(plan.RootStatic))Fail("Scene.RootStaticFlags","Runtime rejected static authoring flags");
+            _Candidate->SetActive(plan.RootActive);
+            Next(Stage::Transforms);
+            return false;
+        }
+        case Stage::Transforms: {
+            if(_Index==plan.Nodes.size()) {Next(Stage::Finish);return false;}
+            const auto& node=plan.Nodes[_Index++];
+            const auto world=_Objects.at(node.ID)->GetTransform()->GetWorldMatrix();
+            for(float value:world.Data)if(!std::isfinite(value))
+                Fail("Object "+std::to_string(node.ID),"world transform overflows");
+            return false;
+        }
+        case Stage::Finish: {
+            auto* camera=plan.RootMainCamera?_Candidate->GetComponent<GameSproutRuntime::ICameraComponent>():
+                plan.CameraID?_Objects.at(plan.CameraID)->GetComponent<GameSproutRuntime::ICameraComponent>():nullptr;
+            if(!_Candidate->SetMainCamera(camera))Fail("Scene.MainCameraID","Runtime rejected main camera");
+            _ConstructionOpen=false;
+            if(!_Runtime.EndConstruction(error))
+                Fail("Scene",error.empty()?"Runtime could not finish scene initialization":error);
+            if(_Runtime.QueryGameObject(_CandidateID)!=_Candidate)Fail("Scene","Scene was destroyed during initialization");
+            return true;
+        }
+        }
+        return false;
     }
-    if (candidate && runtime.QueryGameObject(candidateID)==candidate) {
-        try {
-            if (!runtime.DestroyScene(candidate)) error+="; candidate scene rollback was rejected";
-        } catch (...) { error+="; candidate scene rollback failed"; }
+
+    void Rollback(std::string& error) {
+        auto* candidate=std::exchange(_Candidate,nullptr);
+        if(candidate&&_Runtime.QueryGameObject(_CandidateID)==candidate) {
+            try {
+                if(!_Runtime.DestroyScene(candidate))error+="; candidate scene rollback was rejected";
+            } catch(...) {error+="; candidate scene rollback failed";}
+        }
+        FinishConstructionRollback(_Runtime,_ConstructionOpen,error);
     }
-    FinishConstructionRollback(runtime,constructionOpen,error);
+
+    const SceneAssemblyPlan& _Plan;
+    GameSproutRuntime::IGameSproutRuntime& _Runtime;
+    const std::size_t _BatchSize;
+    Stage _Stage=Stage::Objects;
+    std::size_t _Index=0;
+    GameSproutRuntime::IScene* _Candidate=nullptr;
+    std::uint64_t _CandidateID=0;
+    bool _ConstructionOpen=false;
+    ObjectIDs _IDs;
+    std::map<std::uint64_t,GameSproutRuntime::IGameObject*> _Objects;
+    std::vector<GameSproutRuntime::SceneObjectIdentity> _ObjectBindings;
+    std::vector<GameSproutRuntime::SceneComponentBinding> _ComponentBindings;
+};
+
+SceneAssembly* BeginAssembly(const PreparedScene& prepared,GameSproutRuntime::IGameSproutRuntime& runtime,std::string& error) {
+    if(!prepared._Data) {error="Scene: no prepared document";return nullptr;}
+    auto* assembly=new SceneAssembly(prepared._Data->Plan,runtime,true);
+    if(assembly->Begin(error))return assembly;
+    delete assembly;
+    return nullptr;
+}
+AssemblyStatus AdvanceAssembly(SceneAssembly& assembly,std::chrono::steady_clock::time_point deadline,
+                               GameSproutRuntime::IScene*& output,ObjectIDs& ids,std::string& error) {
+    return assembly.Advance(deadline,output,ids,error);
+}
+void DestroyAssembly(SceneAssembly* assembly) noexcept {delete assembly;}
+
+static bool InstantiatePlan(const SceneAssemblyPlan& plan,GameSproutRuntime::IGameSproutRuntime& runtime,
+                     GameSproutRuntime::IScene*& output,ObjectIDs& ids,std::string& error) {
+    SceneAssembly assembly(plan,runtime,false);
+    return assembly.Begin(error)&&assembly.Advance(std::chrono::steady_clock::time_point::max(),output,ids,error)==AssemblyStatus::Complete;
+}
+bool Instantiate(const PreparedScene& prepared,GameSproutRuntime::IGameSproutRuntime& runtime,
+                 GameSproutRuntime::IScene*& output,ObjectIDs& ids,std::string& error) {
+    if(!prepared._Data) {error="Scene: no prepared document";return false;}
+    return InstantiatePlan(prepared._Data->Plan,runtime,output,ids,error);
+}
+bool Instantiate(const Json::Value& document, GameSproutRuntime::IGameSproutRuntime& runtime,
+                 GameSproutRuntime::IScene*& output, ObjectIDs& ids, std::string& error) {
+    if(runtime.IsExecuting()) {
+        error="Scene: Runtime is executing an update, render, traversal or event callback; synchronous scene loading is not allowed";
+        return false;
+    }
+    try {
+        const SceneAssemblyPlan plan(document);
+        return InstantiatePlan(plan,runtime,output,ids,error);
+    } catch(const std::exception& exception) {error=exception.what();}
+    catch(...) {error="Scene: unexpected instantiation failure";}
     return false;
 }
 
@@ -963,21 +1199,29 @@ bool RestoreSubtree(const Json::Value& document,GameSproutRuntime::IGameSproutRu
         created.reserve(plan.Nodes.size());
         if(!runtime.BeginConstruction(error))return false;
         constructionOpen=true;
-        std::vector<GameSproutRuntime::SceneComponentBinding> componentBindings;
-        for(const auto& node:plan.Nodes) {
-            auto* object=scene.CreateGameObject(node.Name);
+        // Restore directly into the final hierarchy. Source order determines
+        // sibling order even when a child is listed before its parent.
+        std::map<std::uint64_t,std::vector<const Node*>> children;
+        for(const auto& node:plan.Nodes)if(node.ParentID)children[node.ParentID].push_back(&node);
+        std::vector<const Node*> pending;
+        pending.reserve(plan.Nodes.size());
+        pending.push_back(root);
+        for(std::size_t index=0;index<pending.size();++index) {
+            const auto& node=*pending[index];
+            auto* owner=node.ParentID?objects.at(node.ParentID):&parent;
+            auto* object=scene.CreateGameObject(node.Name,owner);
             if(!object)Fail("Subtree","Runtime could not create object");
             created.push_back(object->GetInstanceID());
             objects.emplace(node.ID,object);
             candidateIDs.RuntimeToFile.emplace(object->GetInstanceID(),node.ID);
-        }
-        for(const auto& node:plan.Nodes) {
-            auto* owner=node.ParentID?objects.at(node.ParentID):&parent;
-            if(!owner->AddChild(objects.at(node.ID),false))Fail("Subtree","Runtime rejected restored parent");
+            if(const auto descendants=children.find(node.ID);descendants!=children.end())
+                pending.insert(pending.end(),descendants->second.begin(),descendants->second.end());
         }
         std::vector<GameSproutRuntime::SceneObjectIdentity> identities;
+        identities.reserve(plan.Nodes.size());
         for(const auto& node:plan.Nodes)identities.push_back({objects.at(node.ID)->GetInstanceID(),node.ID});
         if(!runtime.BindSceneObjectIdentities(&scene,identities,error))Fail("Subtree.Identity",error);
+        std::vector<GameSproutRuntime::SceneComponentBinding> componentBindings;
         for(const auto& node:plan.Nodes) {
             auto* object=objects.at(node.ID);
             for(Json::ArrayIndex index=0;index<node.Components->size();++index)

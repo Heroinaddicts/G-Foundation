@@ -11,6 +11,7 @@
 #include <limits>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -95,10 +96,11 @@ bool SerializeProperties(GameSproutRuntime::IGameObject& object,const ObjectIDs&
     return false;
 }
 Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const ObjectIDs& ids) {
-        if (!component.GetTypeName()) throw std::runtime_error("Invalid Runtime component");
+        const auto* typeName=component.GetTypeName();
+        if (!typeName) throw std::runtime_error("Invalid Runtime component");
         Json::Value data(Json::objectValue);
-        data["Type"]=component.GetTypeName();
-        const std::string type=component.GetTypeName();
+        data["Type"]=typeName;
+        const std::string_view type=typeName;
         if (type=="GameSproutRuntime.Transform") {
             auto* value=dynamic_cast<GameSproutRuntime::ITransformComponent*>(&component);
             if (!value) throw std::runtime_error("Transform interface mismatch");
@@ -161,7 +163,7 @@ Json::Value SerializeComponent(GameSproutRuntime::IComponent& component, const O
             json["NearPlane"]=settings.NearPlane;json["FarPlane"]=settings.FarPlane;json["CullingMask"]=Json::UInt(settings.CullingMask);
         } else if (type=="GameSproutRuntime.ScriptComponent") {
             data=SceneScriptDocument::Serialize(component);
-        } else throw std::runtime_error("Unknown component cannot be saved: "+type);
+        } else throw std::runtime_error("Unknown component cannot be saved: "+std::string(type));
     const auto identity=ids.FindComponentFileID(&component);
     if(identity)data["ID"]=Json::UInt64(identity);
     return data;

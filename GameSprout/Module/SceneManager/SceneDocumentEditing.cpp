@@ -113,7 +113,7 @@ void FillResult(const Json::Value& subtree,const std::map<uint64_t,uint64_t>& so
 }
 
 std::string SceneManager::GetSceneAnnotationsJson() const {return AssetArtifactIO::JsonText(_Annotations);}
-bool SceneManager::CaptureSubtree(GameSproutRuntime::IGameObject& root,Json::Value& output,std::string& error) const {
+bool SceneManager::CaptureSubtree(GameSproutRuntime::IGameObject& root,Json::Value& output,std::string& error,bool validateDocument) const {
     if(!SynchronizeDirtyState(error))return false;
     Json::Value subtree(Json::objectValue);
     subtree["Version"]=Json::UInt(GameSproutRuntime::SceneDocumentVersion);
@@ -130,7 +130,7 @@ bool SceneManager::CaptureSubtree(GameSproutRuntime::IGameObject& root,Json::Val
         subtree["Objects"].append(std::move(properties));
         for(std::size_t i=node->GetChildCount();i>0;--i)pending.push_back(node->GetChild(i-1));
     }
-    if(!SceneDocument::ValidateSubtree(subtree,error))return false;
+    if(validateDocument&&!SceneDocument::ValidateSubtree(subtree,error))return false;
     output.swap(subtree);return true;
 }
 

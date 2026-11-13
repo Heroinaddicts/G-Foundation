@@ -34,8 +34,9 @@ void HierarchyTreeModel::Build(GameSproutRuntime::IScene* scene, const QColor& i
     QStandardItem* root = MakeItem(contentRoot, contentRoot==scene);
     if (!root) return;
     _RootID=contentRoot->GetInstanceID();
-    appendRow(root);
+    // Attach completed branches once so Qt does not announce every descendant.
     BuildChildren(contentRoot, root);
+    appendRow(root);
 }
 
 void HierarchyTreeModel::BuildChildren(GameSproutRuntime::IGameObject* object, QStandardItem* item) {
@@ -76,6 +77,7 @@ void HierarchyTreeModel::SyncStructure(GameSproutRuntime::IGameSproutRuntime& ru
     if (!_RootID || changed.empty()) return;
     struct Parent { GameSproutRuntime::IGameObject* Object; std::size_t Depth; };
     std::map<std::uint64_t, Parent> parents;
+    std::set<std::uint64_t> removed;
     for (const auto id : changed) {
         if (id == _RootID) continue;
         auto* object = runtime.QueryGameObject(id);
@@ -87,11 +89,22 @@ void HierarchyTreeModel::SyncStructure(GameSproutRuntime::IGameSproutRuntime& ru
             ++depth;
         }
         if (!ancestor) {
-            RemoveNode(id);
+            if (_Nodes.contains(id)) removed.insert(id);
             continue;
         }
         parents.try_emplace(parent->GetInstanceID(), Parent{parent, depth});
     }
+
+    // IDs are creation ordered, so a reparented descendant can precede its parent.
+    // Remove only the highest rows in the batch, while all model parents still exist.
+    std::vector<std::uint64_t> removedRoots;
+    for (const auto id : removed) {
+        auto* ancestor = _Nodes.at(id)->parent();
+        while (ancestor && !removed.contains(ancestor->data(NodeIDRole).toULongLong()))
+            ancestor = ancestor->parent();
+        if (!ancestor) removedRoots.push_back(id);
+    }
+    for (const auto id : removedRoots) RemoveNode(id);
 
     // Insert parents before their children, even when a batch reparents both.
     std::vector<Parent> ordered;
@@ -119,12 +132,12 @@ void HierarchyTreeModel::SyncStructure(GameSproutRuntime::IGameSproutRuntime& ru
                 previous = item;
                 continue;
             }
-            const bool newItem = item == nullptr;
-            if (newItem) item = MakeItem(child, false);
-            else if (auto* oldParent = item->parent()) oldParent->takeRow(item->row());
-            if (!item) continue;
+            if (!item) {
+                item = MakeItem(child, false);
+                if (!item) continue;
+                BuildChildren(child, item);
+            } else if (auto* oldParent = item->parent()) oldParent->takeRow(item->row());
             parent->insertRow(previous ? previous->row() + 1 : 0, item);
-            if (newItem) BuildChildren(child, item);
             previous = item;
         }
     }

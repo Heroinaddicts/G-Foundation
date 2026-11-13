@@ -2,6 +2,7 @@
 #include "PrefabDocument.h"
 #include "GameSproutRuntimeExport.h"
 #include "RuntimeUIApi.h"
+#include <future>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -80,6 +81,56 @@ static Json::Value AllComponents(const Json::Value& initial) {
 #include "SceneRootMotionChecks.h"
 #include "SceneTagLayerChecks.h"
 #include "SceneStaticFlagsChecks.h"
+
+static void CheckStagedAssembly(GameSproutRuntime::IGameSproutRuntime& runtime,
+                                GameSproutRuntime::IScene* previous,const Json::Value& source) {
+    using namespace SceneDocument;
+    auto prepared=std::async(std::launch::async,[document=source]() mutable {
+        for(std::uint64_t id=100;id<400;++id)
+            document["Objects"].append(Node(id,20,"Batched sibling"));
+        PreparedScene result;
+        std::string error;
+        const bool success=Prepare(std::move(document),result,error);
+        Check(success,error);
+        return result;
+    }).get();
+    const auto count=runtime.GetSceneCount();
+    GameSproutRuntime::IScene* output=previous;
+    ObjectIDs ids;
+    std::string error;
+    struct AssemblyOwner {
+        SceneAssembly* Value;
+        ~AssemblyOwner() {DestroyAssembly(Value);}
+    };
+    {
+        AssemblyOwner assembly{BeginAssembly(prepared,runtime,error)};
+        Check(assembly.Value,error);
+        Check(AdvanceAssembly(*assembly.Value,std::chrono::steady_clock::now(),output,ids,error)==AssemblyStatus::Pending&&
+              output==previous&&ids.RuntimeToFile.empty(),"Staged assembly published a partial scene");
+    }
+    Check(runtime.GetSceneCount()==count,"Cancelled assembly leaked its candidate");
+    {
+        AssemblyOwner assembly{BeginAssembly(prepared,runtime,error)};
+        Check(assembly.Value,error);
+        std::size_t slices=0;
+        AssemblyStatus status;
+        do {
+            status=AdvanceAssembly(*assembly.Value,std::chrono::steady_clock::now(),output,ids,error);
+            ++slices;
+            Check(slices<1500,"Staged assembly did not finish");
+        } while(status==AssemblyStatus::Pending);
+        Check(status==AssemblyStatus::Complete,error);
+        Check(slices>1&&output!=previous&&output->GetMainCamera(),"Staged assembly lost the main camera");
+        const auto* parent=output->GetChild(0);
+        Check(parent&&parent->GetChildCount()==302&&parent->GetChild(0)->GetName()=="First"&&
+              parent->GetChild(1)->GetName()=="Second"&&runtime.QuerySceneObjectByFileID(output,399)==parent->GetChild(301),
+              "Staged assembly lost parent or sibling order");
+    }
+    Check(runtime.GetSceneCount()==count+1&&runtime.DestroyScene(output),"Assembly did not release the completed scene to the caller");
+    const auto released=prepared.ReleaseDocument();
+    Check(released["Objects"].size()==303&&!BeginAssembly(prepared,runtime,error),
+          "Releasing prepared JSON left an assembly pointing at the moved document");
+}
 
 static void CheckUIDocuments(GameSproutRuntime::IGameSproutRuntime& runtime) {
     using namespace GameSproutRuntime;
@@ -254,6 +305,7 @@ int main() {
         const bool emptyCreated=SceneDocument::Instantiate(empty,*runtime,output,error);
         Check(emptyCreated,error);
         Check(output->GetChildCount()==0 && !output->GetMainCamera(),"Empty scene failed");
+        CheckStagedAssembly(*runtime,output,source);
         CheckSerialization(*runtime,source);
         CheckAnimationSerialization(*runtime);
         CheckRootMotionPersistence(*runtime);

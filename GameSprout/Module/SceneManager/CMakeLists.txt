@@ -18,6 +18,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../ObjectDocument/ObjectDocument.cmake")
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
+find_package(Threads REQUIRED)
 
 # Keep the target and IDE tree in sync when files are added or removed.
 file(GLOB_RECURSE module_files CONFIGURE_DEPENDS
@@ -36,11 +37,16 @@ list(APPEND module_files "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 
 add_library(SceneManager SHARED ${module_files})
 target_compile_features(SceneManager PRIVATE cxx_std_20)
+# Match ObjectDocument's Debug optimization for the editor's large scene transactions.
+if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    target_compile_options(SceneManager PRIVATE "$<$<CONFIG:Debug>:-O2>")
+endif()
 target_link_libraries(SceneManager PRIVATE
     Foundation::FoundationApi
     GameSproutRuntime::GameSproutRuntimeApi
     ObjectDocument::ObjectDocument
     Qt${QT_VERSION_MAJOR}::Core
+    Threads::Threads
 )
 target_include_directories(SceneManager PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
