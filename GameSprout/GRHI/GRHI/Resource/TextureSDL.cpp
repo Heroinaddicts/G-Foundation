@@ -66,68 +66,68 @@ ITexture* DeviceSDL::CreateTexture(const TextureDesc& desc, const TextureInitial
     if (!SDL_GPUTextureSupportsFormat(_Device, format, info.type, info.usage)) {
         Fail("Texture format/usage combination is unsupported."); return nullptr;
     }
-    const uint64_t rowBytes = uint64_t(desc.Width) * 4;
-    if (initial && (rowBytes > UINT32_MAX || desc.Height > UINT32_MAX / rowBytes)) {
-        Fail("Texture upload exceeds SDL transfer-buffer size limits."); return nullptr;
-    }
-    const uint64_t totalBytes = initial ? rowBytes * desc.Height : 0;
-    size_t pitch = 0;
-    if (initial) {
-        pitch = initial->RowPitch ? initial->RowPitch : static_cast<size_t>(rowBytes);
-        // Validate the input span without overflowing a size_t multiplication.
-        if (!initial->Pixels || totalBytes > UINT32_MAX || rowBytes > initial->DataSize || pitch < rowBytes ||
-            (desc.Height > 1 && pitch > (initial->DataSize - rowBytes) / (desc.Height - 1))) {
-            Fail("Invalid initial texture data, row pitch or upload size."); return nullptr;
-        }
-    }
     SDL_GPUTexture* native = SDL_CreateGPUTexture(_Device, &info);
     if (!native) { FailSDL(); return nullptr; }
     TextureSDL* texture = nullptr;
-    SDL_GPUTransferBuffer* transfer = nullptr;
-    SDL_GPUCommandBuffer* upload = nullptr;
     try {
         texture = new TextureSDL(this, NextID(), native, desc);
         native = nullptr;
         if ((desc.Usage & (TextureUsage::ColorTarget|TextureUsage::DepthStencilTarget)) != TextureUsage::None)
             texture->Token = AddTarget({texture->Native, desc.Format, desc.Width, desc.Height, nullptr});
-        if (initial) {
-            SDL_GPUTransferBufferCreateInfo transferInfo{};
-            transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-            transferInfo.size = static_cast<uint32_t>(totalBytes);
-            transfer = SDL_CreateGPUTransferBuffer(_Device, &transferInfo);
-            if (!transfer) { FailSDL(); delete texture; return nullptr; }
-            void* mapped = SDL_MapGPUTransferBuffer(_Device, transfer, false);
-            if (!mapped) { FailSDL(); SDL_ReleaseGPUTransferBuffer(_Device, transfer); delete texture; return nullptr; }
-            for (uint32_t y = 0; y < desc.Height; ++y)
-                std::memcpy(static_cast<uint8_t*>(mapped) + y * rowBytes,
-                    static_cast<const uint8_t*>(initial->Pixels) + y * pitch, static_cast<size_t>(rowBytes));
-            SDL_UnmapGPUTransferBuffer(_Device, transfer);
-            upload = SDL_AcquireGPUCommandBuffer(_Device);
-            if (!upload) { FailSDL(); SDL_ReleaseGPUTransferBuffer(_Device, transfer); delete texture; return nullptr; }
-            auto* copy = SDL_BeginGPUCopyPass(upload);
-            if (!copy) {
-                FailSDL(); SDL_CancelGPUCommandBuffer(upload); SDL_ReleaseGPUTransferBuffer(_Device, transfer); delete texture; return nullptr;
-            }
-            SDL_GPUTextureTransferInfo source{};
-            source.transfer_buffer = transfer;
-            SDL_GPUTextureRegion destination{};
-            destination.texture = texture->Native;
-            destination.w = desc.Width; destination.h = desc.Height; destination.d = 1;
-            SDL_UploadToGPUTexture(copy, &source, &destination, false);
-            SDL_EndGPUCopyPass(copy);
-            const bool submitted = SDL_SubmitGPUCommandBuffer(upload);
-            upload = nullptr;
-            if (!submitted) FailSDL();
-            SDL_ReleaseGPUTransferBuffer(_Device, transfer); transfer = nullptr;
-            if (!submitted) { delete texture; return nullptr; }
+        if(initial&&!UploadTextureRows(texture,0,desc.Height,*initial)) {
+            delete texture;
+            return nullptr;
         }
         return texture;
     } catch (...) {
-        if (upload) SDL_CancelGPUCommandBuffer(upload);
-        if (transfer) SDL_ReleaseGPUTransferBuffer(_Device, transfer);
         if (native) SDL_ReleaseGPUTexture(_Device, native);
         delete texture;
         throw;
     }
+}
+
+bool DeviceSDL::UploadTextureRows(ITexture* target, uint32_t firstRow, uint32_t rowCount,
+                                  const TextureInitialData& initial) {
+    ClearError();
+    auto* texture=Resource<TextureSDL>(target,ResourceKindSDL::Texture);
+    if(!_Device||!OnMainThread()||!texture||!texture->Native||!rowCount||
+       texture->Desc.Format==TextureFormat::D32_Float||firstRow>texture->Desc.Height||
+       rowCount>texture->Desc.Height-firstRow) return Fail("Invalid texture row upload target or range.");
+    const uint64_t rowBytes=uint64_t(texture->Desc.Width)*4;
+    if(rowBytes>UINT32_MAX||rowCount>UINT32_MAX/rowBytes)
+        return Fail("Texture upload exceeds SDL transfer-buffer size limits.");
+    const auto pitch=initial.RowPitch?initial.RowPitch:static_cast<size_t>(rowBytes);
+    if(!initial.Pixels||rowBytes>initial.DataSize||pitch<rowBytes||
+       (rowCount>1&&pitch>(initial.DataSize-rowBytes)/(rowCount-1)))
+        return Fail("Invalid initial texture data, row pitch or upload size.");
+    SDL_GPUTransferBufferCreateInfo info{};
+    info.usage=SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    info.size=static_cast<uint32_t>(rowBytes*rowCount);
+    auto* transfer=SDL_CreateGPUTransferBuffer(_Device,&info);
+    if(!transfer)return FailSDL();
+    const auto release=[&] { SDL_ReleaseGPUTransferBuffer(_Device,transfer); };
+    auto* mapped=static_cast<uint8_t*>(SDL_MapGPUTransferBuffer(_Device,transfer,false));
+    if(!mapped){release();return FailSDL();}
+    if(pitch==rowBytes)std::memcpy(mapped,initial.Pixels,info.size);
+    else for(uint32_t row=0;row<rowCount;++row)
+        std::memcpy(mapped+row*rowBytes,static_cast<const uint8_t*>(initial.Pixels)+row*pitch,rowBytes);
+    SDL_UnmapGPUTransferBuffer(_Device,transfer);
+    auto* upload=SDL_AcquireGPUCommandBuffer(_Device);
+    if(!upload){release();return FailSDL();}
+    auto* copy=SDL_BeginGPUCopyPass(upload);
+    if(!copy) {
+        SDL_CancelGPUCommandBuffer(upload);release();return FailSDL();
+    }
+    SDL_GPUTextureTransferInfo source{};
+    source.transfer_buffer=transfer;
+    SDL_GPUTextureRegion destination{};
+    destination.texture=texture->Native;
+    destination.y=firstRow;
+    destination.w=texture->Desc.Width;destination.h=rowCount;destination.d=1;
+    SDL_UploadToGPUTexture(copy,&source,&destination,false);
+    SDL_EndGPUCopyPass(copy);
+    const bool submitted=SDL_SubmitGPUCommandBuffer(upload);
+    release();
+    return submitted||FailSDL();
 }
 }

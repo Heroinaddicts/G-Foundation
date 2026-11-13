@@ -17,21 +17,24 @@ void BufferSDL::Release() {
 IBuffer* DeviceSDL::CreateBuffer(const BufferDesc& desc,const BufferInitialData* initial) {
     ClearError();
     const unsigned usage=static_cast<unsigned>(desc.Usage);
-    if(!_Device || !desc.Size || desc.Size>UINT32_MAX || !usage || (usage&~3u) ||
+    if(!_Device || !desc.Size || desc.Size>UINT32_MAX || !usage || (usage&~7u) ||
+       (!desc.InitializeToZero && !initial && (desc.Usage&BufferUsage::Index)!=BufferUsage::None) ||
        (initial && (initial->DataSize>desc.Size || (initial->DataSize && !initial->Data)))) {
         Fail("Invalid buffer size, usage, initial span or released device.");return nullptr;
     }
-    std::vector<uint8_t> bytes(desc.Size,0);
-    if(initial && initial->DataSize)std::memcpy(bytes.data(),initial->Data,initial->DataSize);
     SDL_GPUBufferCreateInfo info{};info.size=static_cast<uint32_t>(desc.Size);
     if((desc.Usage&BufferUsage::Vertex)!=BufferUsage::None)info.usage|=SDL_GPU_BUFFERUSAGE_VERTEX;
     if((desc.Usage&BufferUsage::Index)!=BufferUsage::None)info.usage|=SDL_GPU_BUFFERUSAGE_INDEX;
+    if((desc.Usage&BufferUsage::VertexStorage)!=BufferUsage::None)info.usage|=SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
     auto* native=SDL_CreateGPUBuffer(_Device,&info);
     if(!native){FailSDL();return nullptr;}
     SDL_GPUTransferBuffer* transfer=nullptr;
     SDL_GPUCommandBuffer* upload=nullptr;
     BufferSDL* buffer=nullptr;
     try {
+        if(!desc.InitializeToZero && !initial)return new BufferSDL(this,NextID(),native,desc,{});
+        std::vector<uint8_t> bytes(desc.Size,0);
+        if(initial && initial->DataSize)std::memcpy(bytes.data(),initial->Data,initial->DataSize);
         SDL_GPUTransferBufferCreateInfo transferInfo{};
         transferInfo.usage=SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;transferInfo.size=info.size;
         transfer=SDL_CreateGPUTransferBuffer(_Device,&transferInfo);

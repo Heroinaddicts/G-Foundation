@@ -1,14 +1,70 @@
 #include "CommandBufferSDL.h"
-#include "Resource/PipelineSDL.h"
 #include "Resource/BufferSDL.h"
-#include "Resource/TextureSDL.h"
-#include "Resource/SamplerSDL.h"
-#include "ReplayStateSDL.h"
+#include <cstring>
 
 namespace GRHI {
+namespace {
+template<typename... Handlers>
+struct VisitOperation : Handlers... {using Handlers::operator()...;};
+}
+
+void RenderPassSDL::Encode(SDL_GPURenderPass* pass) const {
+    const auto replay=VisitOperation{
+        [&](const BindPipelineSDL& operation){SDL_BindGPUGraphicsPipeline(pass,operation.Pipeline);},
+        [&](const BindViewportSDL& operation){SDL_SetGPUViewport(pass,&operation.View);},
+        [&](const BindVertexSDL& operation){SDL_BindGPUVertexBuffers(pass,operation.Slot,&operation.Binding,1);},
+        [&](const BindIndexSDL& operation){SDL_BindGPUIndexBuffer(pass,&operation.Binding,operation.Format);},
+        [&](const BindVertexStorageSDL& operation){SDL_BindGPUVertexStorageBuffers(pass,operation.Slot,&operation.Buffer,1);},
+        [&](const BindUniformSDL& operation){
+            const auto& bytes=*operation.Bytes;
+            auto push=operation.Vertex?SDL_PushGPUVertexUniformData:SDL_PushGPUFragmentUniformData;
+            push(Command->Native,operation.Slot,bytes.data(),static_cast<uint32_t>(bytes.size()));
+        },
+        [&](const BindSamplersSDL& operation){
+            SDL_BindGPUFragmentSamplers(pass,0,_NativeSamplers.data()+operation.First,operation.Count);
+        },
+        [&](const NativeDrawSDL& operation){
+            if(operation.Indexed)
+                SDL_DrawGPUIndexedPrimitives(pass,operation.Count,operation.Instances,operation.First,
+                    operation.VertexOffset,operation.FirstInstance);
+            else
+                SDL_DrawGPUPrimitives(pass,operation.Count,operation.Instances,operation.First,operation.FirstInstance);
+        },
+    };
+    for(const auto& operation:_Operations)std::visit(replay,operation);
+}
 bool CommandBufferSDL::Encode() {
+    SDL_GPUTransferBuffer* transfer=nullptr;
+    if(!_Uploads.empty()) {
+        transfer=Owner->UploadTransfer(static_cast<uint32_t>(_UploadBytes.size()));
+        if(!transfer)return Fail(SDL_GetError());
+        void* mapped=SDL_MapGPUTransferBuffer(Owner->Native(),transfer,true);
+        if(!mapped)return Fail(SDL_GetError());
+        std::memcpy(mapped,_UploadBytes.data(),_UploadBytes.size());
+        SDL_UnmapGPUTransferBuffer(Owner->Native(),transfer);
+    }
+
+    auto nextUpload=_Uploads.begin();
+    const auto encodeUploads=[&](size_t beforePass) {
+        if(nextUpload==_Uploads.end() || nextUpload->BeforePass!=beforePass)return true;
+        auto* copy=SDL_BeginGPUCopyPass(Native);
+        if(!copy)return Fail(SDL_GetError());
+        do {
+            const auto& upload=*nextUpload;
+            auto* buffer=Owner->Resource<BufferSDL>(upload.Destination.Pointer,ResourceKindSDL::Buffer);
+            const SDL_GPUTransferBufferLocation source{transfer,upload.SourceOffset};
+            const SDL_GPUBufferRegion destination{buffer->Native,upload.DestinationOffset,upload.Size};
+            SDL_UploadToGPUBuffer(copy,&source,&destination,upload.Cycle);
+            ++nextUpload;
+        } while(nextUpload!=_Uploads.end() && nextUpload->BeforePass==beforePass);
+        SDL_EndGPUCopyPass(copy);
+        return true;
+    };
+
     const SDL_GPULoadOp loads[]={SDL_GPU_LOADOP_CLEAR,SDL_GPU_LOADOP_LOAD,SDL_GPU_LOADOP_DONT_CARE};
-    for(const auto* pass:Passes) {
+    for(size_t passIndex=0;passIndex<Passes.size();++passIndex) {
+        if(!encodeUploads(passIndex))return false;
+        const auto* pass=Passes[passIndex];
         SDL_GPUColorTargetInfo color{};
         color.texture=pass->Target.Texture;color.load_op=loads[static_cast<unsigned>(pass->Desc.Load)];
         color.store_op=pass->Desc.Store==StoreOp::Store?SDL_GPU_STOREOP_STORE:SDL_GPU_STOREOP_DONT_CARE;
@@ -20,50 +76,9 @@ bool CommandBufferSDL::Encode() {
         depth.stencil_load_op=SDL_GPU_LOADOP_DONT_CARE;depth.stencil_store_op=SDL_GPU_STOREOP_DONT_CARE;
         auto* nativePass=SDL_BeginGPURenderPass(Native,color.texture?&color:nullptr,color.texture?1:0,depth.texture?&depth:nullptr);
         if(!nativePass)return Fail(SDL_GetError());
-        ReplayStateSDL state;
-        for(const auto& draw:pass->Draws) {
-            auto* pipeline=Owner->Resource<PipelineSDL>(draw.Pipeline.Pointer,ResourceKindSDL::Pipeline);
-            if(state.Pipeline(draw.Pipeline))SDL_BindGPUGraphicsPipeline(nativePass,pipeline->Native);
-            const auto& v=draw.View;
-            const SDL_GPUViewport viewport{v.X,v.Y,v.Width,v.Height,v.MinDepth,v.MaxDepth};
-            if(state.View(v))SDL_SetGPUViewport(nativePass,&viewport);
-            for(const auto& binding:pipeline->Bindings) {
-                const auto& source=draw.Vertices[binding.Binding];
-                if(!state.Vertex(binding.Binding,source))continue;
-                auto* buffer=Owner->Resource<BufferSDL>(source.Resource.Pointer,ResourceKindSDL::Buffer);
-                const SDL_GPUBufferBinding nativeBinding{buffer->Native,static_cast<uint32_t>(source.Offset)};
-                SDL_BindGPUVertexBuffers(nativePass,binding.Binding,&nativeBinding,1);
-            }
-            for(uint32_t slot=0;slot<pipeline->VertexUniformCount;++slot) {
-                if(!state.Uniform(true,slot,draw.VertexUniforms[slot]))continue;
-                const auto& bytes=*draw.VertexUniforms[slot];
-                SDL_PushGPUVertexUniformData(Native,slot,bytes.data(),static_cast<uint32_t>(bytes.size()));
-            }
-            for(uint32_t slot=0;slot<pipeline->FragmentUniformCount;++slot) {
-                if(!state.Uniform(false,slot,draw.FragmentUniforms[slot]))continue;
-                const auto& bytes=*draw.FragmentUniforms[slot];
-                SDL_PushGPUFragmentUniformData(Native,slot,bytes.data(),static_cast<uint32_t>(bytes.size()));
-            }
-            if(pipeline->SamplerCount && state.Samplers(draw,pipeline->SamplerCount)) {
-                SDL_GPUTextureSamplerBinding samplers[16]{};
-                for(uint32_t slot=0;slot<pipeline->SamplerCount;++slot) {
-                    auto* texture=Owner->Resource<TextureSDL>(draw.Textures[slot].Pointer,ResourceKindSDL::Texture);
-                    auto* sampler=Owner->Resource<SamplerSDL>(draw.Samplers[slot].Pointer,ResourceKindSDL::Sampler);
-                    samplers[slot]={texture->Native,sampler->Native};
-                }
-                SDL_BindGPUFragmentSamplers(nativePass,0,samplers,pipeline->SamplerCount);
-            }
-            if(draw.Indexed) {
-                if(state.Index(draw.Index,draw.Indices)) {
-                    auto* buffer=Owner->Resource<BufferSDL>(draw.Index.Resource.Pointer,ResourceKindSDL::Buffer);
-                    const SDL_GPUBufferBinding binding{buffer->Native,static_cast<uint32_t>(draw.Index.Offset)};
-                    SDL_BindGPUIndexBuffer(nativePass,&binding,draw.Indices==IndexFormat::UInt16?SDL_GPU_INDEXELEMENTSIZE_16BIT:SDL_GPU_INDEXELEMENTSIZE_32BIT);
-                }
-                SDL_DrawGPUIndexedPrimitives(nativePass,draw.Count,draw.Instances,draw.First,draw.VertexOffset,draw.FirstInstance);
-            } else SDL_DrawGPUPrimitives(nativePass,draw.Count,draw.Instances,draw.First,draw.FirstInstance);
-        }
+        pass->Encode(nativePass);
         SDL_EndGPURenderPass(nativePass);
     }
-    return true;
+    return encodeUploads(Passes.size());
 }
 }

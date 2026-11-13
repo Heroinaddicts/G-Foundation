@@ -5,14 +5,19 @@
 #include <algorithm>
 
 namespace GRHI {
+static constexpr uint32_t VertexElementSizes[]={8,12,16,16,4};
 PipelineSDL::PipelineSDL(DeviceSDL* owner, uint64_t id, SDL_GPUGraphicsPipeline* native,const GraphicsPipelineDesc& desc,
-                         uint32_t samplers,uint32_t vertexUniforms,uint32_t fragmentUniforms)
+                         uint32_t samplers,uint32_t vertexUniforms,uint32_t fragmentUniforms,uint32_t vertexStorageBuffers)
     : IGraphicsPipeline(id),Owner(owner),Native(native),Format(desc.ColorFormat),SamplerCount(samplers),
-      VertexUniformCount(vertexUniforms),FragmentUniformCount(fragmentUniforms),DepthFormat(desc.DepthFormat) {
-    for(size_t index=0;index<desc.VertexBindingCount;++index)Bindings.push_back(desc.VertexBindings[index]);
+      VertexUniformCount(vertexUniforms),FragmentUniformCount(fragmentUniforms),VertexStorageCount(vertexStorageBuffers),
+      DepthFormat(desc.DepthFormat) {
+    for(size_t index=0;index<desc.VertexBindingCount;++index) {
+        Bindings.push_back(desc.VertexBindings[index]);
+        BindingMask|=1u<<desc.VertexBindings[index].Binding;
+    }
     for(size_t index=0;index<desc.VertexAttributeCount;++index) {
         const auto& a=desc.VertexAttributes[index];
-        const uint32_t size=a.Format==VertexFormat::Float2?8:a.Format==VertexFormat::Float3?12:16;
+        const uint32_t size=VertexElementSizes[static_cast<unsigned>(a.Format)];
         AttributeEnds[a.Binding]=std::max(AttributeEnds[a.Binding],a.Offset+size);
     }
     Owner->RegisterResource(static_cast<IGraphicsPipeline*>(this),this,id,ResourceKindSDL::Pipeline);
@@ -65,13 +70,12 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
             SDL_GPU_VERTEXINPUTRATE_INSTANCE:SDL_GPU_VERTEXINPUTRATE_VERTEX,0});
     }
     const SDL_GPUVertexElementFormat formats[]={SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-        SDL_GPU_VERTEXELEMENTFORMAT_UINT4};
+        SDL_GPU_VERTEXELEMENTFORMAT_UINT4,SDL_GPU_VERTEXELEMENTFORMAT_UINT};
     for(size_t index=0;index<desc.VertexAttributeCount;++index) {
         const auto& a=desc.VertexAttributes[index];
         const auto f=static_cast<unsigned>(a.Format);
-        const uint32_t size=f==0?8:f==1?12:16;
-        if(a.Location>=16 || a.Binding>=16 || f>3 || !strides[a.Binding] || a.Offset>strides[a.Binding] ||
-           size>strides[a.Binding]-a.Offset || a.Offset%4 || !locations.insert(a.Location).second) {
+        if(a.Location>=16 || a.Binding>=16 || f>=std::size(formats) || !strides[a.Binding] || a.Offset>strides[a.Binding] ||
+           VertexElementSizes[f]>strides[a.Binding]-a.Offset || a.Offset%4 || !locations.insert(a.Location).second) {
             Fail("Invalid vertex attribute location, format, offset or binding.");return nullptr;
         }
         used[a.Binding]=true;attributes.push_back({a.Location,a.Binding,formats[f],a.Offset});
@@ -113,7 +117,8 @@ IGraphicsPipeline* DeviceSDL::CreateGraphicsPipeline(const GraphicsPipelineDesc&
     info.depth_stencil_state.compare_op=comparisons[static_cast<unsigned>(desc.DepthCompare)];
     auto* native = SDL_CreateGPUGraphicsPipeline(_Device, &info);
     if (!native) { FailSDL(); return nullptr; }
-    try { return new PipelineSDL(this,NextID(),native,desc,fragment->SamplerCount,vertex->UniformCount,fragment->UniformCount); }
+    try { return new PipelineSDL(this,NextID(),native,desc,fragment->SamplerCount,vertex->UniformCount,fragment->UniformCount,
+                                 vertex->VertexStorageCount); }
     catch (...) { SDL_ReleaseGPUGraphicsPipeline(_Device, native); throw; }
 }
 }

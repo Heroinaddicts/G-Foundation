@@ -1,16 +1,34 @@
 #pragma once
-#include "CommandBufferSDL.h"
+#include "GRHIApi.h"
+#include <array>
 
 namespace GRHI {
+struct ResourceBindingSDL {
+    const void* Pointer = nullptr;
+    uint64_t ID = 0;
+    void* Implementation = nullptr;
+};
+struct BufferBindingSDL { ResourceBindingSDL Resource; size_t Offset = 0; };
+struct PassBindingsSDL {
+    ResourceBindingSDL Pipeline;
+    std::array<BufferBindingSDL,16> Vertices{};
+    BufferBindingSDL Index;
+    IndexFormat Indices = IndexFormat::UInt32;
+    std::array<ResourceBindingSDL,16> Textures{},Samplers{};
+    std::array<ResourceBindingSDL,8> VertexStorage{};
+    // Borrowed immutable bytes owned by this pass, not by a caller or a draw.
+    std::array<const std::vector<uint8_t>*,4> VertexUniforms{},FragmentUniforms{};
+    Viewport View;
+};
 // Native bindings are remembered only inside one encoded render pass. A pipeline
 // change conservatively invalidates shader/geometry bindings for every backend;
-// viewport is independent. Recording-time validation still examines every draw.
+// viewport is independent. This state accumulates validated deltas at record time.
 class ReplayStateSDL {
 public:
     bool Pipeline(const ResourceBindingSDL& value) {
         if(Same(_Pipeline,value))return false;
         _Pipeline=value;
-        _Vertices={};_Index={};_Textures={};_Samplers={};
+        _Vertices={};_Index={};_Textures={};_Samplers={};_VertexStorage={};
         _VertexUniforms={};_FragmentUniforms={};_SamplerCount=0;
         return true;
     }
@@ -23,6 +41,10 @@ public:
         if(Same(_Vertices[slot],value))return false;
         _Vertices[slot]=value;return true;
     }
+    bool VertexStorage(std::uint32_t slot,const ResourceBindingSDL& value) {
+        if(Same(_VertexStorage[slot],value))return false;
+        _VertexStorage[slot]=value;return true;
+    }
     bool Index(const BufferBindingSDL& value,IndexFormat format) {
         if(Same(_Index,value) && _Indices==format)return false;
         _Index=value;_Indices=format;return true;
@@ -32,7 +54,7 @@ public:
         if(previous==value || (previous && value && *previous==*value))return false;
         previous=value;return true;
     }
-    bool Samplers(const DrawRecordSDL& value,std::uint32_t count) {
+    bool Samplers(const PassBindingsSDL& value,std::uint32_t count) {
         bool changed=_SamplerCount!=count;
         for(std::uint32_t slot=0;slot<count;++slot) {
             changed=changed || !Same(_Textures[slot],value.Textures[slot]) || !Same(_Samplers[slot],value.Samplers[slot]);
@@ -48,6 +70,7 @@ private:
     BufferBindingSDL _Index;
     IndexFormat _Indices=IndexFormat::UInt32;
     std::array<ResourceBindingSDL,16> _Textures{},_Samplers{};
+    std::array<ResourceBindingSDL,8> _VertexStorage{};
     std::array<const std::vector<std::uint8_t>*,4> _VertexUniforms{},_FragmentUniforms{};
     std::uint32_t _SamplerCount=0;
     Viewport _View;

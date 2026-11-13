@@ -1,6 +1,8 @@
 #include "CommandBufferSDL.h"
+#include "Resource/BufferSDL.h"
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 
 namespace GRHI {
@@ -90,23 +92,61 @@ void CommandBufferSDL::EndRenderPass(IRenderPass* value) {
     if(!OnThread() || !Active || Active!=value){Fail("Pass is foreign or is no longer active.");return;}
     Active->Ended=true;Active=nullptr;
 }
+bool CommandBufferSDL::UploadBuffers(const BufferUpload* uploads,uint32_t count) {
+    Owner->ClearError();
+    if(!OnThread() || Active || !Error.empty())return Fail("Invalid thread, active pass or failed command.");
+    if(!count)return true;
+    if(!uploads)return Fail("Missing buffer upload descriptions.");
+
+    auto total=_UploadBytes.size();
+    for(uint32_t i=0;i<count;++i) {
+        const auto& upload=uploads[i];
+        const auto* buffer=Owner->Resource<BufferSDL>(upload.Buffer,ResourceKindSDL::Buffer);
+        if(!buffer || !buffer->Native || (buffer->Desc.Usage&BufferUsage::Index)!=BufferUsage::None ||
+           !upload.Data || !upload.Size || upload.Offset%4 || upload.Size%4 ||
+           upload.Offset>buffer->Desc.Size || upload.Size>buffer->Desc.Size-upload.Offset ||
+           upload.Size>UINT32_MAX-total)
+            return Fail("Buffer upload requires a live non-index buffer, aligned bytes and an in-bounds range.");
+        total+=upload.Size;
+    }
+
+    auto offset=_UploadBytes.size();
+    _Uploads.reserve(_Uploads.size()+count);
+    _UploadBytes.resize(total);
+    for(uint32_t i=0;i<count;++i) {
+        const auto& upload=uploads[i];
+        const auto* buffer=Owner->Resource<BufferSDL>(upload.Buffer,ResourceKindSDL::Buffer);
+        std::memcpy(_UploadBytes.data()+offset,upload.Data,upload.Size);
+        _Uploads.push_back({{upload.Buffer,buffer->_Guid},Passes.size(),static_cast<uint32_t>(upload.Offset),
+            static_cast<uint32_t>(offset),static_cast<uint32_t>(upload.Size),upload.Cycle});
+        offset+=upload.Size;
+    }
+    return true;
+}
 bool RenderPassSDL::Usable() {
     if(!Command->OnThread() || Command->Active!=this || Ended)return Command->Fail("Inactive pass or wrong recording thread.");
     if(!Command->Error.empty()){Command->Owner->Fail(Command->Error);return false;}
     return ValidateTargets();
 }
 bool RenderPassSDL::ValidateTargets() {
+    const auto revision=Command->Owner->TargetReleaseRevision();
+    if(revision==_TargetRevision)return true;
     const auto* color=Desc.ColorTarget.Token?Command->Owner->FindTarget(Desc.ColorTarget.Token):nullptr;
     const auto* depth=Desc.DepthTarget.Token?Command->Owner->FindTarget(Desc.DepthTarget.Token):nullptr;
     if((Desc.ColorTarget.Token && (!color || color->Texture!=Target.Texture)) ||
        (Desc.DepthTarget.Token && (!depth || depth->Texture!=Depth.Texture)))
         return Command->Fail("A render target was released before command submission.");
+    _TargetRevision=revision;
     return true;
 }
 bool CommandBufferSDL::Validate() {
+    const bool released=ResourceRevision!=Owner->ResourceReleaseRevision();
+    if(released)for(const auto& upload:_Uploads)
+        if(!Owner->IsResourceLive(upload.Destination.Pointer,upload.Destination.ID))
+            return Fail("A buffer upload destination was released before command submission.");
     for(auto* pass:Passes) {
         if(!pass->Ended || !pass->ValidateTargets())return Fail("Unfinished pass or released render target.");
-        for(const auto& draw:pass->Draws)if(!pass->ValidateDraw(draw))return false;
+        if(released&&!pass->ValidateResources())return false;
     }
     return true;
 }

@@ -25,6 +25,7 @@ namespace GRHI {
         void Release() override;
         ISurface* CreateSurface(GRHIWindowHandle handle) override;
         ITexture* CreateTexture(const TextureDesc&, const TextureInitialData*) override;
+        bool UploadTextureRows(ITexture*, uint32_t, uint32_t, const TextureInitialData&) override;
         IBuffer* CreateBuffer(const BufferDesc&, const BufferInitialData*) override;
         bool ReadTexture(ITexture*, std::vector<uint8_t>&) override;
         ISampler* CreateSampler(const SamplerDesc&) override;
@@ -41,12 +42,19 @@ namespace GRHI {
         void ClearError() { _Error.clear(); }
         uint64_t NextID();
         uint64_t AddTarget(const TargetSDL& target);
-        void RemoveTarget(uint64_t token) { _Targets.erase(token); }
+        void RemoveTarget(uint64_t token) {
+            if (_Targets.erase(token)) ++_TargetReleaseRevision;
+        }
         const TargetSDL* FindTarget(uint64_t token) const;
+        uint64_t TargetReleaseRevision() const { return _TargetReleaseRevision; }
+        uint64_t ResourceReleaseRevision() const { return _ResourceReleaseRevision; }
         CommandBufferSDL* GetCommand(ICommandBuffer* command);
+        SDL_GPUTransferBuffer* UploadTransfer(uint32_t size);
         bool OnMainThread() const { return _MainThread == std::this_thread::get_id(); }
         void RegisterResource(const void* pointer, void* implementation, uint64_t id, ResourceKindSDL kind) { _Resources.emplace(pointer, ResourceRecordSDL{implementation,id,kind}); }
-        void RemoveResource(const void* pointer) { _Resources.erase(pointer); }
+        void RemoveResource(const void* pointer) {
+            if (_Resources.erase(pointer)) ++_ResourceReleaseRevision;
+        }
         bool IsResourceLive(const void* pointer, uint64_t id) const {
             const auto found = _Resources.find(pointer); return found != _Resources.end() && found->second.ID == id;
         }
@@ -57,10 +65,14 @@ namespace GRHI {
     private:
         explicit DeviceSDL(SDL_GPUDevice* device) : _Device(device), _MainThread(std::this_thread::get_id()) {}
         SDL_GPUDevice* _Device = nullptr;
+        SDL_GPUTransferBuffer* _UploadTransfer = nullptr;
+        uint32_t _UploadTransferSize = 0;
         std::string _Error;
         std::unordered_map<uint64_t, TargetSDL> _Targets;
         std::unordered_set<CommandBufferSDL*> _Commands;
         std::unordered_map<const void*, ResourceRecordSDL> _Resources;
+        uint64_t _TargetReleaseRevision = 0;
+        uint64_t _ResourceReleaseRevision = 0;
         std::thread::id _MainThread;
     };
     SDL_GPUTextureFormat ToSDL(TextureFormat format);

@@ -1,4 +1,5 @@
 #include "ReplayStateSDL.h"
+#include "UniformArenaSDL.h"
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -20,7 +21,7 @@ int main() {
         }
         Check(*original==expected && arena.Store(expected.data(),expected.size())==original,"Uniform arena growth invalidated snapshots or deduplication");
         int pipeline1,pipeline2,vertex,index,texture,sampler;
-        GRHI::DrawRecordSDL draw;
+        GRHI::PassBindingsSDL draw;
         draw.Pipeline={&pipeline1,1};draw.Vertices[0]={{&vertex,2},0};draw.Index={{&index,3},12};
         draw.Textures[0]={&texture,4};draw.Samplers[0]={&sampler,5};draw.VertexUniforms[0]=original;draw.FragmentUniforms[0]=changed;
         draw.View.Width=64;draw.View.Height=64;

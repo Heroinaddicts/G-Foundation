@@ -2,8 +2,10 @@
 #include "DeviceSDL.h"
 
 namespace GRHI {
-ShaderSDL::ShaderSDL(DeviceSDL* owner, uint64_t id, SDL_GPUShader* native, ShaderStage stage, uint32_t samplers, uint32_t uniforms)
-    : IShader(id), Owner(owner), Native(native), Stage(stage), SamplerCount(samplers), UniformCount(uniforms) {
+ShaderSDL::ShaderSDL(DeviceSDL* owner, uint64_t id, SDL_GPUShader* native, ShaderStage stage, uint32_t samplers,
+                     uint32_t uniforms, uint32_t vertexStorageBuffers)
+    : IShader(id), Owner(owner), Native(native), Stage(stage), SamplerCount(samplers), UniformCount(uniforms),
+      VertexStorageCount(vertexStorageBuffers) {
     Owner->RegisterResource(static_cast<IShader*>(this),this,id,ResourceKindSDL::Shader);
 }
 
@@ -42,9 +44,10 @@ IShader* DeviceSDL::CreateShader(const ShaderDesc& desc) {
         const auto format = ShaderFormat(code.Format);
         if (!(supported & format)) continue;
         if (!code.Data || !code.DataSize || !code.EntryPoint || !*code.EntryPoint || code.SamplerCount > 16 || code.UniformBufferCount > 4 ||
-            (desc.Stage == ShaderStage::Vertex && code.SamplerCount) ||
+            code.VertexStorageBufferCount > 8 || (desc.Stage == ShaderStage::Vertex && code.SamplerCount) ||
+            (desc.Stage == ShaderStage::Fragment && code.VertexStorageBufferCount) ||
             (format == SDL_GPU_SHADERFORMAT_MSL && static_cast<const char*>(code.Data)[code.DataSize - 1] != '\0')) {
-            Fail("Invalid shader code, entry point or sampler count."); return nullptr;
+            Fail("Invalid shader code, entry point or stage resource counts."); return nullptr;
         }
         SDL_GPUShaderCreateInfo info{};
         info.code = static_cast<const Uint8*>(code.Data); info.code_size = code.DataSize;
@@ -52,9 +55,11 @@ IShader* DeviceSDL::CreateShader(const ShaderDesc& desc) {
         info.stage = desc.Stage == ShaderStage::Vertex ? SDL_GPU_SHADERSTAGE_VERTEX : SDL_GPU_SHADERSTAGE_FRAGMENT;
         info.num_samplers = code.SamplerCount;
         info.num_uniform_buffers = code.UniformBufferCount;
+        info.num_storage_buffers = code.VertexStorageBufferCount;
         auto* native = SDL_CreateGPUShader(_Device, &info);
         if (!native) { FailSDL(); return nullptr; }
-        try { return new ShaderSDL(this, NextID(), native, desc.Stage, code.SamplerCount, code.UniformBufferCount); }
+        try { return new ShaderSDL(this, NextID(), native, desc.Stage, code.SamplerCount, code.UniformBufferCount,
+                                   code.VertexStorageBufferCount); }
         catch (...) { SDL_ReleaseGPUShader(_Device, native); throw; }
     }
     Fail("No shader code format is compatible with this device."); return nullptr;

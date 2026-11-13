@@ -94,9 +94,26 @@ namespace GRHI {
         if (_Device != nullptr) {
             if (!_Resources.empty() || !_Commands.empty()) { Fail("Release resources and submit/cancel commands before releasing the device."); return; }
             SDL_WaitForGPUIdle(_Device);
+            if (_UploadTransfer) SDL_ReleaseGPUTransferBuffer(_Device, _UploadTransfer);
+            _UploadTransfer = nullptr;
+            _UploadTransferSize = 0;
             SDL_DestroyGPUDevice(_Device);
             _Device = nullptr;
         }
+    }
+
+    SDL_GPUTransferBuffer* DeviceSDL::UploadTransfer(uint32_t size) {
+        if (size <= _UploadTransferSize) return _UploadTransfer;
+        // SDL cycles in-flight backing allocations. Retain capacity until device release.
+        const uint64_t grown = uint64_t(_UploadTransferSize) * 2;
+        const uint32_t capacity = grown >= size && grown <= UINT32_MAX ? static_cast<uint32_t>(grown) : size;
+        const SDL_GPUTransferBufferCreateInfo desc{SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, capacity, 0};
+        auto* replacement = SDL_CreateGPUTransferBuffer(_Device, &desc);
+        if (!replacement) return nullptr;
+        if (_UploadTransfer) SDL_ReleaseGPUTransferBuffer(_Device, _UploadTransfer);
+        _UploadTransfer = replacement;
+        _UploadTransferSize = capacity;
+        return replacement;
     }
 
     ISurface * DeviceSDL::CreateSurface(GRHIWindowHandle const handle) {

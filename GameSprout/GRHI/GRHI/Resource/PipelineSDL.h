@@ -10,7 +10,7 @@ class DeviceSDL;
 class PipelineSDL final : public IGraphicsPipeline {
 public:
     PipelineSDL(DeviceSDL* owner, uint64_t id, SDL_GPUGraphicsPipeline* native, const GraphicsPipelineDesc& desc,
-                uint32_t samplers,uint32_t vertexUniforms,uint32_t fragmentUniforms);
+                uint32_t samplers,uint32_t vertexUniforms,uint32_t fragmentUniforms,uint32_t vertexStorageBuffers);
     ~PipelineSDL() override;
     void Release() override;
     TextureFormat GetColorFormat() const override;
@@ -19,8 +19,10 @@ public:
     const TextureFormat Format;
     const uint32_t SamplerCount;
     const uint32_t VertexUniformCount, FragmentUniformCount;
+    const uint32_t VertexStorageCount;
     const TextureFormat DepthFormat;
     std::vector<VertexBindingDesc> Bindings;
     std::array<uint32_t,16> AttributeEnds{};
+    uint32_t BindingMask=0;
 };
 }

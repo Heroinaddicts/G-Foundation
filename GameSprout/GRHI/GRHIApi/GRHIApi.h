@@ -86,12 +86,25 @@ namespace GRHI {
         size_t RowPitch = 0;
     };
 
-    enum class BufferUsage : uint8_t { None = 0, Vertex = 1 << 0, Index = 1 << 1 };
+    enum class BufferUsage : uint8_t { None = 0, Vertex = 1 << 0, Index = 1 << 1, VertexStorage = 1 << 2 };
     constexpr BufferUsage operator|(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b)); }
     constexpr BufferUsage operator&(BufferUsage a, BufferUsage b) { return static_cast<BufferUsage>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b)); }
-    struct BufferDesc { size_t Size = 0; BufferUsage Usage = BufferUsage::Vertex; };
+    struct BufferDesc {
+        size_t Size = 0;
+        BufferUsage Usage = BufferUsage::Vertex;
+        // 无初始数据时可延迟初始化，读取前须上传相应区间。Index 缓冲必须初始化。
+        bool InitializeToZero = true;
+    };
     // CreateBuffer 返回前复制数据；未提供/未覆盖的部分初始化为零。
     struct BufferInitialData { const void* Data = nullptr; size_t DataSize = 0; };
+    struct BufferUpload {
+        IBuffer* Buffer = nullptr;
+        size_t Offset = 0;
+        const void* Data = nullptr;
+        size_t Size = 0;
+        // 如 GPU 正在使用旧数据，允许换用一份新存储。新存储中未上传的字节未定义。
+        bool Cycle = false;
+    };
 
     // 采样位置落在像素之间时，如何从纹理像素取得颜色。
     enum class FilterMode : uint8_t {
@@ -137,10 +150,11 @@ namespace GRHI {
         size_t DataSize = 0;        // 代码的字节数，二进制不能用 strlen 计算。
         const char* EntryPoint = "main"; // 编译结果中需要执行的入口函数名称。
         // 纹理与采样器配对的槽位数量，从 0 连续编号。
-        // 必须匹配该编译产物；当前不支持 storage 资源。
+        // 必须匹配该编译产物。
         // 首版仅片元阶段支持采样；顶点阶段的 SamplerCount 必须为 0。
         uint32_t SamplerCount = 0;
         uint32_t UniformBufferCount = 0; // 每阶段从 0 连续编号，当前最多 4 个。
+        uint32_t VertexStorageBufferCount = 0; // 顶点阶段的只读存储缓冲，从 0 连续编号，最多 8 个。
     };
 
     // 一个逻辑 Shader 阶段的创建描述，可同时携带多个平台的编译结果。
@@ -189,7 +203,7 @@ namespace GRHI {
     };
 
     // UInt32x4 保留整数输入语义，可用于任意四分量索引数据。
-    enum class VertexFormat : uint8_t { Float2, Float3, Float4, UInt32x4 };
+    enum class VertexFormat : uint8_t { Float2, Float3, Float4, UInt32x4, UInt32 };
     // Instance advances once per instance, independently of mesh vertex indices.
     // firstInstance selects the first record in an Instance-rate binding.
     enum class VertexInputRate : uint8_t { Vertex, Instance };
@@ -416,6 +430,8 @@ namespace GRHI {
         virtual void Draw(uint32_t vertexCount, uint32_t instanceCount = 1,uint32_t firstVertex = 0, uint32_t firstInstance = 0) = 0;
         virtual void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0,
                                  int32_t vertexOffset = 0, uint32_t firstInstance = 0) = 0;
+        // 为后续绘制绑定同一 Device 的只读 VertexStorage 缓冲。切换管线后重新绑定。
+        virtual void SetVertexStorageBuffer(uint32_t slot, IBuffer* buffer) = 0;
     };
 
     // 由 Device 管理的一次性命令对象，不允许调用方 delete。
@@ -439,6 +455,9 @@ namespace GRHI {
         // 结束本命令的当前活动 Pass，并按 StoreOp 处理结果；pass 随即失效。
         // 不提交 GPU 命令，也不直接呈现窗口；结束后可继续开始其他 Pass。
         virtual void EndRenderPass(IRenderPass* pass) = 0;
+        // 记录一批上传。调用返回前复制数据，Submit 时按与 RenderPass 的记录顺序执行。
+        // 在 Pass 外调用。Offset 和 Size 按四字节对齐；Index 缓冲内容保持不可变。
+        virtual bool UploadBuffers(const BufferUpload* uploads, uint32_t count) = 0;
     };
 
 #if defined(_WIN32)
@@ -524,7 +543,7 @@ namespace GRHI {
         // 初始像素在返回前复制到 GRHI 持有的内存并安排上传；之后的绘制可直接使用。
         // initialData 为空时内容未定义，读取前须先写入或清屏。
         virtual ITexture* CreateTexture(const TextureDesc& desc, const TextureInitialData* initialData = nullptr) = 0;
-        // immutable 初始上传；当前 SDL 后端单缓冲区不超过 UINT32_MAX 字节。
+        // 当前 SDL 后端单缓冲区不超过 UINT32_MAX 字节。
         virtual IBuffer* CreateBuffer(const BufferDesc& desc, const BufferInitialData* initialData = nullptr) = 0;
         // 显式同步截图入口。只读取本 Device 的普通 RGBA8/BGRA8 纹理，返回紧密排列的 RGBA bytes。
         // 须先提交/取消本设备全部命令；失败清空 pixels。此调用等待 GPU，不能放到每帧热路径。
@@ -561,6 +580,12 @@ namespace GRHI {
         // 无效绘制操作须标记命令失败，不得传入底层；Submit 返回 false 并回收命令。
         // 引用有效至下一次相关操作或 Device 销毁；Get* 查询不清空错误。
         virtual const std::string& GetLastError() const = 0;
+        // Upload contiguous rows of a color texture's mip 0. The source starts
+        // at firstRow in the destination and is borrowed only during this call.
+        // The upload is submitted before subsequent draws. Publish a texture
+        // to samplers only once all its required rows have been initialized.
+        virtual bool UploadTextureRows(ITexture*, uint32_t firstRow, uint32_t rowCount,
+                                       const TextureInitialData&) = 0;
     };
 
     // GRHI 的入口，负责枚举物理显卡和创建渲染设备，不直接记录绘制命令。
