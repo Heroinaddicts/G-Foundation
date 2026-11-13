@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QPoint>
 #include <QMap>
+#include <QRect>
 
 QT_BEGIN_NAMESPACE
 class QMainWindow;
@@ -25,6 +26,8 @@ public:
     void RegisterDocker(IDEDockerFinal* docker);
     void UnregisterDocker(IDEDockerFinal* docker);
     void RequestRefresh();
+    bool SetHorizontalDockStretch(const QList<IDEDockerFinal*>& dockers);
+    void RememberHorizontalDockWidths();
     void RestoreMaximized();
     void BeforeActivate(IDEDockerFinal* docker);
     void ToggleMaximize(IDEDockerFinal* docker);
@@ -50,6 +53,8 @@ private:
         QToolButton* options; // 管理器拥有，固定在停靠区域最左侧。
     };
     void Refresh();
+    QList<IDEDockerFinal*> HorizontalDockRow() const;
+    void ResizeHorizontalDocks();
     QToolButton* CreateTabOptions(QTabBar* bar);
     void RestoreClosedDocker(IDEDockerFinal* docker);
     struct ClosedPlacement {
@@ -67,10 +72,16 @@ private:
     QMainWindow* _Window; // 借用，晚于本对象销毁。
     QMenu* _WindowMenu = nullptr; // 借用 IDEWindow.ui 生成的菜单。
     QList<IDEDockerFinal*> _Dockers; // 全部为借用指针。
+    QList<IDEDockerFinal*> _HorizontalDockers;
+    QList<IDEDockerFinal*> _HorizontalCenterPeers;
+    QMap<IDEDockerFinal*, int> _PreferredDockWidths;
+    bool _HorizontalResizePending = false;
+    bool _RememberHorizontalWidths = false;
     QList<TabBar> _TabBars;
     bool _RefreshPending = false;
     bool _PositioningTabs = false;
     bool _NativeResize = false;
+    bool _NativeHorizontalResize = false;
     IDEDockerDragController* _DragController = nullptr;
     IDEDockerFinal* _Maximized = nullptr;
     QByteArray _NormalState; // 仅供临时最大化还原，不写入文件。

@@ -3,6 +3,8 @@
  <class>LightComponentEditorForm</class>
  <widget class="QWidget" name="LightComponentEditorForm">
   <layout class="QFormLayout" name="formLayout">
+   <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+   <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
    <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
    <item row="0" column="0"><widget class="QLabel" name="typeLabel"><property name="text"><string>类型</string></property></widget></item>
    <item row="0" column="1"><widget class="QLabel" name="typeValue"><property name="text"><string>Directional · 方向光</string></property></widget></item>
@@ -24,6 +26,8 @@
     <property name="title"><string>实时阴影</string></property><property name="checkable"><bool>true</bool></property><property name="checked"><bool>false</bool></property>
     <property name="toolTip"><string>开启方向光阴影。当前由最亮且开启阴影的方向光提供主阴影。</string></property>
     <layout class="QFormLayout" name="shadowLayout">
+     <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+     <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
      <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
      <item row="0" column="0"><widget class="QLabel" name="shadowStrengthLabel"><property name="text"><string>强度</string></property></widget></item>
      <item row="0" column="1"><widget class="QLineEdit" name="shadowStrengthEdit"><property name="toolTip"><string>阴影强度，范围 0 到 1。不会使环境漫反射完全变黑。</string></property></widget></item>
@@ -53,6 +57,8 @@
      <item row="9" column="0" colspan="2"><widget class="QWidget" name="shadowAdvancedOptions">
       <property name="visible"><bool>false</bool></property>
       <layout class="QFormLayout" name="shadowAdvancedLayout">
+       <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+       <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
        <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
        <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property>
        <property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>

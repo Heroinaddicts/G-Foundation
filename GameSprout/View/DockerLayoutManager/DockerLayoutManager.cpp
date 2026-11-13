@@ -69,7 +69,7 @@ bool DockerLayoutManager::ResetDefaultLayout() {
     }
     scene->Activate();
     project->Activate();
-    return true;
+    return g_IIDEWindow->SetHorizontalDockStretch(hierarchy, scene, inspector);
 }
 
 void DockerLayoutManager::OnResetLayout() {

@@ -118,10 +118,18 @@ int main(int argc,char** argv) {
         for(const QString& name:{"Hierarchy","Scene","Game","Inspector"}) {
             auto* dock=ide->CreateDocker(name);auto* content=new QWidget();content->setMinimumSize(40,40);content->setObjectName(name+"TestContent");Check(dock&&dock->AttachWidget(content),"Placeholder dock attach failed");
         }
+        Check(layouts->ResetDefaultLayout(),"Default layout failed before the window was shown");
         ide->Show();Settle();
         QMainWindow* host=nullptr;
         for(QWidget* top:QApplication::topLevelWidgets())if(auto* candidate=qobject_cast<QMainWindow*>(top))if(candidate->findChild<QDockWidget*>("ProjectAssets")){host=candidate;break;}
-        Check(host,"IDE host missing");host->resize(1280,800);Settle();
+        Check(host,"IDE host missing");
+        auto* startupScene=DockWidget(host,"Scene");
+        auto* startupInspector=DockWidget(host,"Inspector");
+        const int startupWidth=host->width(), startupSceneWidth=startupScene->width(), startupInspectorWidth=startupInspector->width();
+        host->resize(startupWidth+300,host->height());Settle();
+        Check(startupScene->width()>=startupSceneWidth+290&&qAbs(startupInspector->width()-startupInspectorWidth)<=3,
+            "Startup default layout does not stretch Scene after the first show");
+        host->resize(1280,800);Settle();
         if(explore)app.Trace=host;
         Check(layouts->ResetDefaultLayout(),"Default layout failed");Settle(400);
         auto* originalWindowMenu=host->findChild<QMenu*>("DockerWindowMenu");
@@ -153,6 +161,25 @@ int main(int argc,char** argv) {
             Check(qAbs(projectDock->geometry().left()-hierarchyDock->geometry().left())<=2&&qAbs(projectDock->geometry().right()-sceneDock->geometry().right())<=2,"Default Project group must span both Hierarchy and Scene columns");
             Check(qAbs(hierarchyDock->geometry().bottom()-sceneDock->geometry().bottom())<=2,"Hierarchy extends below the shared Project separator");
             Check(inspectorDock->geometry().top()<=hierarchyDock->geometry().top()+2&&inspectorDock->geometry().bottom()>=projectDock->geometry().bottom()-2,"Default Inspector must remain full-height on the right");
+
+            const int originalWidth=host->width();
+            const int originalLeft=hierarchyDock->width(), originalRight=inspectorDock->width(), originalCenter=sceneDock->width();
+            host->resize(originalWidth+520,host->height());Settle();
+            Check(qAbs(hierarchyDock->width()-originalLeft)<=3&&qAbs(inspectorDock->width()-originalRight)<=3&&
+                sceneDock->width()>=originalCenter+510,"Window growth did not go to the Scene column");
+            const QPoint separator((sceneDock->geometry().right()+inspectorDock->geometry().left())/2,sceneDock->geometry().center().y());
+            Drag(host,separator,separator-QPoint(64,0));
+            const int draggedRight=inspectorDock->width();
+            Check(draggedRight>=originalRight+30,"Cannot create a manually resized Inspector fixture");
+            ide->QueryDocker("Game")->Activate();Settle();
+            auto* gameDock=DockWidget(host,"Game");const int beforeGame=gameDock->width();
+            host->resize(originalWidth+350,host->height());Settle();
+            Check(qAbs(inspectorDock->width()-draggedRight)<=3&&gameDock->width()<=beforeGame-160,
+                "Resizing with Game active did not preserve the manually dragged Inspector width");
+            host->resize(originalWidth,host->height());Settle();
+            Check(qAbs(inspectorDock->width()-draggedRight)<=3,"Inspector lost its preferred width when shrinking the window");
+            Check(layouts->ResetDefaultLayout(),"Cannot restore default layout after width checks");Settle();
+            bottom=Tabs(host,"Project","Console");Check(bottom,"Bottom tabs missing after width checks");
         }
         const auto blanks=BlankRegions(host);for(const auto& rect:blanks)std::cout<<"Large uncovered client region="<<Rect(rect)<<std::endl;
         const int before=projectDock->height()+bottom->height();

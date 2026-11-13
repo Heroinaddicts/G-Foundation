@@ -126,6 +126,9 @@ QTabBar::tab:selected { color:#ffffff; background:#3a526d; }</string>
       </item>
       <item>
        <layout class="QFormLayout" name="identityLayout">
+        <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+        <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+        <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
         <item row="0" column="0">
          <widget class="QLabel" name="pathEditLabel">
           <property name="text">

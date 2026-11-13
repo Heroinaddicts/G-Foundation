@@ -161,6 +161,9 @@ public:
     }
     // 只允许结束已全部结算的批次；Release 会直接清理其余批次，旧 token 随后无效。
     virtual bool EndImportProgress(uint64_t token) { (void)token; return false; }
+
+    // 三列相邻时，主窗口横向缩放优先调整中列，侧栏保留手动拖出的宽度。
+    virtual bool SetHorizontalDockStretch(IIDEDocker*, IIDEDocker*, IIDEDocker*) { return false; }
 };
 
 #endif //__IIDEWindow_h__

@@ -11,6 +11,7 @@
 #include <QTest>
 #include <QScreen>
 #include <QCheckBox>
+#include <QToolButton>
 #include <cstring>
 #include <algorithm>
 
@@ -61,7 +62,7 @@ public:
         IDE->QueryDocker("Scene")->Activate();Viewport->setFocus();
         auto camera=SceneView->GetCameraState();camera.Position={0,0,-8};camera.OrbitPivot={0,0,0};camera.YawDegrees=0;camera.PitchDegrees=0;camera.OrbitDistance=8;
         Check(SceneView->SetCameraState(camera),"Cannot initialize test Scene camera");
-        if(auto* grid=SceneDock->findChild<QCheckBox*>("gridCheck"))grid->setChecked(false);
+        if(auto* grid=SceneDock->findChild<QToolButton*>("gridCheck"))grid->setChecked(false);
         Pump([&]{GameSproutRuntime::RenderedCamera frame;return SceneView->IsRenderingAvailable()&&Viewport->GetRenderedCamera(frame)&&frame.Width==qRound(Viewport->width()*Viewport->devicePixelRatioF());});
     }
     void Tick() {

@@ -3,7 +3,6 @@
 #include "IProject.h"
 #include "ui_ProjectAssetsUI.h"
 #include <QApplication>
-#include <QHeaderView>
 #include <QFileInfo>
 #include <QItemSelectionModel>
 #include <QScrollBar>
@@ -33,7 +32,6 @@ bool ProjectAssetsUI::Initialize(GameSproutEditor::GameSproutViewApi *) {
         _Ui->folderTree->setModel(_FolderModel);
         _Ui->assetTree->setModel(_AssetModel);
         _Ui->splitter->setSizes({210,650});
-        _Ui->assetTree->header()->setStretchLastSection(false);
         QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this] {
             _Window=nullptr;_FolderModel=nullptr;_AssetModel=nullptr;_Docker=nullptr;_Attached=false;
             for (auto& action:_ContextActions) action.Menu=nullptr;

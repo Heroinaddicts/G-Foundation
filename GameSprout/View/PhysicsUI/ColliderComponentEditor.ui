@@ -9,6 +9,8 @@
    </sizepolicy>
   </property>
   <layout class="QFormLayout" name="formLayout">
+   <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+   <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
    <property name="fieldGrowthPolicy">
     <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
    </property>

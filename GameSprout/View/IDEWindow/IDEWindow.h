@@ -31,6 +31,7 @@ public:
     IIDEDocker* QueryDocker(const QString& name) override;
     bool ResizeDockers(const QList<IIDEDocker*>& dockers,
                        const QList<int>& sizes, Qt::Orientation orientation) override;
+    bool SetHorizontalDockStretch(IIDEDocker* left, IIDEDocker* center, IIDEDocker* right) override;
 
     void Loading(const std::string & title, const std::string & desc) override;
     void Unloading() override;

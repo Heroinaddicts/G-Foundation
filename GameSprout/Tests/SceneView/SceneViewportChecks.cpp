@@ -20,13 +20,15 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QLineF>
+#include <QComboBox>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QPushButton>
 #include <QToolButton>
 #include <QToolTip>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QTabBar>
-#include <QScrollBar>
 #include <cmath>
 #include <cstring>
 
@@ -277,6 +279,9 @@ int main(int argc,char** argv) {
         Check(!content->findChild<QLabel*>("inputHelpLabel")&&!content->findChild<QLabel*>("statusLabel"),"Permanent help/statistics still consume Scene viewport height");
         auto* strip=content->findChild<QScrollArea*>("toolScrollArea");
         Check(strip&&strip->height()<=46&&viewport->height()>=content->height()-48,"Compact Scene toolbar reserves multiple permanent rows");
+        auto* overflow=content->findChild<QToolButton*>("toolbarOverflowButton");
+        auto* toolsPopup=content->findChild<QWidget*>("SceneToolbarPopup");
+        Check(overflow&&overflow->isVisible()&&toolsPopup&&!toolsPopup->isVisible(),"Scene overflow entry or popup missing");
         auto* reuseShadows=content->findChild<QCheckBox*>("reuseNavigationShadowsCheck");
         Check(reuseShadows&&reuseShadows->isChecked()&&view->IsShadowReuseWhileNavigatingEnabled(),
             "Scene toolbar must enable navigation shadow reuse by default");
@@ -288,15 +293,22 @@ int main(int argc,char** argv) {
             "Public Scene shadow setter did not update the toolbar toggle");
         auto* help=host->findChild<QToolButton*>("sceneHelpButton");
         auto* statistics=host->findChild<QToolButton*>("statisticsButton");
-        Check(help&&statistics&&help->isVisible(),"Scene title actions are not available");
+        auto* fps=host->findChild<QLabel*>("fpsLabel");
+        Check(help&&statistics&&help->isVisible()&&fps&&fps->isVisible(),"Scene title actions and frame rate are not available");
         help->click();QCoreApplication::processEvents();
         Check(QToolTip::text().contains("WASD")&&QToolTip::text().contains("Delete"),"Scene question button did not open complete mouse-position help");
         QToolTip::hideText();
-        auto* snapButton=content->findChild<QToolButton*>("snapSettingsButton");
-        Check(snapButton,"Snap popup entry missing");snapButton->click();QCoreApplication::processEvents();
+        overflow->click();QCoreApplication::processEvents();
+        auto* snapButton=toolsPopup->findChild<QPushButton*>("snapMenuButton");
+        Check(toolsPopup->isVisible()&&snapButton&&snapButton->isVisible(),"Snap popup entry missing from Scene overflow");
+        const QRect checkbox=QRect(reuseShadows->mapTo(toolsPopup,QPoint()),reuseShadows->size());
+        const QRect command=QRect(snapButton->mapTo(toolsPopup,QPoint()),snapButton->size());
+        Check(reuseShadows->height()>=reuseShadows->fontMetrics().height()&&snapButton->height()>=snapButton->fontMetrics().height()
+            &&toolsPopup->rect().contains(checkbox)&&toolsPopup->rect().contains(command),"Scene overflow clipped its option or command");
+        snapButton->click();QCoreApplication::processEvents();
         auto* snapPopup=content->findChild<QWidget*>("SceneSnapPopup");
         auto* moveSnap=snapPopup?snapPopup->findChild<QDoubleSpinBox*>("moveSnapSpin"):nullptr;
-        Check(snapPopup&&snapPopup->isVisible()&&moveSnap,"Snap controls are not available from the compact toolbar");
+        Check(snapPopup&&snapPopup->isVisible()&&moveSnap&&!toolsPopup->isVisible(),"Snap controls are not available from the compact toolbar");
         moveSnap->setValue(.25);
         if(headless)snapPopup->grab().save(QStringLiteral("/tmp/gamesprout-scene-snap-popup.png"));
         QKeyEvent popupEscape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QCoreApplication::sendEvent(moveSnap,&popupEscape);
@@ -318,15 +330,22 @@ int main(int argc,char** argv) {
             sceneDock->setFloating(true);
             for(int width:{320,480}) {
                 sceneDock->resize(width,440);QCoreApplication::processEvents();QCoreApplication::processEvents();
-                Check(help->isVisible()&&strip->height()<=46&&viewport->height()>=content->height()-48,
+                Check(help->isVisible()&&fps->isVisible()&&strip->height()<=32&&viewport->height()>=content->height()-34,
                     "Narrow/floating Scene title or viewport allocation regressed");
-                auto* scroll=strip->horizontalScrollBar();scroll->setValue(scroll->maximum());QCoreApplication::processEvents();
-                auto* retry=content->findChild<QToolButton*>("retryRenderButton");
-                Check(retry&&strip->viewport()->rect().contains(retry->mapTo(strip->viewport(),retry->rect().center())),
-                    "Narrow toolbar clips controls without an accessible overflow scroll: strip="+std::to_string(strip->width())+
-                    " content="+std::to_string(strip->widget()->width())+" range="+std::to_string(scroll->maximum())+
-                    " point="+std::to_string(retry?retry->mapTo(strip->viewport(),retry->rect().center()).x():-1));
-                scroll->setValue(0);
+                Check(strip->horizontalScrollBar()->maximum()==0,"Narrow Scene toolbar requires horizontal scrolling");
+                for(QWidget* control:{static_cast<QWidget*>(content->findChild<QComboBox*>("spaceCombo")),
+                    static_cast<QWidget*>(content->findChild<QComboBox*>("pivotCombo")),static_cast<QWidget*>(content->findChild<QToolButton*>("gridCheck"))}) {
+                    Check(control&&strip->viewport()->rect().contains(QRect(control->mapTo(strip->viewport(),QPoint()),control->size())),
+                        "Narrow Scene toolbar clipped a primary tool");
+                }
+                Check(overflow->isVisible()&&content->rect().contains(overflow->mapTo(content,overflow->rect().center())),
+                    "Narrow Scene toolbar clipped its overflow button");
+                overflow->click();QCoreApplication::processEvents();
+                auto* retry=toolsPopup->findChild<QPushButton*>("retryRenderButton");
+                Check(toolsPopup->isVisible()&&retry&&retry->isVisible(),"Narrow Scene toolbar hid the retry command");
+                Check(reuseShadows->isChecked()&&view->IsShadowReuseWhileNavigatingEnabled(),"Resize lost the navigation shadow option");
+                QCoreApplication::sendEvent(retry,&popupEscape);
+                Check(!toolsPopup->isVisible(),"Escape did not dismiss Scene overflow");
                 sceneDock->grab().save(QStringLiteral("/tmp/gamesprout-scene-compact-%1.png").arg(width));
             }
             sceneDock->setFloating(false);QCoreApplication::processEvents();QCoreApplication::processEvents();

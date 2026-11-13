@@ -11,6 +11,7 @@
 #include <map>
 
 QT_BEGIN_NAMESPACE
+class QAction;
 class QWidget;
 class QObject;
 namespace Ui {
@@ -53,6 +54,7 @@ private:
     QWidget* _Window=nullptr;
     QObject* _Dispatch=nullptr;
     Ui::GameViewUIWindow* _Ui=nullptr;
+    QAction* _MaterialPreviewAction=nullptr;
     GameViewport* _Viewport=nullptr;
     std::map<const void*, QMetaObject::Connection> _ViewportSizeConnections;
     IIDEDocker* _Docker=nullptr;

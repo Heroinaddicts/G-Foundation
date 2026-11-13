@@ -2,7 +2,7 @@
 #include "Math/TransformMath.h"
 #include <QComboBox>
 #include <QScrollArea>
-#include <QScrollBar>
+#include <QToolButton>
 
 static GameSproutRuntime::Vector3 WorldPoint(const GameSproutRuntime::Mat4& matrix,GameSproutRuntime::Vector3 point={}) {
     const auto value=matrix*GameSproutRuntime::Vector4{point.X,point.Y,point.Z,1};return {value.X,value.Y,value.Z};
@@ -256,9 +256,11 @@ static void CheckNarrowToolbar(SceneInteractionFixture& fixture) {
     fixture.Host->resize(940,760);fixture.Settle();
     Check(fixture.IDE->ResizeDockers({fixture.IDE->QueryDocker("Hierarchy"),fixture.IDE->QueryDocker("Scene"),fixture.IDE->QueryDocker("Inspector")},{140,330,470},Qt::Horizontal),"Cannot resize Scene to a narrow pane");
     fixture.Pump([&]{GameSproutRuntime::RenderedCamera frame;return fixture.Viewport->GetRenderedCamera(frame)&&frame.Width==qRound(fixture.Viewport->width()*fixture.Viewport->devicePixelRatioF());});
-    std::cout<<"Narrow Scene host="<<fixture.Host->width()<<" dock="<<fixture.SceneDock->width()<<" toolbar="<<toolbar->width()<<"x"<<toolbar->height()<<" content="<<toolbar->widget()->width()<<" minHint="<<toolbar->widget()->minimumSizeHint().width()<<" scrollRange="<<toolbar->horizontalScrollBar()->minimum()<<".."<<toolbar->horizontalScrollBar()->maximum()<<std::endl;
-    Check(fixture.SceneDock->width()<450&&toolbar->horizontalScrollBar()->maximum()>0&&toolbar->height()<=100,
-          "Narrow Scene pane could not horizontally scroll its fixed-height tools");
+    auto* overflow=fixture.SceneDock->findChild<QToolButton*>("toolbarOverflowButton");
+    auto* content=fixture.SceneDock->widget();
+    Check(fixture.SceneDock->width()<450&&toolbar->height()<=32&&overflow&&overflow->isVisible()&&
+          content->rect().contains(overflow->mapTo(content,overflow->rect().center())),
+          "Narrow Scene pane lost access to secondary tools");
     Check(fixture.Capture().save("/tmp/gamesprout-scene-editing-narrow.png"),"Cannot capture narrow Scene editing tools");
     const QPoint origin=fixture.SceneDock->mapTo(fixture.Host,QPoint());
     Check(fixture.Host->screen()->grabWindow(fixture.Host->winId(),origin.x(),origin.y(),fixture.SceneDock->width(),fixture.SceneDock->height()).save("/tmp/gamesprout-scene-toolbar-narrow.png"),"Cannot capture narrow Scene toolbar with native viewport");

@@ -6,6 +6,9 @@
    <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
    <item><widget class="QCheckBox" name="extractRootMotionCheck"><property name="text"><string>提取根运动（完整位移和旋转）</string></property><property name="toolTip"><string>为指定节点生成独立的根运动轨迹，Animator 设置控制如何使用它。</string></property></widget></item>
    <item><layout class="QFormLayout" name="rootNodeLayout">
+    <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+    <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+    <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
     <item row="0" column="0"><widget class="QLabel" name="rootNodeLabel"><property name="text"><string>根运动节点</string></property></widget></item>
     <item row="0" column="1"><widget class="QComboBox" name="rootMotionNodeCombo"><property name="editable"><bool>true</bool></property><property name="insertPolicy"><enum>QComboBox::NoInsert</enum></property><property name="toolTip"><string>选择导入模型中的源节点；手动输入时请填写完整源路径。不会自动猜测骨盆或模型根。</string></property></widget></item>
    </layout></item>

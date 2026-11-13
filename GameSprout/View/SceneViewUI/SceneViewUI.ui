@@ -65,339 +65,263 @@
         <enum>QLayout::SetMinimumSize</enum>
        </property>
        <item>
-        <widget class="QToolButton" name="viewToolButton">
-         <property name="text">
-          <string>视图 Q</string>
-         </property>
-         <property name="toolTip">
-          <string>视图工具 Q：导航场景，不修改对象。</string>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-         <attribute name="buttonGroup">
-          <string notr="true">transformToolGroup</string>
-         </attribute>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/view.svg</normaloff>
-          </iconset>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="moveToolButton">
-         <property name="text">
-          <string>移动 W</string>
-         </property>
-         <property name="toolTip">
-          <string>移动工具 W：拖动轴、平面或中心句柄。</string>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-         <property name="checked">
-          <bool>true</bool>
-         </property>
-         <attribute name="buttonGroup">
-          <string notr="true">transformToolGroup</string>
-         </attribute>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/move.svg</normaloff>
-          </iconset>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="rotateToolButton">
-         <property name="text">
-          <string>旋转 E</string>
-         </property>
-         <property name="toolTip">
-          <string>旋转工具 E：拖动彩色轴环或视平面外环。</string>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-         <attribute name="buttonGroup">
-          <string notr="true">transformToolGroup</string>
-         </attribute>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/rotate.svg</normaloff>
-          </iconset>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="scaleToolButton">
-         <property name="text">
-          <string>缩放 R</string>
-         </property>
-         <property name="toolTip">
-          <string>缩放工具 R：拖动轴或中心方块；局部模式适合旋转过的对象。</string>
-         </property>
-         <property name="checkable">
-          <bool>true</bool>
-         </property>
-         <attribute name="buttonGroup">
-          <string notr="true">transformToolGroup</string>
-         </attribute>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/scale.svg</normaloff>
-          </iconset>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="rectToolButton">
-         <property name="text">
-          <string>矩形 T</string>
-         </property>
-         <property name="toolTip">
-          <string>矩形工具 T：拖框内移动，拖边或角改变大小，从角点外侧旋转。</string>
-         </property>
-         <property name="checkable"><bool>true</bool></property>
-         <attribute name="buttonGroup">
-          <string notr="true">transformToolGroup</string>
-         </attribute>
-         <property name="toolButtonStyle"><enum>Qt::ToolButtonIconOnly</enum></property>
-         <property name="autoRaise"><bool>true</bool></property>
-         <property name="minimumSize"><size><width>25</width><height>25</height></size></property>
-         <property name="maximumSize"><size><width>25</width><height>25</height></size></property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc"><normaloff>:/SceneView/rect.svg</normaloff></iconset>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QComboBox" name="spaceCombo">
-         <property name="toolTip">
-          <string>坐标轴方向：世界坐标或对象的局部坐标。</string>
-         </property>
-         <item>
-          <property name="text">
-           <string>世界</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>局部</string>
-          </property>
-         </item>
-         <property name="minimumSize">
-          <size>
-           <width>65</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>74</width>
-           <height>25</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QComboBox" name="pivotCombo">
-         <property name="toolTip">
-          <string>操作中心：对象原点或几何包围盒中心。</string>
-         </property>
-         <item>
-          <property name="text">
-           <string>原点</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>中心</string>
-          </property>
-         </item>
-         <property name="minimumSize">
-          <size>
-           <width>65</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>74</width>
-           <height>25</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="gridCheck">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="checked">
-          <bool>true</bool>
-         </property>
-         <property name="text">
-          <string>网格</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="allCollidersCheck">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="toolTip">
-          <string>默认显示所选对象的碰撞体。勾选后显示整个场景中活动且启用的碰撞体。</string>
-         </property>
-         <property name="text">
-          <string>全部碰撞体</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="childCollidersCheck">
-         <property name="toolTip">
-          <string>显示所选对象的后代碰撞体。</string>
-         </property>
-         <property name="text">
-          <string>子碰撞体</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="materialPreviewCheck">
-         <property name="toolTip">
-          <string>在编辑模式中连续预览水面等动态材质。</string>
-         </property>
-         <property name="text">
-          <string>材质动画</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="reuseNavigationShadowsCheck">
-         <property name="checked">
-          <bool>true</bool>
-         </property>
-         <property name="toolTip">
-          <string>拖动自由镜头或滚动缩放时复用阴影以提高帧率。停止操作后按新视角更新。关闭后，每次镜头变化都会更新阴影。</string>
-         </property>
-         <property name="text">
-          <string>导航时复用阴影</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="snapSettingsButton">
-         <property name="text">
-          <string>吸附设置</string>
-         </property>
-         <property name="toolTip">
-          <string>吸附设置：位移、旋转角度和缩放步长；Ctrl / Cmd 临时吸附。</string>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/snap.svg</normaloff>
-          </iconset>
-         </property>
+        <widget class="QWidget" name="primaryTools">
+         <layout class="QHBoxLayout" name="primaryToolsLayout">
+          <property name="spacing"><number>3</number></property>
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <widget class="QToolButton" name="viewToolButton">
+            <property name="text">
+             <string>视图 Q</string>
+            </property>
+            <property name="toolTip">
+             <string>视图工具 Q：导航场景，不修改对象。</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <attribute name="buttonGroup">
+             <string notr="true">transformToolGroup</string>
+            </attribute>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/view.svg</normaloff>
+             </iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="moveToolButton">
+            <property name="text">
+             <string>移动 W</string>
+            </property>
+            <property name="toolTip">
+             <string>移动工具 W：拖动轴、平面或中心句柄。</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+            <attribute name="buttonGroup">
+             <string notr="true">transformToolGroup</string>
+            </attribute>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/move.svg</normaloff>
+             </iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="rotateToolButton">
+            <property name="text">
+             <string>旋转 E</string>
+            </property>
+            <property name="toolTip">
+             <string>旋转工具 E：拖动彩色轴环或视平面外环。</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <attribute name="buttonGroup">
+             <string notr="true">transformToolGroup</string>
+            </attribute>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/rotate.svg</normaloff>
+             </iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="scaleToolButton">
+            <property name="text">
+             <string>缩放 R</string>
+            </property>
+            <property name="toolTip">
+             <string>缩放工具 R：拖动轴或中心方块；局部模式适合旋转过的对象。</string>
+            </property>
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+            <attribute name="buttonGroup">
+             <string notr="true">transformToolGroup</string>
+            </attribute>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/scale.svg</normaloff>
+             </iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="rectToolButton">
+            <property name="text">
+             <string>矩形 T</string>
+            </property>
+            <property name="toolTip">
+             <string>矩形工具 T：拖框内移动，拖边或角改变大小，从角点外侧旋转。</string>
+            </property>
+            <property name="checkable"><bool>true</bool></property>
+            <attribute name="buttonGroup">
+             <string notr="true">transformToolGroup</string>
+            </attribute>
+            <property name="toolButtonStyle"><enum>Qt::ToolButtonIconOnly</enum></property>
+            <property name="autoRaise"><bool>true</bool></property>
+            <property name="minimumSize"><size><width>25</width><height>25</height></size></property>
+            <property name="maximumSize"><size><width>25</width><height>25</height></size></property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc"><normaloff>:/SceneView/rect.svg</normaloff></iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="spaceCombo">
+            <property name="toolTip">
+             <string>坐标轴方向：世界坐标或对象的局部坐标。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>世界</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>局部</string>
+             </property>
+            </item>
+            <property name="minimumSize">
+             <size>
+              <width>54</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>67</width>
+              <height>25</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="pivotCombo">
+            <property name="toolTip">
+             <string>操作中心：对象原点或几何包围盒中心。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>原点</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>中心</string>
+             </property>
+            </item>
+            <property name="minimumSize">
+             <size>
+              <width>54</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>67</width>
+              <height>25</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="gridCheck">
+            <property name="text"><string notr="true">▦</string></property>
+            <property name="accessibleName"><string>网格</string></property>
+            <property name="toolTip"><string>显示场景网格</string></property>
+            <property name="checkable"><bool>true</bool></property>
+            <property name="checked"><bool>true</bool></property>
+            <property name="minimumSize"><size><width>25</width><height>25</height></size></property>
+            <property name="maximumSize"><size><width>25</width><height>25</height></size></property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
@@ -414,102 +338,113 @@
         </spacer>
        </item>
        <item>
-        <widget class="QToolButton" name="focusSelectionButton">
-         <property name="text">
-          <string>聚焦 F</string>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/focus.svg</normaloff>
-          </iconset>
-         </property>
-         <property name="toolTip">
-          <string>聚焦所选对象（F）</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="resetCameraButton">
-         <property name="text">
-          <string>重置视角</string>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/reset.svg</normaloff>
-          </iconset>
-         </property>
-         <property name="toolTip">
-          <string>重置自由相机视角</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QToolButton" name="retryRenderButton">
-         <property name="text">
-          <string>重试渲染</string>
-         </property>
-         <property name="toolButtonStyle">
-          <enum>Qt::ToolButtonIconOnly</enum>
-         </property>
-         <property name="autoRaise">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>25</width>
-           <height>25</height>
-          </size>
-         </property>
-         <property name="icon">
-          <iconset resource="SceneViewIcons.qrc">
-           <normaloff>:/SceneView/retry.svg</normaloff>
-          </iconset>
-         </property>
-         <property name="toolTip">
-          <string>重新创建渲染窗口并重试渲染</string>
-         </property>
+        <widget class="QWidget" name="toolbarQuickActions">
+         <layout class="QHBoxLayout" name="toolbarQuickActionsLayout">
+          <property name="spacing"><number>3</number></property>
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <widget class="QToolButton" name="snapSettingsButton">
+            <property name="text">
+             <string>吸附设置</string>
+            </property>
+            <property name="toolTip">
+             <string>吸附设置：位移、旋转角度和缩放步长；Ctrl / Cmd 临时吸附。</string>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/snap.svg</normaloff>
+             </iconset>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="focusSelectionButton">
+            <property name="text">
+             <string>聚焦 F</string>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/focus.svg</normaloff>
+             </iconset>
+            </property>
+            <property name="toolTip">
+             <string>聚焦所选对象（F）</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="resetCameraButton">
+            <property name="text">
+             <string>重置视角</string>
+            </property>
+            <property name="toolButtonStyle">
+             <enum>Qt::ToolButtonIconOnly</enum>
+            </property>
+            <property name="autoRaise">
+             <bool>true</bool>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>25</width>
+              <height>25</height>
+             </size>
+            </property>
+            <property name="icon">
+             <iconset resource="SceneViewIcons.qrc">
+              <normaloff>:/SceneView/reset.svg</normaloff>
+             </iconset>
+            </property>
+            <property name="toolTip">
+             <string>重置自由相机视角</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
       </layout>
@@ -538,21 +473,12 @@
     </widget>
    </item>
    <item row="0" column="1">
-    <widget class="ViewportFrameRateLabel" name="fpsLabel">
-     <property name="minimumSize">
-      <size><width>82</width><height>0</height></size>
-     </property>
-     <property name="maximumSize">
-      <size><width>82</width><height>16777215</height></size>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignVCenter</set>
-     </property>
-     <property name="margin"><number>6</number></property>
-     <property name="text"><string notr="true">— FPS</string></property>
-     <property name="toolTip">
-      <string>此视口每秒成功提交的画面数。没有持续出帧时显示 — FPS。</string>
-     </property>
+    <widget class="QToolButton" name="toolbarOverflowButton">
+     <property name="text"><string notr="true">⋯</string></property>
+     <property name="accessibleName"><string>更多场景工具</string></property>
+     <property name="toolTip"><string>更多场景工具</string></property>
+     <property name="minimumSize"><size><width>26</width><height>25</height></size></property>
+     <property name="maximumSize"><size><width>26</width><height>25</height></size></property>
     </widget>
    </item>
    <item row="1" column="0" colspan="2">
@@ -584,16 +510,14 @@
   <property name="styleSheet">
    <string>QWidget#SceneViewUIWindow,QWidget#sceneViewport { background:#202329; color:#dce2e9; }
 QScrollArea#toolScrollArea,QWidget#toolContents { background:#292c32; border:0; }
-QLabel#fpsLabel { background:#292c32; color:#dce2e9; font-size:12px; }
 QToolButton { color:#dce2e9; background:transparent; border:1px solid transparent; border-radius:3px; padding:0; }
+QToolButton#toolbarOverflowButton { background:#292c32; font-size:17px; }
+QToolButton#gridCheck { font-size:16px; }
 QToolButton:hover { background:#414750; border-color:#626b77; }
 QToolButton:checked { background:#3a6588; border-color:#74a4cd; }
 QToolButton:disabled { color:#76808b; }
 QComboBox { color:#dce2e9; background:#353a42; border:1px solid #505761; border-radius:2px; padding:1px 4px; font-size:12px; }
 QComboBox QAbstractItemView { color:#dce2e9; background:#30343b; selection-background-color:#42688b; }
-QCheckBox { color:#dce2e9; spacing:3px; font-size:12px; }
-QCheckBox::indicator { width:12px; height:12px; border:1px solid #718095; border-radius:2px; background:#24282e; }
-QCheckBox::indicator:checked { background:#578fc1; border-color:#a7c9e7; }
 QScrollBar:horizontal { background:#292e36; height:10px; margin:0; }
 QScrollBar::handle:horizontal { background:#5d697a; min-width:20px; border-radius:3px; }
 QScrollBar::add-line:horizontal,QScrollBar::sub-line:horizontal { width:0; }
@@ -605,11 +529,6 @@ QScrollBar::add-page:horizontal,QScrollBar::sub-page:horizontal { background:tra
    <class>SceneViewport</class>
    <extends>QWidget</extends>
    <header>SceneViewport.h</header>
-  </customwidget>
-  <customwidget>
-   <class>ViewportFrameRateLabel</class>
-   <extends>QLabel</extends>
-   <header>../Shared/ViewportFrameRateLabel.h</header>
   </customwidget>
  </customwidgets>
  <resources>

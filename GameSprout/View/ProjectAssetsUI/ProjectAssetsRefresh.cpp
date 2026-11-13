@@ -149,9 +149,13 @@ void ProjectAssetsUI::Refresh() {
         return QString::compare(QString::fromStdString(left->GetPath()),QString::fromStdString(right->GetPath()),Qt::CaseInsensitive)<0;
     });
     _AssetModel->BuildAssets(visible);
-    _Ui->assetTree->header()->setSectionResizeMode(0,QHeaderView::Stretch);
-    _Ui->assetTree->header()->setSectionResizeMode(1,QHeaderView::ResizeToContents);
-    _Ui->assetTree->header()->setSectionResizeMode(2,QHeaderView::ResizeToContents);
+    // The model rebuild resets the sections. Keep geometry changes independent of row count.
+    auto* header=_Ui->assetTree->header();
+    header->setSectionResizeMode(0,QHeaderView::Stretch);
+    header->setSectionResizeMode(1,QHeaderView::Fixed);
+    header->setSectionResizeMode(2,QHeaderView::Fixed);
+    header->resizeSection(1,_Window->property("typeColumnWidth").toInt());
+    header->resizeSection(2,_Window->property("statusColumnWidth").toInt());
     for(const QString & key:_ExpandedAssets) {
         const QModelIndex index=_AssetModel->FindKey(key);
         if(index.isValid()) { _AssetModel->LoadSubAssets(index,_Assets);_Ui->assetTree->expand(index); }

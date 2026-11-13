@@ -4,6 +4,7 @@
 #include "IRuntimeAssets.h"
 #include "IAnimationPreview.h"
 #include "ui_GameViewUI.h"
+#include "ui_GameToolbarMenu.h"
 #include <QApplication>
 #include <QSignalBlocker>
 
@@ -25,11 +26,21 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     if(!qobject_cast<QApplication*>(QCoreApplication::instance()))return false;
     _Dispatch=new QObject();_Window=new QWidget();_Ui=new Ui::GameViewUIWindow();_Ui->setupUi(_Window);
     _Viewport=_Ui->gameViewport;
+    auto* toolbarMenu=new QMenu(_Ui->gameToolbarOverflowButton);
+    Ui::GameToolbarMenu toolbarMenuUi;
+    toolbarMenuUi.setupUi(toolbarMenu);
+    _Ui->gameToolbarOverflowButton->setMenu(toolbarMenu);
+    _MaterialPreviewAction=toolbarMenuUi.materialPreviewAction;
     QObject::connect(_Viewport,&GameViewport::FrameSubmitted,_Ui->fpsLabel,&ViewportFrameRateLabel::FrameSubmitted);
     QObject::connect(_Viewport,&GameViewport::FrameStreamReset,_Ui->fpsLabel,&ViewportFrameRateLabel::Reset);
     _Viewport->Initialize(_Runtime,
         _Resources?_Resources->GetResourceProvider():nullptr);
-    _Viewport->StatusChanged=[this](const std::string& text){if(_Window)_Ui->statusLabel->setText(QString::fromStdString(text));};
+    _Viewport->StatusChanged=[this](const std::string& text) {
+        if(!_Window)return;
+        const auto status=QString::fromStdString(text);
+        _Ui->statusLabel->setText(status);
+        _Ui->statusLabel->setToolTip(status);
+    };
     QObject::connect(_Ui->playButton,&QToolButton::toggled,_Dispatch,[this](bool playing){
         if(_CanEdit&&_Preview)_Preview->SetAnimationPreviewPlaying(playing);
         // 命令可能被当前事务拒绝，立即回读一次确认按钮状态，不等待轮询。
@@ -39,9 +50,9 @@ bool GameViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
         if(_CanEdit&&_Preview)_Preview->ResetAnimationPreview();
         OnAnimationPreviewStateChanged(_Preview && _Preview->IsAnimationPreviewPlaying());
     });
-    QObject::connect(_Ui->retryButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
-    QObject::connect(_Ui->materialPreviewButton,&QToolButton::toggled,_Dispatch,[this]{if(_Viewport)_Viewport->RequestRender();});
-    QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
+    QObject::connect(toolbarMenuUi.retryRenderAction,&QAction::triggered,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
+    QObject::connect(_MaterialPreviewAction,&QAction::toggled,_Dispatch,[this]{if(_Viewport)_Viewport->RequestRender();});
+    QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_MaterialPreviewAction=nullptr;_Attached=false;});
     return true;
 }
 bool GameViewUI::Launch(GameSproutEditor::GameSproutViewApi*) {
@@ -69,7 +80,7 @@ void GameViewUI::Update(GameSproutEditor::GameSproutViewApi*) {}
 void GameViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     if(_Loading||!_DockerContentVisible||!_Viewport||!_Window||!_Viewport->isVisible())return;
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    const bool animateMaterials=!event.GameplayActive&&_Ui->materialPreviewButton->isChecked();
+    const bool animateMaterials=!event.GameplayActive&&_MaterialPreviewAction->isChecked();
     _Viewport->RenderGame(_ActiveScene,continuous,animateMaterials);
 }
 void GameViewUI::OnActiveSceneChanged() {
@@ -119,7 +130,7 @@ void GameViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
     if(_Viewport){_Viewport->StatusChanged={};_Viewport->Shutdown();}
     delete _Dispatch;_Dispatch=nullptr;
     if(!_Attached)delete _Window;
-    _Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;
+    _Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_MaterialPreviewAction=nullptr;_Attached=false;
     delete _Ui;_Ui=nullptr;_Scenes=nullptr;_Runtime=nullptr;_Preview=nullptr;_Resources=nullptr;
     if(g_Self==this)g_Self=nullptr;
 }
@@ -129,6 +140,6 @@ void GameViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
     _CanEdit=state.State==EditorPlayState::Edit;
     if(!_Window||!_Ui)return;
     _Ui->playButton->setEnabled(_CanEdit);_Ui->stopButton->setEnabled(_CanEdit);
-    _Ui->materialPreviewButton->setEnabled(_CanEdit);
+    _MaterialPreviewAction->setEnabled(_CanEdit);
     if(_Viewport)_Viewport->SetGameplayInputEnabled(state.State==EditorPlayState::Playing);
 }

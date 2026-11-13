@@ -16,6 +16,9 @@
           <string>模型</string>
          </attribute>
          <layout class="QFormLayout" name="modelLayout">
+          <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+          <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+          <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
           <item row="0" column="0">
            <widget class="QLabel" name="ScaleFactorLabel">
             <property name="text">
@@ -364,6 +367,9 @@
           <string>骨骼 / 动画</string>
          </attribute>
          <layout class="QFormLayout" name="animationLayout">
+          <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+          <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+          <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
           <item row="0" column="0">
            <widget class="QLabel" name="ImportAnimationLabel">
             <property name="text">
@@ -430,6 +436,9 @@
           <string>材质</string>
          </attribute>
          <layout class="QFormLayout" name="materialsLayout">
+          <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+          <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+          <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
           <item row="0" column="0">
            <widget class="QLabel" name="ImportMaterialsLabel">
             <property name="text">

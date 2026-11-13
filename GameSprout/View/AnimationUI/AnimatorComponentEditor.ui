@@ -5,6 +5,9 @@
   <layout class="QVBoxLayout" name="rootLayout">
    <item>
     <layout class="QFormLayout" name="settingsLayout">
+     <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+     <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+     <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
      <item row="0" column="0">
       <widget class="QLabel" name="skeletonLabel">
        <property name="text">
@@ -271,6 +274,7 @@
      <layout class="QVBoxLayout" name="previewLayout">
       <item>
        <layout class="QFormLayout" name="previewModeLayout">
+        <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
         <property name="fieldGrowthPolicy">
          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
         </property>
@@ -329,6 +333,9 @@
         <layout class="QVBoxLayout" name="controllerPreviewLayout">
          <item>
           <layout class="QFormLayout" name="layerPreviewLayout">
+           <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+           <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+           <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
            <item row="0" column="0">
             <widget class="QLabel" name="previewLayerLabel">
              <property name="minimumSize">

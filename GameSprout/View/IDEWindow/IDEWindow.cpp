@@ -12,6 +12,7 @@
 #include <QTabWidget>
 #include <QToolBar>
 #include <QWidgetAction>
+#include <algorithm>
 
 IDEWindow::~IDEWindow() {
     Release(nullptr);
@@ -262,7 +263,21 @@ bool IDEWindow::ResizeDockers(const QList<IIDEDocker*>& dockers,
         pixelSizes.append(qMax(1, int(qint64(weight) * extent / totalWeight)));
     }
     _Window->resizeDocks(nativeDocks, pixelSizes, orientation);
+    if (orientation == Qt::Horizontal) _DockerManager->RememberHorizontalDockWidths();
     return true;
+}
+
+bool IDEWindow::SetHorizontalDockStretch(IIDEDocker* left, IIDEDocker* center, IIDEDocker* right) {
+    if (!_DockerManager) return false;
+    QList<IDEDockerFinal*> dockers;
+    for (auto* docker : {left, center, right}) {
+        const auto found = std::find_if(_Dockers.begin(), _Dockers.end(), [docker](const auto& entry) {
+            return entry.second == docker;
+        });
+        if (found == _Dockers.end()) return false;
+        dockers.append(static_cast<IDEDockerFinal*>(found->second));
+    }
+    return _DockerManager->SetHorizontalDockStretch(dockers);
 }
 
 // The toolbar shell and its presentation are defined in IDEWindow.ui.

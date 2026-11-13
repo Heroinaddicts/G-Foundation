@@ -4,6 +4,7 @@
 #include "ui_SceneTitleActions.h"
 #include "ui_SceneSnapPopup.h"
 #include "ui_SceneStatisticsPopup.h"
+#include "ui_SceneToolbarPopup.h"
 #include <QCursor>
 #include <QEvent>
 #include <QKeyEvent>
@@ -19,9 +20,13 @@ SceneViewChrome::SceneViewChrome(QWidget* owner,Ui::SceneViewUIWindow& window):_
     _Title=new QWidget(owner);_TitleUi=new Ui::SceneTitleActions();_TitleUi->setupUi(_Title);
     _Snap=new QWidget(owner,Qt::Popup);_SnapUi=new Ui::SceneSnapPopup();_SnapUi->setupUi(_Snap);_Snap->hide();
     _Statistics=new QWidget(owner,Qt::Popup);_StatisticsUi=new Ui::SceneStatisticsPopup();_StatisticsUi->setupUi(_Statistics);_Statistics->hide();
-    _Snap->installEventFilter(this);_Statistics->installEventFilter(this);
-    for(auto* child:_Snap->findChildren<QWidget*>())child->installEventFilter(this);
-    for(auto* child:_Statistics->findChildren<QWidget*>())child->installEventFilter(this);
+    _Overflow=new QWidget(owner,Qt::Popup|Qt::FramelessWindowHint);
+    _Overflow->setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea,false);
+    _OverflowUi=new Ui::SceneToolbarPopup();_OverflowUi->setupUi(_Overflow);_Overflow->hide();
+    for(QWidget* popup:{_Snap.data(),_Statistics.data(),_Overflow.data()}) {
+        popup->installEventFilter(this);
+        for(auto* child:popup->findChildren<QWidget*>())child->installEventFilter(this);
+    }
     _Window.toolScrollArea->installEventFilter(this);
     _Window.toolScrollArea->viewport()->installEventFilter(this);
     QObject::connect(_TitleUi->sceneHelpButton,&QToolButton::clicked,this,[this] {
@@ -31,30 +36,64 @@ SceneViewChrome::SceneViewChrome(QWidget* owner,Ui::SceneViewUIWindow& window):_
         if(_Statistics->isVisible()){_Statistics->hide();return;}
         RefreshStatistics();ShowPopup(_Statistics,_TitleUi->statisticsButton);
     });
-    QObject::connect(_Window.snapSettingsButton,&QToolButton::clicked,this,[this] {
+    const auto openSnap=[this](QWidget* anchor) {
         if(_Snap->isVisible()){_Snap->hide();return;}
-        ShowPopup(_Snap,_Window.snapSettingsButton);
+        ShowPopup(_Snap,anchor);
+    };
+    QObject::connect(_Window.snapSettingsButton,&QToolButton::clicked,this,[this,openSnap] {
+        openSnap(_Window.snapSettingsButton);
+    });
+    QObject::connect(_Window.toolbarOverflowButton,&QToolButton::clicked,this,[this] {
+        if(_Overflow->isVisible()){_Overflow->hide();return;}
+        ShowPopup(_Overflow,_Window.toolbarOverflowButton);
+        _OverflowUi->allCollidersCheck->setFocus(Qt::PopupFocusReason);
+    });
+    QObject::connect(_OverflowUi->snapMenuButton,&QPushButton::clicked,this,[this,openSnap] {
+        _Overflow->hide();openSnap(_Window.toolbarOverflowButton);
+    });
+    QObject::connect(_OverflowUi->focusMenuButton,&QPushButton::clicked,this,[this] {
+        _Overflow->hide();_Window.focusSelectionButton->click();
+    });
+    QObject::connect(_OverflowUi->resetMenuButton,&QPushButton::clicked,this,[this] {
+        _Overflow->hide();_Window.resetCameraButton->click();
+    });
+    QObject::connect(_OverflowUi->retryRenderButton,&QPushButton::clicked,this,[this] {
+        _Overflow->hide();if(RetryRequested)RetryRequested();
+    });
+    QObject::connect(_OverflowUi->allCollidersCheck,&QCheckBox::toggled,this,[this](bool enabled) {
+        if(AllCollidersChanged)AllCollidersChanged(enabled);
+    });
+    QObject::connect(_OverflowUi->childCollidersCheck,&QCheckBox::toggled,this,[this](bool enabled) {
+        if(ChildCollidersChanged)ChildCollidersChanged(enabled);
+    });
+    QObject::connect(_OverflowUi->materialPreviewCheck,&QCheckBox::toggled,this,[this](bool enabled) {
+        if(MaterialPreviewChanged)MaterialPreviewChanged(enabled);
+    });
+    QObject::connect(_OverflowUi->reuseNavigationShadowsCheck,&QCheckBox::toggled,this,[this](bool enabled) {
+        if(ShadowReuseChanged)ShadowReuseChanged(enabled);
     });
     const auto changed=[this]{if(SnapChanged)SnapChanged();};
     QObject::connect(_SnapUi->snapCheck,&QCheckBox::toggled,this,[changed](bool){changed();});
     for(auto* spin:{_SnapUi->moveSnapSpin,_SnapUi->rotateSnapSpin,_SnapUi->scaleSnapSpin})
         QObject::connect(spin,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[changed](double){changed();});
-    _Title->hide();UpdateToolbarHeight();
+    _Title->hide();UpdateToolbarLayout();
 }
 
 SceneViewChrome::~SceneViewChrome() {
     Detach();
-    delete _Title;delete _Snap;delete _Statistics;
-    delete _TitleUi;delete _SnapUi;delete _StatisticsUi;
+    delete _Title;delete _Snap;delete _Statistics;delete _Overflow;
+    delete _TitleUi;delete _SnapUi;delete _StatisticsUi;delete _OverflowUi;
 }
 bool SceneViewChrome::Attach(IIDEDocker* docker) {
     if(_Docker)return _Docker==docker;
     if(!docker||!_Title||!docker->AttachTitleBarWidget(_Title))return false;
     _Docker=docker;return true;
 }
+ViewportFrameRateLabel* SceneViewChrome::FrameRateLabel() const{return _TitleUi->fpsLabel;}
 void SceneViewChrome::Detach() {
-    SnapChanged={};
-    if(_Snap)_Snap->hide();if(_Statistics)_Statistics->hide();
+    SnapChanged={};AllCollidersChanged={};ChildCollidersChanged={};
+    MaterialPreviewChanged={};ShadowReuseChanged={};RetryRequested={};
+    if(_Snap)_Snap->hide();if(_Statistics)_Statistics->hide();if(_Overflow)_Overflow->hide();
     if(_Docker&&_Title)_Docker->RemoveTitleBarWidget(_Title);
     _Docker=nullptr;
 }
@@ -62,9 +101,14 @@ bool SceneViewChrome::SnapEnabled()const{return _SnapUi->snapCheck->isChecked();
 float SceneViewChrome::MoveSnap()const{return float(_SnapUi->moveSnapSpin->value());}
 float SceneViewChrome::RotateSnap()const{return float(_SnapUi->rotateSnapSpin->value());}
 float SceneViewChrome::ScaleSnap()const{return float(_SnapUi->scaleSnapSpin->value());}
+bool SceneViewChrome::MaterialPreviewEnabled()const{return _OverflowUi->materialPreviewCheck->isChecked();}
+bool SceneViewChrome::ShadowReuseEnabled()const{return _OverflowUi->reuseNavigationShadowsCheck->isChecked();}
+void SceneViewChrome::SetShadowReuseEnabled(bool enabled){_OverflowUi->reuseNavigationShadowsCheck->setChecked(enabled);}
 void SceneViewChrome::SetEditingEnabled(bool enabled) {
     if(_Snap)_Snap->setEnabled(enabled);
     _Window.snapSettingsButton->setEnabled(enabled);
+    _OverflowUi->snapMenuButton->setEnabled(enabled);
+    _OverflowUi->materialPreviewCheck->setEnabled(enabled);
 }
 void SceneViewChrome::SetStatus(const std::string& status,const std::string& diagnostic) {
     _Status=QString::fromStdString(status);
@@ -96,18 +140,26 @@ void SceneViewChrome::ShowPopup(QWidget* popup,QWidget* anchor) {
     }
     popup->move(position);popup->show();popup->raise();popup->setFocus();
 }
-void SceneViewChrome::UpdateToolbarHeight() {
+void SceneViewChrome::UpdateToolbarLayout() {
     if(!_Strip||!_StripViewport||!_ToolContents)return;
-    const bool overflow=_ToolContents->minimumSizeHint().width()>_StripViewport->width();
-    const int height=_Strip->property(overflow?"overflowHeight":"compactHeight").toInt();
+    const auto margins=_Window.toolbarLayout->contentsMargins();
+    const int primaryWidth=_Window.primaryTools->minimumSizeHint().width()+margins.left()+margins.right();
+    const int quickWidth=_Window.toolbarQuickActions->minimumSizeHint().width()+2*_Window.toolbarLayout->spacing();
+    const int width=_StripViewport->width();
+    const bool showQuickActions=width>=primaryWidth+quickWidth;
+    if(_Window.toolbarQuickActions->isHidden()==showQuickActions)
+        _Window.toolbarQuickActions->setVisible(showQuickActions);
+    const int height=_Strip->property(width<primaryWidth?"overflowHeight":"compactHeight").toInt();
     if(height>0&&_Strip->height()!=height)_Strip->setFixedHeight(height);
 }
 bool SceneViewChrome::eventFilter(QObject* watched,QEvent* event) {
-    if(event->type()==QEvent::Resize&&(watched==_Strip||watched==_StripViewport))UpdateToolbarHeight();
+    if(event->type()==QEvent::Resize&&(watched==_Strip||watched==_StripViewport))UpdateToolbarLayout();
+    if(event->type()==QEvent::Hide&&watched==_Strip&&_Overflow)_Overflow->hide();
     if(event->type()==QEvent::KeyPress&&static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape) {
         auto* widget=qobject_cast<QWidget*>(watched);
         if(_Snap&&(widget==_Snap||_Snap->isAncestorOf(widget))){_Snap->hide();return true;}
         if(_Statistics&&(widget==_Statistics||_Statistics->isAncestorOf(widget))){_Statistics->hide();return true;}
+        if(_Overflow&&(widget==_Overflow||_Overflow->isAncestorOf(widget))){_Overflow->hide();return true;}
     }
     return QObject::eventFilter(watched,event);
 }

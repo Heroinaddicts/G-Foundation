@@ -3,7 +3,7 @@
  <class>SceneTitleActions</class>
  <widget class="QWidget" name="SceneTitleActions">
   <property name="styleSheet">
-   <string>QWidget#SceneTitleActions { background:#292c32; border-left:1px solid #424952; } QToolButton { color:#c5ced9; background:transparent; border:1px solid transparent; border-radius:3px; padding:0 4px; font-size:12px; } QToolButton#sceneHelpButton { font-size:14px; font-weight:bold; } QToolButton:hover { background:#414750; border-color:#626b77; } QToolButton[diagnostic="true"] { color:#ffd77a; border-color:#b28b3f; }</string>
+   <string>QWidget#SceneTitleActions { background:#292c32; border-left:1px solid #424952; } QLabel#fpsLabel { color:#dce2e9; font-size:12px; } QToolButton { color:#c5ced9; background:transparent; border:1px solid transparent; border-radius:3px; padding:0 4px; font-size:12px; } QToolButton#sceneHelpButton { font-size:14px; font-weight:bold; } QToolButton:hover { background:#414750; border-color:#626b77; } QToolButton[diagnostic="true"] { color:#ffd77a; border-color:#b28b3f; }</string>
   </property>
   <layout class="QHBoxLayout" name="titleActionsLayout">
    <property name="spacing">
@@ -21,6 +21,24 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
+   <item>
+    <widget class="ViewportFrameRateLabel" name="fpsLabel">
+     <property name="minimumSize">
+      <size><width>70</width><height>24</height></size>
+     </property>
+     <property name="maximumSize">
+      <size><width>70</width><height>24</height></size>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignVCenter</set>
+     </property>
+     <property name="margin"><number>3</number></property>
+     <property name="text"><string notr="true">— FPS</string></property>
+     <property name="toolTip">
+      <string>此视口每秒成功提交的画面数。没有持续出帧时显示 — FPS。</string>
+     </property>
+    </widget>
+   </item>
    <item>
     <widget class="QToolButton" name="statisticsButton">
      <property name="text">
@@ -73,6 +91,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ViewportFrameRateLabel</class>
+   <extends>QLabel</extends>
+   <header>../Shared/ViewportFrameRateLabel.h</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

@@ -7,6 +7,7 @@
 #include "ISelectionManager.h"
 #include "IUIAuthoring.h"
 #include "IRuntimeAssets.h"
+#include "../Shared/ViewportFrameRateLabel.h"
 #include "ui_SceneViewUI.h"
 #include <QApplication>
 #include <algorithm>
@@ -31,9 +32,10 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     if(!qobject_cast<QApplication*>(QCoreApplication::instance()))return false;
     _Dispatch=new QObject();_Window=new QWidget();_Ui=new Ui::SceneViewUIWindow();_Ui->setupUi(_Window);
     _Viewport=_Ui->sceneViewport;
-    QObject::connect(_Viewport,&SceneViewport::FrameSubmitted,_Ui->fpsLabel,&ViewportFrameRateLabel::FrameSubmitted);
-    QObject::connect(_Viewport,&SceneViewport::FrameStreamReset,_Ui->fpsLabel,&ViewportFrameRateLabel::Reset);
     _Chrome=new SceneViewChrome(_Window,*_Ui);
+    auto* frameRateLabel=_Chrome->FrameRateLabel();
+    QObject::connect(_Viewport,&SceneViewport::FrameSubmitted,frameRateLabel,&ViewportFrameRateLabel::FrameSubmitted);
+    QObject::connect(_Viewport,&SceneViewport::FrameStreamReset,frameRateLabel,&ViewportFrameRateLabel::Reset);
     _Viewport->StatusChanged=[this](const std::string& message){if(_Chrome&&_Viewport)_Chrome->SetStatus(message,_Viewport->GetRenderError());};
     _Viewport->FocusRequested=[this]{return FocusSelection();};
     _Viewport->Initialize(_Runtime,_RuntimeAssets?_RuntimeAssets->GetResourceProvider():nullptr);
@@ -60,14 +62,13 @@ bool SceneViewUI::Initialize(GameSproutEditor::GameSproutViewApi* editor) {
     snap();
     QObject::connect(_Ui->resetCameraButton,&QToolButton::clicked,_Dispatch,[this]{ResetCamera();});
     QObject::connect(_Ui->focusSelectionButton,&QToolButton::clicked,_Dispatch,[this]{FocusSelection();});
-    QObject::connect(_Ui->retryRenderButton,&QToolButton::clicked,_Dispatch,[this]{if(_Viewport)_Viewport->RetryRendering();});
-    QObject::connect(_Ui->allCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowAllColliders(checked);});
-    QObject::connect(_Ui->childCollidersCheck,&QCheckBox::toggled,_Dispatch,[this](bool checked){_Viewport->Editing().SetShowChildColliders(checked);});
-    QObject::connect(_Ui->materialPreviewCheck,&QCheckBox::toggled,_Dispatch,[this]{_Viewport->RequestRender();});
-    _Viewport->SetShadowReuseWhileNavigatingEnabled(_Ui->reuseNavigationShadowsCheck->isChecked());
-    QObject::connect(_Ui->reuseNavigationShadowsCheck,&QCheckBox::toggled,
-        _Viewport,&SceneViewport::SetShadowReuseWhileNavigatingEnabled);
-    QObject::connect(_Ui->gridCheck,&QCheckBox::toggled,_Dispatch,[this](bool){if(_Viewport)_Viewport->RequestRender();});
+    _Chrome->RetryRequested=[this]{if(_Viewport)_Viewport->RetryRendering();};
+    _Chrome->AllCollidersChanged=[this](bool checked){_Viewport->Editing().SetShowAllColliders(checked);};
+    _Chrome->ChildCollidersChanged=[this](bool checked){_Viewport->Editing().SetShowChildColliders(checked);};
+    _Chrome->MaterialPreviewChanged=[this](bool){_Viewport->RequestRender();};
+    _Viewport->SetShadowReuseWhileNavigatingEnabled(_Chrome->ShadowReuseEnabled());
+    _Chrome->ShadowReuseChanged=[this](bool checked){_Viewport->SetShadowReuseWhileNavigatingEnabled(checked);};
+    QObject::connect(_Ui->gridCheck,&QToolButton::toggled,_Dispatch,[this](bool){if(_Viewport)_Viewport->RequestRender();});
     QObject::connect(_Window,&QObject::destroyed,_Dispatch,[this]{_Window=nullptr;_Viewport=nullptr;_Docker=nullptr;_Attached=false;});
     return true;
 }
@@ -103,7 +104,7 @@ void SceneViewUI::OnRuntimeFrame(const RuntimeFrameEvent& event) {
     const float elapsed=_Timer.isValid()?static_cast<float>(_Timer.nsecsElapsed()/1000000000.0):0.0f;_Timer.start();
     if(_Loading||!_DockerContentVisible||!_Viewport||!_Window||!_Viewport->isVisible())return;
     const bool continuous=event.SimulationPlaying||(event.GameplayActive&&(!event.GameplayPaused||event.DeltaSeconds>0));
-    const bool animateMaterials=!event.GameplayActive&&_Ui->materialPreviewCheck->isChecked();
+    const bool animateMaterials=!event.GameplayActive&&_Chrome->MaterialPreviewEnabled();
     _Viewport->RenderScene(_ActiveScene,_Ui->gridCheck->isChecked(),elapsed,continuous,animateMaterials);
 }
 void SceneViewUI::Release(GameSproutEditor::GameSproutViewApi*) {
@@ -141,7 +142,7 @@ bool SceneViewUI::IsShadowReuseWhileNavigatingEnabled() const {
     return _Viewport&&_Viewport->IsShadowReuseWhileNavigatingEnabled();
 }
 void SceneViewUI::SetShadowReuseWhileNavigatingEnabled(bool enabled) {
-    if(_Window)_Ui->reuseNavigationShadowsCheck->setChecked(enabled);
+    if(_Window&&_Chrome)_Chrome->SetShadowReuseEnabled(enabled);
 }
 bool SceneViewUI::FocusSelection() {
     if(!_Viewport||!_Scenes||!_Selection||!_Runtime)return false;
@@ -216,7 +217,6 @@ void SceneViewUI::OnPlayModeStateChanged(const PlayModeState& state) {
     if(!_Window||!_Ui)return;
     if(_Viewport)_Viewport->Editing().SetReadOnly(!_CanEdit);
     if(_Chrome)_Chrome->SetEditingEnabled(_CanEdit);
-    _Ui->materialPreviewCheck->setEnabled(_CanEdit);
     QWidget* controls[]={_Ui->moveToolButton,_Ui->rotateToolButton,_Ui->scaleToolButton,_Ui->rectToolButton,_Ui->spaceCombo,_Ui->pivotCombo};
     for(QWidget* control:controls)control->setEnabled(_CanEdit);
 }

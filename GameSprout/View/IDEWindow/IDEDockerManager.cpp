@@ -13,6 +13,8 @@
 #include <QToolButton>
 #include <QLayout>
 #include <QMouseEvent>
+#include <QResizeEvent>
+#include <utility>
 
 IDEDockerManager::IDEDockerManager(QMainWindow* window, QMenu* windowMenu)
     : QObject(window), _Window(window), _WindowMenu(windowMenu) {
@@ -64,6 +66,9 @@ void IDEDockerManager::UnregisterDocker(IDEDockerFinal* docker) {
         return;
     }
     _DragController->CancelDrag(docker);
+    if (_HorizontalDockers.contains(docker)) _HorizontalDockers.clear();
+    _HorizontalCenterPeers.removeAll(docker);
+    _PreferredDockWidths.remove(docker);
     _ClosedPlacements.remove(docker);
     _TabOrders.remove(docker);
     for(auto it=_TabOrders.begin();it!=_TabOrders.end();++it)it->removeAll(docker);
@@ -95,6 +100,119 @@ void IDEDockerManager::RequestRefresh() {
     });
 }
 
+bool IDEDockerManager::SetHorizontalDockStretch(const QList<IDEDockerFinal*>& dockers) {
+    if (dockers.size() != 3 || dockers[0] == dockers[1] || dockers[0] == dockers[2] || dockers[1] == dockers[2])
+        return false;
+    _HorizontalDockers = dockers;
+    _HorizontalCenterPeers.clear();
+    const auto peers = _Window->tabifiedDockWidgets(dockers[1]->GetDockWidget());
+    for (auto* docker : _Dockers)
+        if (peers.contains(docker->GetDockWidget())) _HorizontalCenterPeers.append(docker);
+    RememberHorizontalDockWidths();
+    return true;
+}
+
+QList<IDEDockerFinal*> IDEDockerManager::HorizontalDockRow() const {
+    if (_HorizontalDockers.size() != 3 || _Maximized) return {};
+    const QRect work = _Window->contentsRect();
+    const auto isDocked = [this](QDockWidget* dock) {
+        return !dock->isFloating() && _Window->dockWidgetArea(dock) != Qt::NoDockWidgetArea;
+    };
+    const auto onScreen = [&isDocked, &work](QDockWidget* dock) {
+        return isDocked(dock) && !dock->isHidden() && work.contains(dock->geometry().center());
+    };
+    const auto active = [this, &isDocked, &onScreen](IDEDockerFinal* docker) -> IDEDockerFinal* {
+        auto* anchor = docker->GetDockWidget();
+        if (!isDocked(anchor)) return nullptr;
+        if (onScreen(anchor)) return docker;
+        const auto peers = _Window->tabifiedDockWidgets(anchor);
+        for (auto* candidate : _Dockers)
+            if (peers.contains(candidate->GetDockWidget()) && onScreen(candidate->GetDockWidget())) return candidate;
+        return nullptr;
+    };
+    auto* center = active(_HorizontalDockers[1]);
+    if (!center) {
+        for (auto* peer : _HorizontalCenterPeers) {
+            center = active(peer);
+            if (center) break;
+        }
+    }
+    if (!center) return {};
+    QList<IDEDockerFinal*> row{center};
+    const int y = center->GetDockWidget()->geometry().center().y();
+    for (auto* docker : _Dockers) {
+        auto* dock = docker->GetDockWidget();
+        if (docker != center && onScreen(dock) && dock->geometry().contains(dock->geometry().center().x(), y))
+            row.append(docker);
+    }
+    return row;
+}
+
+void IDEDockerManager::RememberHorizontalDockWidths() {
+    _Window->layout()->activate();
+    const auto row = HorizontalDockRow();
+    if (row.isEmpty()) return;
+    for (auto* docker : row) {
+        auto* dock = docker->GetDockWidget();
+        _PreferredDockWidths.insert(docker, dock->width());
+        const auto peers = _Window->tabifiedDockWidgets(dock);
+        for (auto* candidate : _Dockers)
+            if (peers.contains(candidate->GetDockWidget())) _PreferredDockWidths.insert(candidate, dock->width());
+    }
+}
+
+void IDEDockerManager::ResizeHorizontalDocks() {
+    _Window->layout()->activate();
+    const auto row = HorizontalDockRow();
+    if (row.size() < 2) return;
+    const auto minimumWidth = [this](QDockWidget* dock) {
+        const auto minWidth = [](const QDockWidget* item) {
+            return qMax(item->minimumWidth(), item->minimumSizeHint().width());
+        };
+        int width = minWidth(dock);
+        for (auto* peer : _Window->tabifiedDockWidgets(dock))
+            if (!peer->isHidden()) width = qMax(width, minWidth(peer));
+        return width;
+    };
+    QList<QDockWidget*> docks;
+    QList<int> minimums, widths;
+    int available = 0;
+    int required = 0;
+    int preferred = 0;
+    for (auto* docker : row) {
+        auto* dock = docker->GetDockWidget();
+        const int minimum = minimumWidth(dock);
+        const int width = docks.isEmpty() ? minimum : qMax(minimum, _PreferredDockWidths.value(docker, dock->width()));
+        docks.append(dock);
+        minimums.append(minimum);
+        widths.append(width);
+        available += dock->width();
+        required += minimum;
+        preferred += width;
+    }
+    if (available < required) return;
+    if (available < preferred) {
+        // Shrink side panes proportionally while retaining their preferred widths for later expansion.
+        int extra = available - required;
+        int totalFlex = preferred - required;
+        for (qsizetype index = 1; index < widths.size() && totalFlex > 0; ++index) {
+            const int flex = widths[index] - minimums[index];
+            const int share = int(qint64(extra) * flex / totalFlex);
+            widths[index] = minimums[index] + share;
+            extra -= share;
+            totalFlex -= flex;
+        }
+    } else {
+        widths[0] += available - preferred;
+    }
+    for (qsizetype index = 0; index < docks.size(); ++index) {
+        if (docks[index]->width() != widths[index]) {
+            _Window->resizeDocks(docks, widths, Qt::Horizontal);
+            break;
+        }
+    }
+}
+
 bool IDEDockerManager::eventFilter(QObject* watched, QEvent* event) {
     if(event->type()==QEvent::Close) {
         for(IDEDockerFinal* docker:_Dockers)if(docker->GetDockWidget()==watched){RememberClosedDocker(docker);break;}
@@ -102,9 +220,20 @@ bool IDEDockerManager::eventFilter(QObject* watched, QEvent* event) {
     if (watched == _Window && event->type() == QEvent::MouseButtonPress) {
         const auto* mouse = static_cast<QMouseEvent*>(event);
         const auto cursor = _Window->cursor().shape();
-        if (mouse->button() == Qt::LeftButton && (cursor == Qt::SplitVCursor || cursor == Qt::SplitHCursor)) _NativeResize = true;
+        if (mouse->button() == Qt::LeftButton && (cursor == Qt::SplitVCursor || cursor == Qt::SplitHCursor)) {
+            _NativeResize = true;
+            _NativeHorizontalResize = cursor == Qt::SplitHCursor;
+        }
     } else if (watched == _Window && (event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::WindowDeactivate)) {
-        if (_NativeResize) { _NativeResize = false; RequestRefresh(); }
+        if (_NativeResize) {
+            _NativeResize = false;
+            _RememberHorizontalWidths = std::exchange(_NativeHorizontalResize, false);
+            RequestRefresh();
+        }
+    }
+    if (watched == _Window && event->type() == QEvent::Resize) {
+        const auto* resize = static_cast<QResizeEvent*>(event);
+        if (resize->size().width() != resize->oldSize().width()) _HorizontalResizePending = true;
     }
     if (_PositioningTabs && qobject_cast<QTabBar*>(watched)) {
         return QObject::eventFilter(watched, event);
@@ -167,6 +296,8 @@ IDEDockerFinal* IDEDockerManager::DockerForTab(QTabBar* bar, int index) const {
 void IDEDockerManager::Refresh() {
     // 原生分隔条拖动时，不与 QMainWindow 的临时拖拽布局争抢标签栏几何。
     if (_NativeResize) return;
+    if (std::exchange(_RememberHorizontalWidths, false)) RememberHorizontalDockWidths();
+    if (std::exchange(_HorizontalResizePending, false)) ResizeHorizontalDocks();
     for (IDEDockerFinal* docker : _Dockers) {
         QDockWidget* dock = docker->GetDockWidget();
         bool tabbed = false;
@@ -275,6 +406,7 @@ void IDEDockerManager::RestoreMaximized() {
     const QByteArray state = _NormalState;
     _NormalState.clear();
     _Window->restoreState(state, 1);
+    _HorizontalResizePending = true;
     RequestRefresh();
 }
 

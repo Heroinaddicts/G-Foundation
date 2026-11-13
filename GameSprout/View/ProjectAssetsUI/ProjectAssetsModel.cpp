@@ -178,7 +178,7 @@ void ProjectAssetsModel::BuildAssets(const std::vector<IAssetMeta *> & metas) {
     clear();setHorizontalHeaderLabels({"名称","类型","状态"});
     for (IAssetMeta * meta:metas) {
         auto * item=SourceItem(meta);
-        auto * type=new QStandardItem(ImporterName(meta->_ImporterType));type->setEditable(false);
+        auto * type=new QStandardItem(ImporterName(meta->_ImporterType));type->setEditable(false);type->setToolTip(type->text());
         auto * stateItem=new QStandardItem();stateItem->setEditable(false);
         SetSourceStatus(*item, *stateItem, meta->GetImportState(), QString::fromStdString(meta->GetImportError()), ErrorColor, PendingColor);
         _Sources.insert(item->data(GuidRole).toString(), item);
@@ -215,7 +215,7 @@ void ProjectAssetsModel::LoadSubAssets(const QModelIndex & index,IAssetsManager 
         item->setData(parent->data(GuidRole),GuidRole);item->setData(id,LocalIDRole);item->setData(true,SubAssetRole);
         item->setData(parent->data(PathRole),PathRole);item->setData(parent->data(GuidRole).toString()+":"+id,KeyRole);
         item->setToolTip(parent->data(PathRole).toString()+"\nLocalID: "+id);
-        auto * type=new QStandardItem(typeName);type->setEditable(false);
+        auto * type=new QStandardItem(typeName);type->setEditable(false);type->setToolTip(typeName);
         auto * status=new QStandardItem("子资源");status->setEditable(false);
         parent->appendRow({item,type,status});
     }

@@ -2,31 +2,63 @@
 <ui version="4.0">
  <class>GameViewUIWindow</class>
  <widget class="QWidget" name="GameViewUIWindow">
-  <property name="minimumSize"><size><width>160</width><height>100</height></size></property>
-  <property name="styleSheet"><string notr="true">QWidget#GameViewUIWindow { background: #20252c; color: #e5e9ef; } QToolButton { background: #303e4e; color: #e5e9ef; border: 1px solid #607b96; padding: 5px 10px; } QToolButton:checked { background: #38678c; } QLabel { color: #bccad9; }</string></property>
+  <property name="minimumSize"><size><width>240</width><height>100</height></size></property>
+  <property name="styleSheet"><string notr="true">QWidget#GameViewUIWindow { background:#20252c; color:#e5e9ef; } QToolButton { background:#303e4e; color:#e5e9ef; border:1px solid #607b96; border-radius:3px; padding:0 6px; font-size:12px; } QToolButton:checked { background:#38678c; } QToolButton:disabled { color:#76808b; } QToolButton#gameToolbarOverflowButton { font-size:17px; padding:0; } QToolButton::menu-indicator { image:none; } QLabel { color:#bccad9; font-size:12px; }</string></property>
   <layout class="QVBoxLayout" name="rootLayout">
    <property name="spacing"><number>4</number></property>
    <property name="leftMargin"><number>4</number></property><property name="topMargin"><number>4</number></property><property name="rightMargin"><number>4</number></property><property name="bottomMargin"><number>4</number></property>
    <item><layout class="QHBoxLayout" name="toolbarLayout">
-    <item><widget class="QToolButton" name="playButton"><property name="text"><string>播放场景动画</string></property><property name="toolTip"><string>按各个 Animator 的配置播放场景动画，并结束单独动画预览。单独预览 Clip 请使用 Inspector 中的预览控件。</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-    <item><widget class="QToolButton" name="stopButton"><property name="text"><string>停止并还原</string></property></widget></item>
-    <item><widget class="QToolButton" name="retryButton"><property name="text"><string>重试渲染</string></property></widget></item>
-    <item><widget class="QToolButton" name="materialPreviewButton"><property name="text"><string>材质动画</string></property><property name="toolTip"><string>在编辑模式中连续预览水面等动态材质。</string></property><property name="checkable"><bool>true</bool></property></widget></item>
-    <item><spacer name="toolbarSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>1</height></size></property></spacer></item>
-    <item><widget class="QLabel" name="cameraLabel"><property name="text"><string>Main Camera</string></property></widget></item>
+    <property name="spacing"><number>4</number></property>
+    <item>
+     <widget class="QToolButton" name="playButton">
+      <property name="text"><string>播放动画</string></property>
+      <property name="toolTip"><string>按各个 Animator 的配置播放场景动画，并结束单独动画预览。单独预览 Clip 请使用 Inspector 中的预览控件。</string></property>
+      <property name="checkable"><bool>true</bool></property>
+      <property name="minimumSize"><size><width>0</width><height>25</height></size></property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QToolButton" name="stopButton">
+      <property name="text"><string>停止</string></property>
+      <property name="toolTip"><string>停止预览并还原场景动画。</string></property>
+      <property name="minimumSize"><size><width>0</width><height>25</height></size></property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QToolButton" name="gameToolbarOverflowButton">
+      <property name="text"><string notr="true">⋯</string></property>
+      <property name="accessibleName"><string>更多 Game 工具</string></property>
+      <property name="toolTip"><string>更多 Game 工具</string></property>
+      <property name="popupMode"><enum>QToolButton::InstantPopup</enum></property>
+      <property name="minimumSize"><size><width>26</width><height>25</height></size></property>
+      <property name="maximumSize"><size><width>26</width><height>25</height></size></property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="cameraLabel">
+      <property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Preferred"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property>
+      <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+      <property name="text"><string>Main Camera</string></property>
+     </widget>
+    </item>
     <item>
      <widget class="ViewportFrameRateLabel" name="fpsLabel">
-      <property name="minimumSize"><size><width>82</width><height>0</height></size></property>
-      <property name="maximumSize"><size><width>82</width><height>16777215</height></size></property>
+      <property name="minimumSize"><size><width>70</width><height>25</height></size></property>
+      <property name="maximumSize"><size><width>70</width><height>25</height></size></property>
       <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
-      <property name="margin"><number>6</number></property>
+      <property name="margin"><number>3</number></property>
       <property name="text"><string notr="true">— FPS</string></property>
       <property name="toolTip"><string>此视口每秒成功提交的画面数。没有持续出帧时显示 — FPS。</string></property>
      </widget>
     </item>
    </layout></item>
    <item><widget class="GameViewport" name="gameViewport"><property name="toolTip"><string>运行时点击 Game 画面接收键盘与鼠标输入；Esc 释放输入。暂停后需再次点击画面继续接收输入。</string></property><property name="focusPolicy"><enum>Qt::StrongFocus</enum></property><property name="mouseTracking"><bool>true</bool></property><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>1</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
-   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>Game 与 Scene 共用 Runtime，按场景 Main Camera 绘制。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property>
+     <property name="minimumSize"><size><width>0</width><height>18</height></size></property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <customwidgets>
