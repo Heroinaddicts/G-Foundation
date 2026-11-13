@@ -38,7 +38,7 @@ void SceneEditorUI::ShowSaveDialog(const std::function<void()>& afterSave) {
     path->selectAll(); path->setFocus();
 }
 void SceneEditorUI::OpenSceneAsset(const std::string& path) {
-    if(!_CanEdit)return;
+    if(!_CanEdit||_Opening)return;
     if (!_Scenes) return;
     if (QWidget* focused = QApplication::focusWidget()) focused->clearFocus();
     if(CloseActiveDocument([this,path]{OpenSceneAsset(path);}))return;

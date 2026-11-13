@@ -281,16 +281,19 @@ namespace GameSproutEditor {
         if(console!=_ModuleMap.end())console->second->Release(_Api);
         const auto consoleView=_ViewMap.find("ConsoleUI");
         if(consoleView!=_ViewMap.end())consoleView->second->Release(this);
+        // Cancel scene loading while the TaskApi, Runtime and IDE are live.
+        const auto preview=_ModuleMap.find("AnimationPreview");
+        if(preview!=_ModuleMap.end())preview->second->Release(_Api);
+        const auto scenes=_ModuleMap.find("SceneManager");
+        if(scenes!=_ModuleMap.end())scenes->second->Release(_Api);
         // The IDE container owns attached widgets. Disconnect and shut down their
         // views before deleting the container and its native viewport windows.
         const auto ide=_ViewMap.find("IDEWindow");
         if(ide!=_ViewMap.end())ide->second->Release(this);
         // Views have released their native bindings. Tear down service consumers
         // before the Runtime host; preserve the existing order for other modules.
-        for(const char* name:{"AnimationPreview","SceneManager","RuntimeHost"}) {
-            const auto found=_ModuleMap.find(name);
-            if(found!=_ModuleMap.end())found->second->Release(_Api);
-        }
+        const auto host=_ModuleMap.find("RuntimeHost");
+        if(host!=_ModuleMap.end())host->second->Release(_Api);
         for (const auto& [name, module] : _ModuleMap) {
             if(name!="PrefabStage"&&name!="PrefabManager"&&name!="CodeEditor"&&name!="PlayMode"&&name!="ScriptEditor"&&name!="Console"&&name!="AnimationPreview"&&name!="SceneManager"&&name!="RuntimeHost")module->Release(_Api);
         }

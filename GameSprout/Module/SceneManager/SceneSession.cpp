@@ -30,9 +30,14 @@ bool SceneManager::RestoreLastScene() {
     const std::string path=document["LastScenePath"].asString();
     if(path.empty())return false;
     std::string error;
-    // Use the normal loader so restored paths receive exactly the same Assets
-    // boundary, format and transactional validation as a manual scene open.
-    if(OpenScene(path,error))return true;
+    if(_TaskOwner!=Foundation::InvalidTaskOwnerId) {
+        if(OpenSceneAsync(path,[this,path](bool success,const std::string& failure) {
+            if(success)return;
+            qWarning().noquote()<<"无法恢复上次场景，将打开默认场景："<<QString::fromStdString(path)<<QString::fromStdString(failure);
+            std::string fallbackError;
+            if(!CreateDefaultScene(fallbackError))qCritical().noquote()<<QString::fromStdString(fallbackError);
+        },error))return true;
+    } else if(OpenScene(path,error))return true;
     qWarning().noquote()<<"无法恢复上次场景，将打开默认场景："<<QString::fromStdString(path)<<QString::fromStdString(error);
     return false;
 }

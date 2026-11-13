@@ -1,6 +1,7 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
 #include "IRuntimeHost.h"
+#include "IIDEWindow.h"
 #include <QDebug>
 #include <limits>
 
@@ -9,25 +10,32 @@ void SceneManager::BeforeInitialize(GameSproutEditor::GameSproutModuleApi* api) 
     _Runtime=api&&api->_EditorApi?api->_EditorApi->_Runtime:nullptr;
     _Project=api && api->_EditorApi ? api->_EditorApi->GetGameSproutModule<IProject>("Project") : nullptr;
     _Host=api&&api->_EditorApi?api->_EditorApi->GetGameSproutModule<IRuntimeHost>("RuntimeHost"):nullptr;
+    _IDE=api&&api->_EditorApi?api->_EditorApi->GetGameSproutView<IIDEWindow>("IDEWindow"):nullptr;
+    _Tasks=api&&api->_Foundation?api->_Foundation->TaskApi():nullptr;
 }
 bool SceneManager::Initialize(GameSproutEditor::GameSproutModuleApi*) {
     if(_RuntimeSubscribed) return true;
     if(!_Project) return false;
     if(!Runtime()){qCritical()<<"SceneManager requires EditorApi Runtime injection.";return false;}
     _RuntimeSubscribed=Runtime()->RegisterListener(this);
+    if(_RuntimeSubscribed&&_Tasks&&_IDE)_TaskOwner=_Tasks->RegisterTaskOwner();
     return _RuntimeSubscribed;
 }
 bool SceneManager::Launch(GameSproutEditor::GameSproutModuleApi*) {
     if(!Runtime()) return false;
     if(!GetActiveScene()&&!RestoreLastScene()) {
-        GameSproutRuntime::IScene* scene=nullptr;
-        SceneDocument::ObjectIDs ids;
         std::string error;
-        if(!SceneDocument::Instantiate(SceneDocument::CreateDefault("Untitled"),*Runtime(),scene,ids,error)) {
+        if(!CreateDefaultScene(error)) {
             qCritical().noquote() << QString::fromStdString(error);return false;
         }
-        Activate(scene,"",std::move(ids));
     }
+    return true;
+}
+bool SceneManager::CreateDefaultScene(std::string& error) {
+    GameSproutRuntime::IScene* scene=nullptr;
+    SceneDocument::ObjectIDs ids;
+    if(!SceneDocument::Instantiate(SceneDocument::CreateDefault("Untitled"),*Runtime(),scene,ids,error))return false;
+    Activate(scene,"",std::move(ids));
     return true;
 }
 GameSproutRuntime::IGameSproutRuntime* SceneManager::Runtime() const {
@@ -36,7 +44,7 @@ GameSproutRuntime::IGameSproutRuntime* SceneManager::Runtime() const {
 GameSproutRuntime::IScene* SceneManager::GetActiveScene() const {
     return Runtime() ? dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(_ActiveID)) : nullptr;
 }
-void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash,Json::Value annotations) {
+void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash,Json::Value annotations,SceneDirtyState baseline) {
     GameSproutRuntime::IScene* previous=GetActiveScene();
     _TransformEdit={};
     _PropertyPreview=false;
@@ -44,10 +52,10 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
     _ActivePath.swap(path);
     _DiskHash.swap(diskHash);
     _ObjectIDs=std::move(ids);_Annotations.swap(annotations);_History.clear();_HistoryPosition=0;
-    _DirtyState={};
-    Json::Value document;std::string error;
-    if (Capture(document,error)) {
-        _DirtyState=MakeDirtyBaseline(document);
+    _DirtyState=std::move(baseline);
+    if(!_DirtyState.Known&&!InitializeOpenSceneBaseline()) {
+        Json::Value document;std::string error;
+        if(Capture(document,error))_DirtyState=MakeDirtyBaseline(document);
     }
     _Unsaved=_ActivePath.empty();_StatePending=false;
     RememberActiveScene();
@@ -57,11 +65,14 @@ void SceneManager::Activate(GameSproutRuntime::IScene* scene,std::string path,Sc
 }
 void SceneManager::Update(GameSproutEditor::GameSproutModuleApi*) {
     if(!Runtime()) return;
+    if(_OpenRequest) {AdvanceOpenScene();return;}
     if(_TransformEdit.Active&&!TransformTarget(true)) {std::string error;CancelTransformEdit(error);}
     if (_StatePending&&!_TransformEdit.Active) RefreshState();
 }
 void SceneManager::Release(GameSproutEditor::GameSproutModuleApi*) {
     _Listeners.clear();
+    CancelOpenScene();
+    _Tasks=nullptr;_IDE=nullptr;
     if(_TransformEdit.Active){std::string error;CancelTransformEdit(error);}
     _TransformEdit={};
     _PropertyPreview=false;

@@ -3,9 +3,12 @@
 #include "IProject.h"
 #include "SceneDocument.h"
 #include "SceneDirtyState.h"
+#include "ITaskApi.h"
 #include <map>
 #include <array>
 class IRuntimeHost;
+class IIDEWindow;
+class QString;
 
 class SceneManager final : public ISceneManager, public GameSproutRuntime::IRuntimeListener {
 public:
@@ -22,6 +25,7 @@ public:
     bool MarkDocumentSessionSaved(std::string&) override;
     bool EditSuspendedDocument(const std::function<bool(std::string&)>&,std::string&) override;
     bool OpenScene(const std::string& path, std::string& error) override;
+    bool OpenSceneAsync(const std::string& path,fSceneOpenCompleted completed,std::string& error) override;
     bool BeginPlaySession(std::string& error) override;
     bool EndPlaySession(std::string& error) override;
     bool IsPlaySessionActive() const override {return _PlaySession!=nullptr;}
@@ -78,13 +82,15 @@ private:
     void NotifyStateChanged();
     void NotifyListeners(bool active);
     void NotifyPlaySession(bool changing,bool active);
-    void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={},Json::Value annotations=Json::Value(Json::objectValue));
+    void Activate(GameSproutRuntime::IScene* scene,std::string path,SceneDocument::ObjectIDs ids,std::string diskHash={},Json::Value annotations=Json::Value(Json::objectValue),SceneDirtyState baseline={});
+    bool CreateDefaultScene(std::string& error);
     bool RestoreLastScene();
     void RememberActiveScene() const;
     GameSproutRuntime::IGameSproutRuntime* Runtime() const;
     bool Ready(std::string& error) const;
     bool Capture(Json::Value& document,std::string& error) const;
     SceneDirtyState MakeDirtyBaseline(const Json::Value&) const;
+    bool InitializeOpenSceneBaseline();
     bool SynchronizeDirtyState(std::string& error) const;
     bool RefreshDirtyDocument(const Json::Value&,std::string& error) const;
     bool RefreshDirtyRoot(std::string& error) const;
@@ -93,6 +99,17 @@ private:
     bool DirtyFromSnapshot() const;
     void RefreshState(bool force=false);
     bool SaveTo(const std::string& path,bool allowNew,std::string& error);
+    bool CanOpenScene(std::string& error) const;
+    bool ResolveSceneFile(const std::string& path,QString& source,std::string& relative,std::string& error) const;
+    struct OpenRequest;
+    void AdvanceOpenScene();
+    void SubmitOpenSceneBaseline();
+    void FinishOpenScene(bool success,std::string error);
+    void CancelOpenScene();
+    OpenRequest* _OpenRequest=nullptr;
+    Foundation::ITaskApi* _Tasks=nullptr;
+    UInt64 _TaskOwner=Foundation::InvalidTaskOwnerId;
+    IIDEWindow* _IDE=nullptr;
     struct Edit {
         enum class Kind {Property,Deletion,Creation,Component,Document};
         Kind Type=Kind::Property;

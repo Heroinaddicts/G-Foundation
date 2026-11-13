@@ -1,19 +1,34 @@
 #include "SceneManager.h"
 #include "SceneDocument.h"
 #include "SceneSaveSnapshot.h"
+#include "IIDEWindow.h"
 #include "../Shared/AssetArtifactIO.h"
+#include "../Shared/AssetFileStamp.h"
 #include "../Shared/AssetSourceIO.h"
 #include <QDir>
+#include <QDebug>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <chrono>
 #include <limits>
 #if defined(__APPLE__)
 #include <CommonCrypto/CommonDigest.h>
 #endif
 
 namespace {
+bool ParseSceneBytes(const QByteArray& bytes,Json::Value& document) {
+    Json::CharReaderBuilder builder;
+    builder["rejectDupKeys"]=true;
+    builder["failIfExtra"]=true;
+    struct ReaderScope {
+        Json::CharReader* Reader;
+        ~ReaderScope() { delete Reader; }
+    } parser{builder.newCharReader()};
+    return parser.Reader->parse(bytes.constData(),bytes.constData()+bytes.size(),&document,nullptr);
+}
+
 std::string HashSceneBytes(const QByteArray& bytes) {
 #if defined(__APPLE__)
     if(static_cast<std::uint64_t>(bytes.size())<=std::numeric_limits<CC_LONG>::max()) {
@@ -66,7 +81,53 @@ bool Resolve(IProject* project,const std::string& relative,bool directory,QStrin
     if(canonical!=canonicalRoot && !canonical.startsWith(canonicalRoot+'/')) {error="路径不能超出 Assets。";return false;}
     output=canonical;return true;
 }
+
+struct SceneReadResult {
+    SceneDocument::PreparedScene Prepared;
+    Json::Value Annotations{Json::objectValue};
+    AssetFileStamp Stamp;
+    std::string Hash,Error;
+};
+
+struct SceneBaselineResult {
+    SceneDirtyState State;
+};
+
+bool ReadSceneFile(const QString& source,SceneReadResult& result) {
+    const auto path=source.toStdString();
+    AssetFileStamp before;
+    if(!ReadAssetFileStamp(path,before)||!before.Exists||before.Directory) {
+        result.Error="场景文件已移动或无法读取。";return false;
+    }
+    QFile file(source);
+    if(!file.open(QIODevice::ReadOnly)) {result.Error=file.errorString().toStdString();return false;}
+    const auto bytes=file.readAll();
+    if(file.error()!=QFileDevice::NoError) {result.Error=file.errorString().toStdString();return false;}
+    if(!ReadAssetFileStamp(path,result.Stamp)||result.Stamp!=before||result.Stamp.Size!=static_cast<std::uint64_t>(bytes.size())) {
+        result.Error="读取期间场景文件已被修改，请重新打开。";return false;
+    }
+    Json::Value document;
+    if(!ParseSceneBytes(bytes,document)) {result.Error="场景 JSON 格式无效。";return false;}
+    if(document.isObject()&&document.isMember("Annotations"))result.Annotations=document["Annotations"];
+    result.Hash=HashSceneBytes(bytes);
+    return SceneDocument::Prepare(std::move(document),result.Prepared,result.Error);
 }
+}
+
+struct SceneManager::OpenRequest {
+    std::string Path;
+    QString Source;
+    fSceneOpenCompleted Completed;
+    UInt64 Task=Foundation::InvalidTaskId;
+    SceneReadResult SourceData;
+    SceneDocument::SceneAssembly* Assembly=nullptr;
+    std::uint64_t CandidateID=0;
+    SceneDocument::ObjectIDs IDs;
+    SceneDirtyState Baseline;
+    std::vector<std::uint64_t> Pending;
+    std::vector<Json::Value> Rows;
+    bool Read=false;
+};
 
 bool SceneManager::CreateSceneAsset(const std::string& directory,const std::string& name,std::string& outPath,std::string& error) {
     error.clear();outPath.clear();
@@ -96,38 +157,210 @@ bool SceneManager::CreateSceneAsset(const std::string& directory,const std::stri
     return true;
 }
 
-bool SceneManager::OpenScene(const std::string& path,std::string& error) {
+bool SceneManager::CanOpenScene(std::string& error) const {
     error.clear();
     if(IsDocumentSessionActive()){error="请先关闭当前临时文档，再打开场景。";return false;}
     if(IsPlaySessionActive()){error="请先停止运行，再打开其他编辑场景。";return false;}
     if(!Runtime() || _Switching || _ExecutingEdit || _Notifying || _TransformEdit.Active || _PropertyPreview) {error="请先结束场景编辑，场景服务当前不能加载其他场景。";return false;}
-    if(Runtime()->IsExecuting()) {error="Runtime 正在执行更新、渲染、遍历或事件回调，不能同步加载场景。";return false;}
-    QString source;
+    if(Runtime()->IsExecuting()||Runtime()->IsScriptExecutionEnabled()) {error="请先结束 Runtime 回调或运行，再打开场景。";return false;}
+    return true;
+}
+
+bool SceneManager::ResolveSceneFile(const std::string& path,QString& source,std::string& relative,std::string& error) const {
     if(!Resolve(_Project,path,false,source,error)) return false;
     if(QFileInfo(source).suffix().compare("scene",Qt::CaseInsensitive)!=0) {error="请选择 .scene 场景文件。";return false;}
-    QFile file(source);
-    if(!file.open(QIODevice::ReadOnly)) {error=file.errorString().toStdString();return false;}
-    const QByteArray bytes=file.readAll();
-    if(file.error()!=QFileDevice::NoError) {error=file.errorString().toStdString();return false;}
-    Json::Value document;
-    if(!AssetArtifactIO::Parse(bytes.toStdString(),document)) {error="场景 JSON 格式无效。";return false;}
+    const QString assetsPath=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
+    relative=QDir(QFileInfo(assetsPath).canonicalFilePath()).relativeFilePath(source).toStdString();
+    return true;
+}
+
+bool SceneManager::OpenScene(const std::string& path,std::string& error) {
+    QString source;
+    std::string relative;
+    if(!CanOpenScene(error)||!ResolveSceneFile(path,source,relative,error))return false;
     _Switching=true;
     GameSproutRuntime::IScene* candidate=nullptr;
     SceneDocument::ObjectIDs ids;
     bool success=false;
     try {
-        success=SceneDocument::Instantiate(document,*Runtime(),candidate,ids,error);
+        SceneReadResult result;
+        success=ReadSceneFile(source,result);
+        if(success)success=SceneDocument::Instantiate(result.Prepared,*Runtime(),candidate,ids,error);
+        else error=std::move(result.Error);
         if(success) {
-            const QString assetsPath=QDir(QString::fromStdString(_Project->GetProjectRoot())).filePath("Assets");
-            const QDir assets(QFileInfo(assetsPath).canonicalFilePath());
-            Activate(candidate,assets.relativeFilePath(source).toStdString(),std::move(ids),HashSceneBytes(bytes),
-                     document.isMember("Annotations")?document["Annotations"]:Json::Value(Json::objectValue));
+            Activate(candidate,std::move(relative),std::move(ids),std::move(result.Hash),std::move(result.Annotations));
         }
     } catch(const std::exception& exception) {error=exception.what();success=false;}
     catch(...) {error="场景加载失败。";success=false;}
     if(!success && candidate && candidate!=GetActiveScene()) Runtime()->DestroyScene(candidate);
     _Switching=false;
     return success;
+}
+
+bool SceneManager::OpenSceneAsync(const std::string& path,fSceneOpenCompleted completed,std::string& error) {
+    QString source;
+    std::string relative;
+    if(!CanOpenScene(error)||!ResolveSceneFile(path,source,relative,error))return false;
+    if(_TaskOwner==Foundation::InvalidTaskOwnerId) {error="场景后台任务服务尚未就绪。";return false;}
+    auto* request=new OpenRequest{std::move(relative),source,std::move(completed)};
+    _OpenRequest=request;
+    _Switching=true;
+    _IDE->Loading("打开场景",request->Path);
+    Foundation::TaskSubmitResult submission;
+    try {submission=_Tasks->SubmitTask({_TaskOwner},[source](Int64& code,Foundation::ITaskContext& context) {
+        auto* result=new SceneReadResult;
+        if(!context.SetOwned(result)) {delete result;return false;}
+        if(context.IsCancellationRequested()||!ReadSceneFile(source,*result))return false;
+        code=0;return true;
+    },[this](const Foundation::TaskCompletion& completion,bool success,const Foundation::ITaskContext& context) {
+        auto* request=_OpenRequest;
+        if(!request||request->Task!=completion._TaskId)return;
+        request->Task=Foundation::InvalidTaskId;
+        auto* result=context.Get<SceneReadResult>();
+        if(!success||!result) {
+            FinishOpenScene(false,result&&!result->Error.empty()?std::move(result->Error):"无法读取或校验场景。");return;
+        }
+        request->SourceData=std::move(*result);
+        request->Read=true;
+    });} catch(const std::exception& exception) {error=exception.what();}
+      catch(...) {error="无法提交场景打开任务。";}
+    if(!submission.Accepted()) {
+        request->Completed={};
+        if(error.empty())error="无法提交场景打开任务。";
+        FinishOpenScene(false,error);return false;
+    }
+    request->Task=submission._TaskId;
+    return true;
+}
+
+void SceneManager::AdvanceOpenScene() {
+    auto& request=*_OpenRequest;
+    if(!request.Read||request.Task!=Foundation::InvalidTaskId)return;
+    using Clock=std::chrono::steady_clock;
+    const auto deadline=Clock::now()+std::chrono::milliseconds(6);
+    std::string error;
+    try {
+        if(!request.CandidateID) {
+            if(!request.Assembly) {
+                _IDE->SetLoadingInfo("打开场景","正在创建节点和组件…");
+                request.Assembly=SceneDocument::BeginAssembly(request.SourceData.Prepared,*Runtime(),error);
+                if(!request.Assembly) {FinishOpenScene(false,std::move(error));return;}
+            }
+            GameSproutRuntime::IScene* candidate=nullptr;
+            const auto status=SceneDocument::AdvanceAssembly(*request.Assembly,deadline,candidate,request.IDs,error);
+            if(status==SceneDocument::AssemblyStatus::Failed) {FinishOpenScene(false,std::move(error));return;}
+            if(status==SceneDocument::AssemblyStatus::Pending)return;
+            SceneDocument::DestroyAssembly(request.Assembly);request.Assembly=nullptr;
+            request.CandidateID=candidate->GetInstanceID();
+            candidate->SetSimulationEnabled(false);
+            _IDE->SetLoadingInfo("打开场景","正在准备保存基准…");
+            return;
+        }
+        auto* candidate=dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(request.CandidateID));
+        if(!candidate) {FinishOpenScene(false,"候选场景已失效。");return;}
+        if(request.Baseline.Known) {
+            std::string relative;
+            QString source;
+            AssetFileStamp current;
+            if(!ResolveSceneFile(request.Path,source,relative,error)||source!=request.Source||
+               !ReadAssetFileStamp(source.toStdString(),current)||current!=request.SourceData.Stamp) {
+                FinishOpenScene(false,"打开期间场景文件已被移动或修改，请重新打开。");return;
+            }
+            if(candidate->GetAuthoringRevision()==request.Baseline.Revision) {
+                candidate->SetSimulationEnabled(true);
+                Activate(candidate,std::move(request.Path),std::move(request.IDs),std::move(request.SourceData.Hash),
+                         std::move(request.SourceData.Annotations),std::move(request.Baseline));
+                request.CandidateID=0;
+                FinishOpenScene(true,{});return;
+            }
+            request.Baseline={};
+        }
+        if(request.Baseline.SceneID==0||request.Baseline.Revision!=candidate->GetAuthoringRevision()) {
+            auto& baseline=request.Baseline;
+            baseline={};request.Pending.clear();request.Rows.clear();
+            baseline.SceneID=request.CandidateID;
+            baseline.Revision=baseline.NotifiedRevision=candidate->GetAuthoringRevision();
+            if(!SceneDocument::SerializeProperties(*candidate,request.IDs,baseline.BaselineRoot,error)) {
+                FinishOpenScene(false,std::move(error));return;
+            }
+            if(!request.SourceData.Annotations.empty())baseline.BaselineRoot["Annotations"]=request.SourceData.Annotations;
+            baseline.CurrentRoot=baseline.BaselineRoot;
+            request.Rows.reserve(request.IDs.RuntimeToFile.size());
+            for(auto index=candidate->GetChildCount();index>0;--index)
+                request.Pending.push_back(candidate->GetChild(index-1)->GetInstanceID());
+        }
+        while(!request.Pending.empty()&&Clock::now()<deadline) {
+            auto* node=Runtime()->QueryGameObject(request.Pending.back());request.Pending.pop_back();
+            Json::Value properties;
+            if(!node||node->GetScene()!=candidate) {FinishOpenScene(false,"候选场景节点已失效。");return;}
+            if(!SceneDocument::SerializeProperties(*node,request.IDs,properties,error)) {
+                FinishOpenScene(false,std::move(error));return;
+            }
+            request.Rows.push_back(std::move(properties));
+            for(auto index=node->GetChildCount();index>0;--index)request.Pending.push_back(node->GetChild(index-1)->GetInstanceID());
+        }
+        if(!request.Pending.empty())return;
+        SubmitOpenSceneBaseline();
+    } catch(const std::exception& exception) {FinishOpenScene(false,exception.what());}
+      catch(...) {FinishOpenScene(false,"场景加载失败。");}
+}
+
+void SceneManager::SubmitOpenSceneBaseline() {
+    auto& request=*_OpenRequest;
+    const auto submission=_Tasks->SubmitTask({_TaskOwner},
+        [rows=std::move(request.Rows),state=std::move(request.Baseline),source=request.SourceData.Prepared.ReleaseDocument()]
+        (Int64& code,Foundation::ITaskContext& context) mutable {
+            source=Json::Value{};
+            auto* result=new SceneBaselineResult;
+            if(!context.SetOwned(result)) {delete result;return false;}
+            state.BaselineOrder.reserve(rows.size());
+            for(const auto& row:rows) {
+                if(context.IsCancellationRequested())return false;
+                const auto id=row["ID"].asUInt64();
+                state.BaselineOrder.push_back(id);
+                state.BaselineNodes.emplace(id,SceneSaveSnapshot::Row(row));
+                for(const auto& component:row["Components"])
+                    if(component["Type"]=="GameSproutRuntime.Animator"||component["Type"]=="GameSproutRuntime.SkinnedMeshRenderer") {
+                        state.AnimationOwners.insert(id);break;
+                    }
+            }
+            rows.clear();
+            state.CurrentOrder=state.BaselineOrder;state.Known=true;
+            result->State=std::move(state);code=0;return true;
+        },[this](const Foundation::TaskCompletion& completion,bool success,const Foundation::ITaskContext& context) {
+            auto* request=_OpenRequest;
+            if(!request||request->Task!=completion._TaskId)return;
+            request->Task=Foundation::InvalidTaskId;
+            auto* result=context.Get<SceneBaselineResult>();
+            if(!success||!result) {FinishOpenScene(false,"无法准备场景保存基准。");return;}
+            request->Baseline=std::move(result->State);
+        });
+    if(submission.Accepted())request.Task=submission._TaskId;
+    else FinishOpenScene(false,"无法提交场景保存基准任务。");
+}
+
+void SceneManager::FinishOpenScene(bool success,std::string error) {
+    auto* request=_OpenRequest;
+    if(!request)return;
+    _OpenRequest=nullptr;
+    SceneDocument::DestroyAssembly(request->Assembly);
+    if(request->CandidateID&&request->CandidateID!=_ActiveID)
+        if(auto* candidate=dynamic_cast<GameSproutRuntime::IScene*>(Runtime()->QueryGameObject(request->CandidateID)))Runtime()->DestroyScene(candidate);
+    auto completed=std::move(request->Completed);
+    delete request;
+    _Switching=false;
+    if(!success&&_ActiveID)_StatePending=true;
+    _IDE->Unloading();
+    if(completed)try {completed(success,error);} catch(...) {qWarning("Scene open callback threw an exception");}
+}
+
+void SceneManager::CancelOpenScene() {
+    if(_TaskOwner!=Foundation::InvalidTaskOwnerId)_Tasks->UnregisterTaskOwner(_TaskOwner);
+    _TaskOwner=Foundation::InvalidTaskOwnerId;
+    if(_OpenRequest) {
+        _OpenRequest->Completed={};
+        FinishOpenScene(false,{});
+    }
 }
 
 bool SceneManager::SaveScene(std::string& error) {

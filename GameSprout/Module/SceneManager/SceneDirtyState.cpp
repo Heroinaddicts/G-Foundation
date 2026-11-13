@@ -119,6 +119,50 @@ SceneDirtyState SceneManager::MakeDirtyBaseline(const Json::Value& document) con
     state.CurrentOrder=state.BaselineOrder;
     return state;
 }
+bool SceneManager::InitializeOpenSceneBaseline() {
+    auto* scene=GetActiveScene();
+    if(!scene||Runtime()->IsExecuting()||Runtime()->IsScriptExecutionEnabled())return false;
+    const auto revision=scene->GetAuthoringRevision();
+    if(!revision)return false;
+    try {
+        // Open just validated the source and installed its file identities.
+        // Serialize canonical runtime values directly into saved rows instead of
+        // building a second document, validating it and rebinding those IDs.
+        SceneDirtyState state;
+        state.SceneID=scene->GetInstanceID();
+        state.Revision=state.NotifiedRevision=revision;
+        state.NotifiedDirty=_ActivePath.empty();
+        std::string error;
+        if(!SceneDocument::SerializeProperties(*scene,_ObjectIDs,state.BaselineRoot,error))return false;
+        if(!_Annotations.empty())state.BaselineRoot["Annotations"]=_Annotations;
+        state.CurrentRoot=state.BaselineRoot;
+
+        const auto nodeCount=_ObjectIDs.RuntimeToFile.size();
+        SceneRowEncoder rows(nodeCount,[&state](std::uint64_t id,std::string text) {
+            if(!state.BaselineNodes.emplace(id,std::move(text)).second)
+                throw std::runtime_error("Duplicate scene baseline identity");
+        });
+        state.BaselineOrder.reserve(nodeCount);
+        std::vector<GameSproutRuntime::IGameObject*> pending;
+        for(std::size_t i=scene->GetChildCount();i>0;--i)pending.push_back(scene->GetChild(i-1));
+        while(!pending.empty()) {
+            auto* node=pending.back();pending.pop_back();
+            Json::Value properties;
+            if(!node||!SceneDocument::SerializeProperties(*node,_ObjectIDs,properties,error))return false;
+            const auto id=properties["ID"].asUInt64();
+            state.BaselineOrder.push_back(id);
+            if(HasAnimationBindings(properties))state.AnimationOwners.insert(id);
+            rows.Add(id,std::move(properties));
+            for(std::size_t i=node->GetChildCount();i>0;--i)pending.push_back(node->GetChild(i-1));
+        }
+        rows.Finish();
+        if(state.BaselineOrder.size()!=nodeCount||scene->GetAuthoringRevision()!=revision)return false;
+        state.CurrentOrder=state.BaselineOrder;
+        state.Known=true;
+        _DirtyState=std::move(state);
+        return true;
+    } catch(...) {return false;}
+}
 bool SceneManager::DirtyFromSnapshot() const {
     return GetActiveScene()&&((_ActivePath.empty()&&!IsTemporaryDocumentContext())||!_DirtyState.FullError.empty()||
         !_DirtyState.Errors.empty()||_DirtyState.RootDifferent||_DirtyState.OrderDifferent||!_DirtyState.DifferentNodes.empty());

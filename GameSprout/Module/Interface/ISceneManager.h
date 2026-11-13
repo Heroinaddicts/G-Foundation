@@ -161,4 +161,10 @@ public:
     // 主线程，先订阅再查询；不回放历史，不持有监听者，销毁前必须注销。
     virtual bool RegisterSceneListener(ISceneListener* listener) = 0;
     virtual void UnregisterSceneListener(ISceneListener* listener) = 0;
+    // Host thread. Completion is delivered once for an accepted request while
+    // the service is live, after the new scene has been published or rejected.
+    using fSceneOpenCompleted = std::function<void(bool,const std::string&)>;
+    virtual bool OpenSceneAsync(const std::string&,fSceneOpenCompleted,std::string& error) {
+        error="当前场景服务不支持后台打开。";return false;
+    }
 };

@@ -51,6 +51,7 @@ target_link_libraries(SceneManager PRIVATE
 target_include_directories(SceneManager PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Interface"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../View/Interface"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../GameSproutEditor/Api"
 )
 set_target_properties(SceneManager PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)

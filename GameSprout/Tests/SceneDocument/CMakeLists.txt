@@ -55,6 +55,7 @@ add_executable(SceneManagerChecks
 target_include_directories(SceneManagerChecks PRIVATE
     "${gamesprout_root}/Module/SceneManager"
     "${gamesprout_root}/Module/Interface"
+    "${gamesprout_root}/View/Interface"
     "${gamesprout_root}/GameSproutEditor/Api"
 )
 target_link_libraries(SceneManagerChecks PRIVATE

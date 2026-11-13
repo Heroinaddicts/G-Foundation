@@ -73,7 +73,7 @@ std::uint64_t SceneEditorUI::SceneID() const {
     return scene ? scene->GetInstanceID() : 0;
 }
 void SceneEditorUI::RefreshActions() {
-    const bool editing = !_CanEdit || (_Scenes && _Scenes->HasTransformEdit());
+    const bool editing = !_CanEdit || _Opening || (_Scenes && _Scenes->HasTransformEdit());
     DocumentHandler document;const bool external=ReadDocumentHandler(document);
     if (_Save) _Save->SetEnabled(SceneID() != 0 && !editing);
     if (_SaveAs) _SaveAs->SetEnabled(SceneID() != 0 && !editing && !external);
@@ -120,11 +120,19 @@ void SceneEditorUI::SaveSceneAs() {
     if (SceneID()) ShowSaveDialog();
 }
 void SceneEditorUI::OpenNow(const std::string& path) {
+    if(_Opening||!_Scenes)return;
     std::string error;
     _Opening = true;
-    const bool success = _Scenes && _Scenes->OpenScene(path, error);
+    if(_Scenes->OpenSceneAsync(path,[this](bool success,const std::string& failure) {
+        if(!_Dispatch)return;
+        _Opening=false;
+        RefreshActions();
+        if(!success)ShowError(failure);
+    },error)) {
+        RefreshActions();return;
+    }
     _Opening = false;
-    if (!success) ShowError(error);
+    ShowError(error);
 }
 
 void SceneEditorUI::OnPlayModeStateChanged(const PlayModeState& state) {
