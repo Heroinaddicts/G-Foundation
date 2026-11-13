@@ -111,6 +111,7 @@ void Renderer::PrepareDraws(const RenderView& view,const Mat4& viewProjection) {
                 outside=!frustum.Intersects(object.CullBox);
             }
         }
+        const bool shadowsOnly=object.ShadowMode==ShadowCastingMode::ShadowsOnly;
         bool drawn=false,skipped=false;
         for(const auto& section:mesh->Data.Sections) {
             if(!section.IndexCount) continue;
@@ -126,6 +127,8 @@ void Renderer::PrepareDraws(const RenderView& view,const Mat4& viewProjection) {
                     cachedMaterial=cached;material=&cached->Data;materialReference=&reference;
                 }
             }
+            // The shadow pass still needs the resolved geometry and materials.
+            if(shadowsOnly)continue;
             const bool builtin=material->Shader.Guid.empty();
             const auto sectionOrdinal=static_cast<std::uint64_t>(&section-mesh->Data.Sections.data());
             auto opaqueSlot=invisible;
@@ -181,7 +184,7 @@ void Renderer::PrepareDraws(const RenderView& view,const Mat4& viewProjection) {
             drawn=true;
         }
         if(drawn) ++_Statistics.VisibleObjects;
-        if(skipped || !drawn) ++_Statistics.SkippedObjects;
+        if(skipped || (!drawn&&!shadowsOnly)) ++_Statistics.SkippedObjects;
     }
     RefreshDrawSortRanks();
     if(rebuildOpaqueOrder) {

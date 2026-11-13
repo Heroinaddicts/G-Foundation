@@ -78,6 +78,23 @@ public:
     // Borrowed palette order is Mesh bone order, not Skeleton or Clip order.
     virtual bool GetSkinMatrices(const std::vector<SkinBinding>& bones,
         std::vector<Mat4>& matrices, std::string& error) const = 0;
+    // Shadow settings are shared with the same object's MeshRenderer. Until it
+    // exists, reads return defaults, SetShadowCastingMode fails and SetReceiveShadows is a no-op.
+    ShadowCastingMode GetShadowCastingMode() const {
+        const auto* renderer=_GameObject->GetComponent<IMeshRendererComponent>();
+        return renderer?renderer->GetShadowCastingMode():ShadowCastingMode::On;
+    }
+    bool SetShadowCastingMode(ShadowCastingMode mode) {
+        auto* renderer=_GameObject->GetComponent<IMeshRendererComponent>();
+        return renderer&&renderer->SetShadowCastingMode(mode);
+    }
+    bool GetReceiveShadows() const {
+        const auto* renderer=_GameObject->GetComponent<IMeshRendererComponent>();
+        return !renderer||renderer->GetReceiveShadows();
+    }
+    void SetReceiveShadows(bool enabled) {
+        if(auto* renderer=_GameObject->GetComponent<IMeshRendererComponent>())renderer->SetReceiveShadows(enabled);
+    }
 protected:
     using IComponent::IComponent;
 };

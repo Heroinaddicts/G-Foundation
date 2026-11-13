@@ -50,7 +50,8 @@ bool Renderer::Raycast(IScene* scene,const Ray& worldRay,SceneRaycastHit& hit,st
             for(std::size_t index=object->GetChildCount();index>0;--index) pending.push_back(object->GetChild(index-1));
             auto* renderer=object->GetComponent<IMeshRendererComponent>();
             auto* component=object->GetComponent<IMeshComponent>();
-            if(!renderer || !component || !object->IsActiveInHierarchy() || !renderer->IsVisible()) continue;
+            if(!renderer || !component || !object->IsActiveInHierarchy() || !renderer->IsVisible() ||
+                renderer->GetShadowCastingMode()==ShadowCastingMode::ShadowsOnly) continue;
             const Mat4 model=object->GetTransform()->GetWorldMatrix();Mat4 inverse;
             if(!RuntimeMath::IsFinite(model) || !RuntimeMath::TryInverseAffine(model,inverse)) continue;
             auto* mesh=Mesh(component->GetMesh());if(!mesh) continue;

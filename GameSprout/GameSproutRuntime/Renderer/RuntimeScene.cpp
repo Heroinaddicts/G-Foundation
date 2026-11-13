@@ -105,6 +105,8 @@ bool Renderer::Extract(const RenderView& view,std::vector<DrawObject>& objects) 
             ++_Statistics.SkippedObjects;continue;
         }
         DrawObject data;data.ObjectID=object->GetInstanceID();data.Layer=object->GetLayer();data.Name=object->GetName();
+        data.ShadowMode=renderer->GetShadowCastingMode();
+        data.ReceiveShadows=renderer->GetReceiveShadows();
         data.Skinned=object->GetComponent<ISkinnedMeshRendererComponent>()!=nullptr;
         data.StaticShadowCaster=!data.Skinned&&
             (object->GetStaticFlags()&StaticFlags::ShadowCasterStatic)!=StaticFlags::None;

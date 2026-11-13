@@ -365,6 +365,18 @@ namespace GameSproutRuntime {
         using IComponent::IComponent;
     };
 
+    enum class ShadowCastingMode : std::uint8_t {
+        Off = 0,        // Skip shadow caster draws.
+        On = 1,         // Use the material's face culling.
+        TwoSided = 2,   // Disable face culling for shadow draws.
+        ShadowsOnly = 3 // Cast shadows and omit the mesh from camera draws.
+    };
+
+    inline bool IsValidShadowCastingMode(ShadowCastingMode mode) {
+        return mode==ShadowCastingMode::Off||mode==ShadowCastingMode::On||
+            mode==ShadowCastingMode::TwoSided||mode==ShadowCastingMode::ShadowsOnly;
+    }
+
     class GAMESPROUT_RUNTIME_PUBLIC_TYPE IMeshRendererComponent : public IComponent {
     public:
         virtual std::size_t GetMaterialCount() const = 0;
@@ -374,6 +386,10 @@ namespace GameSproutRuntime {
         virtual bool SetMaterials(const std::vector<ResourceReference>& materials) = 0;
         virtual void SetVisible(bool visible) = 0;
         virtual bool IsVisible() const = 0;
+        virtual ShadowCastingMode GetShadowCastingMode() const = 0; // Default: On.
+        virtual bool SetShadowCastingMode(ShadowCastingMode mode) = 0; // Invalid modes leave the value unchanged.
+        virtual bool GetReceiveShadows() const = 0; // Default: true. Used by built-in Lit materials.
+        virtual void SetReceiveShadows(bool enabled) = 0;
     protected:
         using IComponent::IComponent;
     };

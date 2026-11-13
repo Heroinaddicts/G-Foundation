@@ -35,6 +35,8 @@ bool Renderer::OpaqueDrawBefore(const PreparedDraw& left,const PreparedDraw& rig
     if(left.Section.IndexCount!=right.Section.IndexCount)return left.Section.IndexCount<right.Section.IndexCount;
     if(left.Object->Negative!=right.Object->Negative)return left.Object->Negative<right.Object->Negative;
     if(left.Object->Layer!=right.Object->Layer)return left.Object->Layer<right.Object->Layer;
+    if(left.Material->ShadingModel==MaterialShadingModel::Lit&&left.Object->ReceiveShadows!=right.Object->ReceiveShadows)
+        return left.Object->ReceiveShadows<right.Object->ReceiveShadows;
     return left.Object->Skinned<right.Object->Skinned;
 }
 
@@ -107,8 +109,10 @@ void Renderer::PrepareInstanceBatches(const std::vector<PreparedDraw>& draws,boo
             if(next.Shader||next.Transparent||next.Object->Skinned||!next.Material->EnableGPUInstancing||
                 next.Mesh!=draw.Mesh||next.Section.FirstIndex!=draw.Section.FirstIndex||
                 next.Section.IndexCount!=draw.Section.IndexCount||next.Object->Negative!=draw.Object->Negative)break;
-            if(shadow?next.Material->DoubleSided!=draw.Material->DoubleSided:
-                (next.Material!=draw.Material||next.Object->Layer!=draw.Object->Layer))break;
+            if(shadow) {
+                if(next.ShadowDoubleSided!=draw.ShadowDoubleSided)break;
+            }else if(next.Material!=draw.Material||next.Object->Layer!=draw.Object->Layer||
+                (draw.Material->ShadingModel==MaterialShadingModel::Lit&&next.Object->ReceiveShadows!=draw.Object->ReceiveShadows))break;
             ++end;
         }
         const auto count=static_cast<std::uint32_t>(end-begin);

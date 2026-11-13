@@ -60,7 +60,7 @@ bool Renderer::DrawShadow(GRHI::IRenderPass& pass,const PreparedDraw& draw,const
     std::size_t firstInstance,std::uint32_t instanceCount,const InstanceStream* instances) {
     const auto& data=draw.Mesh->Data;
     PipelineKey key;key.Shadow=true;key.Stride=data.VertexStride;key.Position=data.PositionOffset;
-    key.DoubleSided=draw.Material->DoubleSided;key.Negative=draw.Object->Negative;key.Instanced=instances!=nullptr;
+    key.DoubleSided=draw.ShadowDoubleSided;key.Negative=draw.Object->Negative;key.Instanced=instances!=nullptr;
     if(draw.Object->Skinned){key.BoneIndices=data.BoneIndicesOffset;key.BoneWeights=data.BoneWeightsOffset;}
     auto* pipeline=Pipeline(key);if(!pipeline)return false;
     struct ShadowDrawUniform { Mat4 Model,ViewProjection; };
@@ -95,7 +95,7 @@ void Renderer::SortShadowCandidates(std::vector<ShadowCandidate>& candidates) {
         if(a.Mesh->SortRank!=b.Mesh->SortRank)return a.Mesh->SortRank<b.Mesh->SortRank;
         if(a.Section.FirstIndex!=b.Section.FirstIndex)return a.Section.FirstIndex<b.Section.FirstIndex;
         if(a.Section.IndexCount!=b.Section.IndexCount)return a.Section.IndexCount<b.Section.IndexCount;
-        if(a.Material->DoubleSided!=b.Material->DoubleSided)return a.Material->DoubleSided<b.Material->DoubleSided;
+        if(a.ShadowDoubleSided!=b.ShadowDoubleSided)return a.ShadowDoubleSided<b.ShadowDoubleSided;
         return a.Object->Negative<b.Object->Negative;
     });
 }
@@ -309,7 +309,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         std::none_of(moved.begin(),moved.end(),[&](auto id){return _StaticShadowTransformObjects.contains(id);});
     const bool skipStatic=onlyPreviewMoved||unchangedStatic;
     const auto collectCaster=[&](DrawObject& object,bool dynamic) {
-        if(!(light.CullingMask&(std::uint32_t{1}<<object.Layer))||!object.Geometry||
+        if(object.ShadowMode==ShadowCastingMode::Off||!(light.CullingMask&(std::uint32_t{1}<<object.Layer))||!object.Geometry||
             (object.Skinned&&!object.SkinPoseReady))return;
         auto* mesh=object.Geometry;
         Bounds local=mesh->Data.LocalBounds;
@@ -333,9 +333,10 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             PreparedDraw draw;
             draw.Object=&object;draw.Mesh=mesh;draw.Section=section;draw.Material=material;
             draw.SectionOrdinal=static_cast<std::uint64_t>(&section-mesh->Data.Sections.data());
+            draw.ShadowDoubleSided=material->DoubleSided||object.ShadowMode==ShadowCastingMode::TwoSided;
             casters.push_back({draw,world});
             if(layered&&!dynamic)staticKeys.push_back({object.ObjectID,mesh,object.Model,world,
-                section.FirstIndex,section.IndexCount,material->DoubleSided});
+                section.FirstIndex,section.IndexCount,draw.ShadowDoubleSided});
         }
         if(casters.size()!=previousCount) {
             bounds.push_back(world);
@@ -353,6 +354,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         for(auto* object:_DynamicShadowObjects)collectCaster(*object,true);
     } else {
         for(auto& object:_SceneObjects) {
+            if(object.ShadowMode==ShadowCastingMode::Off)continue;
             // The moving preview subtree stays out of the primary atlas.
             const bool dynamic=layered&&(object.Skinned||previewSubtree.contains(object.ObjectID)||
                 (settings.CacheStaticCasters&&!object.StaticShadowCaster));

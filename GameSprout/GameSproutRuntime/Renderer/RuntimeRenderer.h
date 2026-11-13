@@ -124,6 +124,8 @@ private:
         bool Skinned=false;
         bool SkinPoseReady=false;
         bool StaticShadowCaster=false;
+        ShadowCastingMode ShadowMode=ShadowCastingMode::On;
+        bool ReceiveShadows=true;
         bool Negative=false;
         std::uint8_t Layer=0;
     };
@@ -141,7 +143,7 @@ private:
     };
     struct LitUniform {
         Vector4 CameraPosition;
-        Vector4 Directions[MaxDirectionalLights]; // W is one for an active slot.
+        Vector4 Directions[MaxDirectionalLights]; // W is 1 for an active slot, 2 if it samples shadows.
         Color Radiances[MaxDirectionalLights];
         Vector4 Parameters; // Metallic, perceptual roughness, normal scale, has normal map.
         Color Emission;
@@ -189,6 +191,7 @@ private:
         bool Transparent=false;
         float DistanceSquared=0;
         std::uint64_t SectionOrdinal=0;
+        bool ShadowDoubleSided=false;
     };
     struct ShadowCandidate { PreparedDraw Draw; Bounds World; };
     struct StaticShadowCasterKey {

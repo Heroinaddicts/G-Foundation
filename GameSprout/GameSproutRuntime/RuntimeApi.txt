@@ -160,6 +160,11 @@ FadeStart 是有效最大阴影距离的比例，默认 0.9，1 表示在最大�
 ILightComponent::RequestShadowRefresh() 请求每个使用该方向光的视口在下一次成功绘制阴影时重建所有级联。连续请求会合并，临时不可绘制的视口会在恢复后执行。请求通过场景视觉事件通知按需绘制的宿主。
 Editor 方向光 Inspector 的「实时阴影」提供缓存开关及高级设置。节点的 Static 菜单提供「Shadow Caster Static」。这些设置会保存进场景，手动重建按钮只发出一次视觉刷新请求。
 
+网格投射和接收阴影
+IMeshRendererComponent 和 ISkinnedMeshRendererComponent 提供 GetShadowCastingMode / SetShadowCastingMode 和 GetReceiveShadows / SetReceiveShadows。SkinnedMeshRenderer 访问同一对象的 MeshRenderer 设置，场景与 Prefab 只保存一份。
+投射默认 On，沿用材质的面剔除。Off 跳过投影绘制，TwoSided 在阴影通道绘制两面，ShadowsOnly 只保留投影并从相机绘制及视口拾取中移除。仍可通过 Hierarchy 选中对象。
+接收默认开启，关闭时内置 Lit 仍计算光照并跳过阴影采样。自定义 Shader 需要相应的投射与接收通道。Visible 控制整个网格渲染器，关闭后也停止投影。
+
 宿主控制阴影复用
 RenderView::ReuseShadowsWhileNavigating 默认 false，镜头改变时按当前视角更新阴影。
 自定义宿主可以给每次 Render 调用传入 `view.ReuseShadowsWhileNavigating = cameraNavigationActive;`。

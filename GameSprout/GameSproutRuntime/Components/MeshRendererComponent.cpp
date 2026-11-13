@@ -37,4 +37,16 @@ void MeshRendererComponent::SetVisible(bool value) {
     _Visible = value;
     NotifyComponentChanged(_GameObject, this);
 }
+bool MeshRendererComponent::SetShadowCastingMode(ShadowCastingMode mode) {
+    if(!IsValidShadowCastingMode(mode))return false;
+    if(mode==_ShadowCastingMode)return true;
+    _ShadowCastingMode=mode;
+    NotifyComponentChanged(_GameObject,this);
+    return true;
+}
+void MeshRendererComponent::SetReceiveShadows(bool enabled) {
+    if(enabled==_ReceiveShadows)return;
+    _ReceiveShadows=enabled;
+    NotifyComponentChanged(_GameObject,this);
+}
 }

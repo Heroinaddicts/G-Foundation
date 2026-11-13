@@ -24,12 +24,23 @@ public:
     std::uint64_t GetRevision()const override{return Revision;}
     bool LoadMesh(const ResourceReference& reference,MeshRenderData& data,std::string& error)override{
         data={};error.clear();data.VertexStride=24;
+        const bool skinned=reference.LocalID==3||reference.LocalID==4;
+        if(skinned) {
+            data.VertexStride=56;
+            data.BoneIndicesOffset=24;
+            data.BoneWeightsOffset=40;
+            data.Bones.push_back({"Bone",{}});
+        }
         std::vector<Vector3> positions;std::vector<std::uint32_t> indices;
-        if(reference.LocalID==1){
+        if(reference.LocalID==1||reference.LocalID==3){
             // A camera-facing receiving plane. It fills the entire test target,
             // so background/sky changes cannot be mistaken for a shadow.
             positions={{-4,-4,0},{4,-4,0},{4,4,0},{-4,4,0}};indices={0,1,2,0,2,3};
             data.LocalBounds={{},{4,4,0}};
+        }else if(reference.LocalID==5){
+            positions={{-.65f,-.65f,0},{.65f,-.65f,0},{.65f,.65f,0},{-.65f,.65f,0}};
+            indices={0,1,2,0,2,3};
+            data.LocalBounds={{},{.65f,.65f,0}};
         }else{
             const float h=CubeHalfSize;
             positions={{-h,-h,-h},{h,-h,-h},{h,h,-h},{-h,h,-h},
@@ -42,6 +53,10 @@ public:
         for(const auto position:positions){
             Float(data.Bytes,position.X);Float(data.Bytes,position.Y);Float(data.Bytes,position.Z);
             Float(data.Bytes,0);Float(data.Bytes,0);Float(data.Bytes,1);
+            if(skinned) {
+                for(int influence=0;influence<4;++influence)UInt(data.Bytes,0);
+                Float(data.Bytes,1);Float(data.Bytes,0);Float(data.Bytes,0);Float(data.Bytes,0);
+            }
         }
         data.IndexOffset=data.Bytes.size();data.IndexCount=static_cast<std::uint32_t>(indices.size());
         for(const auto index:indices)UInt(data.Bytes,index);
@@ -50,8 +65,9 @@ public:
     bool LoadTexture(const ResourceReference&,TextureRenderData& data,std::string& error)override{
         data={};data.Width=data.Height=1;data.Pixels={255,255,255,255};error.clear();return true;
     }
-    bool LoadMaterial(const ResourceReference&,MaterialRenderData& data,std::string& error)override{
+    bool LoadMaterial(const ResourceReference& reference,MaterialRenderData& data,std::string& error)override{
         data={};data.ShadingModel=MaterialShadingModel::Lit;data.BaseColor={.4f,.4f,.4f,1};
+        if(reference.LocalID==11)data.BaseColor={.8f,.2f,.1f,1};
         data.Roughness=1;data.SpecularHighlights=false;error.clear();return true;
     }
 };
@@ -94,6 +110,154 @@ IGameObject* MeshObject(IScene& scene,const char* name,std::uint64_t mesh){
     return object;
 }
 Quaternion Yaw(float degrees){const float half=DegreesToRadians(degrees)*.5f;return {0,std::sin(half),0,std::cos(half)};}
+
+ISkinnedMeshRendererComponent* SkinShadowObject(IScene& scene,IGameObject& object) {
+    auto* bone=scene.CreateGameObject("Bone",&object);
+    auto* animator=object.AddComponent<IAnimatorComponent>();
+    auto* skin=object.AddComponent<ISkinnedMeshRendererComponent>();
+    Check(bone&&animator&&skin&&animator->SetNodeBindings({{"Bone",bone->GetInstanceID()}})&&
+        skin->SetAnimatorObjectID(object.GetInstanceID()),"Cannot bind a skinned shadow fixture");
+    return skin;
+}
+
+void CheckTwoSidedAndInstancedShadows(IScene& scene,IRuntimeViewport& viewport,const RenderView& view,
+    IGameObject& receiver,IGameObject& caster) {
+    auto* receivingRenderer=receiver.GetComponent<IMeshRendererComponent>();
+    auto* castingRenderer=caster.GetComponent<IMeshRendererComponent>();
+    receivingRenderer->SetReceiveShadows(true);
+    caster.GetComponent<IMeshComponent>()->SetMesh({Guid,5});
+    // Compare the shadow of an off-camera face so the caster's color cannot
+    // be mistaken for a darker silhouette on the receiver.
+    caster.GetTransform()->SetLocalPosition({2.7f,0,2.7f});
+    Check(castingRenderer->SetShadowCastingMode(ShadowCastingMode::On),"Cannot restore single-sided shadow casting");
+    const auto frontFacing=Render(viewport,view);
+    caster.GetTransform()->SetLocalRotation(Yaw(180));
+    const auto backFacing=Render(viewport,view);
+    EffectiveShadow(backFacing,frontFacing,"Single-sided shadow winding");
+    Check(castingRenderer->SetShadowCastingMode(ShadowCastingMode::TwoSided),"Cannot enable two-sided shadow casting");
+    const auto twoSided=Render(viewport,view);
+    EffectiveShadow(backFacing,twoSided,"Backface shadow with two-sided casting");
+    Check(twoSided.Statistics.VisibleObjects==backFacing.Statistics.VisibleObjects,
+        "TwoSided shadow mode changed camera visibility");
+
+    receivingRenderer->SetVisible(false);
+    caster.GetTransform()->SetLocalPosition({1.3f,0,1.4f});
+    caster.GetTransform()->SetLocalScale({2.6f,1.7f,1});
+    caster.GetTransform()->SetLocalRotation({});
+    Check(castingRenderer->SetShadowCastingMode(ShadowCastingMode::ShadowsOnly),"Cannot hide instancing fixture caster from color");
+    for(float x:{-.75f,.75f})for(float y:{-.55f,.55f}) {
+        auto* instance=MeshObject(scene,"Identical receiving mesh",5);
+        instance->GetTransform()->SetLocalPosition({x,y,0});
+        instance->GetTransform()->SetLocalScale({.5f,.5f,1});
+        auto* renderer=instance->GetComponent<IMeshRendererComponent>();
+        Check(renderer->SetShadowCastingMode(ShadowCastingMode::Off),"Cannot disable receiver instance casting");
+        renderer->SetReceiveShadows(x>0);
+    }
+    const auto instanced=Render(viewport,view);
+    const auto centerRed=[&](float x,float y) {
+        const auto width=instanced.Statistics.Width,height=instanced.Statistics.Height;
+        const auto pixelX=static_cast<std::size_t>((.5f-x/4)*width);
+        const auto pixelY=static_cast<std::size_t>((.5f-y/4)*height);
+        return instanced.Pixels[(pixelY*width+pixelX)*4];
+    };
+    Check(instanced.Statistics.VisibleObjects==4&&instanced.Statistics.InstancedDrawCalls>0&&
+        centerRed(-.75f,.55f)>centerRed(.75f,.55f)+30&&centerRed(-.75f,-.55f)>centerRed(.75f,-.55f)+30,
+        "Identical mesh instances did not keep individual Receive Shadows settings");
+    auto individual=view;individual.EnableGPUInstancing=false;
+    Check(Difference(instanced,Render(viewport,individual))<16,"Instanced receive shadow results differ from individual draws");
+}
+
+void CheckObjectShadowControls(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,bool skinned) {
+    auto* scene=runtime.CreateScene(skinned?"Skinned shadow controls":"Rigid shadow controls");
+    Check(scene,"Cannot create object shadow fixture");
+    auto* receiver=MeshObject(*scene,"Receiving plane",skinned?3:1);
+    auto* caster=MeshObject(*scene,"Casting cube",skinned?4:2);
+    Check(caster->GetComponent<IMeshRendererComponent>()->SetMaterial(0,{Guid,11}),"Cannot tint the visible casting fixture");
+    caster->GetTransform()->SetLocalPosition({1.3f,0,1.4f});
+    Check(caster->SetStaticFlags(StaticFlags::ShadowCasterStatic),"Cannot mark shadow fixture static");
+    auto* sunNode=scene->CreateGameObject("Sun");
+    auto* sun=sunNode->AddComponent<ILightComponent>();
+    Check(sun&&sunNode->GetTransform()->SetLocalRotation(Yaw(225)),"Cannot aim object shadow light");
+    auto settings=sun->GetSettings();
+    settings.Intensity=.5f;
+    settings.Shadows.Resolution=512;
+    settings.Shadows.CascadeCount=1;
+    settings.Shadows.CacheStaticCasters=true;
+    settings.Shadows.Soft=false;
+    Check(sun->SetSettings(settings),"Cannot configure object shadow light");
+    RenderView view;view.Scene=scene;view.DrawGrid=false;view.Camera.Position={0,0,5};
+    view.Camera.Projection.Projection=CameraProjection::Orthographic;
+    view.Camera.Projection.OrthographicHeight=4;
+    Check(TryMakeLookAt(view.Camera.Position,{0,0,0},{0,1,0},view.Camera.View),"Cannot aim object shadow camera");
+
+    const auto run=[&](auto& receiverRenderer,auto& casterRenderer) {
+        Check(receiverRenderer.GetReceiveShadows()&&casterRenderer.GetReceiveShadows()&&
+            casterRenderer.GetShadowCastingMode()==ShadowCastingMode::On,"Unexpected object shadow defaults");
+        Check(!casterRenderer.SetShadowCastingMode(static_cast<ShadowCastingMode>(255))&&
+            casterRenderer.GetShadowCastingMode()==ShadowCastingMode::On,"An invalid cast mode changed the renderer");
+        Check(receiverRenderer.SetShadowCastingMode(ShadowCastingMode::Off),"Cannot disable receiver casting");
+        casterRenderer.SetReceiveShadows(false);
+        const auto unshadowed=Render(viewport,view);
+        Check(unshadowed.Statistics.VisibleObjects==2,"Shadow fixtures must both be visible to the camera");
+        settings.Shadows.Enabled=true;
+        Check(sun->SetShadows(settings.Shadows),"Cannot enable object shadow light");
+        const auto shadowed=Render(viewport,view);
+        EffectiveShadow(unshadowed,shadowed,"Per-object casting");
+        Check(skinned?shadowed.Statistics.DynamicShadowDrawCalls>0:shadowed.Statistics.StaticShadowDrawCalls>0,
+            "Caster was not drawn into the expected shadow layer");
+
+        receiverRenderer.SetReceiveShadows(false);
+        const auto disabledReceive=Render(viewport,view);
+        Check(!receiverRenderer.GetReceiveShadows()&&Difference(disabledReceive,unshadowed)<16,
+            "Receive Shadows off suppressed direct light or retained cast shadows");
+        if(!skinned)Check(disabledReceive.Statistics.StaticShadowMapUpdates==0,
+            "Changing Receive Shadows redrew the static shadow map");
+        receiverRenderer.SetReceiveShadows(true);
+        Check(Difference(shadowed,Render(viewport,view))<16,"Restoring Receive Shadows did not restore the silhouette");
+
+        Check(casterRenderer.SetShadowCastingMode(ShadowCastingMode::Off),"Cannot disable object casting");
+        const auto disabledCast=Render(viewport,view);
+        Check(disabledCast.Statistics.VisibleObjects==2&&disabledCast.Statistics.ShadowDrawCalls==0&&
+            Difference(disabledCast,unshadowed)<16,"Cast Shadows off hid color geometry or retained depth in the cache");
+
+        Check(casterRenderer.SetShadowCastingMode(ShadowCastingMode::ShadowsOnly),"Cannot enable Shadows Only");
+        const auto shadowOnly=Render(viewport,view);
+        Check(shadowOnly.Statistics.VisibleObjects==1&&shadowOnly.Statistics.ShadowDrawCalls>0,
+            "Shadows Only did not separate camera color from shadow depth");
+        SceneRaycastHit hit;
+        Check(viewport.Raycast(scene,{{1.3f,0,5},{0,0,-1}},hit)&&hit.ObjectID==receiver->GetInstanceID(),
+            "Shadows Only occluded camera picking");
+        auto* meshRenderer=caster->GetComponent<IMeshRendererComponent>();
+        meshRenderer->SetVisible(false);
+        const auto hiddenCaster=Render(viewport,view);
+        Check(hiddenCaster.Statistics.VisibleObjects==1&&hiddenCaster.Statistics.ShadowDrawCalls==0,
+            "Disabling the renderer left its Shadows Only depth active");
+        meshRenderer->SetVisible(true);
+        Check(Difference(shadowOnly,Render(viewport,view))<16,"Restoring renderer visibility did not restore the silhouette");
+        receiverRenderer.SetReceiveShadows(false);
+        const auto invisibleCaster=Render(viewport,view);
+        EffectiveShadow(invisibleCaster,shadowOnly,"Shadows Only silhouette");
+        Check(invisibleCaster.Statistics.VisibleObjects==1&&Difference(invisibleCaster,unshadowed)>100,
+            "Shadows Only left caster pixels in the color target");
+        Check(casterRenderer.SetShadowCastingMode(ShadowCastingMode::On),"Cannot restore ordinary casting");
+        const auto normalAgain=Render(viewport,view);
+        Check(normalAgain.Statistics.VisibleObjects==2&&Difference(normalAgain,unshadowed)<16,
+            "Restoring ordinary casting did not restore camera pixels");
+        if(!skinned)Check(normalAgain.Statistics.StaticShadowMapUpdates==0,
+            "Changing only camera visibility redrew identical static shadow depth");
+    };
+    if(skinned) {
+        auto* receiverSkin=SkinShadowObject(*scene,*receiver);
+        auto* casterSkin=SkinShadowObject(*scene,*caster);
+        run(*receiverSkin,*casterSkin);
+        Check(!receiver->GetComponent<IMeshRendererComponent>()->GetReceiveShadows()&&
+            caster->GetComponent<IMeshRendererComponent>()->GetShadowCastingMode()==ShadowCastingMode::On,
+            "SkinnedMeshRenderer shadow controls did not update the shared renderer settings");
+    } else {
+        run(*receiver->GetComponent<IMeshRendererComponent>(),*caster->GetComponent<IMeshRendererComponent>());
+        CheckTwoSidedAndInstancedShadows(*scene,viewport,view,*receiver,*caster);
+    }
+}
 
 void CheckScrollingShadows(IGameSproutRuntime& runtime,IRuntimeViewport& viewport,Provider& provider) {
     struct OwnedViewport { IRuntimeViewport* Pointer; ~OwnedViewport(){delete Pointer;} };
@@ -672,8 +836,10 @@ int main(int argc,char** argv){
 
         CheckLayeredShadows(*runtime,*viewport,provider);
         CheckScrollingShadows(*runtime,*viewport,provider);
+        CheckObjectShadowControls(*runtime,*viewport,false);
+        CheckObjectShadowControls(*runtime,*viewport,true);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
-        std::cout<<"PASS directional shadows GPU: cascade fitting, filter quality, distance fade, automatic/full updates, one-shot refresh per viewport, and static/dynamic atlas reuse\n";
+        std::cout<<"PASS directional shadows GPU: cast/receive controls for rigid, skinned and instanced meshes, cascade fitting, filter quality, fade, update policies, one-shot refresh and atlas reuse\n";
         return 0;
     }catch(const std::exception& failure){std::cerr<<"FAIL "<<failure.what()<<'\n';delete viewport;delete runtime;return 1;}
 }

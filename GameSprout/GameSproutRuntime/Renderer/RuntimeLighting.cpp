@@ -79,7 +79,8 @@ Renderer::LitUniform Renderer::MakeLitUniform(const RenderView& view,const DrawO
         const auto lightIndex=static_cast<std::size_t>(&light-lights.data());
         if(!(light.CullingMask&(std::uint32_t{1}<<object.Layer)))continue;
         if(count==MaxDirectionalLights){Diagnostic("Lit uses the four brightest matching directional lights per object");break;}
-        result.Directions[count]={light.TowardsLight.X,light.TowardsLight.Y,light.TowardsLight.Z,lightIndex==_ShadowLightIndex&&_ShadowUniform.Info.X>0?2.0f:1.0f};
+        const bool sampleShadows=object.ReceiveShadows&&lightIndex==_ShadowLightIndex&&_ShadowUniform.Info.X>0;
+        result.Directions[count]={light.TowardsLight.X,light.TowardsLight.Y,light.TowardsLight.Z,sampleShadows?2.0f:1.0f};
         result.Radiances[count]=light.Radiance;++count;
     }
     return result;
