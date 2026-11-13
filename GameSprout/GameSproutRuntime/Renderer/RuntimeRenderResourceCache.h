@@ -26,7 +26,7 @@ public:
     std::map<Renderer::ResourceKey,Renderer::ShaderGPU> UserShaders;
     std::map<Renderer::ShaderPipelineKey,GRHI::IGraphicsPipeline*> ShaderPipelines;
     std::map<Renderer::PipelineKey,GRHI::IGraphicsPipeline*> Pipelines;
-    GRHI::IShader* Shaders[19]{};
+    GRHI::IShader* Shaders[CachedPreviewShaderCount]{};
     std::map<GRHI::TextureFormat,GRHI::IGraphicsPipeline*> SkyPipelines;
     GRHI::ITexture* White=nullptr;
     GRHI::ISampler* DefaultSampler=nullptr;

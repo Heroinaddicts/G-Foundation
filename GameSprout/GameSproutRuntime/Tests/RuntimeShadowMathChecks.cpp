@@ -104,7 +104,34 @@ int main(){
         Check(RuntimeShadowMath::CoveredCascades(camera,1,staticProjection,splits,4,512,1,true)==0,
             "Camera motion escaped only light depth without refitting");
 
+        // A wide Game view should keep the far shadow footprint when yawing
+        // and pitching, including a small third-person orbit around the eye.
+        camera={};camera.Projection.FarPlane=120;
+        constexpr float wideAspect=2.2f;
+        constexpr std::uint32_t farCascades=0xE;
+        const Vector3 eye{23,7,-19};
+        Check(TryMakeLookAt(eye,eye+Vector3{0,-.25f,1},{0,1,0},camera.View),"Initial orbit view failed");
+        Check(RuntimeShadowMath::Build(camera,wideAspect,{.3f,.8f,.6f},120,4,1024,nullptr,0,
+            guarded,1.125,nullptr,0xF,farCascades),"Rotation-stable far cascade generation failed");
+        for(unsigned index=0;index<4;++index){
+            staticProjection[index]=guarded.Entries[index].ViewProjection;
+            splits[index]=guarded.Entries[index].FarDepth;
+        }
+        for(unsigned step=0;step<24;++step) {
+            const float yaw=2*Pi*step/24;
+            const Vector3 direction{std::sin(yaw),.55f*std::sin(yaw*2),std::cos(yaw)};
+            const auto offset=Vector3{std::cos(yaw)*4,0,std::sin(yaw)*4};
+            Check(TryMakeLookAt(eye+offset,eye+offset+direction,{0,1,0},camera.View),"Rotated orbit view failed");
+            const auto mask=RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,true);
+            Check((mask&farCascades)==farCascades,"Turn or small orbit escaped a rotation-stable far cascade");
+        }
+        const Vector3 distantEye{500,7,-19};
+        Check(TryMakeLookAt(distantEye,distantEye+Vector3{0,0,1},{0,1,0},camera.View),"Teleported orbit view failed");
+        Check((RuntimeShadowMath::CoveredCascades(camera,wideAspect,staticProjection,splits,4,1024,2,true)&farCascades)==0,
+            "A large translation incorrectly retained rotation-stable far cascades");
+
         camera.View={};
+        camera.Projection.FarPlane=50;
         const Bounds aboveView{{0,100,-10},{1,1,1}};
         Mat4 cameraProjection;Check(TryMakePerspective(camera.Projection.VerticalFovRadians,1,.1f,50,cameraProjection),"Camera setup failed");
         const RenderFrustum::Frustum cameraFrustum(cameraProjection);
@@ -117,6 +144,26 @@ int main(){
         const Bounds unrelated{{10000,10000,-10},{1,1,1}};
         Check(RuntimeShadowMath::Build(camera,1,{0,1,0},50,1,1024,&unrelated,1,cascades)&&
             Close(cascades.Entries[0].DepthRange,original.DepthRange),"Unrelated caster expanded shadow depth precision unnecessarily");
+
+        // A long rotated mesh lies outside the cascade on its short axis.
+        // Expanding to world axes first makes its bound overlap the tile.
+        const float diagonal=std::sqrt(.5f);
+        Mat4 lightProjection,model;
+        lightProjection(0,0)=lightProjection(0,1)=lightProjection(1,1)=diagonal;
+        lightProjection(1,0)=-diagonal;
+        model(0,0)=-diagonal;model(1,0)=model(0,1)=model(1,1)=diagonal;
+        model(0,3)=model(1,3)=1.35f*diagonal;
+        model(2,3)=.5f;
+        const Vector3 localExtent{2,.25f,.2f};
+        const Bounds loose{{model(0,3),model(1,3),model(2,3)},
+            {2.25f*diagonal,2.25f*diagonal,.2f}};
+        const RenderFrustum::Frustum lightFrustum(lightProjection);
+        Check(lightFrustum.Intersects(loose.Min(),loose.Max(),{})&&
+            !lightFrustum.Intersects(-localExtent,localExtent,model),
+            "Rotated shadow caster retained the world-AABB false positive");
+        model(0,3)=model(1,3)=1.24999f*diagonal;
+        Check(lightFrustum.Intersects(-localExtent,localExtent,model),
+            "Mirrored caster crossing the cascade edge was dropped");
 
         const auto preserved=cascades;
         const auto rejected=[&](const RenderCamera& input,float aspect,Vector3 light,float distance,unsigned count,unsigned resolution,

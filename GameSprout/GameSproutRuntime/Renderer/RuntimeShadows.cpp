@@ -59,12 +59,12 @@ bool Renderer::DrawShadow(GRHI::IRenderPass& pass,const PreparedDraw& draw,const
     std::size_t firstInstance,std::uint32_t instanceCount,const InstanceStream* instances) {
     const auto& data=draw.Mesh->Data;
     PipelineKey key;key.Shadow=true;key.Stride=data.VertexStride;key.Position=data.PositionOffset;
-    key.Normal=data.NormalOffset;key.Color=data.ColorOffset;key.UV=data.UVOffset;
     key.DoubleSided=draw.Material->DoubleSided;key.Negative=draw.Object->Negative;key.Instanced=instances!=nullptr;
     if(draw.Object->Skinned){key.BoneIndices=data.BoneIndicesOffset;key.BoneWeights=data.BoneWeightsOffset;}
     auto* pipeline=Pipeline(key);if(!pipeline)return false;
-    DrawUniform uniform;uniform.ViewProjection=lightViewProjection;
-    if(!instances){uniform.Model=draw.Object->Model;uniform.Normal=draw.Object->Normal;}
+    struct ShadowDrawUniform { Mat4 Model,ViewProjection; };
+    static_assert(sizeof(ShadowDrawUniform)==128,"Shadow draw matrices must match HLSL layout");
+    const ShadowDrawUniform uniform{instances?Mat4{}:draw.Object->Model,lightViewProjection};
     pass.SetPipeline(pipeline);pass.SetVertexBuffer(0,draw.Mesh->Buffer,0);
     if(instances) {
         pass.SetVertexBuffer(1,instances->Buffer,firstInstance*sizeof(std::uint32_t));
@@ -121,7 +121,15 @@ bool Renderer::DrawShadowAtlas(GRHI::ICommandBuffer& command,GRHI::ITexture& atl
         if(!repair) {
             auto& work=tiles.emplace_back(TileDraws{{float(x),float(y),float(tile),float(tile),0,1},projection,{},{}});
             work.Draws.reserve(candidates.size());
+            const RenderFrustum::Frustum frustum(projection);
             for(const auto& candidate:candidates) {
+                const auto& object=*candidate.Draw.Object;
+                if(object.CullBoxKnown) {
+                    // Reuse the transformed local mesh bounds. A world AABB
+                    // expands again when projected onto the light's tilted axes.
+                    if(frustum.Intersects(object.CullBox))work.Draws.push_back(candidate.Draw);
+                    continue;
+                }
                 const auto bounds=ProjectShadowBounds(candidate.World,projection);
                 if(bounds.Maximum[0]>=-1&&bounds.Minimum[0]<=1&&bounds.Maximum[1]>=-1&&bounds.Minimum[1]<=1&&
                    bounds.Maximum[2]>=0&&bounds.Minimum[2]<=1)work.Draws.push_back(candidate.Draw);
@@ -402,10 +410,15 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         constexpr double StaticReceiverFitScale=1.125;
         const bool movingPerspective=settings.CacheStaticCasters&&fitCamera.Projection.Projection==CameraProjection::Perspective;
         const double fitScale=movingPerspective?StaticReceiverFitScale:1;
+        // Far cascades can cover most of the scene. Anchor their cached fit
+        // around the eye so turning does not sweep that footprint across it.
+        // Keep the nearest cascade tightly fitted for detail.
+        const std::uint32_t rotationStableMask=movingPerspective?allCascades&~std::uint32_t{1}:0;
         const auto& fittingBounds=unchangedStatic?_StaticShadowBounds:staticBounds;
         const auto& fittingCasters=unchangedStatic?_StaticShadowCandidates:staticCasters;
         if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
-            settings.CascadeCount,tile,fittingBounds.data(),fittingBounds.size(),cascades,fitScale,nullptr,refitMask))
+            settings.CascadeCount,tile,fittingBounds.data(),fittingBounds.size(),cascades,fitScale,nullptr,refitMask,
+            rotationStableMask))
             return Fail("Could not fit directional shadow cascades");
 
         const float maxDistance=cascades.Entries[settings.CascadeCount-1].FarDepth;

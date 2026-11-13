@@ -60,9 +60,11 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
     std::size_t count=1;
     if(key.Grid) attributes[count++]={1,0,GRHI::VertexFormat::Float4,12};
     else {
-        attributes[count++]={1,0,GRHI::VertexFormat::Float3,key.Normal};
-        if(key.Color>=0) attributes[count++]={2,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.Color)};
-        if(key.UV>=0) attributes[count++]={3,0,GRHI::VertexFormat::Float2,static_cast<std::uint32_t>(key.UV)};
+        if(!key.Shadow) {
+            attributes[count++]={1,0,GRHI::VertexFormat::Float3,key.Normal};
+            if(key.Color>=0) attributes[count++]={2,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.Color)};
+            if(key.UV>=0) attributes[count++]={3,0,GRHI::VertexFormat::Float2,static_cast<std::uint32_t>(key.UV)};
+        }
         if(key.BoneIndices>=0) {
             attributes[count++]={4,0,GRHI::VertexFormat::UInt32x4,static_cast<std::uint32_t>(key.BoneIndices)};
             attributes[count++]={5,0,GRHI::VertexFormat::Float4,static_cast<std::uint32_t>(key.BoneWeights)};
@@ -70,22 +72,22 @@ GRHI::IGraphicsPipeline* Renderer::Pipeline(const PipelineKey& key) {
     }
     if(key.Instanced)attributes[count++]={4,1,GRHI::VertexFormat::UInt32,0};
     const std::size_t variant=key.Color<0?(key.UV<0?3:2):(key.UV<0?1:0);
-    const std::size_t shader=key.Grid?5:variant+(key.Instanced?12:(key.BoneIndices>=0?7:0));
+    const auto shadowVertex=key.Instanced?PreviewShader::InstancedShadowVertex:
+        (key.BoneIndices>=0?PreviewShader::SkinnedShadowVertex:PreviewShader::ShadowVertex);
+    const std::size_t shader=key.Grid?5:(key.Shadow?static_cast<std::size_t>(shadowVertex):
+        variant+(key.Instanced?12:(key.BoneIndices>=0?7:0)));
     if(!_Shaders[shader]) {
         _Shaders[shader]=CreatePreviewShader(_Device,static_cast<PreviewShader>(shader));
-        if(!_Shaders[shader]) {Fail(DeviceError("Create Runtime skinned vertex shader"));return nullptr;}
+        if(!_Shaders[shader]) {Fail(DeviceError("Create Runtime mesh vertex shader"));return nullptr;}
     }
     GRHI::GraphicsPipelineDesc description;
-    const std::size_t fragment=key.Grid?6:(key.Lit?11:4);
+    const std::size_t fragment=key.Shadow?static_cast<std::size_t>(PreviewShader::ShadowFragment):
+        (key.Grid?6:(key.Lit?11:4));
     if(!_Shaders[fragment]) {
         _Shaders[fragment]=CreatePreviewShader(_Device,static_cast<PreviewShader>(fragment));
-        if(!_Shaders[fragment]) {Fail(DeviceError("Create Runtime Lit fragment shader"));return nullptr;}
+        if(!_Shaders[fragment]) {Fail(DeviceError("Create Runtime mesh fragment shader"));return nullptr;}
     }
-    if(key.Shadow&&!_Shaders[16]) {
-        _Shaders[16]=CreatePreviewShader(_Device,PreviewShader::ShadowFragment);
-        if(!_Shaders[16]){Fail(DeviceError("Create depth-only shadow fragment shader"));return nullptr;}
-    }
-    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[key.Shadow?16:fragment];
+    description.VertexShader=_Shaders[shader];description.FragmentShader=_Shaders[fragment];
     description.ColorFormat=key.Shadow?GRHI::TextureFormat::Unknown:key.Format;description.Primitive=key.Grid&&!key.DebugTriangles?GRHI::PrimitiveType::LineList:GRHI::PrimitiveType::TriangleList;
     if(key.Grid&&!key.Shadow) description.Blend=GRHI::BlendMode::Alpha;
     description.Cull=key.Grid || key.DoubleSided?GRHI::CullMode::None:GRHI::CullMode::Back;

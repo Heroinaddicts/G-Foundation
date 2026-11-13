@@ -332,7 +332,7 @@ private:
     bool _ObjectSnapshotKnown=false,_LightSnapshotKnown=false;
     std::string _ExtractionDiagnostic,_LightDiagnostic;
     std::map<std::pair<std::uint32_t,std::uint32_t>,Depth> _Depths;
-    GRHI::IShader* (&_Shaders)[19];
+    GRHI::IShader* (&_Shaders)[CachedPreviewShaderCount];
     GRHI::ITexture* _ShadowAtlas=nullptr;
     GRHI::ITexture* _DynamicShadowAtlas=nullptr;
     GRHI::ISampler* _ShadowSampler=nullptr;

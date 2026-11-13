@@ -101,11 +101,13 @@ inline std::uint32_t CoveredCascades(const RenderCamera& camera,float aspect,con
 // Their XY position cannot affect the stable receiver fit. Supply all relevant
 // active casting layers, then cull actual draws against each resulting matrix.
 // A masked slice still reports its near/far split; its projection is left unset.
+// Rotation-stable slices enclose their receivers in a sphere centered on the
+// camera eye. This keeps a cached map usable across turns at the same location.
 // Empty caster input is valid. Invalid input leaves output unchanged.
 inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,float shadowDistance,
     std::uint32_t cascadeCount,std::uint32_t tileResolution,const Bounds* casterWorldBounds,
     std::size_t casterCount,CascadeSet& output,double receiverFitScale=1,const Mat4* retainedXY=nullptr,
-    std::uint32_t fitMask=0xF) {
+    std::uint32_t fitMask=0xF,std::uint32_t rotationStableMask=0) {
     if((cascadeCount!=1&&cascadeCount!=2&&cascadeCount!=4)||tileResolution<8||tileResolution>32768||
        !std::isfinite(aspect)||aspect<=0||!std::isfinite(shadowDistance)||
        !std::isfinite(receiverFitScale)||receiverFitScale<1||
@@ -157,20 +159,33 @@ inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,f
             if(!Detail::Finite(corners[index]))return false;
             center=center+corners[index]*(1.0/8.0);
         }
+        const bool stable=perspective&&!retainedXY&&(rotationStableMask&(std::uint32_t{1}<<cascade));
+        if(stable)center=Detail::World(inverseView,0,0,0);
         double radiusSquared=0;
         for(const auto corner:corners){const auto d=corner-center;radiusSquared=std::max(radiusSquared,d.X*d.X+d.Y*d.Y+d.Z*d.Z);}
         // Quantization removes rotation/translation rounding noise from the fit.
         // Two texels of padding retain the receiver after center snapping and
         // leave room for a one-texel 3x3 PCF footprint inside the cascade tile.
-        const double receiverRadius=std::max(1.0/16.0,std::ceil(std::sqrt(radiusSquared)*receiverFitScale*16.0)/16.0);
+        // Allow the eye to move within the larger cached volume between fits,
+        // particularly when a third-person camera orbits a stationary player.
+        const double fitScale=stable?std::max(receiverFitScale,1.15):receiverFitScale;
+        const double receiverRadius=std::max(1.0/16.0,std::ceil(std::sqrt(radiusSquared)*fitScale*16.0)/16.0);
         const auto* previous=retainedXY?&retainedXY[cascade]:nullptr;
         const double radius=previous?1/Detail::RowLength(*previous,0):receiverRadius*tileResolution/(tileResolution-4.0);
         const double texel=radius*2/tileResolution;
         if(!std::isfinite(radius)||!std::isfinite(texel)||texel<=0)return false;
         const double centerX=previous?-(*previous)(0,3)*radius:std::round(Detail::Dot(right,center)/texel)*texel;
         const double centerY=previous?-(*previous)(1,3)*radius:std::round(Detail::Dot(up,center)/texel)*texel;
-        double minimumZ=std::numeric_limits<double>::infinity(),maximumZ=-minimumZ;
-        for(const auto corner:corners){const double z=Detail::Dot(light,corner);minimumZ=std::min(minimumZ,z);maximumZ=std::max(maximumZ,z);}
+        double minimumZ,maximumZ;
+        if(stable) {
+            // Reuse must remain valid in light depth as well as in atlas XY.
+            const double eyeDepth=Detail::Dot(light,center);
+            minimumZ=eyeDepth-receiverRadius;
+            maximumZ=eyeDepth+receiverRadius;
+        }else{
+            minimumZ=std::numeric_limits<double>::infinity();maximumZ=-minimumZ;
+            for(const auto corner:corners){const double z=Detail::Dot(light,corner);minimumZ=std::min(minimumZ,z);maximumZ=std::max(maximumZ,z);}
+        }
         for(std::size_t index=0;index<casterCount;++index) {
             const auto& bound=casterWorldBounds[index];
             const Detail::Point point{bound.Center.X,bound.Center.Y,bound.Center.Z};
@@ -181,7 +196,7 @@ inline bool Build(const RenderCamera& camera,float aspect,Vector3 towardsLight,f
         }
         // A moving receiver can use the XY guard band while advancing toward
         // or away from the sun. Keep corresponding slack in the cached depth.
-        const double padding=std::max(1.0,texel*2)+(receiverFitScale-1)*radius;
+        const double padding=std::max(1.0,texel*2)+(fitScale-1)*radius;
         const double depthRange=maximumZ-minimumZ+padding*2;
         const double lightEyeZ=maximumZ+padding;
         const auto snappedCenter=Detail::Point{right.X,right.Y,right.Z}*centerX+

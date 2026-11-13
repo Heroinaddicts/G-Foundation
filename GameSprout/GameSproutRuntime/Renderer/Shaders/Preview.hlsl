@@ -435,4 +435,35 @@ float4 GridFragment(GridOutput input) : SV_Target0 {
 }
 
 // SDL GPU requires a fragment stage even for a depth-only graphics pipeline.
+// Depth draws do not need the material inputs or color-pass interpolants.
+cbuffer ShadowDrawUniform : register(b0, space1)
+{
+    column_major float4x4 ShadowModel;
+    column_major float4x4 ShadowViewProjection;
+};
+
+float4 ShadowVertex([[vk::location(0)]] float3 position : TEXCOORD0) : SV_Position
+{
+    return mul(ShadowViewProjection, mul(ShadowModel, float4(position, 1.0)));
+}
+
+float4 InstancedShadowVertex([[vk::location(0)]] float3 position : TEXCOORD0,
+    [[vk::location(4)]] uint slot : TEXCOORD4) : SV_Position
+{
+    float4 worldPosition = InstanceTransforms[slot].Model0 * position.x
+                         + InstanceTransforms[slot].Model1 * position.y
+                         + InstanceTransforms[slot].Model2 * position.z
+                         + InstanceTransforms[slot].Model3;
+    return mul(ShadowViewProjection, worldPosition);
+}
+
+float4 SkinnedShadowVertex([[vk::location(0)]] float3 position : TEXCOORD0,
+    [[vk::location(4)]] uint4 bones : TEXCOORD4, [[vk::location(5)]] float4 weights : TEXCOORD5) : SV_Position
+{
+    float4x4 skin = SkinBones[bones.x] * weights.x + SkinBones[bones.y] * weights.y
+                 + SkinBones[bones.z] * weights.z + SkinBones[bones.w] * weights.w;
+    float3 skinnedPosition = mul(skin, float4(position, 1.0)).xyz;
+    return mul(ShadowViewProjection, mul(ShadowModel, float4(skinnedPosition, 1.0)));
+}
+
 void ShadowFragment() {}

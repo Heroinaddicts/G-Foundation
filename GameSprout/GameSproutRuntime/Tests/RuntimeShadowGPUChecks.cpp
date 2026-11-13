@@ -483,6 +483,13 @@ int main(int argc,char** argv){
         const auto cachedShifted=Render(*viewport,view);
         Check(cachedShifted.Statistics.StaticShadowCascadesUpdated==0&&Difference(shiftedCascades,cachedShifted)==0,
             "Partial update was not retained in the next unchanged frame");
+        for(const Vector3 direction: {Vector3{1,.2f,0},Vector3{0,-.3f,1},Vector3{-1,0,0},Vector3{0,0,-1}}) {
+            Check(TryMakeLookAt(view.Camera.Position,view.Camera.Position+direction,{0,1,0},view.Camera.View),
+                "Cannot rotate cascade retention camera");
+            const auto turned=Render(*viewport,view);
+            Check(turned.Statistics.StaticShadowCascadesUpdated<=1,
+                "Turning at a fixed camera position repainted a rotation-stable cascade");
+        }
 
         CheckLayeredShadows(*runtime,*viewport,provider);
         (void)receiver;delete viewport;viewport=nullptr;delete runtime;runtime=nullptr;
