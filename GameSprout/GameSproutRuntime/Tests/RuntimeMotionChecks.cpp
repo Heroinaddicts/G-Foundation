@@ -101,6 +101,10 @@ static void CheckAnimatedCameraScale(GameSproutRuntime::IGameSproutRuntime& runt
     CheckCameraYaw(*camera,0);
     Check(character.Animator->Seek(.5f),character.Animator->GetLastError());CheckCameraYaw(*camera,GameSproutRuntime::Pi*.25f);
     Check(character.Animator->Seek(1),character.Animator->GetLastError());CheckCameraYaw(*camera,GameSproutRuntime::Pi*.5f);
+    const auto cameraWorld=cameraObject->GetTransform()->GetWorldMatrix();
+    Check(camera->LookAt({cameraWorld(0,3),cameraWorld(1,3),cameraWorld(2,3)+2}),
+        "Camera LookAt under an animated parent failed");
+    CheckCameraYaw(*camera,0);
     character.Animator->Stop();
     auto motion=Make(*scene);auto* motionCamera=motion.Object->AddComponent<GameSproutRuntime::ICameraComponent>();
     const float authoredYaw=GameSproutRuntime::Pi/6;

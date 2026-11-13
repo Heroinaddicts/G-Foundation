@@ -18,6 +18,7 @@
 #include "Math/Projection.h"
 #include "Math/Ray.h"
 #include "Math/Rect.h"
+#include "Math/TransformMath.h"
 #include "Math/Viewport.h"
 #include "ResourceReference.h"
 #include "RuntimeInputApi.h"
@@ -394,6 +395,34 @@ namespace GameSproutRuntime {
         // Unity: Scale(1,1,-1) * inverse(world position + rotation), ignoring scale.
         virtual bool GetViewMatrix(Mat4& output) const = 0;
         virtual bool GetProjectionMatrix(float aspect, Mat4& output) const = 0;
+        // Aim local +Z at a world-space point without moving the camera.
+        // Degenerate input or an animation-driven camera transform leaves the pose unchanged.
+        bool LookAt(Vector3 worldTarget, Vector3 worldUp = {0.0f, 1.0f, 0.0f}) {
+            auto* transform = _GameObject ? _GameObject->GetTransform() : nullptr;
+            if (!transform || transform->IsAnimationDriven()) return false;
+
+            const auto world = transform->GetWorldMatrix();
+            const Vector3 eye{world(0,3), world(1,3), world(2,3)};
+            Vector3 forward, up, right;
+            if (!(worldTarget-eye).TryNormalize(forward) || !worldUp.TryNormalize(up) ||
+                !up.Cross(forward).TryNormalize(right)) return false;
+            up = forward.Cross(right);
+
+            Mat4 view;
+            Quaternion localRotation;
+            if (!GetViewMatrix(view) || !transform->GetLocalRotation().TryNormalize(localRotation)) return false;
+            const auto cameraToParent = RuntimeMath::ComposeTRS({}, localRotation, {1,1,1});
+            // Use the effective rotation from GetViewMatrix, including animated parents.
+            // Undo the view's Z reflection before rotating camera space into parent space.
+            const auto inParentSpace = [&](Vector3 direction) {
+                const auto inView = view * Vector4{direction.X, direction.Y, direction.Z, 0};
+                const auto inParent = cameraToParent * Vector4{inView.X, inView.Y, -inView.Z, 0};
+                return Vector3{inParent.X, inParent.Y, inParent.Z};
+            };
+            Quaternion rotation;
+            return RuntimeMath::TryMakeLookRotation(inParentSpace(forward), inParentSpace(up), rotation) &&
+                   transform->SetLocalRotation(rotation);
+        }
     protected:
         using IComponent::IComponent;
     };

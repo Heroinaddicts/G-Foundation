@@ -71,6 +71,19 @@ int main(int argc,char** argv) {
             {world(0,3)+parentForward.X,world(1,3)+parentForward.Y,world(2,3)+parentForward.Z},
             {pose(0,1),pose(1,1),pose(2,1)},explicitView),"Explicit camera view failed");Matrix(view,explicitView);
 
+        const Vector3 cameraEye{world(0,3),world(1,3),world(2,3)};
+        const Vector3 target=cameraEye+Vector3{3,1,-4};
+        const Vector3 targetUp{0.25f,1,0};
+        Check(camera->LookAt(target,targetUp)&&camera->GetViewMatrix(view),"Camera LookAt under scaled parent failed");
+        Check(TryMakeLookAt(cameraEye,target,targetUp,explicitView),"Expected LookAt matrix failed");
+        Matrix(view,explicitView);
+        const auto aimedWorld=transform->GetWorldMatrix();
+        Vector({aimedWorld(0,3),aimedWorld(1,3),aimedWorld(2,3),1},cameraEye);
+        Check(!camera->LookAt(cameraEye)&&!camera->LookAt(cameraEye+Vector3{0,1,0})&&
+            !camera->LookAt(target,{}),"Camera LookAt accepted degenerate inputs");
+        Check(camera->GetViewMatrix(view),"Invalid Camera LookAt damaged view");
+        Matrix(view,explicitView);
+
         std::string error;auto document=SceneDocument::CreateDefault("Current format");
         Check(document["Version"].asUInt()==SceneDocumentVersion&&SceneDocument::Validate(document,error),"Current Unity scene invalid: "+error);
         document["Version"]=1;
