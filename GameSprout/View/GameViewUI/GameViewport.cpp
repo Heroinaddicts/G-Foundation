@@ -9,6 +9,9 @@ bool GameViewport::Headless() {
     return platform=="offscreen"||platform.startsWith("minimal");
 }
 GameViewport::GameViewport(QWidget* parent):QWidget(parent) {
+    _ResizeSettle.setSingleShot(true);
+    _ResizeSettle.setInterval(150);
+    connect(&_ResizeSettle,&QTimer::timeout,this,&GameViewport::RequestRender);
     if (!Headless()) {
         setAttribute(Qt::WA_NativeWindow);setAttribute(Qt::WA_DontCreateNativeAncestors);
         setAttribute(Qt::WA_PaintOnScreen);setAttribute(Qt::WA_NoSystemBackground);
@@ -43,6 +46,7 @@ void GameViewport::DestroyGPU() {
 void GameViewport::Shutdown(){
     if(_RuntimeSubscribed&&_Runtime)_Runtime->UnregisterListener(this);
     _RuntimeSubscribed=false;_SceneID=0;
+    _ResizeSettle.stop();
     ReleaseGameInput();_GameplayInputEnabled=false;
     _Initialized=false;DestroyGPU();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
@@ -73,6 +77,7 @@ bool GameViewport::event(QEvent* event) {
         || event->type() == QEvent::DevicePixelRatioChange
 #endif
         ;
+    if(event->type()==QEvent::Resize&&_Renderer)_ResizeSettle.start();
     if (sizeChanged && _Runtime) _Runtime->SetUIInputViewport(nullptr, {});
     if (event->type()==QEvent::WinIdChange) {RetryRendering();if(_Initialized)ObserveNativeWindow();}
     if (event->type()==QEvent::PlatformSurface) {
@@ -151,6 +156,7 @@ void GameViewport::RenderGame(GameSproutRuntime::IScene* scene,bool continuous,b
     view.Scene=scene;view.DrawGrid=false;
     view.DrawUI=scene!=nullptr;
     view.WaitForSurface=false;
+    view.ReuseShadowsWhileNavigating=_ResizeSettle.isActive();
     view.EnableTexturePrefetch=true;
     std::string diagnostic;
     auto* camera=scene?scene->GetMainCamera():nullptr;

@@ -785,8 +785,14 @@ int main(int argc,char** argv){
         caster->GetTransform()->SetLocalPosition({2.8f,0,2});
         const auto casterChanged=Render(*viewport,view);
         Check(casterChanged.Statistics.ShadowMapUpdates>0,"Navigation reused shadows after a caster change");
-        Check(viewport->Resize(192,256,error),error);const auto resized=Render(*viewport,view);
-        Check(resized.Statistics.ShadowMapUpdates>0,"Aspect mutation retained the old cascade fit");
+        Check(viewport->Resize(192,256,error),error);
+        const auto resizing=Render(*viewport,view);
+        Check(resizing.Statistics.Width==192&&resizing.Statistics.Height==256&&resizing.Statistics.ShadowMapUpdates==0,
+            "Interactive resize did not render at the new extent using cached shadows");
+        view.ReuseShadowsWhileNavigating=false;
+        const auto resized=Render(*viewport,view);
+        Check(resized.Statistics.ShadowMapUpdates>0,"Ending resize retained the old cascade fit");
+        Check(Render(*viewport,view).Statistics.ShadowMapUpdates==0,"Stable extent kept rebuilding shadows");
 
         Check(viewport->Resize(256,256,error),error);
         Check(receiver->SetStaticFlags(StaticFlags::ShadowCasterStatic)&&caster->SetStaticFlags(StaticFlags::ShadowCasterStatic),

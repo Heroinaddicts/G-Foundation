@@ -200,6 +200,23 @@ int main(int argc,char** argv) {
                 "Wheel inactivity did not request one exact shadow fit");
             tick();
             Check(counts[sceneHandle]==lastWheelDraw+1,"Wheel settle kept drawing after the exact fit");
+            const auto beforeSceneResize=counts[sceneHandle],beforeGameResize=counts[gameHandle];
+            scene.resize(700,400);game.resize(700,400);tick();
+            Check(counts[sceneHandle]>beforeSceneResize&&counts[gameHandle]>beforeGameResize&&
+                sceneRenderer->ReuseShadowsWhileNavigating&&gameRenderer->ReuseShadowsWhileNavigating,
+                "Viewport resize did not request shadow reuse");
+            settle.restart();
+            while((sceneRenderer->ReuseShadowsWhileNavigating||gameRenderer->ReuseShadowsWhileNavigating)&&settle.elapsed()<1000) {
+                QThread::msleep(5);
+                tick();
+            }
+            Check(!sceneRenderer->ReuseShadowsWhileNavigating&&!gameRenderer->ReuseShadowsWhileNavigating,
+                "Viewport resize did not request an exact fit after settling");
+            tick();
+            const auto settledScene=counts[sceneHandle],settledGame=counts[gameHandle];
+            tick();
+            Check(counts[sceneHandle]==settledScene&&counts[gameHandle]==settledGame,
+                "Resize settle kept drawing after the exact fit");
             scene.SetShadowReuseWhileNavigatingEnabled(false);tick();
             scroll(-120);
             checkFinalShadowDraw("Wheel navigation reused shadows with reuse disabled");

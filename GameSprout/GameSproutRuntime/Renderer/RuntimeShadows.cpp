@@ -229,12 +229,13 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     const std::uint32_t allCascades=(std::uint32_t{1}<<settings.CascadeCount)-1;
     const float tileScale=float(tile)/settings.Resolution;
     const bool sameView=std::memcmp(_ShadowCamera.View.Data,view.Camera.View.Data,sizeof(view.Camera.View.Data))==0;
+    const bool sameAspect=_ShadowAspect==aspect;
     const bool samePreview=_ShadowPreviewObjectID==previewID;
-    const bool sameFitSettings=_ShadowValid&&sameLight&&!refreshRequested&&_ShadowSceneID==sceneID&&_ShadowAspect==aspect&&
+    const bool navigationReuse=!refreshRequested&&(!sameView||!sameAspect)&&view.ReuseShadowsWhileNavigating;
+    const bool sameFitSettings=_ShadowValid&&sameLight&&!refreshRequested&&_ShadowSceneID==sceneID&&(sameAspect||navigationReuse)&&
         _ShadowSettings==settings&&_ShadowLightMask==light.CullingMask&&
         SameVector(_ShadowDirection,light.TowardsLight)&&
         SameShadowProjection(_ShadowCamera.Projection,view.Camera.Projection);
-    const bool navigationReuse=!refreshRequested&&!sameView&&view.ReuseShadowsWhileNavigating;
     // Authored static maps have a small guard band. The current camera still
     // chooses the cascade, and the atlas is refit before coverage runs out.
     const float splits[]{_ShadowUniform.Splits.X,_ShadowUniform.Splits.Y,_ShadowUniform.Splits.Z,_ShadowUniform.Splits.W};
@@ -411,6 +412,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     }
     const bool retainedPrimary=reuseStatic||repairStatic;
     const RenderCamera& fitCamera=retainedPrimary?samplingCamera:view.Camera;
+    const float fitAspect=retainedPrimary?_ShadowAspect:aspect;
     std::uint32_t refitMask=allCascades;
     const bool canReuseCovered=!retainedPrimary&&sameCasters&&checkCoverage;
     bool canUpdateRegions=false;
@@ -434,7 +436,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
         const std::uint32_t rotationStableMask=movingPerspective?allCascades&~std::uint32_t{1}:0;
         const auto& fittingBounds=unchangedStatic?_StaticShadowBounds:staticBounds;
         const auto& fittingCasters=unchangedStatic?_StaticShadowCandidates:staticCasters;
-        if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
+        if(!RuntimeShadowMath::Build(fitCamera,fitAspect,light.TowardsLight,settings.Distance,
             settings.CascadeCount,tile,fittingBounds.data(),fittingBounds.size(),cascades,fitScale,nullptr,refitMask,
             rotationStableMask,settings.CascadeSplits,filterRadius))
             return Fail("Could not fit directional shadow cascades");
@@ -492,7 +494,7 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
             if(!_DynamicShadowAtlas)return Fail(DeviceError("Create dynamic directional shadow atlas"));
         }
         RuntimeShadowMath::CascadeSet cascades;
-        if(!RuntimeShadowMath::Build(fitCamera,aspect,light.TowardsLight,settings.Distance,
+        if(!RuntimeShadowMath::Build(fitCamera,fitAspect,light.TowardsLight,settings.Distance,
             settings.CascadeCount,tile,dynamicBounds.data(),dynamicBounds.size(),cascades,1,uniform.WorldToShadow,
             allCascades,0,settings.CascadeSplits,filterRadius))
             return Fail("Could not fit dynamic directional shadow cascades");
@@ -512,12 +514,14 @@ bool Renderer::RenderShadows(GRHI::ICommandBuffer& command,const RenderView& vie
     }
 
     _ShadowUniform=uniform;
-    if(!retainedPrimary)_ShadowCamera=view.Camera;
+    if(!retainedPrimary) {
+        _ShadowCamera=view.Camera;
+        _ShadowAspect=aspect;
+    }
     _ShadowSettings=settings;
     _ShadowDirection=light.TowardsLight;
     _ShadowLightMask=light.CullingMask;
     _ShadowPreviewObjectID=previewID;
-    _ShadowAspect=aspect;
     _ShadowSceneID=sceneID;
     _ShadowSceneRevision=sceneRevision;
     _ShadowLightObjectID=light.ObjectID;

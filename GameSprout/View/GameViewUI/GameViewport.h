@@ -1,5 +1,6 @@
 #pragma once
 #include "RuntimeRenderApi.h"
+#include <QTimer>
 #include <QWidget>
 #include <functional>
 class QWindow;
@@ -53,6 +54,7 @@ private:
     GameSproutRuntime::IRuntimeViewport* _Renderer=nullptr;
     QWindow* _NativeWindow=nullptr;
     QWindow* _HostWindow=nullptr;
+    QTimer _ResizeSettle;
     bool _GameplayInputEnabled=false;
     bool _InputCaptured=false;
     bool _Initialized=false;

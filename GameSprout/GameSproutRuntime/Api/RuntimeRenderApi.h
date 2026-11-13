@@ -67,10 +67,10 @@ struct RenderView {
     bool EnableGPUInstancing = true;
     // 交互宿主可在呈现队列繁忙时跳过本帧，并在下一个宿主帧重试。
     bool WaitForSurface = true;
-    // 宿主可在镜头导航期间复用此 viewport 上次成功提交的阴影图及其采样坐标。
-    // 场景、光源、投影和宽高比须匹配。分层时，动态投影物移动会更新动态层，静态层可继续复用。
+    // 宿主可在镜头导航或视口缩放期间复用上次成功提交的阴影图及其采样坐标。
+    // 场景、光源和投影设置须匹配。分层时，动态投影物移动会更新动态层。
     // 旧图覆盖外的区域可能暂时无阴影。
-    // 导航结束后以 false 提交一帧，按当前镜头更新阴影。
+    // 交互结束后以 false 提交一帧，按当前镜头和宽高比更新阴影。
     bool ReuseShadowsWhileNavigating = false;
     // Optional object subtree being transformed interactively in this view.
     // Its shadows update separately. Pass zero when the interaction ends.

@@ -18,6 +18,9 @@ SceneViewport::SceneViewport(QWidget* parent):QWidget(parent) {
     connect(&_WheelNavigationSettle,&QTimer::timeout,this,[this] {
         if(_Drag==DragMode::None)RequestRender();
     });
+    _ResizeSettle.setSingleShot(true);
+    _ResizeSettle.setInterval(150);
+    connect(&_ResizeSettle,&QTimer::timeout,this,&SceneViewport::RequestRender);
     if(!IsHeadless()) {
         setAttribute(Qt::WA_NativeWindow);
         setAttribute(Qt::WA_DontCreateNativeAncestors);
@@ -69,6 +72,7 @@ void SceneViewport::Shutdown() {
     _RuntimeSubscribed=false;_SceneID=0;
     _Tools->Shutdown();
     _Editing->Unbind();
+    _ResizeSettle.stop();
     ClearInput();DestroyGpu();
     if(_NativeWindow){_NativeWindow->removeEventFilter(this);QObject::disconnect(_NativeWindow,nullptr,this,nullptr);_NativeWindow=nullptr;}
     if(_HostWindow){_HostWindow->removeEventFilter(this);QObject::disconnect(_HostWindow,nullptr,this,nullptr);_HostWindow=nullptr;}
@@ -85,7 +89,10 @@ void SceneViewport::SetGameUILayoutSize(GameSproutRuntime::Vector2 size) {
 void SceneViewport::SetShadowReuseWhileNavigatingEnabled(bool enabled) {
     if(_ReuseShadowsWhileNavigating==enabled)return;
     _ReuseShadowsWhileNavigating=enabled;
-    if(!enabled)_WheelNavigationSettle.stop();
+    if(!enabled) {
+        _WheelNavigationSettle.stop();
+        _ResizeSettle.stop();
+    }
     RequestRender();
 }
 void SceneViewport::OnSceneVisualChanged(std::uint64_t sceneID) {if(sceneID==_SceneID)RequestRender();}
@@ -121,7 +128,12 @@ bool SceneViewport::event(QEvent* event) {
 #if QT_VERSION >= QT_VERSION_CHECK(6,6,0)
             ||event->type()==QEvent::DevicePixelRatioChange
 #endif
-    ){ClearInput();_ViewportChanged=true;RequestRender();}
+    ){
+        ClearInput();
+        if(event->type()==QEvent::Resize&&_Renderer&&_ReuseShadowsWhileNavigating)_ResizeSettle.start();
+        _ViewportChanged=true;
+        RequestRender();
+    }
     else if(event->type()==QEvent::Leave&&!_Editing->IsDragging()){
         _Tools->Move({-100,-100},false,false,false);_Editing->Move({-100,-100},false);
     }
@@ -190,7 +202,7 @@ void SceneViewport::RenderScene(GameSproutRuntime::IScene* scene,bool grid,float
     view.Scene=scene;view.DrawGrid=grid;
     view.WaitForSurface=false;
     view.ReuseShadowsWhileNavigating=_ReuseShadowsWhileNavigating&&
-        (_Drag!=DragMode::None||_WheelNavigationSettle.isActive());
+        (_Drag!=DragMode::None||_WheelNavigationSettle.isActive()||_ResizeSettle.isActive());
     view.DrawScene=scene!=nullptr;
     view.Camera.View=_Camera.ViewMatrix();view.Camera.Position=_Camera.GetState().Position;
     const auto& camera=_Camera.GetState();

@@ -86,6 +86,7 @@ private:
     QPointF _LastMouse;
     QSet<int> _Keys;
     QTimer _WheelNavigationSettle;
+    QTimer _ResizeSettle;
     GameSproutRuntime::IGameSproutRuntime* _Runtime=nullptr;
     GameSproutRuntime::IRuntimeResourceProvider* _Resources=nullptr;
     GameSproutRuntime::IRuntimeViewport* _Renderer=nullptr;
